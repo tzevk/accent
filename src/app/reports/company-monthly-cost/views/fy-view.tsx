@@ -49,36 +49,36 @@ export function FyView({
 			);
 		}
 		return (
-			<table className="w-full min-w-[1300px] border-collapse text-xs">
+			<table className="w-full min-w-[1300px] border-collapse text-sm leading-relaxed">
 				<thead>
 					<tr className="border-b border-[#64126D]/40 bg-[#64126D]/10">
-						<th className="px-2 py-1.5 text-center text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Sr
 						</th>
-						<th className="min-w-[160px] px-2 py-1.5 text-left text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="min-w-[160px] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Employee
 						</th>
-						<th className="min-w-[180px] px-2 py-1.5 text-left text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="min-w-[180px] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Project
 						</th>
-						<th className="min-w-[100px] px-2 py-1.5 text-left text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="min-w-[100px] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Client
 						</th>
-						<th className="px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Rate/Hr
 						</th>
 						{data.months.map((m) => (
 							<th
 								key={m}
-								className="px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]"
+								className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]"
 							>
 								{m}
 							</th>
 						))}
-						<th className="bg-[#64126D]/20 px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="bg-[#64126D]/20 px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Total Hrs
 						</th>
-						<th className="bg-[#64126D]/20 px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="bg-[#64126D]/20 px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Total Cost
 						</th>
 					</tr>
@@ -89,16 +89,18 @@ export function FyView({
 							key={`${r.employee_id}-${r.project_id ?? r.project_code}-${r.sr_no}`}
 							className="hover:bg-purple-50/40"
 						>
-							<td className="px-2 py-1 text-center text-gray-500">{r.sr_no}</td>
-							<td className="px-2 py-1">
-								<div className="font-medium text-[#4A1254] leading-tight">
+							<td className="px-3 py-2.5 text-center tabular-nums text-gray-600">
+								{r.sr_no}
+							</td>
+							<td className="px-3 py-2.5">
+								<div className="font-medium text-[#4A1254]">
 									{r.employee_name}
 								</div>
-								<div className="text-[10px] text-gray-500">
+								<div className="text-xs text-gray-600">
 									{r.employee_code} {r.department ? `· ${r.department}` : ''}
 								</div>
 							</td>
-							<td className="px-2 py-1">
+							<td className="px-3 py-2.5">
 								{r.project_id ? (
 									<Link
 										href={`/projects/${r.project_id}`}
@@ -114,13 +116,10 @@ export function FyView({
 									</span>
 								)}
 							</td>
-							<td
-								className="max-w-[120px] truncate px-2 py-1 text-gray-600"
-								title={r.client_name}
-							>
+							<td className="min-w-[180px] whitespace-normal break-words px-3 py-2.5 text-gray-700">
 								{r.client_name || '—'}
 							</td>
-							<td className="px-2 py-1 text-right font-mono text-gray-700">
+							<td className="px-3 py-2.5 text-right font-mono tabular-nums text-gray-700">
 								{r.hourly_rate > 0 ? formatCurrency(r.hourly_rate) : '—'}
 							</td>
 							{data.month_keys.map((mKey) => {
@@ -131,7 +130,7 @@ export function FyView({
 								return (
 									<td
 										key={mKey}
-										className={`px-2 py-1 text-right font-mono ${v > 0 ? 'text-gray-900' : 'text-gray-300'}`}
+										className={`px-3 py-2.5 text-right font-mono tabular-nums ${v > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 									>
 										{v > 0
 											? metric === 'hours'
@@ -141,10 +140,10 @@ export function FyView({
 									</td>
 								);
 							})}
-							<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold text-gray-900">
+							<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-gray-900">
 								{formatNumber(r.total_hours).replace(/\.00$/, '')}
 							</td>
-							<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold text-[#64126D]">
+							<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
 								{formatCurrency(r.total_cost)}
 							</td>
 						</tr>
@@ -154,9 +153,9 @@ export function FyView({
 					<tr className="border-t-2 border-[#64126D]/40 bg-[#64126D]/10 font-bold">
 						<td
 							colSpan={5}
-							className="px-2 py-1.5 text-right text-[11px] uppercase text-[#4A1254]"
+							className="px-3 py-2.5 text-right text-sm uppercase text-[#4A1254]"
 						>
-							Grand Total — Company ({metric === 'hours' ? 'hours' : 'cost'})
+							Full-year company total ({metric})
 						</td>
 						{data.month_keys.map((mKey) => {
 							const v =
@@ -166,7 +165,7 @@ export function FyView({
 							return (
 								<td
 									key={mKey}
-									className="px-2 py-1.5 text-right font-mono text-[#4A1254]"
+									className="px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]"
 								>
 									{v > 0
 										? metric === 'hours'
@@ -176,10 +175,10 @@ export function FyView({
 								</td>
 							);
 						})}
-						<td className="bg-[#64126D]/20 px-2 py-1.5 text-right font-mono text-[#4A1254]">
+						<td className="bg-[#64126D]/20 px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]">
 							{formatNumber(totals?.total_hours ?? 0).replace(/\.00$/, '')}
 						</td>
-						<td className="bg-[#64126D]/20 px-2 py-1.5 text-right font-mono text-[#4A1254]">
+						<td className="bg-[#64126D]/20 px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]">
 							{formatCurrency(totals?.total_cost ?? 0)}
 						</td>
 					</tr>
@@ -196,36 +195,36 @@ export function FyView({
 			);
 		}
 		return (
-			<table className="w-full min-w-[1200px] border-collapse text-xs">
+			<table className="w-full min-w-[1200px] border-collapse text-sm leading-relaxed">
 				<thead>
 					<tr className="border-b border-[#64126D]/40 bg-[#64126D]/10">
-						<th className="px-2 py-1.5 text-center text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Sr
 						</th>
-						<th className="min-w-[180px] px-2 py-1.5 text-left text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="min-w-[180px] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Employee
 						</th>
-						<th className="px-2 py-1.5 text-left text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Dept
 						</th>
-						<th className="px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Rate/Hr
 						</th>
 						{data.months.map((m) => (
 							<th
 								key={m}
-								className="px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]"
+								className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]"
 							>
 								{m}
 							</th>
 						))}
-						<th className="bg-[#64126D]/20 px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="bg-[#64126D]/20 px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Total Hrs
 						</th>
-						<th className="bg-[#64126D]/20 px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="bg-[#64126D]/20 px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Total Cost
 						</th>
-						<th className="px-2 py-1.5 text-center text-[10px] font-bold uppercase text-[#64126D]">
+						<th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]">
 							Projects
 						</th>
 					</tr>
@@ -233,17 +232,19 @@ export function FyView({
 				<tbody className="divide-y divide-gray-200">
 					{employeeRows.map((r) => (
 						<tr key={r.employee_id} className="hover:bg-purple-50/40">
-							<td className="px-2 py-1 text-center text-gray-500">{r.sr_no}</td>
-							<td className="px-2 py-1">
+							<td className="px-3 py-2.5 text-center tabular-nums text-gray-600">
+								{r.sr_no}
+							</td>
+							<td className="px-3 py-2.5">
 								<div className="font-medium text-[#4A1254]">
 									{r.employee_name}
 								</div>
-								<div className="text-[10px] text-gray-500">
-									{r.employee_code}
-								</div>
+								<div className="text-xs text-gray-600">{r.employee_code}</div>
 							</td>
-							<td className="px-2 py-1 text-gray-600">{r.department || '—'}</td>
-							<td className="px-2 py-1 text-right font-mono">
+							<td className="px-3 py-2.5 text-gray-700">
+								{r.department || '—'}
+							</td>
+							<td className="px-3 py-2.5 text-right font-mono tabular-nums">
 								{r.hourly_rate > 0 ? formatCurrency(r.hourly_rate) : '—'}
 							</td>
 							{data.month_keys.map((mKey) => {
@@ -254,7 +255,7 @@ export function FyView({
 								return (
 									<td
 										key={mKey}
-										className={`px-2 py-1 text-right font-mono ${v > 0 ? 'text-gray-900' : 'text-gray-300'}`}
+										className={`px-3 py-2.5 text-right font-mono tabular-nums ${v > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 									>
 										{v > 0
 											? metric === 'hours'
@@ -264,13 +265,15 @@ export function FyView({
 									</td>
 								);
 							})}
-							<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold">
+							<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums">
 								{formatNumber(r.total_hours).replace(/\.00$/, '')}
 							</td>
-							<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold text-[#64126D]">
+							<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
 								{formatCurrency(r.total_cost)}
 							</td>
-							<td className="px-2 py-1 text-center">{r.project_count}</td>
+							<td className="px-3 py-2.5 text-center tabular-nums">
+								{r.project_count}
+							</td>
 						</tr>
 					))}
 				</tbody>
@@ -278,9 +281,9 @@ export function FyView({
 					<tr className="border-t-2 border-[#64126D]/40 bg-[#64126D]/10 font-bold">
 						<td
 							colSpan={4}
-							className="px-2 py-1.5 text-right text-[11px] uppercase text-[#4A1254]"
+							className="px-3 py-2.5 text-right text-sm uppercase text-[#4A1254]"
 						>
-							Grand Total ({metric})
+							Full-year company total ({metric})
 						</td>
 						{data.month_keys.map((mKey) => {
 							const v =
@@ -290,7 +293,7 @@ export function FyView({
 							return (
 								<td
 									key={mKey}
-									className="px-2 py-1.5 text-right font-mono text-[#4A1254]"
+									className="px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]"
 								>
 									{v > 0
 										? metric === 'hours'
@@ -300,13 +303,13 @@ export function FyView({
 								</td>
 							);
 						})}
-						<td className="bg-[#64126D]/20 px-2 py-1.5 text-right font-mono text-[#4A1254]">
+						<td className="bg-[#64126D]/20 px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]">
 							{formatNumber(totals?.total_hours ?? 0).replace(/\.00$/, '')}
 						</td>
-						<td className="bg-[#64126D]/20 px-2 py-1.5 text-right font-mono text-[#4A1254]">
+						<td className="bg-[#64126D]/20 px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]">
 							{formatCurrency(totals?.total_cost ?? 0)}
 						</td>
-						<td className="px-2 py-1.5 text-center text-[#4A1254]">
+						<td className="px-3 py-2.5 text-center tabular-nums text-[#4A1254]">
 							{data.summary.employee_count}
 						</td>
 					</tr>
@@ -323,33 +326,33 @@ export function FyView({
 		);
 	}
 	return (
-		<table className="w-full min-w-[1200px] border-collapse text-xs">
+		<table className="w-full min-w-[1200px] border-collapse text-sm leading-relaxed">
 			<thead>
 				<tr className="border-b border-[#64126D]/40 bg-[#64126D]/10">
-					<th className="px-2 py-1.5 text-center text-[10px] font-bold uppercase text-[#64126D]">
+					<th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]">
 						Sr
 					</th>
-					<th className="min-w-[200px] px-2 py-1.5 text-left text-[10px] font-bold uppercase text-[#64126D]">
+					<th className="min-w-[200px] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-[#64126D]">
 						Project
 					</th>
-					<th className="min-w-[120px] px-2 py-1.5 text-left text-[10px] font-bold uppercase text-[#64126D]">
+					<th className="min-w-[180px] px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-[#64126D]">
 						Client
 					</th>
 					{data.months.map((m) => (
 						<th
 							key={m}
-							className="px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]"
+							className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]"
 						>
 							{m}
 						</th>
 					))}
-					<th className="bg-[#64126D]/20 px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+					<th className="bg-[#64126D]/20 px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 						Total Hrs
 					</th>
-					<th className="bg-[#64126D]/20 px-2 py-1.5 text-right text-[10px] font-bold uppercase text-[#64126D]">
+					<th className="bg-[#64126D]/20 px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-[#64126D]">
 						Total Cost
 					</th>
-					<th className="px-2 py-1.5 text-center text-[10px] font-bold uppercase text-[#64126D]">
+					<th className="px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]">
 						Employees
 					</th>
 				</tr>
@@ -360,8 +363,10 @@ export function FyView({
 						key={`${r.project_id ?? r.project_code}-${r.sr_no}`}
 						className="hover:bg-purple-50/40"
 					>
-						<td className="px-2 py-1 text-center text-gray-500">{r.sr_no}</td>
-						<td className="px-2 py-1">
+						<td className="px-3 py-2.5 text-center tabular-nums text-gray-600">
+							{r.sr_no}
+						</td>
+						<td className="px-3 py-2.5">
 							{r.project_id ? (
 								<Link
 									href={`/projects/${r.project_id}`}
@@ -377,7 +382,9 @@ export function FyView({
 								</span>
 							)}
 						</td>
-						<td className="px-2 py-1 text-gray-600">{r.client_name || '—'}</td>
+						<td className="min-w-[180px] whitespace-normal break-words px-3 py-2.5 text-gray-700">
+							{r.client_name || '—'}
+						</td>
 						{data.month_keys.map((mKey) => {
 							const v =
 								(metric === 'cost'
@@ -386,7 +393,7 @@ export function FyView({
 							return (
 								<td
 									key={mKey}
-									className={`px-2 py-1 text-right font-mono ${v > 0 ? 'text-gray-900' : 'text-gray-300'}`}
+									className={`px-3 py-2.5 text-right font-mono tabular-nums ${v > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 								>
 									{v > 0
 										? metric === 'hours'
@@ -396,13 +403,15 @@ export function FyView({
 								</td>
 							);
 						})}
-						<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold">
+						<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums">
 							{formatNumber(r.total_hours).replace(/\.00$/, '')}
 						</td>
-						<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold text-[#64126D]">
+						<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
 							{formatCurrency(r.total_cost)}
 						</td>
-						<td className="px-2 py-1 text-center">{r.employee_count}</td>
+						<td className="px-3 py-2.5 text-center tabular-nums">
+							{r.employee_count}
+						</td>
 					</tr>
 				))}
 			</tbody>
@@ -410,9 +419,9 @@ export function FyView({
 				<tr className="border-t-2 border-[#64126D]/40 bg-[#64126D]/10 font-bold">
 					<td
 						colSpan={3}
-						className="px-2 py-1.5 text-right text-[11px] uppercase text-[#4A1254]"
+						className="px-3 py-2.5 text-right text-sm uppercase text-[#4A1254]"
 					>
-						Grand Total ({metric})
+						Full-year company total ({metric})
 					</td>
 					{data.month_keys.map((mKey) => {
 						const v =
@@ -422,7 +431,7 @@ export function FyView({
 						return (
 							<td
 								key={mKey}
-								className="px-2 py-1.5 text-right font-mono text-[#4A1254]"
+								className="px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]"
 							>
 								{v > 0
 									? metric === 'hours'
@@ -432,13 +441,13 @@ export function FyView({
 							</td>
 						);
 					})}
-					<td className="bg-[#64126D]/20 px-2 py-1.5 text-right font-mono text-[#4A1254]">
+					<td className="bg-[#64126D]/20 px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]">
 						{formatNumber(totals?.total_hours ?? 0).replace(/\.00$/, '')}
 					</td>
-					<td className="bg-[#64126D]/20 px-2 py-1.5 text-right font-mono text-[#4A1254]">
+					<td className="bg-[#64126D]/20 px-3 py-2.5 text-right font-mono tabular-nums text-[#4A1254]">
 						{formatCurrency(totals?.total_cost ?? 0)}
 					</td>
-					<td className="px-2 py-1.5 text-center text-[#4A1254]">
+					<td className="px-3 py-2.5 text-center tabular-nums text-[#4A1254]">
 						{data.summary.employee_count}
 					</td>
 				</tr>

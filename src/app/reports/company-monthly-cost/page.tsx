@@ -460,15 +460,32 @@ function CompanyMonthlyCostInner() {
 		}
 		if (error) {
 			return (
-				<div className="px-4 py-10 text-center text-sm text-red-600">
-					{error}
+				<div
+					role="alert"
+					className="px-4 py-10 text-center text-sm text-red-700"
+				>
+					<p>{error}</p>
+					<button
+						type="button"
+						onClick={() => activeQuery.refetch()}
+						className="mt-3 rounded-lg border border-gray-300 bg-white px-3 py-2 font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
+					>
+						Retry
+					</button>
 				</div>
 			);
 		}
 		if (isLoading) {
 			return (
-				<div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-gray-500">
-					<ArrowPathIcon className="h-4 w-4 animate-spin" />
+				<div
+					role="status"
+					aria-live="polite"
+					className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-gray-600"
+				>
+					<ArrowPathIcon
+						className="h-4 w-4 motion-safe:animate-spin motion-reduce:hidden"
+						aria-hidden="true"
+					/>
 					Loading company costs…
 				</div>
 			);
@@ -527,49 +544,49 @@ function CompanyMonthlyCostInner() {
 							)}
 						</div>
 						<div
-							role="tablist"
+							role="group"
 							aria-label="Report view"
-							className="inline-flex flex-wrap shrink-0 self-start rounded-xl border border-gray-200/80 bg-gray-100/90 p-1 shadow-inner sm:self-auto"
+							className="flex flex-wrap gap-2"
 						>
 							{canReadExpenseSource && canReadPayrollSource && (
 								<button
 									type="button"
-									role="tab"
-									aria-selected={viewMode === 'expenditure'}
+									aria-pressed={viewMode === 'expenditure'}
 									onClick={() => setViewMode('expenditure')}
-									className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'expenditure' ? 'bg-[#64126D] text-white shadow' : 'text-gray-600 hover:text-[#64126D]'}`}
+									className={`rounded-lg border px-3 py-2 text-sm font-semibold ${viewMode === 'expenditure' ? 'border-[#64126D] bg-[#64126D] text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
 								>
-									<BanknotesIcon className="h-3.5 w-3.5" />
 									Company Expenditure
 								</button>
 							)}
 							<button
 								type="button"
-								role="tab"
-								aria-selected={viewMode === 'monthly'}
+								aria-pressed={viewMode === 'monthly'}
 								onClick={() => setViewMode('monthly')}
-								className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'monthly' ? 'bg-[#64126D] text-white shadow' : 'text-gray-600 hover:text-[#64126D]'}`}
+								className={`rounded-lg border px-3 py-2 text-sm font-semibold ${viewMode === 'monthly' ? 'border-[#64126D] bg-[#64126D] text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
 							>
-								<CalendarDaysIcon className="h-3.5 w-3.5" />
 								Employee Cost — Month
 							</button>
 							<button
 								type="button"
-								role="tab"
-								aria-selected={viewMode === 'fy'}
+								aria-pressed={viewMode === 'fy'}
 								onClick={() => setViewMode('fy')}
-								className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${viewMode === 'fy' ? 'bg-[#64126D] text-white shadow' : 'text-gray-600 hover:text-[#64126D]'}`}
+								className={`rounded-lg border px-3 py-2 text-sm font-semibold ${viewMode === 'fy' ? 'border-[#64126D] bg-[#64126D] text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
 							>
-								<DocumentTextIcon className="h-3.5 w-3.5" />
 								Employee Cost — FY
 							</button>
 						</div>
 					</div>
 					{viewMode !== 'expenditure' && (
 						<>
-							<div className="mt-3 flex flex-wrap items-center gap-2">
+							<div className="mt-3 flex flex-wrap items-end gap-3">
 								{viewMode === 'monthly' ? (
 									<div className="w-full max-w-[260px]">
+										<label
+											htmlFor="cmc-month"
+											className="mb-1 block text-sm font-medium text-gray-700"
+										>
+											Month
+										</label>
 										<SearchableSelect
 											options={monthOptions}
 											value={selectedMonth}
@@ -580,63 +597,82 @@ function CompanyMonthlyCostInner() {
 										/>
 									</div>
 								) : (
-									<select
-										value={selectedFy}
-										onChange={(e) => setSelectedFy(e.target.value)}
-										className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-purple-500"
-										title="Financial year (Apr–Mar)"
-									>
-										{financialYears.map((fy) => (
-											<option key={fy.year} value={String(fy.year)}>
-												{fy.label}
-											</option>
-										))}
-									</select>
+									<div>
+										<label
+											htmlFor="cmc-fy"
+											className="mb-1 block text-sm font-medium text-gray-700"
+										>
+											Financial year
+										</label>
+										<select
+											id="cmc-fy"
+											value={selectedFy}
+											onChange={(e) => setSelectedFy(e.target.value)}
+											className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D] sm:text-sm"
+										>
+											{financialYears.map((fy) => (
+												<option key={fy.year} value={String(fy.year)}>
+													{fy.label}
+												</option>
+											))}
+										</select>
+									</div>
 								)}
-								<div className="relative flex-1 min-w-[180px] max-w-sm">
+								<div className="min-w-[180px] max-w-sm flex-1">
+									<label
+										htmlFor="cmc-search"
+										className="mb-1 block text-sm font-medium text-gray-700"
+									>
+										Search employees, projects or clients
+									</label>
 									<input
-										type="text"
+										id="cmc-search"
+										type="search"
 										value={search}
 										onChange={(e) => setSearch(e.target.value)}
-										placeholder="Search employee, project, client…"
-										className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-transparent focus:ring-2 focus:ring-purple-500"
+										placeholder="Name, code or client"
+										className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base placeholder:text-gray-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D] sm:text-sm"
 									/>
 								</div>
+								{search.trim() && (
+									<button
+										type="button"
+										onClick={() => setSearch('')}
+										className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+									>
+										Clear search
+									</button>
+								)}
 								{viewMode === 'fy' && (
 									<div
-										role="tablist"
+										role="group"
 										aria-label="Metric"
-										className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1"
+										className="inline-flex rounded-lg border border-gray-300 bg-white p-1"
 									>
 										{(['hours', 'cost'] as Metric[]).map((m) => (
 											<button
 												key={m}
 												type="button"
-												role="tab"
-												aria-selected={metric === m}
+												aria-pressed={metric === m}
 												onClick={() => setMetric(m)}
-												className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold ${metric === m ? 'bg-white shadow text-[#64126D]' : 'text-gray-600'}`}
+												className={`rounded-md px-3 py-2 text-sm font-semibold ${metric === m ? 'bg-[#64126D] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
 											>
-												{m === 'hours' ? (
-													<ClockIcon className="h-3 w-3" />
-												) : (
-													<BanknotesIcon className="h-3 w-3" />
-												)}
 												{m === 'hours' ? 'Hours' : 'Cost'}
 											</button>
 										))}
 									</div>
 								)}
-								<div className="ml-auto flex items-center gap-2">
+								<div className="flex flex-wrap gap-2 sm:ml-auto">
 									<button
 										type="button"
 										onClick={() => activeQuery.refetch()}
 										disabled={isLoading}
-										className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+										className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
 									>
 										<ArrowPathIcon
-											className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
-										/>
+											className={`h-4 w-4 ${isLoading ? 'motion-safe:animate-spin' : ''}`}
+											aria-hidden="true"
+										/>{' '}
 										Refresh
 									</button>
 									<button
@@ -648,34 +684,44 @@ function CompanyMonthlyCostInner() {
 												? 'Excel export is disabled for sample data'
 												: undefined
 										}
-										className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+										className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
 									>
 										{exporting ? (
-											<ArrowPathIcon className="h-4 w-4 animate-spin" />
+											<ArrowPathIcon
+												className="h-4 w-4 motion-safe:animate-spin"
+												aria-hidden="true"
+											/>
 										) : (
-											<DocumentArrowDownIcon className="h-4 w-4" />
-										)}
+											<DocumentArrowDownIcon
+												className="h-4 w-4"
+												aria-hidden="true"
+											/>
+										)}{' '}
 										Excel
 									</button>
 									<button
 										type="button"
 										onClick={handlePrint}
-										className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-900"
+										className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
 									>
-										<PrinterIcon className="h-4 w-4" />
-										Print
+										<PrinterIcon className="h-4 w-4" aria-hidden="true" /> Print
 									</button>
 								</div>
 							</div>
-							<div className="mt-3 flex items-center gap-1.5 border-b border-gray-200">
+							<div
+								className="mt-3 flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2"
+								role="group"
+								aria-label="Report breakdown"
+							>
 								{(
 									['detailed', 'byEmployee', 'byProject'] as BreakdownTab[]
 								).map((tab) => (
 									<button
 										key={tab}
 										type="button"
+										aria-pressed={breakdown === tab}
 										onClick={() => setBreakdown(tab)}
-										className={`rounded-t-lg border-b-2 px-3 py-1.5 text-xs font-semibold ${breakdown === tab ? 'border-[#64126D] bg-[#64126D]/5 text-[#64126D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+										className={`rounded-lg border px-3 py-2 text-sm font-semibold ${breakdown === tab ? 'border-[#64126D] bg-[#64126D]/5 text-[#64126D]' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
 									>
 										{tab === 'detailed'
 											? viewMode === 'monthly'
@@ -688,7 +734,7 @@ function CompanyMonthlyCostInner() {
 													: 'By Project'}
 									</button>
 								))}
-								<span className="ml-auto hidden text-xs text-gray-400 sm:inline">
+								<span className="ml-auto hidden text-xs text-gray-500 sm:inline">
 									Generated {generatedAt}
 								</span>
 							</div>
@@ -749,143 +795,158 @@ function CompanyMonthlyCostInner() {
 					)}
 				{viewMode === 'monthly' && monthlyTotals && (
 					<div
-						className={`mx-auto mb-3 grid max-w-[1600px] grid-cols-2 gap-2 md:grid-cols-5 ${breakdown === 'detailed' ? 'print:hidden' : 'print:mb-1 print:grid-cols-5'}`}
+						className={`mx-auto mb-3 grid max-w-[1600px] grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5 ${breakdown === 'detailed' ? 'print:hidden' : 'print:mb-1 print:grid-cols-5'}`}
 					>
+						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-4 shadow-sm sm:col-span-2 md:col-span-1 print:p-1.5">
+							<p className="text-sm font-semibold text-[#64126D]">
+								{monthlyData?.payroll.missing_pricing_count
+									? 'Employee cost — partial estimate'
+									: 'Estimated employee cost'}{' '}
+								· {monthlyData?.month_label}
+							</p>
+							<p className="mt-1 text-2xl font-bold tabular-nums text-[#64126D] print:text-base">
+								{formatCurrency(monthlyTotals.total_cost)}
+							</p>
+							<p className="mt-1 text-sm text-gray-700">
+								Full-period total across all employees and projects; employee
+								cost is an estimate until payroll is finalized.
+								{monthlyData?.payroll.missing_pricing_count
+									? ' Unpriced salaries are excluded, so this partial estimate may be understated.'
+									: ''}
+							</p>
+						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									Total Hours
-								</p>
-								<ClockIcon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">Total hours</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{formatNumber(monthlyTotals.total_hours)}
 							</p>
-							<p className="text-[10px] text-gray-400">
+							<p className="text-sm text-gray-600">
 								{monthlyTotals.employee_count} employees
 							</p>
 						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									Avg Rate / Hr
-								</p>
-								<TableCellsIcon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">
+								Average rate / hour
+							</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{formatCurrency(monthlyTotals.blended_rate)}
 							</p>
 						</div>
-						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-[#64126D]">
-									{monthlyData?.payroll.missing_pricing_count
-										? 'Employee cost — partial'
-										: 'Total Cost'}{' '}
-									({monthlyData?.month_label})
-								</p>
-								<BanknotesIcon className="h-4 w-4 text-[#64126D]" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-[#64126D] print:text-sm">
-								{formatCurrency(monthlyTotals.total_cost)}
-							</p>
-							{monthlyData && monthlyData.payroll.missing_pricing_count > 0 && (
-								<p className="mt-1 text-xs text-amber-800">
-									Partial: unpriced salaries are excluded.
-								</p>
-							)}
-						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									Employees
-								</p>
-								<UserGroupIcon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">Employees</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{monthlyTotals.employee_count}
 							</p>
 						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									Projects
-								</p>
-								<BuildingOffice2Icon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">Projects</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{monthlyTotals.project_count}
 							</p>
 						</div>
 					</div>
 				)}
 				{viewMode === 'fy' && fyData && (
-					<div className="mx-auto mb-3 grid max-w-[1600px] grid-cols-2 gap-2 md:grid-cols-5 print:mb-1 print:grid-cols-5">
+					<div className="mx-auto mb-3 grid max-w-[1600px] grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5 print:mb-1 print:grid-cols-5">
+						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-4 shadow-sm sm:col-span-2 md:col-span-1 print:p-1.5">
+							<p className="text-sm font-semibold text-[#64126D]">
+								Estimated employee cost · {fyData.fy_label}
+							</p>
+							<p className="mt-1 text-2xl font-bold tabular-nums text-[#64126D] print:text-base">
+								{formatCurrency(fyData.summary.total_cost)}
+							</p>
+							<p className="mt-1 text-sm text-gray-700">
+								Full-year total across all employees and projects; employee cost
+								is an estimate until payroll is finalized.
+							</p>
+						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									FY Total Hours
-								</p>
-								<ClockIcon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">Total hours</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{formatNumber(fyData.summary.total_hours)}
 							</p>
-							<p className="text-[10px] text-gray-400">
+							<p className="text-sm text-gray-600">
 								{fyData.summary.employee_count} employees
 							</p>
 						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									Avg Rate / Hr
-								</p>
-								<TableCellsIcon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">
+								Average rate / hour
+							</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{formatCurrency(fyData.summary.blended_rate)}
 							</p>
 						</div>
-						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-[#64126D]">
-									FY Total Cost ({fyData.fy_label})
-								</p>
-								<BanknotesIcon className="h-4 w-4 text-[#64126D]" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-[#64126D] print:text-sm">
-								{formatCurrency(fyData.summary.total_cost)}
-							</p>
-						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									Employees
-								</p>
-								<UserGroupIcon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">Employees</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{fyData.summary.employee_count}
 							</p>
 						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
-							<div className="flex items-center justify-between">
-								<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-									Projects
-								</p>
-								<BuildingOffice2Icon className="h-4 w-4 text-purple-400" />
-							</div>
-							<p className="mt-0.5 text-lg font-bold text-gray-900 print:text-sm">
+							<p className="text-sm font-medium text-gray-700">Projects</p>
+							<p className="mt-1 text-lg font-bold tabular-nums text-gray-900">
 								{fyData.summary.project_count}
 							</p>
 						</div>
 					</div>
 				)}
-				<div className="cmc-sheet mx-auto max-w-[1600px] overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm print:overflow-visible print:rounded-none print:border-none print:shadow-none">
+				{viewMode === 'monthly' &&
+					normalizedSearch &&
+					monthlyData &&
+					filteredMonthlyRows.length === 0 &&
+					filteredMonthlyEmployeeRows.length === 0 &&
+					filteredMonthlyProjectRows.length === 0 && (
+						<div className="mx-auto mb-3 max-w-[1600px] rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700 print:hidden">
+							<p>
+								No matches for “{search.trim()}”. Search filters displayed rows;
+								full-period totals remain unchanged.
+							</p>
+							<button
+								type="button"
+								onClick={() => setSearch('')}
+								className="mt-2 rounded-lg border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-50"
+							>
+								Clear search
+							</button>
+						</div>
+					)}
+				{viewMode === 'fy' &&
+					normalizedSearch &&
+					fyData &&
+					filteredFyRows.length === 0 &&
+					filteredFyEmployeeRows.length === 0 &&
+					filteredFyProjectRows.length === 0 && (
+						<div className="mx-auto mb-3 max-w-[1600px] rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700 print:hidden">
+							<p>
+								No matches for “{search.trim()}”. Search filters displayed rows;
+								full-year totals remain unchanged.
+							</p>
+							<button
+								type="button"
+								onClick={() => setSearch('')}
+								className="mt-2 rounded-lg border border-gray-300 px-3 py-2 font-medium text-gray-700 hover:bg-gray-50"
+							>
+								Clear search
+							</button>
+						</div>
+					)}
+				<div
+					role="region"
+					aria-label={
+						viewMode === 'expenditure'
+							? 'Company expenditure report, scroll horizontally to see all columns'
+							: viewMode === 'monthly'
+								? 'Employee cost by month tables, scroll horizontally to see all columns'
+								: 'Employee cost by financial year tables, scroll horizontally to see all columns'
+					}
+					tabIndex={0}
+					className="cmc-sheet mx-auto max-w-[1600px] min-w-0 overflow-x-auto border-0 bg-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
+				>
 					{renderContent()}
 				</div>
 				{viewMode !== 'expenditure' && (
-					<p className="mx-auto mt-2 max-w-[1600px] text-[10px] leading-relaxed text-gray-400 print:hidden">
+					<p className="mx-auto mt-2 max-w-[1600px] text-[10px] leading-relaxed text-gray-500 print:hidden">
 						Hours are summed from daily activity logs per project; cost =
 						payroll hourly rate in force that month × hours logged that month
 						(hourly/daily rate when set, else gross salary ÷ standard working

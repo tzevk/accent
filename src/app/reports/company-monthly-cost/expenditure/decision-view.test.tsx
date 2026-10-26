@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -530,7 +530,9 @@ describe('ProjectBreakdown budget variance', () => {
 		);
 		const row = screen.getByTestId('expenditure-project-row');
 		expect(within(row).getByText('Different currency')).toBeInTheDocument();
-		expect(within(row).getByText('Unavailable')).toBeInTheDocument();
+		expect(
+			within(row).getByTestId('project-budget-variance')
+		).toHaveTextContent('Unavailable');
 		expect(
 			within(row).queryByText('Overspent', { exact: false })
 		).not.toBeInTheDocument();
@@ -597,7 +599,9 @@ describe('ProjectBreakdown budget variance', () => {
 		);
 		const row = screen.getByTestId('expenditure-project-row');
 		expect(within(row).getByText('Different period')).toBeInTheDocument();
-		expect(within(row).getByText('Unavailable')).toBeInTheDocument();
+		expect(
+			within(row).getByTestId('project-budget-variance')
+		).toHaveTextContent('Unavailable');
 		expect(
 			within(row).queryByText('Remaining', { exact: false })
 		).not.toBeInTheDocument();
@@ -740,6 +744,119 @@ describe('ProjectBreakdown budget variance', () => {
 		expect(variance).toBeDefined();
 		expect(variance).toHaveTextContent('₹6,000.00');
 		expect(variance).toHaveTextContent('Percentage unavailable');
+	});
+	it('shows an approved budget without inventing variance when confirmed cost is absent', () => {
+		const month = data();
+		month.projects = [projectRow({ incurred_cost: 0 })];
+		month.budgets = {
+			...month.budgets,
+			comparisons: [
+				{
+					project_id: 60,
+					project_code: 'P60',
+					project_name: 'Project Sixty',
+					client_name: 'Client',
+					currency: 'INR',
+					incurred_cost: null,
+					confirmed_records: 0,
+					period_charges: 0,
+					pending_records: 0,
+					outcome: 'unsupported_incurred_cost',
+					budget: {
+						budget_id: 7,
+						budget_uid: 'BUD-7',
+						state: 'approved',
+						currency: 'INR',
+						scope: 'project_incurred_cost',
+						amount: 12000,
+						period_start: '2026-09-01',
+						period_end: '2026-09-30',
+						basis_note: null,
+						financial_version: 2,
+						approval_evidence_reference: 'EV-7',
+						approved_at: '2026-09-02',
+					},
+					candidates: [],
+					variance: null,
+					over_budget: null,
+					detail: 'approved budget known but confirmed cost unavailable',
+				},
+			],
+		};
+		render(
+			<ProjectBreakdown
+				data={month}
+				month="2026-09"
+				clientOrdersByProject={new Map()}
+				costRanks={new Map([['60:INR', 1]])}
+				increaseRanks={new Map([['60:INR', 1]])}
+				rankedRows={[{ row: month.projects[0], rank: 1 }]}
+				rankingMode="cost"
+				expandedProject={null}
+				onProjectExpand={() => {}}
+				drilldownLoading={false}
+				drilldownRecords={[]}
+				drilldownPeriodCharges={[]}
+				drilldownMonth="2026-09"
+				evidenceLoading={false}
+				evidenceRecords={[]}
+			/>
+		);
+		const row = screen.getByTestId('expenditure-project-row');
+		expect(within(row).getByTestId('project-budget')).toHaveTextContent(
+			'₹12,000.00'
+		);
+		expect(
+			within(row).getByTestId('project-budget-variance')
+		).toHaveTextContent('Unavailable');
+		expect(
+			within(row).getByTestId('project-budget-variance')
+		).not.toHaveTextContent('Remaining');
+		expect(
+			within(row).getByTestId('project-budget-variance')
+		).not.toHaveTextContent('Overspent');
+	});
+
+	it('distinguishes unavailable salary-estimate conversion from a missing confirmed rate', () => {
+		const month = data();
+		month.projects = [
+			projectRow({
+				currency: 'USD',
+				estimated_employee_cost: 4000,
+				employee_count: 1,
+				converted_incurred_cost: 16000,
+				conversion_status: 'reporting',
+			}),
+		];
+		render(
+			<ProjectBreakdown
+				data={month}
+				month="2026-09"
+				clientOrdersByProject={new Map()}
+				costRanks={new Map([['60:INR', 1]])}
+				increaseRanks={new Map([['60:INR', 1]])}
+				rankedRows={[{ row: month.projects[0], rank: 1 }]}
+				rankingMode="cost"
+				expandedProject={null}
+				onProjectExpand={() => {}}
+				drilldownLoading={false}
+				drilldownRecords={[]}
+				drilldownPeriodCharges={[]}
+				drilldownMonth="2026-09"
+				evidenceLoading={false}
+				evidenceRecords={[]}
+			/>
+		);
+		fireEvent.click(
+			within(screen.getByTestId('expenditure-project-row')).getByText(
+				'Financial details and source records'
+			)
+		);
+		expect(
+			within(screen.getByTestId('expenditure-project-row')).getByText(
+				/Confirmed cost is available, but the salary estimate has no supported conversion/
+			)
+		).toBeInTheDocument();
 	});
 });
 
