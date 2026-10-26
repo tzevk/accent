@@ -1,3 +1,5 @@
+import type { PayrollExpenditure } from '@/lib/company-expenditure/types';
+
 export interface FinancialYearOption {
 	year: number;
 	label: string;
@@ -28,6 +30,7 @@ export interface MonthlyRow {
 	hourly_rate: number;
 	hours: number;
 	cost: number;
+	missing_salary_profile: boolean;
 }
 
 export interface MonthlyEmployeeRow {
@@ -41,6 +44,7 @@ export interface MonthlyEmployeeRow {
 	hours: number;
 	cost: number;
 	project_count: number;
+	missing_salary_profile: boolean;
 }
 
 export interface MonthlyProjectRow {
@@ -52,6 +56,7 @@ export interface MonthlyProjectRow {
 	hours: number;
 	cost: number;
 	employee_count: number;
+	missing_salary_profile_count: number;
 }
 
 export interface MonthlyCompanyCostData {
@@ -62,6 +67,7 @@ export interface MonthlyCompanyCostData {
 	rows: MonthlyRow[];
 	employee_rows: MonthlyEmployeeRow[];
 	project_rows: MonthlyProjectRow[];
+	payroll: PayrollExpenditure;
 	totals: {
 		total_hours: number;
 		total_cost: number;

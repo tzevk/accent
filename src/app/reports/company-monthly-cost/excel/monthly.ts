@@ -107,7 +107,7 @@ function buildMonthlyDetailedSheet(
 	let rowNum = 4;
 	for (const r of data.rows) {
 		const row = ws.getRow(rowNum);
-		row.height = 18;
+		row.height = r.missing_salary_profile ? 32 : 18;
 		const vals: Array<{
 			val: string | number;
 			tint: string;
@@ -117,7 +117,7 @@ function buildMonthlyDetailedSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${r.employee_name} (${r.employee_code || r.employee_id})`,
+				val: `${r.employee_name} (${r.employee_code || r.employee_id})${r.missing_salary_profile ? ' — Salary Profile missing (unpriced)' : ''}`,
 				tint: TINT_EMP,
 				align: 'left',
 			},
@@ -153,7 +153,11 @@ function buildMonthlyDetailedSheet(
 			c.value = v.val;
 			setFont(c, { bold: v.bold ?? false, size: 9.5 });
 			setFill(c, v.tint);
-			c.alignment = { vertical: 'middle', horizontal: v.align };
+			c.alignment = {
+				vertical: 'middle',
+				horizontal: v.align,
+				wrapText: r.missing_salary_profile,
+			};
 			if (v.numFmt) c.numFmt = v.numFmt;
 			box(c);
 		});
@@ -165,7 +169,7 @@ function buildMonthlyDetailedSheet(
 	totalRow.height = 20;
 	ws.mergeCells(rowNum, 1, rowNum, 5);
 	const lbl = totalRow.getCell(1);
-	lbl.value = 'Grand Total — Company Cost for ' + data.month_label;
+	lbl.value = `${data.payroll.missing_pricing_count > 0 ? 'Available cost — partial' : 'Grand Total — Company Cost'} for ${data.month_label}`;
 	setFont(lbl, { bold: true, size: 10 });
 	lbl.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 5; c++) box(totalRow.getCell(c));
@@ -271,7 +275,7 @@ function buildMonthlyByEmployeeSheet(
 	let rn = 4;
 	for (const r of data.employee_rows) {
 		const row = ws.getRow(rn);
-		row.height = 18;
+		row.height = r.missing_salary_profile ? 32 : 18;
 		const vals: Array<{
 			val: string | number;
 			tint: string;
@@ -281,7 +285,7 @@ function buildMonthlyByEmployeeSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${r.employee_name} (${r.employee_code || r.employee_id})`,
+				val: `${r.employee_name} (${r.employee_code || r.employee_id})${r.missing_salary_profile ? ' — Salary Profile missing (unpriced)' : ''}`,
 				tint: TINT_YELLOW,
 				align: 'left',
 			},
@@ -313,7 +317,11 @@ function buildMonthlyByEmployeeSheet(
 			c.value = v.val;
 			setFont(c, { bold: v.bold ?? false, size: 9.5 });
 			setFill(c, v.tint);
-			c.alignment = { vertical: 'middle', horizontal: v.align };
+			c.alignment = {
+				vertical: 'middle',
+				horizontal: v.align,
+				wrapText: r.missing_salary_profile,
+			};
 			if (v.numFmt) c.numFmt = v.numFmt;
 			box(c);
 		});
@@ -324,7 +332,10 @@ function buildMonthlyByEmployeeSheet(
 	tr.height = 20;
 	ws.mergeCells(rn, 1, rn, 5);
 	const l = tr.getCell(1);
-	l.value = 'Grand Total';
+	l.value =
+		data.payroll.missing_pricing_count > 0
+			? 'Available cost — partial'
+			: 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
 	l.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 5; c++) box(tr.getCell(c));
@@ -423,7 +434,7 @@ function buildMonthlyByProjectSheet(
 	let rn = 4;
 	for (const r of data.project_rows) {
 		const row = ws.getRow(rn);
-		row.height = 18;
+		row.height = r.missing_salary_profile_count > 0 ? 32 : 18;
 		const vals: Array<{
 			val: string | number;
 			tint: string;
@@ -433,7 +444,7 @@ function buildMonthlyByProjectSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: [r.project_code, r.project_name].filter(Boolean).join(' – '),
+				val: `${[r.project_code, r.project_name].filter(Boolean).join(' – ')}${r.missing_salary_profile_count > 0 ? ` — Partial: ${r.missing_salary_profile_count} missing Salary Profile(s)` : ''}`,
 				tint: TINT_YELLOW,
 				align: 'left',
 			},
@@ -458,7 +469,11 @@ function buildMonthlyByProjectSheet(
 			c.value = v.val;
 			setFont(c, { bold: v.bold ?? false, size: 9.5 });
 			setFill(c, v.tint);
-			c.alignment = { vertical: 'middle', horizontal: v.align };
+			c.alignment = {
+				vertical: 'middle',
+				horizontal: v.align,
+				wrapText: r.missing_salary_profile_count > 0,
+			};
 			if (v.numFmt) c.numFmt = v.numFmt;
 			box(c);
 		});
@@ -469,7 +484,10 @@ function buildMonthlyByProjectSheet(
 	tr.height = 20;
 	ws.mergeCells(rn, 1, rn, 3);
 	const l = tr.getCell(1);
-	l.value = 'Grand Total';
+	l.value =
+		data.payroll.missing_pricing_count > 0
+			? 'Available cost — partial'
+			: 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
 	l.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 3; c++) box(tr.getCell(c));
@@ -508,6 +526,15 @@ export function buildMonthlyWorkbook(
 	buildMonthlyDetailedSheet(wb, data);
 	buildMonthlyByEmployeeSheet(wb, data);
 	buildMonthlyByProjectSheet(wb, data);
+	if (data.payroll.missing_pricing_count > 0) {
+		for (const sheet of wb.worksheets) {
+			const notice = sheet.getCell(2, 1);
+			notice.value = `${notice.value} · Partial cost: ${data.payroll.missing_pricing_count} employee(s) have no covering Salary Profile. Their hours remain included; zero is an unpriced placeholder.`;
+			notice.alignment = { ...notice.alignment, wrapText: true };
+			sheet.getRow(2).height = 42;
+			setFont(notice, { size: 10, color: 'FF92400E' });
+		}
+	}
 	return wb;
 }
 

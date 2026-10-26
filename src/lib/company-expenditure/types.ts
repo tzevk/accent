@@ -404,6 +404,8 @@ export interface ReconciliationProjectRow {
 	employee_count: number;
 	/** Employees with frozen recorded shares, including known-zero shares. */
 	recorded_employee_count: number;
+	/** Employees with work on this Project but no covering Salary Profile. */
+	missing_salary_profile_count: number;
 }
 
 /** Ordering of one amount against its comparable prior period. */

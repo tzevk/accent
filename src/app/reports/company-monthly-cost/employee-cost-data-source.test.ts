@@ -4,10 +4,18 @@ import {
 	buildProjectCostRows,
 	buildProjectCostTotals,
 	resolveHourlyRateOfFY,
+	buildMonthlyAllocationRows,
+	buildMonthlyAllocationEmployeeRows,
+	buildMonthlyAllocationProjectRows,
+	buildMonthlyAllocationTotals,
 	type SalaryProfile,
 	type ProjectCostRow,
 } from '@/app/reports/company-monthly-cost/employee-cost-data-source';
 
+import type {
+	PayrollEmployeeCost,
+	PayrollProjectShare,
+} from '@/lib/company-expenditure/types';
 function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
 	return {
 		employee_id: 1,
@@ -238,5 +246,146 @@ describe('buildProjectCostTotals', () => {
 		expect(totals.total_cost).toBe(0);
 		expect(totals.blended_rate).toBe(0);
 		expect(totals.monthly_hours.apr).toBe(0);
+	});
+});
+
+describe('monthly salary profile coverage', () => {
+	it('keeps unpriced hours and projects beside known cost without claiming a complete total', () => {
+		const share: PayrollProjectShare = {
+			project_id: 50,
+			project_code: 'P-50',
+			project_name: 'Project 50',
+			client_name: null,
+			hours: 8,
+			amount: 0,
+			rounding_adjustment: 0,
+			basis: 'project',
+		};
+		const unpriced: PayrollEmployeeCost = {
+			employee_id: 1,
+			employee_code: 'EMP-1',
+			employee_name: 'Missing profile',
+			pay_stream: 'unknown',
+			status: 'unknown',
+			recorded_amount: null,
+			estimated_amount: null,
+			logged_hours: 12,
+			project_hours: 12,
+			no_project_hours: 0,
+			no_logged_hours: false,
+			missing_slip: false,
+			missing_pricing: true,
+			allocation_missing: false,
+			source: {
+				payroll_slip_id: null,
+				allocation_id: null,
+				allocation_version: null,
+				allocation_kind: null,
+				month: '2026-10',
+			},
+			shares: [
+				share,
+				{
+					...share,
+					project_id: 51,
+					project_code: 'P-51',
+					project_name: 'Project 51',
+					hours: 4,
+				},
+			],
+			hours_by_project: [],
+			reconstruction: null,
+		};
+		const recorded: PayrollEmployeeCost = {
+			...unpriced,
+			employee_id: 2,
+			employee_code: 'EMP-2',
+			employee_name: 'Recorded employee',
+			pay_stream: 'payroll',
+			status: 'recorded',
+			recorded_amount: 200,
+			logged_hours: 2,
+			project_hours: 2,
+			missing_pricing: false,
+			shares: [{ ...share, hours: 2, amount: 200 }],
+		};
+		const knownZero: PayrollEmployeeCost = {
+			...recorded,
+			employee_id: 3,
+			employee_code: 'EMP-3',
+			employee_name: 'Known zero',
+			status: 'known_zero',
+			recorded_amount: 0,
+			logged_hours: 3,
+			project_hours: 3,
+			shares: [
+				{
+					...share,
+					project_id: 51,
+					project_code: 'P-51',
+					project_name: 'Project 51',
+					hours: 3,
+					amount: 0,
+				},
+			],
+		};
+		const rows = buildMonthlyAllocationRows(
+			[unpriced, recorded, knownZero],
+			new Map()
+		);
+		expect(rows.find((row) => row.employee_id === 3)).toMatchObject({
+			cost: 0,
+			cost_status: 'known_zero',
+			missing_salary_profile: false,
+		});
+		expect(rows.filter((row) => row.employee_id === 1)).toMatchObject([
+			{
+				project_id: 50,
+				hours: 8,
+				cost: 0,
+				cost_status: 'unknown',
+				missing_salary_profile: true,
+			},
+			{
+				project_id: 51,
+				hours: 4,
+				cost: 0,
+				cost_status: 'unknown',
+				missing_salary_profile: true,
+			},
+		]);
+		expect(buildMonthlyAllocationEmployeeRows(rows)).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					employee_id: 1,
+					hours: 12,
+					cost: 0,
+					missing_salary_profile: true,
+				}),
+				expect.objectContaining({
+					employee_id: 2,
+					hours: 2,
+					cost: 200,
+					missing_salary_profile: false,
+				}),
+				expect.objectContaining({
+					employee_id: 3,
+					cost: 0,
+					missing_salary_profile: false,
+				}),
+			])
+		);
+		expect(buildMonthlyAllocationProjectRows(rows)).toMatchObject([
+			{ project_id: 50, hours: 10, cost: 200, missing_salary_profile_count: 1 },
+			{ project_id: 51, hours: 7, cost: 0, missing_salary_profile_count: 1 },
+		]);
+		expect(buildMonthlyAllocationTotals(rows)).toMatchObject({
+			total_hours: 17,
+			total_cost: 200,
+			recorded_cost: 200,
+			estimated_cost: 0,
+			employee_count: 3,
+			project_count: 2,
+		});
 	});
 });

@@ -309,6 +309,7 @@ interface PayrollAggregates {
 	hoursByProject: Map<number, number>;
 	employeesByProject: Map<number, Set<number>>;
 	recordedEmployeesByProject: Map<number, Set<number>>;
+	missingProfilesByProject: Map<number, Set<number>>;
 	identityByProject: Map<
 		number,
 		{ project_code: string; project_name: string; client_name: string | null }
@@ -323,6 +324,7 @@ function payrollAggregates(
 	const hoursByProject = new Map<number, number>();
 	const employeesByProject = new Map<number, Set<number>>();
 	const recordedEmployeesByProject = new Map<number, Set<number>>();
+	const missingProfilesByProject = new Map<number, Set<number>>();
 	// Frozen recorded identity and live estimated identity are collected
 	// separately: a recorded share's snapshotted name must survive a later
 	// Project rename, while an estimate-only Project still states its real
@@ -381,6 +383,12 @@ function payrollAggregates(
 			const set = employeesByProject.get(line.project_id) ?? new Set<number>();
 			set.add(employee.employee_id);
 			employeesByProject.set(line.project_id, set);
+			if (employee.missing_pricing) {
+				const missing =
+					missingProfilesByProject.get(line.project_id) ?? new Set<number>();
+				missing.add(employee.employee_id);
+				missingProfilesByProject.set(line.project_id, missing);
+			}
 		}
 	}
 	return {
@@ -388,6 +396,7 @@ function payrollAggregates(
 		estimatedByProject,
 		hoursByProject,
 		employeesByProject,
+		missingProfilesByProject,
 		// Frozen recorded identity wins where both exist; estimated identity
 		// fills the estimate-only Projects the review flagged.
 		identityByProject: new Map([
@@ -625,6 +634,10 @@ function projectRows(
 				recorded_employee_count:
 					currency === payroll.currency
 						? (aggregates.recordedEmployeesByProject.get(id)?.size ?? 0)
+						: 0,
+				missing_salary_profile_count:
+					currency === payroll.currency
+						? (aggregates.missingProfilesByProject.get(id)?.size ?? 0)
 						: 0,
 			});
 		}

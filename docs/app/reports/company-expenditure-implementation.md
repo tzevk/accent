@@ -56,6 +56,25 @@ Only a valid comparison with a positive budget has a percentage.
 Missing, unapproved, incompatible, ambiguous, and zero-budget states retain their reasons.
 Budget-only Projects remain in the standalone budget section, not the cost rankings.
 
+### Monthly reporting with missing Salary Profiles
+
+Missing Salary Profiles do not block a month or remove Employees, Projects, or Logged Hours.
+The monthly Employee Cost view keeps available recorded and estimated cost and marks its total as partial.
+It lists the Employees without a profile covering the selected month.
+Their numeric zero is an **unpriced placeholder**, not a statement that their actual salary cost is zero.
+Detailed rows and Employee totals carry `missing_salary_profile`; Project totals carry a distinct-Employee `missing_salary_profile_count`.
+An Employee working on two Projects counts once in the monthly warning, and once in each affected Project's warning.
+
+The Company Expenditure view keeps confirmed expenditure separate from payroll estimates.
+Its Project rows show recorded employee cost, available estimates, and missing-profile counts without dropping the hours.
+An empty confirmed total with a supported reporting currency displays zero with **No confirmed cost recorded yet**.
+Unsupported currency conversions still show an unavailable total rather than a false zero.
+Frozen recorded allocations remain valid after profile removal; known-zero recorded cost is never relabelled as missing pricing.
+
+The monthly workbook keeps numeric hours and costs, flags unpriced Employees and partial Projects, and repeats the coverage warning on all three sheets.
+The expenditure workbook also identifies missing Salary Profiles beside each affected Project's evidence.
+No missing profile is replaced with a fabricated rate or salary, and neither unpriced salaries nor estimates enter confirmed Company Incurred Cost.
+
 ### Project-owned budget administration
 
 Budget management lives at `/projects/[id]/cost-budgets`, not inside the report.

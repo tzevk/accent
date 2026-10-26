@@ -28,13 +28,14 @@ export function CompanyReconciliationPanel({
 	const conversion = data.company.conversion;
 	const companyStated = conversion.status !== 'unsupported';
 	const reportingCurrencyCode = data.company.reporting_currency;
+	const statedCurrency = data.company.currency ?? reportingCurrencyCode;
 
 	return (
 		<>
 			<p className="mb-1 text-xs text-gray-500">
 				Company Incurred Cost for {data.month_label}
-				{data.company.currency !== null
-					? `, stated in ${data.company.currency}`
+				{companyStated
+					? `, stated in ${statedCurrency}`
 					: ', shown per currency'}
 				. Each recognized direct cost is counted once; Project filters narrow
 				the detail only.
@@ -77,16 +78,21 @@ export function CompanyReconciliationPanel({
 						}
 						className="mt-0.5 text-lg font-bold text-[#64126D]"
 					>
-						{data.company.incurred_cost === null
+						{data.company.incurred_cost === null && !companyStated
 							? 'Not combinable'
 							: formatCurrencyIn(
-									data.company.incurred_cost,
-									data.company.currency
+									data.company.incurred_cost ?? 0,
+									statedCurrency
 								)}
 					</p>
 					<p className="text-[10px] text-gray-600">
 						{data.company.record_count} recognized record(s)
 					</p>
+					{data.company.incurred_cost === null && companyStated && (
+						<p className="text-[10px] text-gray-600">
+							No confirmed cost recorded yet.
+						</p>
+					)}
 				</div>
 				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
 					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
@@ -101,7 +107,7 @@ export function CompanyReconciliationPanel({
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('incurred_project_cost') ?? 0,
-									data.company.currency
+									statedCurrency
 								)}
 					</p>
 					<p
@@ -129,7 +135,7 @@ export function CompanyReconciliationPanel({
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('company_overhead') ?? 0,
-									data.company.currency
+									statedCurrency
 								)}
 					</p>
 					<p className="text-[10px] text-gray-600">
@@ -149,7 +155,7 @@ export function CompanyReconciliationPanel({
 							? 'See currencies'
 							: formatCurrencyIn(
 									groupAmount('unallocated_cost') ?? 0,
-									data.company.currency
+									statedCurrency
 								)}
 					</p>
 					<p className="text-[10px] text-gray-600">
@@ -185,10 +191,12 @@ export function CompanyReconciliationPanel({
 					Payroll-based estimate only, excluded from Company Incurred Cost.
 				</p>
 				{data.payroll.missing_pricing_count > 0 && (
-					<p className="mt-1 text-[11px] text-amber-800">
-						Unknown pricing: {data.payroll.missing_pricing_count} employee(s)
-						have no Salary Profile covering this month, so their cost is
-						unknown, not zero.
+					<p role="status" className="mt-1 text-xs font-medium text-amber-800">
+						Partial payroll estimate: {data.payroll.missing_pricing_count}{' '}
+						employee(s) have no Salary Profile covering this month. Monthly
+						expenditure and logged hours stay visible. Unpriced salaries are
+						excluded from the available totals; a displayed zero does not mean
+						their actual salary cost is zero.
 					</p>
 				)}
 			</section>

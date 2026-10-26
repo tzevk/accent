@@ -294,12 +294,7 @@ export function ProjectBreakdown({
 										{project.client_name ?? '—'}
 									</td>
 									<td className="px-3 py-2 text-right text-gray-700">
-										{project.employee_cost === 0
-											? '—'
-											: formatCurrencyIn(
-													project.employee_cost,
-													project.currency
-												)}
+										{formatCurrencyIn(project.employee_cost, project.currency)}
 										{project.estimated_employee_cost > 0 && (
 											<span className="ml-1 text-[10px] text-amber-700">
 												+
@@ -308,6 +303,12 @@ export function ProjectBreakdown({
 													project.currency
 												)}{' '}
 												est.
+											</span>
+										)}
+										{project.missing_salary_profile_count > 0 && (
+											<span className="mt-1 block text-[11px] font-medium text-amber-800">
+												{project.missing_salary_profile_count} missing Salary
+												Profile(s) · unpriced
 											</span>
 										)}
 									</td>

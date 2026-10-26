@@ -214,9 +214,6 @@ describe('CompanyReconciliationPanel estimate separation', () => {
 		expect(
 			within(estimate).getByText('2 known-zero', { exact: false })
 		).toBeInTheDocument();
-		expect(
-			within(estimate).getByText('Unknown pricing:', { exact: false })
-		).toBeInTheDocument();
 		expect(screen.getByTestId('kpi-incurred-cost')).toHaveTextContent(
 			'₹22,000.00'
 		);
@@ -374,6 +371,7 @@ function projectRow(overrides: Partial<ProjectRow>): ProjectRow {
 		logged_hours: 0,
 		employee_count: 0,
 		recorded_employee_count: 0,
+		missing_salary_profile_count: 0,
 		...overrides,
 	};
 }

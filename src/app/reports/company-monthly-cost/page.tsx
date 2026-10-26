@@ -712,6 +712,42 @@ function CompanyMonthlyCostInner() {
 						</p>
 					</div>
 				</div>
+				{viewMode === 'monthly' &&
+					monthlyData &&
+					monthlyData.payroll.missing_pricing_count > 0 && (
+						<section
+							aria-label="Missing salary profiles"
+							role="status"
+							className="mx-auto mb-3 max-w-[1600px] rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+						>
+							<p className="font-semibold">
+								Partial employee cost for {monthlyData.month_label}
+							</p>
+							<p className="mt-1">
+								{monthlyData.payroll.missing_pricing_count} employee(s) have no
+								Salary Profile covering this month. Their hours and projects
+								stay visible. Their cost shows ₹0.00 as an unpriced placeholder,
+								not confirmed zero cost. Totals include available cost only and
+								may be understated. Add the covering Salary Profiles to price
+								the remaining work.
+							</p>
+							<details className="mt-2">
+								<summary className="cursor-pointer font-medium underline underline-offset-2">
+									Employees missing salary profiles
+								</summary>
+								<ul className="mt-2 list-inside list-disc">
+									{monthlyData.employee_rows.map(
+										(row) =>
+											row.missing_salary_profile && (
+												<li key={row.employee_id}>
+													{row.employee_name} ({row.employee_code})
+												</li>
+											)
+									)}
+								</ul>
+							</details>
+						</section>
+					)}
 				{viewMode === 'monthly' && monthlyTotals && (
 					<div
 						className={`mx-auto mb-3 grid max-w-[1600px] grid-cols-2 gap-2 md:grid-cols-5 ${breakdown === 'detailed' ? 'print:hidden' : 'print:mb-1 print:grid-cols-5'}`}
@@ -744,13 +780,21 @@ function CompanyMonthlyCostInner() {
 						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-3 shadow-sm print:p-1.5">
 							<div className="flex items-center justify-between">
 								<p className="text-[11px] font-medium uppercase tracking-wide text-[#64126D]">
-									Total Cost ({monthlyData?.month_label})
+									{monthlyData?.payroll.missing_pricing_count
+										? 'Available Cost'
+										: 'Total Cost'}{' '}
+									({monthlyData?.month_label})
 								</p>
 								<BanknotesIcon className="h-4 w-4 text-[#64126D]" />
 							</div>
 							<p className="mt-0.5 text-lg font-bold text-[#64126D] print:text-sm">
 								{formatCurrency(monthlyTotals.total_cost)}
 							</p>
+							{monthlyData && monthlyData.payroll.missing_pricing_count > 0 && (
+								<p className="mt-1 text-xs text-amber-800">
+									Partial: unpriced salaries are excluded.
+								</p>
+							)}
 						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
 							<div className="flex items-center justify-between">

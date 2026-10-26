@@ -9,6 +9,7 @@ interface ProjectWiseMonthlyReportProps {
 	month: string;
 	monthLabel: string;
 	totalCost: number;
+	partial: boolean;
 }
 
 export function ProjectWiseMonthlyReport({
@@ -16,6 +17,7 @@ export function ProjectWiseMonthlyReport({
 	month,
 	monthLabel: selectedMonthLabel,
 	totalCost,
+	partial,
 }: ProjectWiseMonthlyReportProps) {
 	if (sections.length === 0) {
 		return (
@@ -100,6 +102,11 @@ export function ProjectWiseMonthlyReport({
 									</td>
 									<td className="border border-black px-2 py-1.5 font-medium text-[#4A1254]">
 										{row.employee_name}
+										{row.missing_salary_profile && (
+											<span className="mt-1 block text-[11px] font-normal text-amber-800">
+												Salary Profile missing
+											</span>
+										)}
 									</td>
 									<td className="border border-black px-2 py-1.5 text-right tabular-nums">
 										{row.hourly_rate > 0 ? formatNumber(row.hourly_rate) : '-'}
@@ -109,6 +116,11 @@ export function ProjectWiseMonthlyReport({
 									</td>
 									<td className="border border-black px-2 py-1.5 text-right font-semibold tabular-nums">
 										{formatNumber(row.cost)}
+										{row.missing_salary_profile && (
+											<span className="mt-1 block text-[11px] font-normal text-amber-800">
+												Unpriced placeholder
+											</span>
+										)}
 									</td>
 								</tr>
 							))}
@@ -126,6 +138,11 @@ export function ProjectWiseMonthlyReport({
 								</td>
 								<td className="border border-black px-2 py-2 text-right text-base font-bold tabular-nums">
 									{formatNumber(project.cost)}
+									{project.missing_salary_profile_count > 0 && (
+										<span className="mt-1 block text-[11px] font-normal text-amber-800">
+											Partial cost
+										</span>
+									)}
 								</td>
 							</tr>
 						</tfoot>
@@ -146,7 +163,9 @@ export function ProjectWiseMonthlyReport({
 							colSpan={4}
 							className="border border-black px-2 py-3 text-right text-base font-bold"
 						>
-							Total Amount for All project &gt;&gt;&gt;
+							{partial
+								? 'Available cost — partial'
+								: 'Total Amount for All projects >>>'}
 						</td>
 						<td className="border border-black px-2 py-3 text-right text-base font-bold tabular-nums">
 							{formatNumber(totalCost)}

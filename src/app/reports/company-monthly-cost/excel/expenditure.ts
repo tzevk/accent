@@ -1069,7 +1069,7 @@ function buildExpenditureProjectDetailSheet(
 	for (let idx = 0; idx < reconciliation.projects.length; idx++) {
 		const p = reconciliation.projects[idx];
 		const row = ws.getRow(rNum);
-		row.height = 18;
+		row.height = p.missing_salary_profile_count > 0 ? 42 : 18;
 
 		row.getCell(1).value = idx + 1;
 		row.getCell(2).value = p.project_code;
@@ -1081,7 +1081,8 @@ function buildExpenditureProjectDetailSheet(
 		row.getCell(8).value = p.conversion_status;
 		renderValue(row.getCell(9), p.converted_incurred_cost, '#,##0.00');
 		renderValue(row.getCell(10), p.cost_to_date, '#,##0.00');
-		row.getCell(11).value = p.evidence.state;
+		row.getCell(11).value =
+			`${p.evidence.state}${p.missing_salary_profile_count > 0 ? `; ${p.missing_salary_profile_count} missing Salary Profile(s)` : ''}`;
 		renderValue(row.getCell(12), p.record_count);
 		const budget = budgetByRow.get(budgetRowKey(p)) ?? null;
 		renderValue(row.getCell(13), budget?.budget?.amount ?? null, '#,##0.00');
@@ -1109,6 +1110,12 @@ function buildExpenditureProjectDetailSheet(
 			setFont(c, { size: 9.5 });
 			box(c);
 			c.alignment = { vertical: 'middle', horizontal: h.align };
+		}
+		if (p.missing_salary_profile_count > 0) {
+			row.getCell(11).alignment = {
+				...row.getCell(11).alignment,
+				wrapText: true,
+			};
 		}
 		rNum++;
 	}

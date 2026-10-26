@@ -317,6 +317,7 @@ export function mockCostData(
 				hours: round2(line.hours),
 				cost,
 				cost_status: spec.finalized ? 'recorded' : 'estimated',
+				missing_salary_profile: false,
 				recorded_cost: spec.finalized ? cost : 0,
 				estimated_cost: spec.finalized ? 0 : cost,
 			});
@@ -360,6 +361,7 @@ export function mockCostData(
 			cost,
 			recorded_cost: recorded,
 			estimated_cost: estimated,
+			missing_salary_profile: false,
 			project_count: new Set(
 				group
 					.filter((row) => row.project_id !== null)
@@ -399,6 +401,7 @@ export function mockCostData(
 				group.reduce((sum, row) => sum + row.estimated_cost, 0)
 			),
 			employee_count: new Set(group.map((row) => row.employee_id)).size,
+			missing_salary_profile_count: 0,
 		});
 	}
 	projectRows.forEach((row, index) => {

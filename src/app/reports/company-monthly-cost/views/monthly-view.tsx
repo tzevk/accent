@@ -42,6 +42,7 @@ export function MonthlyView({
 				month={data.month}
 				monthLabel={data.month_label}
 				totalCost={data.totals.total_cost}
+				partial={data.payroll.missing_pricing_count > 0}
 			/>
 		);
 	}
@@ -107,6 +108,11 @@ export function MonthlyView({
 							</td>
 							<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold text-[#64126D]">
 								{formatCurrency(r.cost)}
+								{r.missing_salary_profile && (
+									<span className="mt-1 block font-sans text-[11px] font-medium text-amber-800">
+										Unpriced · Salary Profile missing
+									</span>
+								)}
 							</td>
 							<td className="px-2 py-1 text-center">{r.project_count}</td>
 						</tr>
@@ -118,7 +124,9 @@ export function MonthlyView({
 							colSpan={5}
 							className="px-2 py-1.5 text-right text-[11px] uppercase text-[#4A1254]"
 						>
-							Grand Total
+							{data.payroll.missing_pricing_count > 0
+								? 'Available cost — partial'
+								: 'Grand Total'}
 						</td>
 						<td className="px-2 py-1.5 text-right font-mono text-[#4A1254]">
 							{formatNumber(totals?.total_hours ?? 0).replace(/\.00$/, '')}
@@ -195,6 +203,12 @@ export function MonthlyView({
 						</td>
 						<td className="bg-purple-50/60 px-2 py-1 text-right font-mono font-semibold text-[#64126D]">
 							{formatCurrency(r.cost)}
+							{r.missing_salary_profile_count > 0 && (
+								<span className="mt-1 block font-sans text-[11px] font-medium text-amber-800">
+									Partial · {r.missing_salary_profile_count} missing Salary
+									Profile(s)
+								</span>
+							)}
 						</td>
 						<td className="px-2 py-1 text-center">{r.employee_count}</td>
 					</tr>
@@ -206,7 +220,9 @@ export function MonthlyView({
 						colSpan={3}
 						className="px-2 py-1.5 text-right text-[11px] uppercase text-[#4A1254]"
 					>
-						Grand Total
+						{data.payroll.missing_pricing_count > 0
+							? 'Available cost — partial'
+							: 'Grand Total'}
 					</td>
 					<td className="px-2 py-1.5 text-right font-mono text-[#4A1254]">
 						{formatNumber(totals?.total_hours ?? 0).replace(/\.00$/, '')}
