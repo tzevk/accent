@@ -212,6 +212,9 @@ vite.config.ts.timestamp-*
 # Pi agent runtime state (background task output, session scratch)
 .pi/
 
+# Command Code agent state (local settings and learned taste)
+.commandcode/
+
 # Local Chocolatey packaging environment (shims, helpers, bundled tools)
 # Local machine setup, not repository content.
 /config/
