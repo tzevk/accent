@@ -91,6 +91,8 @@ export default function CloseSection({
 			<button
 				type="button"
 				data-testid="financial-close-toggle"
+				data-decision-reveal="true"
+				aria-expanded={expanded}
 				onClick={() => setExpanded((value) => !value)}
 				className="flex w-full items-center gap-2 text-left"
 			>
@@ -100,7 +102,9 @@ export default function CloseSection({
 					<ChevronRightIcon className="h-4 w-4" />
 				)}
 				<BanknotesIcon className="h-4 w-4" />
-				<h3 className="text-sm font-semibold">Financial close</h3>
+				<h3 data-decision-focus className="text-sm font-semibold">
+					Financial close
+				</h3>
 				<span
 					data-testid="financial-close-status"
 					className="ml-auto text-sm font-semibold"

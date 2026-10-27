@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * The company cost reconciliation headline of the company expenditure view.
- *
- * It states what the company incurred for the month: whether every recognized
- * cost can be stated in the reporting currency, the four direct-cost totals,
- * and the warning that some recognized cost has no supported conversion
- * evidence for that basis.
+ * Available monthly expenditure includes confirmed cost and unfinalized payroll
+ * estimates once. Confirmed cost stays explicit for financial review and close.
  */
 
 import { formatCurrencyIn } from '@/lib/format';
+import { availableMonthlyCost } from '@/lib/company-expenditure/available-cost';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { CostHelp, CostLabel } from './cost-help';
+import { COST_DEFINITIONS, costStatusLabels } from './shared';
 import type { ReconciliationPayload } from './types';
 
 export interface CompanyReconciliationPanelProps {
@@ -20,135 +20,237 @@ export interface CompanyReconciliationPanelProps {
 export function CompanyReconciliationPanel({
 	data,
 }: CompanyReconciliationPanelProps) {
-	const groupAmount = (key: string) =>
-		data.company.groups.find((group) => group.key === key)?.amount ?? null;
+	const available = availableMonthlyCost(data.company, data.payroll);
+	const statuses = costStatusLabels(
+		available,
+		data.payroll.unpriced_count,
+		data.company.incurred_cost
+	);
 	// A month is stated in the requested reporting currency only when every
 	// confirmed record is supported; otherwise its own currency subtotals are
 	// the whole answer and the warning below says so.
 	const conversion = data.company.conversion;
 	const companyStated = conversion.status !== 'unsupported';
 	const reportingCurrencyCode = data.company.reporting_currency;
+	const statedCurrency = data.company.currency ?? reportingCurrencyCode;
 
 	return (
-		<>
-			<p className="mb-1 text-xs text-gray-500">
-				Company Incurred Cost for {data.month_label}
-				{data.company.currency !== null
-					? `, stated in ${data.company.currency}`
-					: ', shown per currency'}
-				. Each recognized direct cost is counted once; Project filters narrow
-				the detail only.
-			</p>
-			<p
-				data-testid="conversion-status"
-				data-status={conversion.status}
-				data-reporting-currency={reportingCurrencyCode}
-				className="mb-3 text-xs text-gray-600"
-			>
-				{conversion.status === 'reporting'
-					? `All recognized cost is already in ${reportingCurrencyCode}.`
-					: conversion.status === 'converted'
-						? `${conversion.converted_records} recognized record(s) converted into ${reportingCurrencyCode} at their recorded rates.`
-						: `${conversion.unsupported_records} recognized record(s) cannot be stated in ${reportingCurrencyCode} yet.`}
-			</p>
-			{!companyStated && data.company.record_count > 0 && (
-				<p
-					data-testid="conversion-warning"
-					className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900"
-				>
-					No complete company total in {reportingCurrencyCode}: some recognized
-					cost has no supported conversion evidence for that basis, so only the
-					currency subtotals below are stated.
-				</p>
-			)}
+		<TooltipProvider delayDuration={300}>
+			<div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+				<div className="flex flex-wrap items-start justify-between gap-3">
+					<div>
+						<p className="text-base font-semibold text-gray-900">
+							{data.month_label}
+						</p>
+						<p className="mt-1 text-sm text-gray-600">
+							Company-wide · Reporting in {available.currency}
+						</p>
+					</div>
+					<CostHelp />
+				</div>
 
-			{/* Company reconciliation */}
-			<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-				<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-3 shadow-sm">
-					<p className="text-[11px] font-medium uppercase tracking-wide text-[#64126D]">
-						Company Incurred Cost
-					</p>
-					<p
-						data-testid="kpi-incurred-cost"
-						data-amount={
-							data.company.incurred_cost === null
-								? ''
-								: String(data.company.incurred_cost)
-						}
-						className="mt-0.5 text-lg font-bold text-[#64126D]"
-					>
-						{data.company.incurred_cost === null
-							? 'Not combinable'
-							: formatCurrencyIn(
-									data.company.incurred_cost,
-									data.company.currency
+				<div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+					<div className="min-w-0">
+						<h3 className="text-sm font-medium text-gray-700">
+							<CostLabel term="monthly" />
+						</h3>
+						<p
+							data-testid="kpi-available-cost"
+							data-amount={available.amount ?? ''}
+							className="mt-2 break-words text-3xl font-semibold tracking-tight tabular-nums text-[#64126D] sm:text-4xl"
+						>
+							{available.amount === null
+								? 'Not combinable'
+								: formatCurrencyIn(available.amount, available.currency)}
+						</p>
+						<div
+							role="status"
+							aria-atomic="true"
+							className="mt-3 flex flex-wrap gap-2 text-xs"
+						>
+							{statuses.map((status) => (
+								<span
+									key={status}
+									className={`rounded-md border px-2 py-1 font-medium ${
+										available.estimated || available.partial
+											? 'border-amber-200 bg-amber-50 text-amber-900'
+											: 'border-green-200 bg-green-50 text-green-900'
+									}`}
+								>
+									{status}
+								</span>
+							))}
+						</div>
+					</div>
+
+					<div className="grid min-w-0 gap-5 sm:grid-cols-2 lg:border-s lg:border-gray-200 lg:ps-6">
+						<div>
+							<h3 className="text-sm font-medium text-gray-700">
+								{COST_DEFINITIONS.confirmed.label}
+							</h3>
+							<p className="mt-2 text-xl font-semibold tabular-nums text-gray-900">
+								<span data-testid="kpi-confirmed-cost">
+									{data.company.incurred_cost === null && !companyStated
+										? 'Not combinable'
+										: formatCurrencyIn(
+												data.company.incurred_cost ?? 0,
+												statedCurrency
+											)}
+								</span>
+							</p>
+							<p className="mt-2 text-xs leading-relaxed text-gray-600">
+								{data.company.record_count} recognized record(s)
+							</p>
+							{data.company.incurred_cost === null && companyStated && (
+								<p className="mt-1 text-xs leading-relaxed text-gray-600">
+									No confirmed cost recorded yet.
+								</p>
+							)}
+						</div>
+						<section
+							aria-label={COST_DEFINITIONS.salaryEstimate.label}
+							data-testid="decision-separate-payroll"
+							data-estimated-total={data.payroll.estimated_total}
+							data-currency={data.payroll.currency}
+							data-missing-pricing={data.payroll.missing_pricing_count}
+							data-recorded-total={data.payroll.recorded_total}
+							className="min-w-0"
+						>
+							<h3 className="text-sm font-medium text-gray-700">
+								<CostLabel term="salaryEstimate" />
+							</h3>
+							<p className="mt-2 text-xl font-semibold tabular-nums text-gray-900">
+								{formatCurrencyIn(
+									data.payroll.estimated_total,
+									data.payroll.currency
 								)}
-					</p>
-					<p className="text-[10px] text-gray-600">
-						{data.company.record_count} recognized record(s)
-					</p>
+							</p>
+							<p className="mt-2 text-xs leading-relaxed text-gray-600">
+								{available.estimate_currency_supported
+									? 'Included in the total, not added again.'
+									: 'Shown separately; currencies cannot be combined.'}
+							</p>
+							<p className="mt-1 text-xs leading-relaxed text-gray-600">
+								Recorded{' '}
+								{formatCurrencyIn(
+									data.payroll.recorded_total,
+									data.payroll.currency
+								)}{' '}
+								· {data.payroll.known_zero_count} known-zero employee(s)
+							</p>
+						</section>
+					</div>
 				</div>
-				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Incurred Project Cost
+
+				{available.partial && (
+					<p className="mt-5 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-900">
+						<span className="font-semibold">This total is partial.</span> Salary
+						costs for {data.payroll.unpriced_count} employee(s) cannot be
+						calculated.{' '}
+						{data.payroll.missing_pricing_count > 0 &&
+							`${data.payroll.missing_pricing_count} have no Salary Profile covering this month. `}
+						Known costs and logged hours remain included. An unpriced zero does
+						not mean zero actual salary.
 					</p>
+				)}
+
+				<dl className="mt-5 grid gap-5 border-t border-gray-200 pt-5 sm:grid-cols-3">
+					<div className="min-w-0">
+						<dt className="text-sm font-medium text-gray-700">
+							<CostLabel term="project" />
+						</dt>
+						<dd
+							data-testid="kpi-project-cost"
+							data-amount={available.project ?? ''}
+							className="mt-1 text-xl font-semibold tabular-nums text-gray-900"
+						>
+							{available.project === null
+								? 'See currencies'
+								: formatCurrencyIn(available.project, available.currency)}
+						</dd>
+						<dd
+							data-testid="kpi-project-count"
+							data-scoped={
+								data.project_id === null ? '' : String(data.project_id)
+							}
+							className="mt-1 text-xs leading-relaxed text-gray-600"
+						>
+							{data.project_id !== null
+								? 'Project detail filtered; company cost stays unfiltered'
+								: data.projects.length === 1
+									? '1 project row in detail'
+									: `${data.projects.length} project rows in detail`}
+						</dd>
+					</div>
+					<div className="min-w-0">
+						<dt className="text-sm font-medium text-gray-700">
+							<CostLabel term="overhead" />
+						</dt>
+						<dd
+							data-testid="kpi-overhead"
+							data-amount={available.overhead ?? ''}
+							className="mt-1 text-xl font-semibold tabular-nums text-gray-900"
+						>
+							{available.overhead === null
+								? 'See currencies'
+								: formatCurrencyIn(available.overhead, available.currency)}
+						</dd>
+						<dd className="mt-1 text-xs leading-relaxed text-gray-600">
+							Shared costs, not charged to a Project
+						</dd>
+					</div>
+					<div className="min-w-0">
+						<dt className="text-sm font-medium text-gray-700">
+							<CostLabel term="unallocated" />
+						</dt>
+						<dd
+							data-testid="kpi-unallocated"
+							data-amount={available.unallocated ?? ''}
+							className="mt-1 text-xl font-semibold tabular-nums text-gray-900"
+						>
+							{available.unallocated === null
+								? 'See currencies'
+								: formatCurrencyIn(available.unallocated, available.currency)}
+						</dd>
+						<dd className="mt-1 text-xs leading-relaxed text-gray-600">
+							No Project or overhead destination
+						</dd>
+					</div>
+				</dl>
+
+				<p
+					data-testid="conversion-status"
+					data-status={conversion.status}
+					data-reporting-currency={reportingCurrencyCode}
+					className="mt-4 text-xs leading-relaxed text-gray-600"
+				>
+					{conversion.status === 'reporting'
+						? `All recognized cost is already in ${reportingCurrencyCode}.`
+						: conversion.status === 'converted'
+							? `${conversion.converted_records} recognized record(s) converted into ${reportingCurrencyCode} at their recorded rates.`
+							: `${conversion.unsupported_records} recognized record(s) cannot be stated in ${reportingCurrencyCode} yet.`}
+				</p>
+				{!companyStated && data.company.record_count > 0 && (
 					<p
-						data-testid="kpi-project-cost"
-						data-amount={groupAmount('incurred_project_cost') ?? ''}
-						className="mt-0.5 text-lg font-bold text-gray-900"
+						data-testid="conversion-warning"
+						className="mt-3 max-w-3xl rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-900"
 					>
-						{groupAmount('incurred_project_cost') === null && !companyStated
-							? 'See currencies'
-							: formatCurrencyIn(
-									groupAmount('incurred_project_cost') ?? 0,
-									data.company.currency
-								)}
+						No complete company total in {reportingCurrencyCode}: some
+						recognized cost has no supported conversion evidence for that basis.
+						The currency subtotals below retain the native amounts.
 					</p>
-					<p className="text-[10px] text-gray-600">
-						{data.projects.length} project(s) with cost
-					</p>
-				</div>
-				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Company Overhead
-					</p>
+				)}
+				{!available.estimate_currency_supported && (
 					<p
-						data-testid="kpi-overhead"
-						data-amount={groupAmount('company_overhead') ?? ''}
-						className="mt-0.5 text-lg font-bold text-gray-900"
+						role="status"
+						className="mt-3 max-w-3xl text-sm leading-relaxed text-amber-900"
 					>
-						{groupAmount('company_overhead') === null && !companyStated
-							? 'See currencies'
-							: formatCurrencyIn(
-									groupAmount('company_overhead') ?? 0,
-									data.company.currency
-								)}
+						Payroll estimates remain in {data.payroll.currency}. No supported
+						conversion to {available.currency} exists, so totals that need both
+						currencies cannot be combined.
 					</p>
-					<p className="text-[10px] text-gray-600">
-						Deliberately not attributable to one Project
-					</p>
-				</div>
-				<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-					<p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-						Unallocated Cost
-					</p>
-					<p
-						data-testid="kpi-unallocated"
-						data-amount={groupAmount('unallocated_cost') ?? ''}
-						className="mt-0.5 text-lg font-bold text-gray-900"
-					>
-						{groupAmount('unallocated_cost') === null && !companyStated
-							? 'See currencies'
-							: formatCurrencyIn(
-									groupAmount('unallocated_cost') ?? 0,
-									data.company.currency
-								)}
-					</p>
-					<p className="text-[10px] text-gray-600">
-						Awaiting a Project or Overhead destination
-					</p>
-				</div>
+				)}
 			</div>
-		</>
+		</TooltipProvider>
 	);
 }

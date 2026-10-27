@@ -197,7 +197,7 @@ Cumulative confirmed cost of every month before the reported one plus the report
 _Avoid_: Lifetime cost, Total commitment, Budget consumed
 
 **Project Cost Ranking**:
-The report's two orderings of the same Project rows inside one currency: largest monthly incurred cost, and largest change against the Comparable Period. A row whose comparison amount is unknown is not placed by increase — it is reported as unranked with its reason. Ties share a position.
+The report's two orderings of the same Project rows inside one currency: largest available monthly cost, including salary estimates, and largest confirmed change against the Comparable Period. A row whose comparison amount is unknown is not placed by increase — it is reported as unranked with its reason. Ties share a position.
 _Avoid_: Sort order, Priority, Importance
 
 **Outstanding Supplier Commitment**:

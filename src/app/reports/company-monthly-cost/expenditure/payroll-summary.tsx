@@ -17,8 +17,11 @@ import { PAYROLL_STATUS_LABELS, errorMessage } from './shared';
 import type { PayrollEmployeeRow, ReconciliationPayload } from './types';
 
 export interface PayrollSummaryProps {
-	/** The month's reconciliation, as the company states it. */
-	data: ReconciliationPayload;
+	/** The payroll slice the block reads: figures, notices, and month label. */
+	data: Pick<
+		ReconciliationPayload,
+		'payroll' | 'coverage' | 'month_label' | 'project_options'
+	>;
 	/** The employee-cost drilldown's employees. */
 	payrollEmployees: PayrollEmployeeRow[];
 	/** The employee-cost drilldown is still loading. */
@@ -77,6 +80,13 @@ export function PayrollSummary({
 	canReviewReconstruction,
 	canRevise,
 }: PayrollSummaryProps) {
+	const payrollNotices = data.coverage.filter(
+		(notice) =>
+			notice.code === 'payroll_not_generated' ||
+			notice.code === 'payroll_not_finalized' ||
+			notice.code === 'payroll_pricing_missing' ||
+			notice.code === 'payroll_allocation_missing'
+	);
 	return (
 		<>
 			{/* Recorded employee cost (#307, ADR-0016) */}
@@ -110,6 +120,24 @@ export function PayrollSummary({
 						(No project + No logged hours)
 					</p>
 				</div>
+				{payrollNotices.length > 0 && (
+					<ul
+						data-testid="payroll-notices"
+						className="space-y-1 border-b border-gray-100 px-3 py-2 text-[11px] text-amber-900"
+					>
+						{payrollNotices.map((notice) => (
+							<li
+								key={notice.code}
+								data-testid="payroll-notice"
+								data-code={notice.code}
+								data-severity={notice.severity}
+							>
+								<span className="font-medium">{notice.label}.</span>{' '}
+								{notice.detail}
+							</li>
+						))}
+					</ul>
+				)}
 				<div className="grid gap-x-4 gap-y-1 px-3 py-2 text-[11px] text-gray-600 sm:grid-cols-4">
 					<span>
 						Logged Hours: {formatNumber(data.payroll.total_logged_hours)}

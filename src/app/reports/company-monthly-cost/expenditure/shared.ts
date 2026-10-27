@@ -12,6 +12,81 @@ import { formatCurrencyIn, formatNumber } from '@/lib/format';
 
 export const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD'];
 
+/** Plain-language financial definitions shared by on-page help and export labels. */
+export const COST_DEFINITIONS = {
+	monthly: {
+		label: 'Monthly expenditure',
+		description:
+			'Confirmed costs plus salary estimates. Employee costs that cannot be calculated are excluded.',
+	},
+	project: {
+		label: 'Project cost',
+		description:
+			'Cost attributed to Projects, including estimated salary shares.',
+	},
+	overhead: {
+		label: 'Company overhead',
+		description:
+			'Confirmed shared operating cost deliberately not charged to one Project.',
+	},
+	unallocated: {
+		label: 'Unallocated cost',
+		description:
+			'Cost without a Project or overhead destination. Includes payroll shares marked No project or No logged hours.',
+	},
+	salaryEstimate: {
+		label: 'Salary estimate',
+		description:
+			'Payroll employer cost calculated from Salary Profiles, Logged Hours, and applicable payroll rules. Recorded payroll replaces this estimate.',
+	},
+	confirmed: {
+		label: 'Confirmed cost',
+		description:
+			'Recognized operating costs and recorded payroll allocations, whether paid or unpaid. Not the same as cash paid.',
+	},
+	partial: {
+		label: 'Partial total',
+		description:
+			'Some employee costs cannot be calculated. Their costs are excluded, but their hours remain visible. A displayed zero is not their actual salary cost.',
+	},
+	comparison: {
+		label: 'Confirmed cost comparison',
+		description:
+			'Compares confirmed cost only. Salary estimates in the monthly total are excluded. Unknown prior cost prevents a supported change.',
+	},
+	budget: {
+		label: 'Budget remaining / overspent — confirmed',
+		description:
+			'Approved monthly budget minus confirmed Project cost. Salary estimates are excluded. A budget does not create expenditure.',
+	},
+} as const;
+
+/** Keep visible cost-basis status and exported qualifications identical. */
+export function costStatusLabels(
+	state: { amount: number | null; estimated: boolean; partial: boolean },
+	missingEmployees: number,
+	confirmedCost: number | null
+): string[] {
+	const labels: string[] = [];
+	if (state.estimated) {
+		labels.push(
+			state.amount === null
+				? 'Salary estimate shown separately'
+				: 'Includes salary estimates'
+		);
+	}
+	if (state.partial) {
+		labels.push(
+			missingEmployees === 1
+				? 'Partial — 1 employee cost missing'
+				: `Partial — ${missingEmployees} employee costs missing`
+		);
+	}
+	if (!state.estimated && !state.partial && confirmedCost !== null)
+		labels.push('Confirmed cost');
+	return labels;
+}
+
 export const STATE_LABELS: Record<string, string> = {
 	draft: 'Draft',
 	pending_evidence: 'Pending evidence',

@@ -123,6 +123,8 @@ export default function RevisionSection({
 			<button
 				type="button"
 				data-testid="financial-revision-toggle"
+				data-decision-reveal="true"
+				aria-expanded={expanded}
 				onClick={() => setExpanded((value) => !value)}
 				className="flex w-full items-center gap-2 text-left"
 			>
@@ -132,7 +134,9 @@ export default function RevisionSection({
 					<ChevronRightIcon className="h-4 w-4" />
 				)}
 				<PencilSquareIcon className="h-4 w-4" />
-				<h3 className="text-sm font-semibold">Financial revisions</h3>
+				<h3 data-decision-focus className="text-sm font-semibold">
+					Financial revisions
+				</h3>
 				<span
 					data-testid="financial-revision-status"
 					className="ml-auto text-sm font-semibold"

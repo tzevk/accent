@@ -2,12 +2,19 @@
 
 ## Overview
 
-The report at `/reports/company-monthly-cost` now leads with **Company
-Incurred Cost** for a month, reconciled to **Incurred Project Cost**, **Company
-Overhead**, and **Unallocated Cost**. Each underlying direct cost is counted
-once. The employee-cost Monthly and Financial Year views read the same shared
-interpretation: recorded employer-cost allocation where the month was
-finalized, the corrected payroll calculation's estimate otherwise.
+The report at `/reports/company-monthly-cost` leads with **Monthly expenditure**:
+confirmed **Company Incurred Cost** plus calculated salary estimates.
+Project and Unallocated totals include their estimated payroll shares.
+Company Overhead keeps its confirmed basis.
+Each employee contributes recorded payroll or an estimate, never both.
+
+The employee-cost Monthly and Financial Year views read the same shared
+interpretation: recorded employer-cost allocation for finalized payroll,
+and the corrected payroll calculation's estimate otherwise.
+Estimates never become recognized cost, budget variance, or frozen financial-close balances.
+
+For a plain-language explanation, read [How to read Company Monthly Cost](company-monthly-cost-guide.md).
+It explains the current figures, missing-data limits, and on-page end-user help.
 
 Ticket #306 delivers the first complete slice: capture a direct expense with a
 durable identity, recognize it into a month, reconcile it, and drill from a
@@ -29,10 +36,94 @@ Project Cost only when Project, currency, scope, and period match. A budget is
 never a cost: it appears in its own section and never changes Company Incurred
 Cost, the Project breakdown, or the evidence summary.
 
+### Company-first decision view (#382)
+
+The company position uses the existing reconciliation and Comparable Period payloads.
+The full-month headline stays separate from the explicitly confirmed elapsed-window comparison.
+Salary estimates enter monthly expenditure, not confirmed cost, and retain their own currency.
+Recorded payroll, known-zero employees, and missing pricing remain distinct.
+Financial Close and Financial Revision keep frozen and current figures separate.
+Missing close information means unavailable, not open or ready to close.
+
+The review summary links to existing project, payroll, recognition, evidence, budget, close, and revision sections.
+Links reveal collapsed sections and move keyboard focus to their section heading or region.
+Collapsed section headings show a chevron, and review links stay visibly underlined.
+Estimated payroll has a separate breakdown showing that it is included above; new financial values use tabular numerals.
+The evidence link reaches the petty cash, tax, evidence, and coverage detail inside the decision evidence section.
+Project budget categories count each Project once within each category.
+Categories can overlap; the report does not invent a unique issue total.
+Project-scoped budget categories identify their scope; company totals stay unfiltered.
+Loading or failed recognition data stays loading or unavailable with its error detail in the recognition section, never a clean zero.
+Recognition errors direct reviewers to check their connection and use the existing Refresh control.
+Read-only reviewers receive evidence and navigation, not financial write controls.
+
+The summary uses plain-language labels: **Monthly expenditure**, **Project cost**, **Company overhead**, **Unallocated cost**, and **Salary estimate**.
+The **How costs are calculated** button opens read-only help through click, tap, or keyboard activation.
+Its shadcn-style Radix Popover exposes a named, described dialog and a keyboard-focusable scrolling **Cost definitions** region.
+Escape and the close button restore focus to the trigger.
+Optional Tooltips beside summary terms work on hover and focus and allow the pointer onto their content.
+They never hide essential estimate status or missing-profile warnings.
+The Tooltip provider is scoped to the summary; shared primitives live in `src/components/ui/{popover,tooltip}.tsx`.
+`COST_DEFINITIONS` and `costStatusLabels` in `expenditure/shared.ts` keep UI and Excel wording aligned.
+No financial calculation, recognition, payroll lock, budget, or close rule changes.
+
+Project detail uses existing approved monthly budget comparisons beside confirmed cost.
+Remaining or overspent budget means approved budget minus confirmed monthly Incurred Project Cost.
+Only a valid comparison with a positive budget has a percentage.
+Missing, unapproved, incompatible, ambiguous, and zero-budget states retain their reasons.
+Budget-only Projects remain in the standalone budget section, not the cost rankings.
+
+### Monthly reporting with missing Salary Profiles
+
+Missing Salary Profiles do not block a month or remove Employees, Projects, or Logged Hours.
+The monthly Employee Cost view keeps available recorded and estimated cost and marks its total as partial.
+It lists the Employees without a profile covering the selected month.
+Their numeric zero is an **unpriced placeholder**, not a statement that their actual salary cost is zero.
+Detailed rows and Employee totals carry `missing_salary_profile`; Project totals carry a distinct-Employee `missing_salary_profile_count`.
+An Employee working on two Projects counts once in the monthly warning, and once in each affected Project's warning.
+
+The Company Expenditure headline and Project rows include available salary estimates.
+The cards reconcile Project cost, Company Overhead, and Unallocated Cost, including applicable salary estimates.
+Confirmed expenditure remains explicit below the headline and beside each estimated Project cost.
+Missing pricing shows **Partial — N employee costs missing**, even when every calculated amount is zero.
+**Includes salary estimates** remains visible alongside that status when applicable.
+An uncombined-currency total instead shows **Salary estimate shown separately**.
+Project rows retain Logged Hours and missing-profile counts, and their evidence state no longer implies recorded payroll.
+An empty confirmed total with a supported currency displays zero with **No confirmed cost recorded yet**.
+Unsupported currencies are not added or converted without evidence; supported native-currency figures remain visible.
+Frozen recorded allocations remain valid after profile removal; known-zero recorded cost is never relabelled as missing pricing.
+
+The monthly workbook keeps numeric hours and costs, flags unpriced Employees and partial Projects, and repeats the coverage warning on all three sheets.
+The expenditure workbook uses the same available-cost calculation as the web report.
+It retains confirmed cost and separate recorded/estimated payroll columns, with missing-profile evidence beside each Project.
+No missing profile is replaced with a fabricated rate or salary, and neither unpriced salaries nor estimates enter confirmed Company Incurred Cost.
+
+### Project-owned budget administration
+
+Budget management lives at `/projects/[id]/cost-budgets`, not inside the report.
+Open a Project and select **View cost budgets** with read access, or **Manage cost budgets** with update or approval access.
+Report readers can also select **View budgets** beside a Project's comparison.
+Authorized operators see **Add budget** or **Manage budgets** instead.
+These links carry the selected report month and the row's currency.
+The report's **Budget detail** section stays read-only.
+
+The budget page fixes the Project from the route and shows its code and name in the entry dialog.
+There is no hidden Project selector or automatic selection of the first Project.
+New drafts start with the report's exact month and currency; the operator can change their period and currency.
+Select **Record cost budget**, enter the amount and basis, then **Record budget**, **Submit**, and **Approve**.
+Approval requires an evidence reference; withdrawal still requires a reason.
+The return link restores the report month, and successful commands refresh the existing budget and expenditure queries.
+
+Reading needs `other_expenses:read`.
+Recording, submitting, and withdrawing drafts need `other_expenses:update`.
+Approving or withdrawing an approved budget needs `other_expenses:approve`.
+Project edit access alone grants no budget access; financial readers have no write controls.
+The existing budget routes, version checks, approval journal, and comparison rules remain unchanged.
+
 ## Architecture
 
 ```
-Expenditure view (page.tsx → expenditure/expenditure-view.tsx → expenditure/budget-section.tsx)
+Financial views: Company Monthly Cost + Project administration (/projects/[id]/cost-budgets)
   ├─ GET  /api/reports/company-monthly-cost?view=expenditure&month=YYYY-MM[&project_id=]
   ├─ GET  /api/reports/company-monthly-cost/expenses?month=&state=&classification=&project_id=
   ├─ GET  /api/reports/company-monthly-cost/payroll?month=[&employee_id=]
@@ -52,6 +143,7 @@ Expenditure view (page.tsx → expenditure/expenditure-view.tsx → expenditure/
     records.ts           reads: month records, project cost, options, months, journal, drilldown
     commands.ts          the single write path: recordCost, executeCommand, journal
     payroll.ts           recorded employer-cost allocation: shares, freeze, estimates, drilldown
+    available-cost.ts     pure available-cost presentation: confirmed cost + estimated payroll, with currency guards
     budget-records.ts    reads: budget rows, covering budgets, journal
     budget-commands.ts   the budget write path: recordCostBudget, executeBudgetCommand
     budget-comparison.ts pure builder: the isolated budget section
@@ -169,6 +261,19 @@ evidence summary, the coverage notices, the Project options for the entry
 control, and the months that carry cost. The Project filter narrows `projects`,
 never `company`.
 
+The month picker needs no finalized payroll: it offers the calendar
+months of the current and the selected financial years (April–March)
+through the current month only — no future calendar month is generated — and
+keeps every month that carries cost, the current month, and the current
+selection however old or far ahead, newest first, with no lookback
+limit. A month opened before finalization states possible spending as a
+draft estimate, separate from confirmed cost: estimates never enter a
+confirmed total. Cost with no covering Salary Profile — logged hours or
+a zero-hour slip — is unknown, not zero (`payroll_pricing_missing`),
+and an unfinalized or ungenerated month says so
+(`payroll_not_finalized` / `payroll_not_generated`); a count of slips is
+never presented as confirmed cost.
+
 `as_of` identifies the comparable period: the date inside the reported month
 the month is measured to. It defaults to today, so a past month is compared in
 full and the current month over its elapsed days. A date that is not a real
@@ -244,10 +349,12 @@ route, the drilldown, and the export must read it rather than re-deriving it.
   prior is `new` (absolute change, no percentage), and a Project with no prior
   record at all is `no_prior` with both figures `null` — absence of records is
   never read as zero cost.
-- **Ranking.** `ranking.by_cost` and `ranking.by_increase` order the same rows
-  inside one currency; ties share a position, and a row whose comparison amount
-  is unknown is listed in `ranking.increase_unranked` with its reason instead
-  of being placed by a guess.
+- **Ranking.** `ranking.by_cost` orders available monthly cost, including salary
+  estimates; entries keep both `available_cost` and confirmed `incurred_cost`.
+  `ranking.by_increase` keeps the confirmed Comparable Period basis.
+  Both stay inside one currency and share positions for ties.
+  A row with an unknown comparison amount appears in `ranking.increase_unranked`
+  with its reason, not a guessed increase.
 - **Cost to date.** `cost_to_date` accumulates confirmed cost of every month
   before the reported one plus the reported window, so it is stated through
   `comparison.cost_to_date_through`. The base is every wired source in its own
@@ -410,9 +517,14 @@ so history stays readable and duplicates are impossible.
 
 **Report contract.** The reconciliation payload gains
 `payroll: { currency, recorded_total, estimated_total, allocated_total,
-unallocated_total, total_logged_hours, project_hours, no_project_hours,
-rounding_adjustment, recorded_count, known_zero_count, estimated_count,
-missing_slip_count, missing_pricing_count, allocation_missing_count }`;
+unallocated_total, estimated_allocated_total, estimated_unallocated_total,
+total_logged_hours, project_hours, no_project_hours, rounding_adjustment,
+recorded_count, known_zero_count, estimated_count, missing_slip_count,
+missing_pricing_count, allocation_missing_count, unpriced_count }`.
+Estimated destination totals stay separate from recorded destinations.
+`unpriced_count` counts Employees with neither a recorded nor an estimated amount.
+The available-cost presentation adds only estimates to confirmed cost.
+It uses the unfiltered payroll totals, so a Project filter cannot narrow the company headline.
 Project rows gain `employee_cost`, `estimated_employee_cost`, `logged_hours`,
 and `employee_count`. Recorded employee cost joins the payroll-currency slice
 (Project shares into Incurred Project Cost, unallocated shares into Unallocated
@@ -1241,6 +1353,7 @@ End-to-end evidence: `e2e/lib/other-expense-fixtures.ts` +
 - `e2e/lib/petty-cash-fixtures.ts`, `e2e/specs/petty-cash-funding.spec.ts`
 - `src/app/api/admin/cost-budgets/route.ts`, `.../[id]/route.ts`, `.../[id]/commands/route.ts` (#321)
 - `src/app/reports/company-monthly-cost/page.tsx`, `src/app/reports/company-monthly-cost/expenditure/expenditure-view.tsx`, `src/app/reports/company-monthly-cost/expenditure/budget-section.tsx`
+- `src/app/projects/[id]/cost-budgets/page.tsx`, `src/app/projects/[id]/cost-budgets/project-cost-budgets.tsx` (project-owned budget administration)
 - `src/lib/format.js` (`formatCurrencyIn`)
 - `src/components/Navbar.jsx` (financial gate)
 - `docs/adr/0018-direct-cost-recognition-and-versioned-commands.md`
@@ -1489,8 +1602,8 @@ Unauthorized requests receive 403 Forbidden without leaking financial figures.
 
 The workbook contains five distinct sheets matching the web reconciliation:
 
-1. `Company Reconciliation`: Company-wide totals, group breakdown, currency subtotals, and filtered project subtotal.
-2. `Project Detail`: Individual project incurred cost, logged hours, conversion status, and evidence state.
+1. `Company Reconciliation`: Available expenditure and destination totals, confirmed reconciliation, payroll breakdown, coverage, and confirmed Comparable Period bases.
+2. `Project Detail`: Available cost, confirmed cost, recorded and estimated payroll, logged hours, evidence, and supported monthly budget comparisons.
 3. `Budgets & Commitments`: Approved cost budgets, supplier orders, and commercial client orders.
 4. `Cash Paid`: Outward cash movements, payment settlements, destinations, and payment references.
 5. `Revisions & Close`: Month close status, frozen snapshot metadata, and post-close revision events.
@@ -1500,6 +1613,23 @@ They never appear as zeroes.
 Project filters narrow project details while preserving unfiltered company reconciliation totals.
 Commercial client orders display an explicit warning banner stating they are context only and not revenue or profit.
 The UI expenditure view includes an Export Excel button in the control toolbar.
+The workbook preserves native currencies when the requested reporting currency lacks conversion evidence.
+An unavailable percentage never replaces a supported absolute budget variance.
+Missing close information remains unavailable; frozen prior and revised current totals remain distinct.
+
+The #382 smoke check uses disposable local MariaDB 10.11.15 data, not a branch database.
+It exercises month selection, project filtering, estimate separation, an incompatible budget, and keyboard review links.
+It also checks read-only source drill-down and a closed month's later revision.
+Four actual workbooks cover INR, unsupported USD, project-filtered detail, and a revised closed month.
+Their values and qualifications are checked against the matching authorized report payloads.
+No browser harness or E2E suite is added for this change.
+
+The available-expenditure correction also uses a production-build browser and disposable MariaDB 10.11.15.
+It checks a draft month with known salary cost and missing profiles, a wholly unpriced month, and company-wide totals under a Project filter.
+It checks the recorded-payroll transition after profile removal and the matching workbooks before and after that transition.
+The page is also checked at 320px without horizontal page overflow.
+Permanent regression coverage lives in `available-cost.test.ts`, `ranking.test.ts`, and the existing report component suites.
+It covers destination reconciliation, no duplicate recorded payroll, unknown pricing, unsupported conversion, cent precision, ranking ties, and the confirmed budget basis.
 
 #### Files (#324)
 

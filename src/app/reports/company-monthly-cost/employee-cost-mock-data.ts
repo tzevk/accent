@@ -317,6 +317,7 @@ export function mockCostData(
 				hours: round2(line.hours),
 				cost,
 				cost_status: spec.finalized ? 'recorded' : 'estimated',
+				missing_salary_profile: false,
 				recorded_cost: spec.finalized ? cost : 0,
 				estimated_cost: spec.finalized ? 0 : cost,
 			});
@@ -360,6 +361,7 @@ export function mockCostData(
 			cost,
 			recorded_cost: recorded,
 			estimated_cost: estimated,
+			missing_salary_profile: false,
 			project_count: new Set(
 				group
 					.filter((row) => row.project_id !== null)
@@ -399,6 +401,7 @@ export function mockCostData(
 				group.reduce((sum, row) => sum + row.estimated_cost, 0)
 			),
 			employee_count: new Set(group.map((row) => row.employee_id)).size,
+			missing_salary_profile_count: 0,
 		});
 	}
 	projectRows.forEach((row, index) => {
@@ -462,6 +465,8 @@ function mockPayrollExpenditure(
 	}
 	let recordedTotal = R(0);
 	let estimatedTotal = R(0);
+	let estimatedAllocated = R(0);
+	let estimatedUnallocated = R(0);
 	let hours = R(0);
 	let projectHours = R(0);
 	let noProjectHours = R(0);
@@ -477,6 +482,15 @@ function mockPayrollExpenditure(
 		} else {
 			estimatedTotal = add(estimatedTotal, employee.estimated_cost);
 			estimatedCount += 1;
+			const shares = allocateShares(
+				employee.estimated_cost,
+				lines.map((line) => ({ key: line.project, hours: line.hours }))
+			);
+			for (const [project, amount] of Object.entries(shares)) {
+				if (project === 'NO-PROJECT')
+					estimatedUnallocated = add(estimatedUnallocated, amount);
+				else estimatedAllocated = add(estimatedAllocated, amount);
+			}
 		}
 		for (const line of lines) {
 			if (line.project === 'NO-PROJECT') {
@@ -492,6 +506,8 @@ function mockPayrollExpenditure(
 		estimated_total: round2(toNumber(estimatedTotal)),
 		allocated_total: spec.finalized ? round2(toNumber(recordedTotal)) : 0,
 		unallocated_total: 0,
+		estimated_allocated_total: round2(toNumber(estimatedAllocated)),
+		estimated_unallocated_total: round2(toNumber(estimatedUnallocated)),
 		total_logged_hours: round2(toNumber(hours)),
 		project_hours: round2(toNumber(projectHours)),
 		no_project_hours: round2(toNumber(noProjectHours)),
@@ -502,6 +518,7 @@ function mockPayrollExpenditure(
 		missing_slip_count: 0,
 		missing_pricing_count: 0,
 		allocation_missing_count: 0,
+		unpriced_count: 0,
 	};
 }
 

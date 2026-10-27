@@ -208,6 +208,8 @@ export interface MonthlyCompanyCostRow {
 	cost: number;
 	/** How this row's cost is known (#307): recorded, estimated, or unknown. */
 	cost_status: EmployeeCostStatus;
+	/** Zero is an unpriced placeholder when no covering Salary Profile exists. */
+	missing_salary_profile: boolean;
 	/** Recorded employer-cost allocation portion. */
 	recorded_cost: number;
 	/** Payroll-based estimate portion. */
@@ -233,6 +235,7 @@ export interface MonthlyCompanyCostData {
 		recorded_cost: number;
 		estimated_cost: number;
 		project_count: number;
+		missing_salary_profile: boolean;
 	}>;
 	project_rows: Array<{
 		sr_no: number;
@@ -245,6 +248,7 @@ export interface MonthlyCompanyCostData {
 		recorded_cost: number;
 		estimated_cost: number;
 		employee_count: number;
+		missing_salary_profile_count: number;
 	}>;
 	totals: {
 		total_hours: number;
@@ -731,6 +735,7 @@ export function buildMonthlyAllocationRows(
 				recorded_cost: recorded ? share.amount : 0,
 				estimated_cost: recorded ? 0 : share.amount,
 				cost_status: status,
+				missing_salary_profile: employee.missing_pricing,
 			});
 		}
 	}
@@ -768,10 +773,12 @@ export function buildMonthlyAllocationEmployeeRows(
 				recorded_cost: 0,
 				estimated_cost: 0,
 				project_count: 0,
+				missing_salary_profile: false,
 				_projects: new Set<string>(),
 			};
 			grouped.set(row.employee_id, aggregate);
 		}
+		aggregate.missing_salary_profile ||= row.missing_salary_profile;
 		aggregate.hours = round2(aggregate.hours + row.hours);
 		aggregate.cost = round2(aggregate.cost + row.cost);
 		aggregate.recorded_cost = round2(
@@ -803,7 +810,10 @@ export function buildMonthlyAllocationProjectRows(
 ): MonthlyCompanyCostData['project_rows'] {
 	const grouped = new Map<
 		string,
-		MonthlyCompanyCostData['project_rows'][number] & { _employees: Set<number> }
+		MonthlyCompanyCostData['project_rows'][number] & {
+			_employees: Set<number>;
+			_missingProfiles: Set<number>;
+		}
 	>();
 	for (const row of rows) {
 		const key =
@@ -821,7 +831,9 @@ export function buildMonthlyAllocationProjectRows(
 				recorded_cost: 0,
 				estimated_cost: 0,
 				employee_count: 0,
+				missing_salary_profile_count: 0,
 				_employees: new Set<number>(),
+				_missingProfiles: new Set<number>(),
 			};
 			grouped.set(key, aggregate);
 		}
@@ -834,10 +846,16 @@ export function buildMonthlyAllocationProjectRows(
 			aggregate.estimated_cost + row.estimated_cost
 		);
 		aggregate._employees.add(row.employee_id);
+		if (row.missing_salary_profile)
+			aggregate._missingProfiles.add(row.employee_id);
 	}
 	const result = [...grouped.values()].map((aggregate) => {
-		const { _employees, ...rest } = aggregate;
-		return { ...rest, employee_count: _employees.size };
+		const { _employees, _missingProfiles, ...rest } = aggregate;
+		return {
+			...rest,
+			employee_count: _employees.size,
+			missing_salary_profile_count: _missingProfiles.size,
+		};
 	});
 	result.sort(
 		(a, b) =>

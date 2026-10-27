@@ -791,7 +791,9 @@ export async function loadPayrollMonth(
 		}
 
 		const missingSlip = slip === null && profile !== null && runStatus !== null;
-		const missingPricing = slip === null && profile === null && loggedHours > 0;
+		// Unrecorded and unpriced stays unknown, never zero; recorded cost is final.
+		const missingPricing =
+			!recorded && profile === null && (slip !== null || loggedHours > 0);
 		const allocationMissing = slip !== null && locked && allocation === null;
 		// The slip's latest reconstruction proposal: pending and rejected
 		// proposals stay beside the row as proposals; an approved one attaches
@@ -886,6 +888,8 @@ export function summarizePayroll(
 	let estimatedTotal = R(0);
 	let allocated = R(0);
 	let unallocated = R(0);
+	let estimatedAllocated = R(0);
+	let estimatedUnallocated = R(0);
 	let hours = R(0);
 	let projectHours = R(0);
 	let noProjectHours = R(0);
@@ -896,6 +900,7 @@ export function summarizePayroll(
 	let missingSlip = 0;
 	let missingPricing = 0;
 	let allocationMissing = 0;
+	let unpricedCount = 0;
 
 	for (const row of rows) {
 		if (row.recorded_amount !== null) {
@@ -910,6 +915,13 @@ export function summarizePayroll(
 		} else if (row.estimated_amount !== null) {
 			estimatedTotal = add(estimatedTotal, row.estimated_amount);
 			estimatedCount++;
+			for (const share of row.shares) {
+				if (share.basis === 'project')
+					estimatedAllocated = add(estimatedAllocated, share.amount);
+				else estimatedUnallocated = add(estimatedUnallocated, share.amount);
+			}
+		} else {
+			unpricedCount++;
 		}
 		hours = add(hours, row.logged_hours);
 		projectHours = add(projectHours, row.project_hours);
@@ -925,6 +937,8 @@ export function summarizePayroll(
 		estimated_total: round2(estimatedTotal),
 		allocated_total: round2(allocated),
 		unallocated_total: round2(unallocated),
+		estimated_allocated_total: round2(estimatedAllocated),
+		estimated_unallocated_total: round2(estimatedUnallocated),
 		total_logged_hours: round2(hours),
 		project_hours: round2(projectHours),
 		no_project_hours: round2(noProjectHours),
@@ -935,6 +949,7 @@ export function summarizePayroll(
 		missing_slip_count: missingSlip,
 		missing_pricing_count: missingPricing,
 		allocation_missing_count: allocationMissing,
+		unpriced_count: unpricedCount,
 	};
 }
 
@@ -979,7 +994,7 @@ function payrollNotices(
 		notices.push({
 			code: 'payroll_pricing_missing',
 			label: 'No Salary Profile covers this month',
-			detail: `${totals.missing_pricing_count} employee(s) logged hours without a Salary Profile for the month; their cost is unknown, not zero.`,
+			detail: `${totals.missing_pricing_count} employee(s) have no Salary Profile covering the month, so their cost is unknown, not zero; add the covering profile, then Generate and Finalize.`,
 			severity: 'warning',
 		});
 	}

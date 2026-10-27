@@ -9,6 +9,7 @@ interface ProjectWiseMonthlyReportProps {
 	month: string;
 	monthLabel: string;
 	totalCost: number;
+	partial: boolean;
 }
 
 export function ProjectWiseMonthlyReport({
@@ -16,6 +17,7 @@ export function ProjectWiseMonthlyReport({
 	month,
 	monthLabel: selectedMonthLabel,
 	totalCost,
+	partial,
 }: ProjectWiseMonthlyReportProps) {
 	if (sections.length === 0) {
 		return (
@@ -33,7 +35,7 @@ export function ProjectWiseMonthlyReport({
 	const columnWidths = ['12%', '45%', '14%', '14%', '15%'];
 
 	return (
-		<div className="cmc-project-wise-sheet min-w-[680px] bg-white font-[Arial,sans-serif] text-[13px] leading-tight text-black">
+		<div className="cmc-project-wise-sheet min-w-[680px] bg-white font-[Arial,sans-serif] text-sm leading-relaxed text-black">
 			{sections.map(({ project, rows }) => (
 				<section
 					key={`${projectKey(project.project_id, project.project_code, project.project_name)}-${project.sr_no}`}
@@ -75,40 +77,53 @@ export function ProjectWiseMonthlyReport({
 						</colgroup>
 						<thead>
 							<tr>
-								<th className="border border-black px-2 py-3 text-center font-bold text-[#64126D]">
+								<th className="border border-black px-3 py-3 text-center text-sm font-bold text-[#64126D]">
 									Sr. No.
 								</th>
-								<th className="border border-black px-2 py-3 text-left font-bold text-[#64126D]">
+								<th className="border border-black px-3 py-3 text-left text-sm font-bold text-[#64126D]">
 									Employee Name
 								</th>
-								<th className="border border-black px-2 py-3 text-right font-bold text-[#64126D]">
+								<th className="border border-black px-3 py-3 text-right text-sm font-bold text-[#64126D]">
 									Hourly Cost
 								</th>
-								<th className="border border-black px-2 py-3 text-right font-bold text-[#64126D]">
+								<th className="border border-black px-3 py-3 text-right text-sm font-bold text-[#64126D]">
 									Working Hours
 								</th>
-								<th className="border border-black px-2 py-3 text-right font-bold text-[#64126D]">
+								<th className="border border-black px-3 py-3 text-right text-sm font-bold text-[#64126D]">
 									Amount
 								</th>
 							</tr>
 						</thead>
 						<tbody>
 							{rows.map((row, rowIndex) => (
-								<tr key={`${row.employee_id}-${row.sr_no}`}>
-									<td className="border border-black px-2 py-1.5 text-center tabular-nums">
+								<tr
+									key={`${row.employee_id}-${row.sr_no}`}
+									className="border-b border-gray-300"
+								>
+									<td className="border border-black px-3 py-3 text-center tabular-nums">
 										{rowIndex + 1}
 									</td>
-									<td className="border border-black px-2 py-1.5 font-medium text-[#4A1254]">
+									<td className="border border-black px-3 py-3 font-medium text-[#4A1254]">
 										{row.employee_name}
+										{row.missing_salary_profile && (
+											<span className="mt-1 block text-sm font-normal text-amber-900">
+												Salary Profile missing
+											</span>
+										)}
 									</td>
-									<td className="border border-black px-2 py-1.5 text-right tabular-nums">
-										{row.hourly_rate > 0 ? formatNumber(row.hourly_rate) : '-'}
+									<td className="border border-black px-3 py-3 text-right tabular-nums">
+										{row.hourly_rate > 0 ? formatNumber(row.hourly_rate) : '—'}
 									</td>
-									<td className="border border-black px-2 py-1.5 text-right tabular-nums">
+									<td className="border border-black px-3 py-3 text-right tabular-nums">
 										{formatNumber(row.hours).replace(/\.00$/, '')}
 									</td>
-									<td className="border border-black px-2 py-1.5 text-right font-semibold tabular-nums">
+									<td className="border border-black px-3 py-3 text-right font-semibold tabular-nums">
 										{formatNumber(row.cost)}
+										{row.missing_salary_profile && (
+											<span className="mt-1 block text-sm font-normal text-amber-900">
+												Unpriced placeholder
+											</span>
+										)}
 									</td>
 								</tr>
 							))}
@@ -126,6 +141,11 @@ export function ProjectWiseMonthlyReport({
 								</td>
 								<td className="border border-black px-2 py-2 text-right text-base font-bold tabular-nums">
 									{formatNumber(project.cost)}
+									{project.missing_salary_profile_count > 0 && (
+										<span className="mt-1 block text-[11px] font-normal text-amber-900">
+											Partial cost
+										</span>
+									)}
 								</td>
 							</tr>
 						</tfoot>
@@ -144,11 +164,13 @@ export function ProjectWiseMonthlyReport({
 					<tr className="bg-[#B5E5A2]">
 						<td
 							colSpan={4}
-							className="border border-black px-2 py-3 text-right text-base font-bold"
+							className="border border-black px-3 py-3 text-right text-base font-bold"
 						>
-							Total Amount for All project &gt;&gt;&gt;
+							{partial
+								? 'Employee cost — partial · full-period total'
+								: 'Full-period total for all projects'}
 						</td>
-						<td className="border border-black px-2 py-3 text-right text-base font-bold tabular-nums">
+						<td className="border border-black px-3 py-3 text-right text-base font-bold tabular-nums">
 							{formatNumber(totalCost)}
 						</td>
 					</tr>
