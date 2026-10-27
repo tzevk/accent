@@ -324,11 +324,11 @@ A User's recently reported activity and availability within Accent. It does not 
 _Avoid_: Employee presence, Productivity, Time Present
 
 **Work Session**:
-A User's system-observed presence span on one day — opened by the day's first login
-activity event and closed by an explicit logout, or by the staleness sweep that stamps
-the last heartbeat when the User goes silent. It is not a Session (the authenticated
-login itself, which revocation acts on) and not Time Present (the device-measured span),
-and a User can hold more than one on a day.
+A User's system-observed presence span on one day — opened by the day's first
+activity event and ended by an explicit logout, by the page-close beacon when the tab
+or window goes away, or by the staleness sweep that stamps the last activity signal.
+It is not a Session (the authenticated login itself, which revocation acts on) and not
+Time Present (the device-measured span), and a User can hold more than one on a day.
 _Avoid_: Session (the login, not the span), Punch (a device event), Shift
 
 **Timesheet**:
