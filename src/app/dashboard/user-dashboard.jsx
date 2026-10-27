@@ -254,33 +254,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return () => window.removeEventListener('toggleTodoPanel', handler);
 	}, []);
 
-	// ── Page-close beacon: end this Work Session when the tab or window goes
-	// away without a Sign out (#331). `pagehide` fires on a real unload (tab
-	// close, window close, navigating away) and never on in-app client
-	// navigation, so moving around the app keeps the session open. The endpoint
-	// ends the caller's own session from the session cookie, so an admin's
-	// live-monitoring view of another user never ends anyone else's session —
-	// and this listener is not even attached there.
-	const isOwnDashboard =
-		!verifiedUser || verifiedUser.id === (contextUser?.id ?? null);
-
-	useEffect(() => {
-		if (!isOwnDashboard) return;
-
-		const sendCloseBeacon = () => {
-			try {
-				navigator.sendBeacon(
-					'/api/work-sessions/close',
-					new Blob([JSON.stringify({ closedAt: new Date().toISOString() })], {
-						type: 'application/json',
-					})
-				);
-			} catch {}
-		};
-
-		window.addEventListener('pagehide', sendCloseBeacon);
-		return () => window.removeEventListener('pagehide', sendCloseBeacon);
-	}, [isOwnDashboard]);
+	// The page-close beacon now lives in the app-wide ActivityTracker (#386),
+	// which mounts on every page, so this dashboard no longer owns it.
 
 	// Idle monitoring
 	const {

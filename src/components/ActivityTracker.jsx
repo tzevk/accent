@@ -23,6 +23,29 @@ export default function ActivityTracker() {
 		}
 	}, [pathname, trackPageView]);
 
+	// ── Work Session close beacon (#331, app-wide since #386): end the caller's
+	// own Work Session when the tab or window goes away without a Sign out.
+	// `pagehide` fires on a real unload (tab close, window close, navigating
+	// away) and never on in-app client navigation, so moving around the app
+	// keeps the session open. The endpoint ends the caller's own session from
+	// the session cookie, so a caller can only ever end their own Work Session
+	// — no gate is needed, and this tracker already mounts on every page.
+	useEffect(() => {
+		const sendCloseBeacon = () => {
+			try {
+				navigator.sendBeacon(
+					'/api/work-sessions/close',
+					new Blob([JSON.stringify({ closedAt: new Date().toISOString() })], {
+						type: 'application/json',
+					})
+				);
+			} catch {}
+		};
+
+		window.addEventListener('pagehide', sendCloseBeacon);
+		return () => window.removeEventListener('pagehide', sendCloseBeacon);
+	}, []);
+
 	// This component doesn't render anything visible
 	return null;
 }
