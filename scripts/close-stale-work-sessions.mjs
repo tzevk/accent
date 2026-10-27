@@ -5,10 +5,10 @@
  *
  * A Work Session the browser never closed (tab closed without a Sign out,
  * machine asleep, network gone) stays `active` forever, so the day's work
- * figure never settles. This script ends every Work Session whose owner's
- * presence heartbeat has been silent for STALE_MINUTES, stamping the end at
- * that last heartbeat — an inference about presence, never a chosen logout.
- * The Punch Out tile discloses it as one.
+ * figure never settles. This script ends every Work Session whose owner has
+ * reported no activity signal for STALE_MINUTES, stamping the end at that last
+ * signal — an inference about presence, never a chosen logout. The Punch Out
+ * tile discloses it as one.
  *
  * Schedule: every five minutes. On Windows this is the Task Scheduler entry in
  * `scripts/close-stale-work-sessions.task.xml` (same shape as the SmartOffice
@@ -20,8 +20,9 @@
  * keeps a slow run from overlapping the next one.
  *
  * What it writes:
- *   - user_work_sessions: session_end = last heartbeat, duration_minutes from
- *     session_start to that heartbeat, status = 'ended', end_source = 'sweep'.
+ *   - user_work_sessions: session_end = last activity signal,
+ *     duration_minutes from session_start to that signal, status = 'ended',
+ *     end_source = 'sweep'.
  *   - user_daily_summary.total_work_minutes, refreshed through the same close
  *     path the logout uses (src/utils/work-session-close.js) — never a second
  *     copy of that SQL.
@@ -32,11 +33,11 @@
  * second run closes nothing and writes nothing. Sessions are ended whatever
  * day they started; the daily figure is refreshed for every date they touch.
  *
- * A user with no presence row has never reported a heartbeat — signed in and
- * never opened a page that tracks, or with scripting off. That is silence by
- * the repo's own presence rule (`getStatusFromActivity` reads a missing row as
- * offline), so those sessions are swept too, stamped at the moment the sweep
- * noticed instead of at a heartbeat.
+ * A user with no presence row has never reported anything to presence — signed
+ * in and never opened a page that tracks, or with scripting off. That is
+ * silence by the repo's own presence rule (`getStatusFromActivity` reads a
+ * missing row as offline), so those sessions are swept too, stamped at the
+ * moment the sweep noticed rather than at a reported signal.
  *
  * Usage (run from the repo root; `.env` supplies the credentials):
  *   node scripts/close-stale-work-sessions.mjs
@@ -82,26 +83,37 @@ async function main() {
 
 	const pool = mysql.createPool(target);
 	try {
-		// One presence row per user, so one heartbeat stamps every session that
-		// user left open. `dateStrings` keeps the heartbeat as the literal the
+		// The staleness key is the last activity signal, not the last heartbeat:
+		// an idle tab refreshes `last_seen` every 120 seconds and would otherwise
+		// hold its Work Session open for as long as the tab lives. The fallback
+		// to `last_seen` is for rows written before `last_active_seen` existed —
+		// their signal is NULL, and a NULL read as silence would end a live
+		// session on the first run after the column lands.
+		//
+		// One presence row per user, so one signal stamps every session that
+		// user left open. `dateStrings` keeps that signal as the literal the
 		// database stored, so the stamped end is that exact timestamp; a user
 		// with no presence row at all is silent by the presence rule and is
-		// stamped with the moment the sweep noticed (NULL heartbeats it).
+		// stamped with the moment the sweep noticed (the NULL `last_seen` keeps
+		// them in this SELECT, and the NULL signal stamps them now).
 		const [stale] = await pool.execute(
-			`SELECT ws.id AS session_id, ws.user_id, up.last_seen
+			`SELECT ws.id AS session_id,
+                ws.user_id,
+                COALESCE(up.last_active_seen, up.last_seen) AS last_signal
          FROM user_work_sessions ws
          LEFT JOIN user_presence up ON up.user_id = ws.user_id
         WHERE ws.status = 'active'
-          AND (up.last_seen IS NULL OR up.last_seen < (NOW() - INTERVAL ? MINUTE))
+          AND (up.last_seen IS NULL
+               OR COALESCE(up.last_active_seen, up.last_seen) < (NOW() - INTERVAL ? MINUTE))
         ORDER BY ws.user_id, ws.id`,
 			[STALE_MINUTES]
 		);
 
-		/** @type {Map<number, { lastSeen: string | null, sessionIds: number[] }>} */
+		/** @type {Map<number, { lastSignal: string | null, sessionIds: number[] }>} */
 		const byUser = new Map();
 		for (const row of stale) {
 			const entry = byUser.get(row.user_id) ?? {
-				lastSeen: row.last_seen,
+				lastSignal: row.last_signal,
 				sessionIds: [],
 			};
 			entry.sessionIds.push(row.session_id);
@@ -109,16 +121,16 @@ async function main() {
 		}
 
 		let closed = 0;
-		for (const [userId, { lastSeen, sessionIds }] of byUser) {
+		for (const [userId, { lastSignal, sessionIds }] of byUser) {
 			await endUserSession(userId, {
 				endSource: END_SOURCE,
-				endedAt: lastSeen,
+				endedAt: lastSignal,
 				refreshWorkDates: 'all',
 			});
 			closed += sessionIds.length;
 			console.log(
 				`[sweep] user ${userId}: ended ${sessionIds.length} session(s) ` +
-					`(${sessionIds.join(', ')}) at last heartbeat ${lastSeen ?? '(none recorded — stamped now)'}`
+					`(${sessionIds.join(', ')}) at last activity signal ${lastSignal ?? '(none recorded — stamped now)'}`
 			);
 		}
 
