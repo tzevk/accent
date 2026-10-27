@@ -6,8 +6,10 @@ const route = vi.hoisted(() => ({ pathname: '/dashboard' }));
 vi.mock('next/navigation', () => ({
 	usePathname: () => route.pathname,
 }));
-// The tracker reads its signed-in User from the Session context. With no User
-// id the hook's effect returns early and registers nothing.
+// The tracker reads its signed-in User from the Session context. The close
+// beacon's listener registers on mount whether or not there is a User — a
+// signed-out page's beacon is simply refused by the close endpoint — while the
+// activity tracking the hook also starts needs a User id, so mock one.
 vi.mock('@/context/SessionContext', () => ({
 	useSession: () => ({ user: { id: 7 } }),
 }));
