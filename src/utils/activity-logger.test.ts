@@ -21,6 +21,7 @@ const {
 	normalizeScreenTimePayload,
 	updateScreenTime,
 	updateUserPresence,
+	updateWorkSession,
 	getStatusFromActivity,
 } = await import('@/utils/activity-logger');
 
@@ -120,8 +121,38 @@ describe('updateUserPresence', () => {
 		expect(sql).toContain('INSERT INTO user_presence');
 		expect(sql).toContain('ON DUPLICATE KEY UPDATE');
 		expect(sql).toContain('last_seen = CURRENT_TIMESTAMP');
+		// No idle claim → active evidence, so the last activity signal moves too.
+		expect(sql).toContain('last_active_seen = CURRENT_TIMESTAMP');
 		// No idle/page signal → COALESCE params are null, insert default is 0.
 		expect(params).toEqual([5, null, null, null, null]);
+	});
+
+	it('refreshes only last_seen when the caller reports idle', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await updateUserPresence(5, { isIdle: true });
+
+		const [sql] = mockExecute.mock.calls[0];
+		// An idle heartbeat is not activity evidence: the sweep must not count
+		// silence from it.
+		expect(sql).toContain('last_seen = CURRENT_TIMESTAMP');
+		expect(sql).not.toContain('last_active_seen = CURRENT_TIMESTAMP');
+	});
+
+	it('still writes presence against a database without the new column', async () => {
+		mockHasColumn.mockResolvedValue(false);
+		mockExecute.mockResolvedValue([[], []]);
+		await updateUserPresence(5, { isIdle: false });
+
+		expect(mockHasColumn).toHaveBeenCalledWith(
+			expect.anything(),
+			'user_presence',
+			'last_active_seen'
+		);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+		const [sql] = mockExecute.mock.calls[0];
+		expect(sql).toContain('INSERT INTO user_presence');
+		expect(sql).toContain('last_seen = CURRENT_TIMESTAMP');
+		expect(sql).not.toContain('last_active_seen');
 	});
 
 	it('overwrites is_idle and current_page only when supplied', async () => {
@@ -144,6 +175,47 @@ describe('updateUserPresence', () => {
 	it('ignores invalid user ids', async () => {
 		await updateUserPresence(0, {});
 		expect(mockExecute).not.toHaveBeenCalled();
+	});
+});
+
+describe('updateWorkSession', () => {
+	it("opens a Work Session on the day's first tracked activity event", async () => {
+		mockExecute.mockResolvedValue([[], []]); // no active Work Session today
+		await updateWorkSession(5, 'view_page');
+
+		const insert = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_work_sessions')
+		);
+		expect(insert?.[1]).toEqual([5]);
+	});
+
+	it('touches the existing Work Session when one is already active today', async () => {
+		mockExecute
+			.mockResolvedValueOnce([[{ id: 42 }], []])
+			.mockResolvedValue([[], []]);
+		await updateWorkSession(5, 'update');
+
+		const insert = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_work_sessions')
+		);
+		expect(insert).toBeUndefined();
+
+		const update = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('UPDATE user_work_sessions')
+		);
+		expect(update?.[1]).toEqual(['update', 'update', 42]);
+	});
+
+	it('still counts a login event as a login in the daily summary', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await updateWorkSession(5, 'login');
+
+		const summary = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('user_daily_summary')
+		);
+		// login_count and first_login both key on the login event (? = 'login').
+		expect(summary?.[1][1]).toBe('login');
+		expect(summary?.[1][6]).toBe('login');
 	});
 });
 
