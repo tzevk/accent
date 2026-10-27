@@ -610,9 +610,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 	// ── Did the day's end come from inference rather than choice? (#331) ──
 	// A sweep or beacon end is an inference about presence: the sweep stamps
-	// the last heartbeat, the beacon a close the browser had to time. A logout
-	// — or no end at all — is the user's own choice. One named test, used by
-	// the poll's stop condition below and the Punch Out tile's disclosure.
+	// the last activity signal, the beacon a close the browser had to time. A
+	// logout — or no end at all — is the user's own choice. One named test,
+	// used by the poll's stop condition below and the Punch Out tile's
+	// disclosure.
 	const endWasInferred =
 		attendance.endSource === 'sweep' || attendance.endSource === 'beacon';
 

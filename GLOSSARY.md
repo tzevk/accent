@@ -327,6 +327,8 @@ _Avoid_: Employee presence, Productivity, Time Present
 A User's system-observed presence span on one day — opened by the day's first
 activity event and ended by an explicit logout, by the page-close beacon when the tab
 or window goes away, or by the staleness sweep that stamps the last activity signal.
+An activity signal is active evidence — a page view, a logged action, or a heartbeat
+reporting not-idle — never an idle heartbeat or a logout.
 It is not a Session (the authenticated login itself, which revocation acts on) and not
 Time Present (the device-measured span), and a User can hold more than one on a day.
 _Avoid_: Session (the login, not the span), Punch (a device event), Shift
