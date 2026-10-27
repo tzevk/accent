@@ -23,6 +23,7 @@ const {
 	updateUserPresence,
 	updateWorkSession,
 	getStatusFromActivity,
+	logActivity,
 } = await import('@/utils/activity-logger');
 
 beforeEach(() => {
@@ -206,6 +207,41 @@ describe('updateWorkSession', () => {
 		expect(update?.[1]).toEqual(['update', 'update', 42]);
 	});
 
+	it('does not open a Work Session on a logout event', async () => {
+		mockExecute.mockResolvedValue([[], []]); // no active Work Session today
+		await updateWorkSession(5, 'logout');
+
+		const insert = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_work_sessions')
+		);
+		// A logout is an end, not activity evidence: /api/logout logs it beside
+		// its own close, so opening here would resurrect the Work Session the
+		// logout just ended.
+		expect(insert).toBeUndefined();
+	});
+
+	it('does not reopen a Work Session on a heartbeat', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await updateWorkSession(5, 'other', 'heartbeat');
+
+		const insert = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_work_sessions')
+		);
+		// Heartbeats arrive every 120 s whatever the User is doing — and once on
+		// unload, racing the close beacon — so they never open one either.
+		expect(insert).toBeUndefined();
+	});
+
+	it('opens one on activity evidence that is not a heartbeat', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await updateWorkSession(5, 'view_page', 'page');
+
+		const insert = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_work_sessions')
+		);
+		expect(insert?.[1]).toEqual([5]);
+	});
+
 	it('still counts a login event as a login in the daily summary', async () => {
 		mockExecute.mockResolvedValue([[], []]);
 		await updateWorkSession(5, 'login');
@@ -216,6 +252,69 @@ describe('updateWorkSession', () => {
 		// login_count and first_login both key on the login event (? = 'login').
 		expect(summary?.[1][1]).toBe('login');
 		expect(summary?.[1][6]).toBe('login');
+	});
+
+	it('still writes the daily summary for a logout', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await updateWorkSession(5, 'logout');
+
+		const summary = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('user_daily_summary')
+		);
+		// Every event is counted, logouts included — only the opener treats a
+		// logout differently.
+		expect(summary).toBeDefined();
+		expect(summary?.[1][1]).toBe('logout');
+	});
+
+	it('still writes the daily summary for a heartbeat', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await updateWorkSession(5, 'other', 'heartbeat');
+
+		const summary = mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('user_daily_summary')
+		);
+		expect(summary).toBeDefined();
+		expect(summary?.[1][1]).toBe('other');
+	});
+});
+
+describe('logActivity', () => {
+	// updateWorkSession is called un-awaited, so give its promise chain a
+	// macrotask to settle against the mocked database before asserting.
+	const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+	it('forwards resourceType, so a heartbeat never reaches the opener', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await logActivity({
+			userId: 5,
+			actionType: 'other',
+			resourceType: 'heartbeat',
+		});
+		await settle();
+
+		expect(
+			mockExecute.mock.calls.some(([sql]) =>
+				String(sql).includes('INSERT INTO user_activity_logs')
+			)
+		).toBe(true);
+		expect(
+			mockExecute.mock.calls.find(([sql]) =>
+				String(sql).includes('INSERT INTO user_work_sessions')
+			)
+		).toBeUndefined();
+	});
+
+	it('forwards the logout action, so a logout never opens a Work Session', async () => {
+		mockExecute.mockResolvedValue([[], []]);
+		await logActivity({ userId: 5, actionType: 'logout' });
+		await settle();
+
+		expect(
+			mockExecute.mock.calls.find(([sql]) =>
+				String(sql).includes('INSERT INTO user_work_sessions')
+			)
+		).toBeUndefined();
 	});
 });
 

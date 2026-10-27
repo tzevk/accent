@@ -83,7 +83,9 @@ export async function logActivity({
 		);
 
 		// Update work session and daily summary asynchronously (don't block)
-		void updateWorkSession(normalizedUserId, actionType).catch(console.error);
+		void updateWorkSession(normalizedUserId, actionType, resourceType).catch(
+			console.error
+		);
 	} catch (error) {
 		console.error('Error logging activity:', error);
 		// Don't throw - logging failures shouldn't break the main flow
@@ -312,16 +314,33 @@ export async function updateUserPresence(
  * day's span, so Total Time keeps growing for the day's work. A day may hold
  * several Work Sessions (the close path ends the active one).
  *
- * The daily summary still keys its `login_count` and `first_login` on the
- * login event alone, so daily reporting is unaffected by the reopen rule.
+ * The opener fires on activity evidence only. A logout is an end, not
+ * evidence — `/api/logout` logs the activity beside its own close, so opening
+ * here would resurrect the Work Session the logout just ended and leave the
+ * day's real close unreported. A heartbeat is a liveness ping the browser
+ * sends every 120 s whether or not the User is doing anything (plus one on
+ * unload that races the close beacon), so it must not reopen a session the
+ * sweep or the beacon just ended. Everything else — login, view_page, create,
+ * update, delete, status_change — still opens one.
+ *
+ * Both exemptions keep the touch-an-existing-session path and the daily
+ * summary write, which counts every event. The summary still keys its
+ * `login_count` and `first_login` on the login event alone, so daily
+ * reporting is unaffected by the reopen rule.
  */
 export async function updateWorkSession(
 	userId: number,
-	actionType: string
+	actionType: string,
+	resourceType: string | null = null
 ): Promise<void> {
 	let db;
 	try {
 		db = await dbConnect();
+
+		// A logout ends a Work Session and a heartbeat only says the browser is
+		// alive, so neither is evidence the User worked today.
+		const opensWorkSession =
+			actionType !== 'logout' && resourceType !== 'heartbeat';
 
 		// Get or create today's active session
 		const [sessions] = (await db.execute(
@@ -342,9 +361,8 @@ export async function updateWorkSession(
          WHERE id = ?`,
 				[actionType, actionType, sessions[0].id]
 			);
-		} else {
-			// Open a new Work Session on the first tracked activity event of
-			// the day, whatever the event is.
+		} else if (opensWorkSession) {
+			// Open a new Work Session on the day's first activity evidence.
 			await db.execute(
 				`INSERT INTO user_work_sessions (user_id, session_start, activities_count) 
          VALUES (?, CURRENT_TIMESTAMP, 1)`,
