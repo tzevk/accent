@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
 	<RegistrationInfo>
-		<Description>Ends Work Sessions whose owner's presence heartbeat has been silent for ten minutes, stamping the end at that last heartbeat and refreshing the daily work-minutes figure (ticket #331).</Description>
+		<Description>Ends Work Sessions whose owner's last activity signal has been silent for ten minutes, stamping the end at that last activity signal and refreshing the daily work-minutes figure (ticket #331).</Description>
 	</RegistrationInfo>
 	<Triggers>
 		<TimeTrigger>

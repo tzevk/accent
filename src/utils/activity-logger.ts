@@ -83,7 +83,9 @@ export async function logActivity({
 		);
 
 		// Update work session and daily summary asynchronously (don't block)
-		void updateWorkSession(normalizedUserId, actionType).catch(console.error);
+		void updateWorkSession(normalizedUserId, actionType, resourceType).catch(
+			console.error
+		);
 	} catch (error) {
 		console.error('Error logging activity:', error);
 		// Don't throw - logging failures shouldn't break the main flow
@@ -239,6 +241,12 @@ export interface PresenceUpdate {
  * Upsert a user's presence row.
  *
  * `last_seen` refreshes on every call (any event = the browser is alive).
+ * `last_active_seen` is the last activity signal, which the staleness sweep
+ * counts silence from, and refreshes only when the event carries active
+ * evidence. `isIdle === true` (an idle heartbeat, or a status change to idle)
+ * is the only idle claim; a null or absent claim is active evidence, as are a
+ * not-idle heartbeat, a page view and a logged action.
+ *
  * `is_idle` and `current_page` are only overwritten when a value is supplied
  * (COALESCE semantics) so events that carry neither never clobber state set
  * by heartbeats or status changes. One row per user, PK lookup — presence
@@ -260,11 +268,30 @@ export async function updateUserPresence(
 		const idleValue = typeof isIdle === 'boolean' ? (isIdle ? 1 : 0) : null;
 		const page = currentPage ?? null;
 
+		// A database that has not run the migration yet still takes presence
+		// writes: the new column is left out of the statement instead.
+		const writesLastActiveSeen = await hasColumn(
+			db,
+			'user_presence',
+			'last_active_seen'
+		);
+		const hasActiveEvidence = isIdle !== true;
+		const lastActiveSeenColumn = writesLastActiveSeen
+			? ', last_active_seen'
+			: '';
+		const lastActiveSeenValue = writesLastActiveSeen
+			? `, ${hasActiveEvidence ? 'CURRENT_TIMESTAMP' : 'NULL'}`
+			: '';
+		const lastActiveSeenRefresh =
+			writesLastActiveSeen && hasActiveEvidence
+				? ', last_active_seen = CURRENT_TIMESTAMP'
+				: '';
+
 		await db.execute(
-			`INSERT INTO user_presence (user_id, last_seen, is_idle, current_page)
-       VALUES (?, CURRENT_TIMESTAMP, COALESCE(?, 0), ?)
+			`INSERT INTO user_presence (user_id, last_seen${lastActiveSeenColumn}, is_idle, current_page)
+       VALUES (?, CURRENT_TIMESTAMP${lastActiveSeenValue}, COALESCE(?, 0), ?)
        ON DUPLICATE KEY UPDATE
-         last_seen = CURRENT_TIMESTAMP,
+         last_seen = CURRENT_TIMESTAMP${lastActiveSeenRefresh},
          is_idle = COALESCE(?, is_idle),
          current_page = COALESCE(?, current_page)`,
 			[normalizedUserId, idleValue, page, idleValue, page]
@@ -280,15 +307,40 @@ export async function updateUserPresence(
 // ─── Work sessions ──────────────────────────────────────────────────
 
 /**
- * Update active work session
+ * Write the day's Work Session and daily summary for a tracked activity event.
+ *
+ * The Work Session opens on the day's first tracked activity event, not only
+ * on the login event: a refresh or a later return after a close reopens the
+ * day's span, so Total Time keeps growing for the day's work. A day may hold
+ * several Work Sessions (the close path ends the active one).
+ *
+ * The opener fires on activity evidence only. A logout is an end, not
+ * evidence — `/api/logout` logs the activity beside its own close, so opening
+ * here would resurrect the Work Session the logout just ended and leave the
+ * day's real close unreported. A heartbeat is a liveness ping the browser
+ * sends every 120 s whether or not the User is doing anything (plus one on
+ * unload that races the close beacon), so it must not reopen a session the
+ * sweep or the beacon just ended. Everything else — login, view_page, create,
+ * update, delete, status_change — still opens one.
+ *
+ * Both exemptions keep the touch-an-existing-session path and the daily
+ * summary write, which counts every event. The summary still keys its
+ * `login_count` and `first_login` on the login event alone, so daily
+ * reporting is unaffected by the reopen rule.
  */
-async function updateWorkSession(
+export async function updateWorkSession(
 	userId: number,
-	actionType: string
+	actionType: string,
+	resourceType: string | null = null
 ): Promise<void> {
 	let db;
 	try {
 		db = await dbConnect();
+
+		// A logout ends a Work Session and a heartbeat only says the browser is
+		// alive, so neither is evidence the User worked today.
+		const opensWorkSession =
+			actionType !== 'logout' && resourceType !== 'heartbeat';
 
 		// Get or create today's active session
 		const [sessions] = (await db.execute(
@@ -309,8 +361,8 @@ async function updateWorkSession(
          WHERE id = ?`,
 				[actionType, actionType, sessions[0].id]
 			);
-		} else if (actionType === 'login') {
-			// Create new session on login
+		} else if (opensWorkSession) {
+			// Open a new Work Session on the day's first activity evidence.
 			await db.execute(
 				`INSERT INTO user_work_sessions (user_id, session_start, activities_count) 
          VALUES (?, CURRENT_TIMESTAMP, 1)`,

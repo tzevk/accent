@@ -32,8 +32,8 @@ export const WORK_SESSION_END_SOURCES = ['logout', 'beacon', 'sweep'];
  *   `endSource` — written to `user_work_sessions.end_source` (once the column
  *     exists; a database without the column still closes the session).
  *   `endedAt` — the end to stamp: the close time the browser reported, or the
- *     last heartbeat the sweep saw. Defaults to `CURRENT_TIMESTAMP`, which is
- *     what the logout writes.
+ *     last activity signal the sweep saw. Defaults to `CURRENT_TIMESTAMP`,
+ *     which is what the logout writes.
  *   `refreshWorkDates` — `'today'` (default, the logout's behaviour) refreshes
  *     today's summary row only; `'all'` refreshes every work date the user has
  *     ended sessions on, which the sweep needs because it ends sessions
