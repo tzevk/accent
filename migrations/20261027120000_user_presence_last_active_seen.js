@@ -10,8 +10,22 @@
  *
  * No backfill: the sweep's fallback keeps existing rows from reading as
  * instant silence, so they need no rewrite.
+ *
+ * Idempotent: the `information_schema` check makes a re-run (or a rollback on
+ * a database that never ran the migration) a no-op.
  */
+async function hasLastActiveSeen(knex) {
+	const [rows] = await knex.raw(
+		`SELECT 1 FROM information_schema.columns
+		  WHERE table_schema = DATABASE() AND table_name = 'user_presence'
+		    AND column_name = 'last_active_seen'
+		  LIMIT 1`
+	);
+	return rows.length > 0;
+}
+
 export async function up(knex) {
+	if (await hasLastActiveSeen(knex)) return;
 	await knex.raw(`
     ALTER TABLE user_presence
       ADD COLUMN last_active_seen TIMESTAMP NULL DEFAULT NULL AFTER last_seen
@@ -19,6 +33,7 @@ export async function up(knex) {
 }
 
 export async function down(knex) {
+	if (!(await hasLastActiveSeen(knex))) return;
 	await knex.raw(`
     ALTER TABLE user_presence
       DROP COLUMN last_active_seen
