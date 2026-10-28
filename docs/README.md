@@ -69,6 +69,8 @@ Use the [issue tracker workflow](agents/issue-tracker.md) to check current task 
 
 ## Contributor workflows
 
+- [Coding standards](../CODING_STANDARDS.md) — task-triggered implementation, security, data, and testing rules.
+- [Local database operations](agents/local-database.md) — local MariaDB and disposable leads integration setup.
 - [Domain documentation](agents/domain.md)
 - [GitHub issue tracker](agents/issue-tracker.md)
 - [Triage labels](agents/triage-labels.md)
