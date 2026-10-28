@@ -8,6 +8,7 @@ import type { EmployeeFormBoundary } from '@/hooks/useEmployeeForm';
 import EmployeeAvatar from '@/components/employees/EmployeeAvatar';
 import EmployeeFields from '@/components/employees/EmployeeFields';
 import { EMPLOYEE_SECTIONS, type EmployeeSection } from '@/utils/employee-form';
+import { useSessionRBAC } from '@/utils/client-rbac';
 
 interface EmployeeEditorProps {
 	mode: 'add' | 'edit' | 'view';
@@ -258,6 +259,7 @@ export default function EmployeeEditor({
 	startOnExtraSection,
 }: EmployeeEditorProps) {
 	const readOnly = mode === 'view' || form.profileLocked;
+	const { activeSection, attendanceSummaryMonth, loadAttendance } = form;
 	const title =
 		mode === 'add'
 			? 'Add Employee'
@@ -265,7 +267,7 @@ export default function EmployeeEditor({
 				? 'Employee Details'
 				: 'Edit Employee';
 	const name = `${form.formData.first_name} ${form.formData.last_name}`.trim();
-	const { activeSection, attendanceSummaryMonth, loadAttendance } = form;
+	const { can, RESOURCES, PERMISSIONS } = useSessionRBAC();
 	const [extraActive, setExtraActive] = useState(() =>
 		Boolean(startOnExtraSection && extraSection)
 	);
@@ -430,9 +432,25 @@ export default function EmployeeEditor({
 									photoUploading={form.photoUploading}
 									readOnly={readOnly}
 									roles={form.roles}
-									users={form.users}
 									companies={form.companies}
 									workplaces={workplaces}
+									linkedUser={
+										form.selectedEmployee?.linked_user_id
+											? {
+													id: form.selectedEmployee.linked_user_id as
+														| number
+														| string,
+													username: String(
+														form.selectedEmployee.linked_username || ''
+													),
+													status: String(
+														form.selectedEmployee.linked_user_status || ''
+													),
+												}
+											: null
+									}
+									canReadUsers={can(RESOURCES.USERS, PERMISSIONS.READ)}
+									isNewEmployee={mode === 'add'}
 								/>
 							)}
 						</fieldset>

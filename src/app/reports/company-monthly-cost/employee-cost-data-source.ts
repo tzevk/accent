@@ -569,7 +569,7 @@ export async function fetchEmployeeProjectCost(
 	const [employeeRows] = (await query(
 		`SELECT id, employee_id,
 		        CONCAT_WS(' ', first_name, last_name) AS name,
-		        department, position, designation, email, username
+		        department, position, designation
 		 FROM employees
 		 WHERE id = ? AND isDelete = 0`,
 		[employeeId]
@@ -1051,7 +1051,7 @@ async function loadEmployeeIndex(): Promise<Map<number, EmployeeLookup>> {
 		const [rows] = (await query(
 			`SELECT id, employee_id,
 			        CONCAT_WS(' ', first_name, last_name) AS name,
-			        department, position, designation, email, username
+			        department, position, designation
 			 FROM employees
 			 WHERE isDelete = 0`
 		)) as [DbRow[], unknown];

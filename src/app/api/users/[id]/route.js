@@ -9,6 +9,10 @@ import {
 	validateUserGrants,
 } from '@/utils/api-permissions';
 import { revokeAllUserSessions } from '@/utils/session';
+import {
+	ownershipChangeRequested,
+	resolveAccessState,
+} from '@/utils/account-links';
 
 // GET - fetch single user by ID
 export async function GET(request, { params }) {
@@ -99,7 +103,7 @@ export async function PUT(request, { params }) {
 
 		// Check if user exists
 		const [existing] = await db.execute(
-			`SELECT u.id, u.is_super_admin, u.role_id, r.role_hierarchy
+			`SELECT u.id, u.employee_id, u.vendor_id, u.account_type, u.is_super_admin, u.role_id, r.role_hierarchy
        FROM users u
        LEFT JOIN roles_master r ON u.role_id = r.id
        WHERE u.id = ? AND u.isDelete = 0 LIMIT 1`,
@@ -110,6 +114,16 @@ export async function PUT(request, { params }) {
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
+			);
+		}
+		if (ownershipChangeRequested(data, existing[0])) {
+			await db.release();
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Account ownership cannot be changed through this endpoint',
+				},
+				{ status: 409 }
 			);
 		}
 
@@ -161,13 +175,20 @@ export async function PUT(request, { params }) {
 				data.field_permissions ? JSON.stringify(data.field_permissions) : null
 			);
 		}
-		if (data.status !== undefined) {
-			updateFields.push('status = ?');
-			updateValues.push(data.status);
+		const accessState = resolveAccessState(data);
+		if (!accessState) {
+			await db.release();
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'status and is_active conflict or status is invalid',
+				},
+				{ status: 400 }
+			);
 		}
-		if (data.is_active !== undefined) {
-			updateFields.push('is_active = ?');
-			updateValues.push(data.is_active ? 1 : 0);
+		if (data.status !== undefined || data.is_active !== undefined) {
+			updateFields.push('status = ?', 'is_active = ?');
+			updateValues.push(accessState.status, accessState.is_active);
 		}
 		if (data.department !== undefined) {
 			updateFields.push('department = ?');
@@ -195,10 +216,8 @@ export async function PUT(request, { params }) {
 		);
 		// If user was deactivated, revoke all active sessions immediately (SEC-05)
 		const isDeactivating =
-			data.is_active === false ||
-			data.is_active === 0 ||
-			data.is_active === '0' ||
-			data.status === 'inactive';
+			(data.is_active !== undefined || data.status !== undefined) &&
+			accessState.status === 'inactive';
 		if (isDeactivating) {
 			await revokeAllUserSessions(db, id);
 		}

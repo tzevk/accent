@@ -106,8 +106,11 @@ export async function GET(request) {
 			] = await Promise.all([
 				// 1. Employees with pagination
 				db.execute(
-					`SELECT 
-            e.id, e.employee_id, e.first_name, e.middle_name, e.last_name, e.username,
+					`SELECT
+            e.id, e.employee_id, e.first_name, e.middle_name, e.last_name,
+            (SELECT u.id FROM users u WHERE u.employee_id = e.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_user_id,
+            (SELECT u.username FROM users u WHERE u.employee_id = e.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_username,
+            (SELECT CASE WHEN u.is_active = 1 AND u.status = 'active' THEN 'active' ELSE 'inactive' END FROM users u WHERE u.employee_id = e.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_user_status,
             e.email, e.personal_email, e.phone, e.mobile, e.gender, e.dob, e.marital_status,
             e.department, e.position, e.designation, e.role, e.employee_type, e.grade, e.level,
             e.workplace, e.status, e.employment_status, e.hire_date, e.joining_date, e.exit_date, e.exit_reason,

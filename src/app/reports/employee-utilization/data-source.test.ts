@@ -25,9 +25,10 @@ import {
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
 import {
+	buildProjectBuckets,
 	PROJECT_BREAKDOWN_TOP_N,
 	buildProjectBreakdown,
-	buildProjectBuckets,
+	fetchProjectBreakdown,
 	projectDisplayName,
 	type BreakdownAssignment,
 } from '@/app/reports/employee-utilization/project-breakdown';
@@ -55,8 +56,6 @@ const rangeEmployees = [
 		id: 11,
 		employee_id: 'R-001',
 		name: 'Rita Fernandes',
-		email: 'rita@accent.test',
-		username: 'rita',
 		department: 'Civil',
 		employee_type: 'Payroll',
 		status: 'active',
@@ -69,8 +68,6 @@ const rangeEmployees = [
 		id: 12,
 		employee_id: 'R-002',
 		name: 'Samir Das',
-		email: 'samir@accent.test',
-		username: 'samir',
 		department: 'Civil',
 		employee_type: 'Payroll',
 		status: 'active',
@@ -83,8 +80,6 @@ const rangeEmployees = [
 		id: 13,
 		employee_id: 'R-003',
 		name: 'Tara Bose',
-		email: 'tara@accent.test',
-		username: 'tara',
 		department: 'Civil',
 		employee_type: 'Payroll',
 		status: 'active',
@@ -96,8 +91,6 @@ const rangeEmployees = [
 		id: 14,
 		employee_id: 'R-004',
 		name: 'Uday Rao',
-		email: 'uday@accent.test',
-		username: 'uday',
 		department: 'Civil',
 		employee_type: 'Contract',
 		status: 'active',
@@ -1372,8 +1365,60 @@ describe('project breakdown', () => {
 		};
 	}
 
-	it('pins the top-N constant from the brief', () => {
-		expect(PROJECT_BREAKDOWN_TOP_N).toBe(5);
+	it('attributes only recorded or retained account-linked assignment Employee ids', async () => {
+		mockRangeQuery.mockImplementation((sql: string) => {
+			if (sql.includes('FROM employees')) {
+				return Promise.resolve([
+					[{ id: 1, employee_id: 'E-1', name: 'Alex Smith' }],
+				]);
+			}
+			if (sql.includes('FROM user_activity_assignments')) {
+				return Promise.resolve([
+					[
+						{
+							employee_id: 2,
+							user_employee_id: 1,
+							daily_entries: entries({ '2026-04-03': 3 }),
+							project_id: 12,
+							resolved_project_id: 12,
+							project_code: 'P-12',
+							project_title: 'Historical owner',
+						},
+						{
+							employee_id: null,
+							user_employee_id: 1,
+							user_isDelete: 1,
+							user_email: 'different-login@example.test',
+							employee_name: 'Alex Smith',
+							daily_entries: entries({ '2026-04-04': 5 }),
+							project_id: 13,
+							resolved_project_id: 13,
+							project_code: 'P-13',
+							project_title: 'Linked owner',
+						},
+						{
+							employee_id: null,
+							user_employee_id: null,
+							user_email: 'alex@example.test',
+							employee_name: 'Alex Smith',
+							daily_entries: entries({ '2026-04-05': 8 }),
+							project_id: 14,
+							resolved_project_id: 14,
+							project_code: 'P-14',
+							project_title: 'Unlinked record',
+						},
+					],
+				]);
+			}
+			return Promise.resolve([[]]);
+		});
+
+		const breakdown = await fetchProjectBreakdown('2026-04', 1);
+
+		expect(breakdown?.logged_hours).toBe(5);
+		expect(breakdown?.projects.map((project) => project.project_id)).toEqual([
+			13,
+		]);
 	});
 
 	it('groups one project’s assignments, summing hours and activity detail', () => {

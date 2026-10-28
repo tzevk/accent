@@ -519,7 +519,7 @@ export async function fetchTimesheetData(
 	const [employeeRows] = (await query(
 		`SELECT id, employee_id,
 		        CONCAT_WS(' ', first_name, last_name) AS name,
-		        department, position, designation, email, username
+		        department, position, designation
 		 FROM employees
 		 WHERE id = ? AND isDelete = 0`,
 		[employeeId]
@@ -536,13 +536,8 @@ export async function fetchTimesheetData(
 					designation: s(employeeRows[0], 'designation', '') || null,
 				}
 			: null;
-	// Link to login accounts: assignments carry user_id, not employee_id, so
-	// the employee's login email/username widen the match.
-	const employeeEmail =
-		employeeRows.length > 0 ? s(employeeRows[0], 'email', '') : '';
-	const employeeUsername =
-		employeeRows.length > 0 ? s(employeeRows[0], 'username', '') : '';
-
+	// Assignment ownership is determined only by its recorded Employee id
+	// or the canonical Employee link on its user account.
 	const [attendanceRows] = (await query(
 		`SELECT DATE_FORMAT(attendance_date, '%Y-%m-%d') AS date,
 		        status, overtime_hours, is_weekly_off, is_holiday
@@ -586,13 +581,8 @@ export async function fetchTimesheetData(
 	const days = buildDays(month, attendanceRows, holidays, settings);
 	const summary = buildSummary(days);
 
-	// Project/activity rows the employee worked on, with per-day hours from
-	// the assignments' daily_entries (the same source the Project Status
-	// report's person×day matrix aggregates). Assignments are keyed by
-	// user_id, so the employee's login account widens the match: the
-	// explicit employee_id column, the users.employee_id link, or an
-	// email/username match (login emails routinely differ from the
-	// employee record's).
+	// Project/activity rows use a recorded assignment Employee id when
+	// present; only rows without one fall back to the linked account.
 	let projects: TsProject[] = [];
 	try {
 		const [projectRows] = (await query(
@@ -605,18 +595,14 @@ export async function fetchTimesheetData(
 			        COALESCE(NULLIF(p.project_title, ''), NULLIF(p.name, ''), '') AS project_name
 			 FROM user_activity_assignments uaa
 			 LEFT JOIN projects p ON p.project_id = uaa.project_id
+			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.status <> 'Cancelled'
 			   AND (
 			     uaa.employee_id = ?
-			     OR uaa.user_id IN (
-			       SELECT u.id FROM users u
-			       WHERE (u.email <> '' AND u.email = ?)
-			          OR (u.username <> '' AND u.username = ?)
-			          OR (u.employee_id IS NOT NULL AND u.employee_id = ?)
-			     )
+			     OR (uaa.employee_id IS NULL AND u.employee_id = ?)
 			   )
 			 ORDER BY uaa.updated_at DESC`,
-			[employeeId, employeeEmail, employeeUsername, employeeId]
+			[employeeId, employeeId]
 		)) as [DbRow[], unknown];
 		projects = buildProjectRows(projectRows, month);
 	} catch {

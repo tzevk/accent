@@ -361,3 +361,24 @@ If needed, to rollback:
 **Files Changed**: 11 files  
 **Documentation Created**: 2 files  
 **Status**: ✅ Complete - All hard-coded references removed
+
+## User Account and Employee link integrity (2026-10-28)
+
+Employee records hold employment information. User Accounts control app access. An Employee can have no account.
+
+The canonical connection is `users.employee_id` → `employees.id`.
+Employee editing shows the linked account read-only. Ordinary account editing cannot change ownership.
+Disabled accounts keep their Employee connection and history. **Restore Access** uses the existing account.
+Exceptional repairs require a super-admin, an inactive account, and an audited reason.
+Accounts with recorded activity cannot be reassigned through the repair action.
+
+The migrations add unique connection protection, an Employee reference constraint, and a repair ledger.
+They remove the obsolete `employees.username` column only after a read-only preflight.
+Historical attribution uses recorded Employee IDs, then retained account connections. Names and emails never establish ownership.
+
+Follow the [staged production rollout](RBAC_PERMISSIONS_SYSTEM.md#user-account-link-migration).
+Back up the database first. The legacy-column drop loses old values, and rollback cannot recover them.
+No step automatically repairs production data.
+
+Disposable MariaDB, HTTP, and browser smoke checks exercised linking, access changes, repair rejection, concurrency, and historical attribution.
+These checks do not prove production deployment.

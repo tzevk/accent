@@ -83,8 +83,11 @@ export async function GET(request) {
 		const limitNum = Math.max(1, Math.min(1000, limit));
 		const offsetNum = Math.max(0, offset);
 		const [employees] = await connection.execute(
-			`SELECT 
-        e.id, e.employee_id, e.first_name, e.middle_name, e.last_name, e.username,
+			`SELECT
+        e.id, e.employee_id, e.first_name, e.middle_name, e.last_name,
+        (SELECT u.id FROM users u WHERE u.employee_id = e.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_user_id,
+        (SELECT u.username FROM users u WHERE u.employee_id = e.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_username,
+        (SELECT CASE WHEN u.is_active = 1 AND u.status = 'active' THEN 'active' ELSE 'inactive' END FROM users u WHERE u.employee_id = e.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_user_status,
         e.email, e.personal_email, e.phone, e.mobile, e.gender, e.dob, e.marital_status,
         e.department, e.position, e.designation, e.role, e.employee_type, e.grade, e.level,
         e.workplace, e.status, e.employment_status, e.hire_date, e.joining_date, e.exit_date, e.exit_reason,
@@ -152,7 +155,21 @@ export async function POST(request) {
 		);
 		if (auth instanceof Response) return auth;
 		const data = await request.json();
-		// Trim and sanitize incoming values
+		if (
+			['username', 'user_id'].some(
+				(field) =>
+					Object.prototype.hasOwnProperty.call(data, field) &&
+					data[field] !== null &&
+					!(typeof data[field] === 'string' && data[field].trim() === '')
+			)
+		) {
+			return NextResponse.json(
+				{
+					error: 'Employee account ownership must be managed in User Accounts',
+				},
+				{ status: 400 }
+			);
+		}
 		const sanitized = {};
 		for (const [k, v] of Object.entries(data)) {
 			if (v === undefined || v === null) continue;
@@ -238,7 +255,6 @@ export async function POST(request) {
 			'first_name',
 			'middle_name',
 			'last_name',
-			'username',
 			'email',
 			'personal_email',
 			'phone',
@@ -403,8 +419,24 @@ export async function PUT(request) {
 		const { searchParams } = new URL(request.url);
 		const idFromQuery = searchParams.get('id');
 
+		if (auth instanceof Response) return auth;
 		const raw = await request.json();
-		// Trim and sanitize
+		if (
+			['username', 'user_id'].some(
+				(field) =>
+					Object.prototype.hasOwnProperty.call(raw, field) &&
+					raw[field] !== null &&
+					!(typeof raw[field] === 'string' && raw[field].trim() === '')
+			)
+		) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Employee account ownership must be managed in User Accounts',
+				},
+				{ status: 400 }
+			);
+		}
 		const data = {};
 		for (const [k, v] of Object.entries(raw)) {
 			if (v === undefined || v === null) continue;
@@ -466,7 +498,6 @@ export async function PUT(request) {
 			'first_name',
 			'middle_name',
 			'last_name',
-			'username',
 			'email',
 			'personal_email',
 			'phone',
@@ -594,20 +625,18 @@ export async function PUT(request) {
 				).toLowerCase();
 				if (['active', 'inactive', 'terminated'].includes(statusVal)) {
 					const isActive = statusVal === 'active';
-					await connection.execute(
-						'UPDATE users SET is_active = ? , status = ? WHERE employee_id = ?',
-						[isActive, isActive ? 'active' : 'inactive', employeeId]
-					);
 					if (!isActive) {
+						await connection.execute(
+							'UPDATE users SET is_active = 0, status = "inactive" WHERE employee_id = ? AND isDelete = 0',
+							[employeeId]
+						);
 						const [linkedUsers] = await connection.execute(
 							'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0',
 							[employeeId]
 						);
-						if (linkedUsers && linkedUsers.length > 0) {
-							for (const u of linkedUsers) {
-								await revokeAllUserSessions(connection, u.id);
-								invalidateUserCache(u.id);
-							}
+						for (const u of linkedUsers) {
+							await revokeAllUserSessions(connection, u.id);
+							invalidateUserCache(u.id);
 						}
 					}
 				}
@@ -641,6 +670,8 @@ export async function PUT(request) {
 // DELETE - Delete employee
 export async function DELETE(request) {
 	let connection;
+	let transactionStarted = false;
+	let transactionCommitted = false;
 	try {
 		// RBAC: delete employees
 		const auth = await ensurePermission(
@@ -661,10 +692,11 @@ export async function DELETE(request) {
 
 		connection = await dbConnect();
 		const pkCol = 'id';
+		await connection.beginTransaction();
+		transactionStarted = true;
 
-		// Check if employee exists
 		const [existing] = await connection.execute(
-			`SELECT ${pkCol} FROM employees WHERE ${pkCol} = ? AND isDelete = 0`,
+			`SELECT ${pkCol} FROM employees WHERE ${pkCol} = ? AND isDelete = 0 FOR UPDATE`,
 			[id]
 		);
 		if (existing.length === 0) {
@@ -673,7 +705,19 @@ export async function DELETE(request) {
 				{ status: 404 }
 			);
 		}
-
+		const [linkedUsersForDelete] = await connection.execute(
+			'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0 LIMIT 1 FOR UPDATE',
+			[id]
+		);
+		if (linkedUsersForDelete.length > 0) {
+			return NextResponse.json(
+				{
+					error:
+						'Cannot delete employee with a linked user account. Terminate the employee and manage account access instead.',
+				},
+				{ status: 409 }
+			);
+		}
 		// Check if employee is a manager of other employees
 		const [managedEmployees] = await connection.execute(
 			'SELECT COUNT(*) as count FROM employees WHERE manager_id = ? AND isDelete = 0',
@@ -696,22 +740,23 @@ export async function DELETE(request) {
 			[id]
 		);
 		// Optionally deactivate linked user instead of hard delete
-		try {
-			const [linkedUsers] = await connection.execute(
-				'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0',
-				[id]
-			);
-			await connection.execute(
-				'UPDATE users SET is_active = FALSE, status = "inactive" WHERE employee_id = ?',
-				[id]
-			);
-			if (linkedUsers && linkedUsers.length > 0) {
-				for (const u of linkedUsers) {
-					await revokeAllUserSessions(connection, u.id);
-					invalidateUserCache(u.id);
-				}
+		const [linkedUsers] = await connection.execute(
+			'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0',
+			[id]
+		);
+		await connection.execute(
+			'UPDATE users SET is_active = FALSE, status = "inactive" WHERE employee_id = ?',
+			[id]
+		);
+		if (linkedUsers && linkedUsers.length > 0) {
+			for (const u of linkedUsers) {
+				await revokeAllUserSessions(connection, u.id);
+				invalidateUserCache(u.id);
 			}
-		} catch {}
+		}
+		await connection.commit();
+		transactionStarted = false;
+		transactionCommitted = true;
 
 		return NextResponse.json({
 			message: 'Employee deleted successfully',
@@ -723,6 +768,13 @@ export async function DELETE(request) {
 			{ status: 500 }
 		);
 	} finally {
+		if (connection && transactionStarted && !transactionCommitted) {
+			try {
+				await connection.rollback();
+			} catch (rollbackError) {
+				console.error('Error rolling back employee deletion:', rollbackError);
+			}
+		}
 		if (connection && typeof connection.release === 'function') {
 			try {
 				connection.release();

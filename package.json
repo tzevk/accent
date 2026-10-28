@@ -14,6 +14,7 @@
 		"security:preflight": "node scripts/predeploy-check.mjs",
 		"sweep:work-sessions": "node scripts/close-stale-work-sessions.mjs",
 		"test:integration:leads": "node --experimental-strip-types scripts/leads-integration/cli.ts",
+		"audit:account-links": "node --experimental-strip-types scripts/audit-account-links.ts",
 		"test": "vitest",
 		"test:ui": "vitest --ui",
 		"test:run": "vitest run",

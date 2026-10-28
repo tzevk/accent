@@ -4,11 +4,15 @@ import {
 	ensurePermission,
 	RESOURCES as API_RESOURCES,
 	PERMISSIONS as API_PERMISSIONS,
+	invalidateUserCache,
 } from '@/utils/api-permissions';
 import { checkPermission } from '@/utils/permissions';
 
 const EMPLOYEE_COLUMNS = `
-  id, employee_id, first_name, middle_name, last_name, username,
+  id, employee_id, first_name, middle_name, last_name,
+  (SELECT u.id FROM users u WHERE u.employee_id = employees.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_user_id,
+  (SELECT u.username FROM users u WHERE u.employee_id = employees.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_username,
+  (SELECT CASE WHEN u.is_active = 1 AND u.status = 'active' THEN 'active' ELSE 'inactive' END FROM users u WHERE u.employee_id = employees.id AND u.isDelete = 0 ORDER BY u.id LIMIT 1) AS linked_user_status,
   email, personal_email, phone, mobile, gender, dob, marital_status,
   department, position, designation, role, employee_type, grade, level,
   workplace, status, employment_status, hire_date, joining_date, exit_date, exit_reason,
@@ -118,7 +122,22 @@ export async function PUT(request, { params }) {
 
 		const { id } = await params;
 		const data = await request.json();
-
+		if (
+			['username', 'user_id'].some(
+				(field) =>
+					Object.prototype.hasOwnProperty.call(data, field) &&
+					data[field] !== null &&
+					!(typeof data[field] === 'string' && data[field].trim() === '')
+			)
+		) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Employee account ownership must be managed in User Accounts',
+				},
+				{ status: 400 }
+			);
+		}
 		if (!id) {
 			return NextResponse.json(
 				{ success: false, error: 'Employee ID is required' },
@@ -201,6 +220,26 @@ export async function PUT(request, { params }) {
 			`UPDATE employees SET ${updateFields.join(', ')} WHERE id = ? AND isDelete = 0`,
 			updateValues
 		);
+		if (
+			(data.status || data.employment_status) &&
+			['inactive', 'terminated'].includes(
+				String(data.status || data.employment_status).toLowerCase()
+			)
+		) {
+			const [linkedUsers] = await db.execute(
+				'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0',
+				[id]
+			);
+			await db.execute(
+				'UPDATE users SET is_active = 0, status = "inactive" WHERE employee_id = ? AND isDelete = 0',
+				[id]
+			);
+			const { revokeAllUserSessions } = await import('@/utils/session');
+			for (const user of linkedUsers) {
+				await revokeAllUserSessions(db, user.id);
+				invalidateUserCache(user.id);
+			}
+		}
 
 		// Fetch updated employee
 		const [rows] = await db.execute(
@@ -227,6 +266,8 @@ export async function PUT(request, { params }) {
 // DELETE - delete single employee by ID
 export async function DELETE(request, { params }) {
 	let db;
+	let transactionStarted = false;
+	let transactionCommitted = false;
 	try {
 		// RBAC: delete employees
 		const auth = await ensurePermission(
@@ -246,34 +287,32 @@ export async function DELETE(request, { params }) {
 		}
 
 		db = await dbConnect();
+		await db.beginTransaction();
+		transactionStarted = true;
 
-		// Check if employee exists
 		const [existing] = await db.execute(
-			'SELECT id FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1',
+			'SELECT id FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1 FOR UPDATE',
 			[id]
 		);
 		if (!existing || existing.length === 0) {
-			await db.release();
 			return NextResponse.json(
 				{ success: false, error: 'Employee not found' },
 				{ status: 404 }
 			);
 		}
 
-		// Check if employee has linked user accounts
 		const [users] = await db.execute(
-			'SELECT id FROM users WHERE employee_id = ? LIMIT 1',
+			'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0 LIMIT 1 FOR UPDATE',
 			[id]
 		);
 		if (users && users.length > 0) {
-			await db.release();
 			return NextResponse.json(
 				{
 					success: false,
 					error:
-						'Cannot delete employee with linked user account. Delete the user account first.',
+						'Cannot delete employee with a linked user account. Terminate the employee and manage account access instead.',
 				},
-				{ status: 400 }
+				{ status: 409 }
 			);
 		}
 
@@ -281,7 +320,9 @@ export async function DELETE(request, { params }) {
 			'UPDATE employees SET isDelete = 1 WHERE id = ? AND isDelete = 0',
 			[id]
 		);
-		await db.release();
+		await db.commit();
+		transactionStarted = false;
+		transactionCommitted = true;
 
 		return NextResponse.json({
 			success: true,
@@ -289,10 +330,24 @@ export async function DELETE(request, { params }) {
 		});
 	} catch (error) {
 		console.error('Error deleting employee:', error);
-		if (db) await db.release();
 		return NextResponse.json(
 			{ success: false, error: 'Failed to delete employee' },
 			{ status: 500 }
 		);
+	} finally {
+		if (db && transactionStarted && !transactionCommitted) {
+			try {
+				await db.rollback();
+			} catch (rollbackError) {
+				console.error('Error rolling back employee deletion:', rollbackError);
+			}
+		}
+		if (db && typeof db.release === 'function') {
+			try {
+				db.release();
+			} catch (_) {
+				/* ignore */
+			}
+		}
 	}
 }

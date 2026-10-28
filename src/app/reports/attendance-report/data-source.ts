@@ -48,11 +48,7 @@ import { query } from '@/utils/database';
 import { REPORT_WORKPLACE } from './workplace';
 import { computeDayPunchSpans, type DayPunchSpan } from '@/lib/time-present';
 import { hoursByDateForMonth } from '@/lib/logged-hours';
-import {
-	buildLoggedHoursIdentifierMap,
-	resolveLoggedHoursEmployeeId,
-	type UserIdentifierRow,
-} from '@/lib/logged-hours-source';
+import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
 import { applyInferredDirections, type PunchDirection } from '@/lib/punch';
 import {
 	selectPayrollRoster,
@@ -396,8 +392,6 @@ interface DirectoryRow {
 	employee_type: string | null;
 	status: string;
 	isDelete: number;
-	email: string;
-	username: string | null;
 }
 
 /**
@@ -410,8 +404,7 @@ async function fetchEmployeeDirectory(): Promise<DirectoryRow[]> {
 		`SELECT id, employee_id,
 		        CONCAT_WS(' ', first_name, last_name) AS name,
 		        department, workplace, exit_date, smartoffice_code,
-		        employee_type, status, isDelete,
-		        email, username
+		        employee_type, status, isDelete
 		 FROM employees`
 	)) as [DbRow[], unknown];
 
@@ -426,8 +419,6 @@ async function fetchEmployeeDirectory(): Promise<DirectoryRow[]> {
 		employee_type: s(row, 'employee_type') || null,
 		status: s(row, 'status'),
 		isDelete: n(row, 'isDelete'),
-		email: s(row, 'email'),
-		username: s(row, 'username') || null,
 	}));
 }
 
@@ -559,57 +550,25 @@ async function fetchMonthHolidays(
  * Canonical Logged Hours per roster employee, keyed `${employee_id}` → date →
  * hours (ADR-0010, uncapped).
  *
- * Assignment rows are resolved to employees with the shared pure rule in
- * `@/lib/logged-hours-source` — the assignment's own `employee_id`, else the
- * linked user's `employee_id`, else a case-folded email match, then username —
- * the same function `batchGetLoggedHours` in `src/utils/payroll-calculator.js`
- * consumes, so this report reads payroll's own numerator and the two readers
- * cannot drift. The identifier map is built from the roster's employee records
- * first and their linked user records second, which resolves identically for
- * every employee this report reports on.
+ * Assignment rows use the recorded assignment Employee id first, then the
+ * linked account's canonical `employee_id`. Login and display identifiers
+ * never establish ownership. The same rule is used by the payroll calculator,
+ * so both readers consume payroll's own numerator without attribution drift.
  */
 async function fetchLoggedHoursByEmployee(
 	members: readonly RosterMember[],
-	directory: readonly DirectoryRow[],
 	month: string
 ): Promise<Map<number, Record<string, number>>> {
 	const byEmployee = new Map<number, Record<string, number>>();
 	if (members.length === 0) return byEmployee;
 
 	const memberIds = members.map((member) => member.id);
-	const directoryById = new Map(directory.map((row) => [row.id, row]));
-	const memberRows = members
-		.map((member) => directoryById.get(member.id))
-		.filter((row): row is DirectoryRow => row != null);
-
-	const [userRows] = (await query(
-		`SELECT employee_id, email, username FROM users
-		 WHERE isDelete = 0 AND employee_id IS NOT NULL
-		   AND employee_id IN (${placeholders(memberIds.length)})`,
-		memberIds
-	)) as [DbRow[], unknown];
-	const users: UserIdentifierRow[] = [];
-	for (const row of userRows) {
-		const employeeId = n(row, 'employee_id');
-		if (!employeeId) continue;
-		users.push({
-			employee_id: employeeId,
-			email: s(row, 'email') || null,
-			username: s(row, 'username') || null,
-		});
-	}
-
-	// Employee records claim identifiers before their linked User records, so
-	// an Employee's own email/username always outranks the same value on a
-	// User row — the shared map's first-claim-wins order.
-	const identifiers = buildLoggedHoursIdentifierMap(memberRows, users);
 
 	const [assignmentRows] = (await query(
 		`SELECT uaa.employee_id, uaa.daily_entries,
-		        u.employee_id AS user_employee_id,
-		        u.email AS user_email, u.username AS user_username
+		        u.employee_id AS user_employee_id
 		 FROM user_activity_assignments uaa
-		 LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
+		 LEFT JOIN users u ON u.id = uaa.user_id
 		 WHERE uaa.status <> 'Cancelled'
 		   AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`
 	)) as [DbRow[], unknown];
@@ -617,15 +576,10 @@ async function fetchLoggedHoursByEmployee(
 	const wanted = new Set(memberIds);
 	const payloads = new Map<number, unknown[]>();
 	for (const row of assignmentRows) {
-		const employeeId = resolveLoggedHoursEmployeeId(
-			{
-				employee_id: n(row, 'employee_id') || null,
-				user_employee_id: n(row, 'user_employee_id') || null,
-				user_email: s(row, 'user_email') || null,
-				user_username: s(row, 'user_username') || null,
-			},
-			identifiers
-		);
+		const employeeId = resolveLoggedHoursEmployeeId({
+			employee_id: n(row, 'employee_id') || null,
+			user_employee_id: n(row, 'user_employee_id') || null,
+		});
 		if (!employeeId || !wanted.has(employeeId)) continue;
 		const bucket = payloads.get(employeeId);
 		if (bucket) bucket.push(row['daily_entries']);
@@ -717,7 +671,7 @@ export async function fetchAttendanceData(options: {
 	const [statusByEmployeeDay, holidays, loggedByEmployee] = await Promise.all([
 		fetchAttendanceStatuses(memberIds, calendar),
 		fetchMonthHolidays(calendar),
-		fetchLoggedHoursByEmployee(roster, directory, month),
+		fetchLoggedHoursByEmployee(roster, month),
 	]);
 
 	// The endpoint walk runs over the padded set: the padded head lets the

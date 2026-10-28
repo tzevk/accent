@@ -62,8 +62,6 @@ export const DEFAULT_EMPLOYEE_FORM_DATA: EmployeeFormData = {
 	deputation_company_id: '',
 	company_name: 'Accent Techno Solutions Pvt Ltd',
 	profile_photo_url: '',
-	username: '',
-	user_id: null,
 	system_role_id: '',
 	system_role_name: '',
 	qualification: '',
@@ -98,9 +96,15 @@ export function createEmployeeFormData(
 	employee?: Record<string, unknown> | null
 ): EmployeeFormData {
 	const source = employee || {};
+	const formSource = { ...source };
+	delete formSource.linked_user_id;
+	delete formSource.linked_username;
+	delete formSource.linked_user_status;
+	delete formSource.username;
+	delete formSource.user_id;
 	return {
 		...DEFAULT_EMPLOYEE_FORM_DATA,
-		...source,
+		...formSource,
 		hire_date: toDateInput(source.hire_date),
 		joining_date: toDateInput(source.joining_date),
 		dob: toDateInput(source.dob),

@@ -25,10 +25,9 @@ import Decimal from 'decimal.js';
 import { add, div, mul, R, toNumber } from '@/lib/money';
 import { sumLoggedHoursForMonth } from '@/lib/logged-hours';
 import {
-	buildLoggedHoursIdentifierMap,
 	resolveLoggedHoursEmployeeId,
+	type AssignmentResolutionRow,
 } from '@/lib/logged-hours-source';
-import type { AssignmentResolutionRow } from '@/lib/logged-hours-source';
 import {
 	calculatePayroll,
 	normalizeSalaryProfile,
@@ -462,7 +461,6 @@ async function loadMonthHours(
 	const [assignmentRows] = await db.execute(
 		`SELECT uaa.employee_id, uaa.project_id, uaa.daily_entries,
             u.employee_id AS user_employee_id,
-            u.email AS user_email, u.username AS user_username,
             p.project_code, COALESCE(p.project_title, p.name) AS project_name,
             p.client_name
        FROM user_activity_assignments uaa
@@ -471,31 +469,11 @@ async function loadMonthHours(
       WHERE uaa.status <> 'Cancelled'
         AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`
 	);
-	const [employees] = await db.execute(
-		`SELECT id, email, username FROM employees WHERE isDelete = 0`
-	);
-	const [users] = await db.execute(
-		`SELECT employee_id, email, username FROM users
-      WHERE isDelete = 0 AND employee_id IS NOT NULL`
-	);
-	const identifiers = buildLoggedHoursIdentifierMap(
-		employees as Array<{
-			id: number | string;
-			email?: string | null;
-			username?: string | null;
-		}>,
-		users as Array<{
-			employee_id: number | string | null;
-			email?: string | null;
-			username?: string | null;
-		}>
-	);
 
 	const byEmployee = new Map<number, Map<string, PayrollHourLine>>();
 	for (const row of assignmentRows as DbRow[]) {
 		const employeeId = resolveLoggedHoursEmployeeId(
-			row as unknown as AssignmentResolutionRow,
-			identifiers
+			row as unknown as AssignmentResolutionRow
 		);
 		if (!employeeId) continue;
 		const hours = sumLoggedHoursForMonth([row.daily_entries], monthPrefix);

@@ -52,7 +52,6 @@ export interface EmployeeFormBoundary {
 	activeSection: EmployeeSection;
 	setActiveSection: (section: EmployeeSection) => void;
 	roles: EmployeeOption[];
-	users: EmployeeOption[];
 	companies: EmployeeOption[];
 	attendance: EmployeeAttendanceState;
 	attendanceSummaryMonth: string;
@@ -88,11 +87,17 @@ async function saveEmployeeRequest({
 	employeeId,
 	formData,
 }: EmployeeSaveInput): Promise<ApiResponse> {
+	const employeePayload = { ...formData };
+	delete employeePayload.username;
+	delete employeePayload.user_id;
+	delete employeePayload.linked_user_id;
+	delete employeePayload.linked_username;
+	delete employeePayload.linked_user_status;
 	return (
 		created
-			? await apiPost('/api/employees', formData)
+			? await apiPost('/api/employees', employeePayload)
 			: await apiPut(`/api/employees?id=${employeeId}`, {
-					...formData,
+					...employeePayload,
 					id: employeeId,
 				})
 	) as ApiResponse;
@@ -124,10 +129,6 @@ export function useEmployeeForm({
 		queryKey: ['employee-options', 'roles'],
 		queryFn: () => readJson('/api/roles-master'),
 	});
-	const usersQuery = useQuery<ApiResponse>({
-		queryKey: ['employee-options', 'users'],
-		queryFn: () => readJson('/api/users?limit=1000'),
-	});
 	const companiesQuery = useQuery<ApiResponse>({
 		queryKey: ['employee-options', 'companies'],
 		queryFn: () => readJson('/api/companies'),
@@ -138,13 +139,6 @@ export function useEmployeeForm({
 				? rolesQuery.data.data || []
 				: []) as EmployeeOption[],
 		[rolesQuery.data]
-	);
-	const users = useMemo(
-		() =>
-			(usersQuery.data?.success
-				? usersQuery.data.data || []
-				: []) as EmployeeOption[],
-		[usersQuery.data]
 	);
 	const companies = useMemo(
 		() =>
@@ -355,7 +349,6 @@ export function useEmployeeForm({
 		activeSection,
 		setActiveSection,
 		roles,
-		users,
 		companies,
 		attendance,
 		attendanceSummaryMonth,
