@@ -7,8 +7,8 @@ in over real HTTP, and verifies persistence with an independent database
 reader. No test-only routes, no bypasses, no mocked database proof.
 
 **Production is MariaDB 10.11.15.** Run the harness against MariaDB, because
-MySQL accepts and rejects different SQL. The local instance and its start and
-stop commands are documented in `AGENTS.md` under "Local MariaDB for testing".
+MySQL accepts and rejects different SQL. For local instance details and
+commands, see [Local database operations](../../agents/local-database.md).
 
 ## Command
 
