@@ -329,7 +329,6 @@ async function initEmployeesTable(db) {
       exit_reason TEXT,
       status ENUM('active', 'inactive', 'terminated') DEFAULT 'active',
       manager_id INT,
-      username VARCHAR(50) UNIQUE,
       middle_name VARCHAR(50),
       gender ENUM('Male', 'Female', 'Other'),
       employee_type ENUM('Payroll', 'Contract', 'Deputation', 'Permanent', 'Intern'),
@@ -385,7 +384,6 @@ async function initEmployeesTable(db) {
   `);
 
 	const alterStatements = [
-		'ALTER TABLE employees ADD COLUMN username VARCHAR(50) UNIQUE',
 		'ALTER TABLE employees ADD COLUMN middle_name VARCHAR(50)',
 		"ALTER TABLE employees ADD COLUMN gender ENUM('Male','Female','Other')",
 		"ALTER TABLE employees ADD COLUMN employee_type ENUM('Payroll','Contract','Deputation','Permanent','Intern')",

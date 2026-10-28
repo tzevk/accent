@@ -49,8 +49,12 @@ A recorded repair of a Lead activity. It keeps the previous values, the reason, 
 _Avoid_: Edit, Deletion, Overwrite
 
 **Employee**:
-A person employed by the company, stored in `employees`. Linked to a `users` account via `employee_id` when they need system access.
+A person employed by the company, represented by an employment record. An Employee may have a User Account, but employment and system access are separate.
 _Avoid_: User, Staff, Resource
+
+**User Account**:
+An identity that can access Accent. It is distinct from an Employee: an Employee may have no account, and disabling an account does not end employment or remove its ownership of work and history.
+_Avoid_: Employee, Login (when meaning the identity)
 
 **Employee Type**:
 The employment category on the Employee record, `employees.employee_type`: `Payroll`, `Contract`, `Deputation`, `Permanent`, `Intern`, or NULL (never set). A directory grouping — how the person is filed in the company — and not a pay instruction: the pay stream an Employee is paid through is their Salary Type, which lives on the Salary Profile, and payroll decides stream membership there (ADR-0015). The Attendance report and the Employee Utilization report are the readers that filter on this field (`employee_type = 'Payroll'`), which is why a `Deputation` or unset employee never appears on their rosters: Attendance uses the as-of-today roster, Utilization the Payroll Roster scoped to the viewed month by the employment window. The field is read as of today — never time-traveled — so a retyped employee is not re-filed in past months.

@@ -8,6 +8,9 @@ vi.mock('@/utils/database', () => ({
 	dbConnect: vi.fn().mockResolvedValue({
 		execute: mockExecute,
 		release: mockRelease,
+		beginTransaction: vi.fn().mockResolvedValue(undefined),
+		commit: vi.fn().mockResolvedValue(undefined),
+		rollback: vi.fn().mockResolvedValue(undefined),
 	}),
 }));
 
@@ -41,6 +44,10 @@ vi.mock('@/utils/session', () => ({
 describe('SEC-05 — Account deactivation and session revocation', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockExecute.mockReset();
+		mockRelease.mockReset();
+		mockRevokeAllUserSessions.mockReset();
+		mockRevokeAllUserSessions.mockResolvedValue(undefined);
 		currentMockUser = {
 			id: 1,
 			username: 'admin',
@@ -104,20 +111,19 @@ describe('SEC-05 — Account deactivation and session revocation', () => {
 		);
 	});
 
-	it('DELETE /api/users/[id] revokes all sessions for deleted user', async () => {
-		mockExecute.mockResolvedValueOnce([
-			[{ id: 10, is_super_admin: 0, role_id: 2, role_hierarchy: 50 }],
-		]); // existing
-		mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }]); // soft delete UPDATE
+	it('DELETE /api/users/[id] revokes sessions when deleting an inactive user', async () => {
+		mockExecute
+			.mockResolvedValueOnce([
+				[{ id: 10, is_super_admin: 0, role_id: 2, role_hierarchy: 50 }],
+			])
+			.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
 		const { DELETE } = await import('@/app/api/users/[id]/route');
-		const req = new Request('http://localhost/api/users/10', {
-			method: 'DELETE',
-		});
-
-		const res = await DELETE(req, { params: Promise.resolve({ id: '10' }) });
+		const res = await DELETE(
+			new Request('http://localhost/api/users/10', { method: 'DELETE' }),
+			{ params: Promise.resolve({ id: '10' }) }
+		);
 		expect(res.status).toBe(200);
-
 		expect(mockRevokeAllUserSessions).toHaveBeenCalledWith(
 			expect.anything(),
 			'10'
@@ -147,20 +153,18 @@ describe('SEC-05 — Account deactivation and session revocation', () => {
 		);
 	});
 
-	it('DELETE /api/users revokes all sessions for deleted user', async () => {
-		mockExecute.mockResolvedValueOnce([
-			[{ id: 10, is_super_admin: 0, role_id: 2, role_hierarchy: 50 }],
-		]); // existing
-		mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }]); // soft delete UPDATE
+	it('DELETE /api/users revokes sessions when deleting an inactive user', async () => {
+		mockExecute
+			.mockResolvedValueOnce([
+				[{ id: 10, is_super_admin: 0, role_id: 2, role_hierarchy: 50 }],
+			])
+			.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
 		const { DELETE } = await import('@/app/api/users/route');
-		const req = new Request('http://localhost/api/users?id=10', {
-			method: 'DELETE',
-		});
-
-		const res = await DELETE(req);
+		const res = await DELETE(
+			new Request('http://localhost/api/users?id=10', { method: 'DELETE' })
+		);
 		expect(res.status).toBe(200);
-
 		expect(mockRevokeAllUserSessions).toHaveBeenCalledWith(
 			expect.anything(),
 			'10'
@@ -189,23 +193,15 @@ describe('SEC-05 — Account deactivation and session revocation', () => {
 		);
 	});
 
-	it('DELETE /api/employees revokes linked user sessions when deleting employee', async () => {
-		mockExecute.mockResolvedValueOnce([[{ id: 5 }]]); // SELECT employees existing
-		mockExecute.mockResolvedValueOnce([[{ count: 0 }]]); // managedEmployees check
-		mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE employees isDelete = 1
-		mockExecute.mockResolvedValueOnce([[{ id: 25 }]]); // SELECT users WHERE employee_id = ?
-		mockExecute.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE users is_active = FALSE
+	it('DELETE /api/employees refuses to delete an employee with a linked inactive account', async () => {
+		mockExecute.mockResolvedValueOnce([[{ id: 5 }]]);
+		mockExecute.mockResolvedValueOnce([[{ id: 25 }]]);
 
 		const { DELETE } = await import('@/app/api/employees/route');
-		const req = new Request('http://localhost/api/employees?id=5', {
-			method: 'DELETE',
-		});
-		const res = await DELETE(req);
-		expect(res.status).toBe(200);
-
-		expect(mockRevokeAllUserSessions).toHaveBeenCalledWith(
-			expect.anything(),
-			25
+		const res = await DELETE(
+			new Request('http://localhost/api/employees?id=5', { method: 'DELETE' })
 		);
+		expect(res.status).toBe(409);
+		expect(mockRevokeAllUserSessions).not.toHaveBeenCalled();
 	});
 });

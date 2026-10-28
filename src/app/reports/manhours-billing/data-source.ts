@@ -30,6 +30,10 @@ import {
 	sumLoggedHoursForMonth,
 } from '@/lib/logged-hours';
 
+import {
+	resolveLoggedHoursEmployeeId,
+	type AssignmentResolutionRow,
+} from '@/lib/logged-hours-source';
 // ─── Public types ───────────────────────────────────────────────────
 
 export interface BillingProject {
@@ -227,7 +231,7 @@ export const MONTH_NAMES = [
 	'December',
 ];
 
-type DbRow = Record<string, unknown>;
+type DbRow = Record<string, unknown> & AssignmentResolutionRow;
 
 function s(row: DbRow, key: string, fallback = ''): string {
 	const v = row[key];
@@ -469,8 +473,6 @@ interface PersonBillingAccumulator {
 export function buildBillingRows(
 	assignmentRows: DbRow[],
 	employeeIndex: Map<number, EmployeeLookup>,
-	userToEmployee: Map<number, number>,
-	userEmailUsernameToEmployee: Map<string, number>,
 	salaryProfiles: SalaryProfile[],
 	manhoursConfig: Map<number, ProjectManhourConfig>,
 	month: string,
@@ -524,17 +526,8 @@ export function buildBillingRows(
 	// 2. Process assignment rows (timesheet daily task entries)
 	const assignmentHoursByEmployee = new Map<number, number>();
 	for (const row of assignmentRows) {
-		const direct = n(row, 'employee_id', 0) || null;
-		const userId = n(row, 'user_id', 0) || null;
-		const viaUser = userId ? (userToEmployee.get(userId) ?? null) : null;
-		const email = s(row, 'user_email').toLowerCase();
-		const username = s(row, 'user_username').toLowerCase();
-		const viaContact =
-			userEmailUsernameToEmployee.get(email) ??
-			userEmailUsernameToEmployee.get(username) ??
-			null;
-		const employeeId = direct || viaUser || viaContact;
-		if (employeeId == null) continue;
+		const employeeId = resolveLoggedHoursEmployeeId(row);
+		if (!employeeId) continue;
 
 		const { total_hours } = sumMonthlyHours(row.daily_entries, month);
 		if (total_hours <= 0) continue;
@@ -681,8 +674,6 @@ export function buildTotals(rows: BillingEmployeeRow[]): {
 export function buildAnnualBillingRows(
 	assignmentRows: DbRow[],
 	employeeIndex: Map<number, EmployeeLookup>,
-	userToEmployee: Map<number, number>,
-	userEmailUsernameToEmployee: Map<string, number>,
 	salaryProfiles: SalaryProfile[],
 	tabEntries: ProjectManhourTabRow[] = [],
 	fyYear: number = getFinancialYear()
@@ -723,11 +714,7 @@ export function buildAnnualBillingRows(
 			if (h <= 0 && isInternal) {
 				const calMonth = fyCalendarMonthMap[mKey];
 				for (const asg of assignmentRows) {
-					const direct = n(asg, 'employee_id', 0) || null;
-					const userId = n(asg, 'user_id', 0) || null;
-					const viaUser = userId ? (userToEmployee.get(userId) ?? null) : null;
-					const asgEmpId = direct || viaUser;
-					if (asgEmpId === numEmpId) {
+					if (resolveLoggedHoursEmployeeId(asg) === numEmpId) {
 						const res = sumMonthlyHours(asg.daily_entries, calMonth);
 						h += res.total_hours;
 					}
@@ -780,11 +767,7 @@ export function buildAnnualBillingRows(
 			const calMonth = fyCalendarMonthMap[mKey];
 			let h = 0;
 			for (const asg of assignmentRows) {
-				const direct = n(asg, 'employee_id', 0) || null;
-				const userId = n(asg, 'user_id', 0) || null;
-				const viaUser = userId ? (userToEmployee.get(userId) ?? null) : null;
-				const asgEmpId = direct || viaUser;
-				if (asgEmpId === emp.employee_id) {
+				if (resolveLoggedHoursEmployeeId(asg) === emp.employee_id) {
 					const res = sumMonthlyHours(asg.daily_entries, calMonth);
 					h += res.total_hours;
 				}
@@ -1012,13 +995,11 @@ export async function fetchBillingData(
 	}
 
 	const employeeIndex = new Map<number, EmployeeLookup>();
-	const userToEmployee = new Map<number, number>();
-	const userEmailUsernameToEmployee = new Map<string, number>();
 	try {
 		const [empRows] = (await query(
 			`SELECT id, employee_id,
 			        CONCAT_WS(' ', first_name, last_name) AS name,
-			        email, username, position, designation
+			        position, designation
 			 FROM employees
 			 WHERE isDelete = 0`
 		)) as [DbRow[], unknown];
@@ -1031,26 +1012,9 @@ export async function fetchBillingData(
 				name: s(emp, 'name') || `Employee ${id}`,
 				designation: s(emp, 'position') || s(emp, 'designation') || '',
 			});
-			const email = s(emp, 'email').toLowerCase();
-			const username = s(emp, 'username').toLowerCase();
-			if (email) userEmailUsernameToEmployee.set(email, id);
-			if (username) userEmailUsernameToEmployee.set(username, id);
 		}
 	} catch {
 		/* employees table unavailable */
-	}
-
-	try {
-		const [userRows] = (await query(
-			`SELECT id, employee_id, email, username FROM users`
-		)) as [DbRow[], unknown];
-		for (const u of userRows) {
-			const userId = n(u, 'id');
-			const empId = n(u, 'employee_id', 0);
-			if (userId && empId) userToEmployee.set(userId, empId);
-		}
-	} catch {
-		/* users table unavailable */
 	}
 
 	const salaryProfiles: SalaryProfile[] = [];
@@ -1090,7 +1054,7 @@ export async function fetchBillingData(
 	try {
 		const [rows] = (await query(
 			`SELECT uaa.id, uaa.user_id, uaa.employee_id, uaa.daily_entries,
-			        u.email AS user_email, u.username AS user_username
+			        u.employee_id AS user_employee_id
 			 FROM user_activity_assignments uaa
 			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.project_id = ?
@@ -1106,8 +1070,6 @@ export async function fetchBillingData(
 	const rows = buildBillingRows(
 		assignmentRows,
 		employeeIndex,
-		userToEmployee,
-		userEmailUsernameToEmployee,
 		salaryProfiles,
 		manhoursConfig,
 		month,
@@ -1150,13 +1112,11 @@ export async function fetchAnnualBillingData(
 	const tabEntries = parseProjectManhoursList(project.project_manhours_list);
 
 	const employeeIndex = new Map<number, EmployeeLookup>();
-	const userToEmployee = new Map<number, number>();
-	const userEmailUsernameToEmployee = new Map<string, number>();
 	try {
 		const [empRows] = (await query(
 			`SELECT id, employee_id,
 			        CONCAT_WS(' ', first_name, last_name) AS name,
-			        email, username, position, designation
+			        position, designation
 			 FROM employees
 			 WHERE isDelete = 0`
 		)) as [DbRow[], unknown];
@@ -1169,26 +1129,9 @@ export async function fetchAnnualBillingData(
 				name: s(emp, 'name') || `Employee ${id}`,
 				designation: s(emp, 'position') || s(emp, 'designation') || '',
 			});
-			const email = s(emp, 'email').toLowerCase();
-			const username = s(emp, 'username').toLowerCase();
-			if (email) userEmailUsernameToEmployee.set(email, id);
-			if (username) userEmailUsernameToEmployee.set(username, id);
 		}
 	} catch {
 		/* employees table unavailable */
-	}
-
-	try {
-		const [userRows] = (await query(
-			`SELECT id, employee_id, email, username FROM users`
-		)) as [DbRow[], unknown];
-		for (const u of userRows) {
-			const userId = n(u, 'id');
-			const empId = n(u, 'employee_id', 0);
-			if (userId && empId) userToEmployee.set(userId, empId);
-		}
-	} catch {
-		/* users table unavailable */
 	}
 
 	const salaryProfiles: SalaryProfile[] = [];
@@ -1228,7 +1171,7 @@ export async function fetchAnnualBillingData(
 	try {
 		const [rows] = (await query(
 			`SELECT uaa.id, uaa.user_id, uaa.employee_id, uaa.daily_entries,
-			        u.email AS user_email, u.username AS user_username
+			        u.employee_id AS user_employee_id
 			 FROM user_activity_assignments uaa
 			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.project_id = ?
@@ -1244,8 +1187,6 @@ export async function fetchAnnualBillingData(
 	const rows = buildAnnualBillingRows(
 		assignmentRows,
 		employeeIndex,
-		userToEmployee,
-		userEmailUsernameToEmployee,
 		salaryProfiles,
 		tabEntries,
 		fyYear

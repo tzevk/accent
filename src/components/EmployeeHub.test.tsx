@@ -20,15 +20,17 @@ const rbacMock = vi.hoisted(() => ({
 	payrollRead: false,
 	superAdmin: false,
 	payrollUpdate: false,
+	usersRead: false,
 }));
 vi.mock('@/utils/client-rbac', () => ({
 	useSessionRBAC: () => ({
 		user: { is_super_admin: rbacMock.superAdmin ? 1 : 0 },
 		can: (resource: string, permission: string) =>
-			resource === 'payroll' &&
-			((permission === 'read' && rbacMock.payrollRead) ||
-				(permission === 'update' && rbacMock.payrollUpdate)),
-		RESOURCES: { PAYROLL: 'payroll', EMPLOYEES: 'employees' },
+			(resource === 'payroll' &&
+				((permission === 'read' && rbacMock.payrollRead) ||
+					(permission === 'update' && rbacMock.payrollUpdate))) ||
+			(resource === 'users' && permission === 'read' && rbacMock.usersRead),
+		RESOURCES: { PAYROLL: 'payroll', EMPLOYEES: 'employees', USERS: 'users' },
 		PERMISSIONS: { UPDATE: 'update', READ: 'read' },
 	}),
 }));
@@ -159,6 +161,11 @@ const savedProfile = {
 	lumpsum_description: null,
 };
 
+let aliceAccount: {
+	linked_user_id: number | null;
+	linked_username: string | null;
+	linked_user_status: 'active' | 'inactive' | null;
+} | null = null;
 function response(body: unknown, ok = true) {
 	return Promise.resolve({ ok, json: async () => body });
 }
@@ -166,10 +173,11 @@ function response(body: unknown, ok = true) {
 describe('EmployeeHub', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		aliceAccount = null;
 		rbacMock.payrollRead = false;
 		rbacMock.superAdmin = false;
 		rbacMock.payrollUpdate = false;
-		window.history.pushState({}, '', '/employees');
+		rbacMock.usersRead = false;
 		vi.stubGlobal('fetch', fetchMock);
 		window.HTMLElement.prototype.scrollIntoView = vi.fn();
 		window.URL.createObjectURL = vi.fn(() => 'blob:mock');
@@ -178,9 +186,15 @@ describe('EmployeeHub', () => {
 			(input: RequestInfo | URL, init?: RequestInit) => {
 				const url = String(input);
 				if (url.startsWith('/api/employees/list')) {
+					const account = aliceAccount;
+					const result = account
+						? employees.map((employee) =>
+								employee.id === 1 ? { ...employee, ...account } : employee
+							)
+						: employees;
 					return response({
 						success: true,
-						employees,
+						employees: result,
 						departments: ['Engineering', 'Operations'],
 						workplaces: ['Mumbai', 'Malvan'],
 						pagination: { total: 1, totalRecords: 2, limit: 100 },
@@ -785,5 +799,43 @@ describe('EmployeeHub', () => {
 			await screen.findByRole('heading', { name: 'Personal Information' })
 		).toBeVisible();
 		expect(screen.queryByLabelText('Gross Salary *')).not.toBeInTheDocument();
+	});
+
+	it('shows linked account state from employee data and navigates to its account without loading users separately', async () => {
+		aliceAccount = {
+			linked_user_id: 91,
+			linked_username: 'alice.login',
+			linked_user_status: 'inactive',
+		};
+		rbacMock.usersRead = true;
+		renderHub();
+		await screen.findByText('Alice Worker');
+		openEmployee('Alice Worker', 'View');
+		expect(
+			await screen.findByText(/alice\.login.*Inactive access/i)
+		).toBeVisible();
+		expect(
+			screen.getByRole('link', { name: 'Manage User Account' })
+		).toHaveAttribute('href', '/masters/users?account=91');
+		expect(
+			fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/users'))
+		).toBe(false);
+	});
+	it('shows linked account metadata without a management link when users:read is absent', async () => {
+		aliceAccount = {
+			linked_user_id: 91,
+			linked_username: 'alice.login',
+			linked_user_status: 'inactive',
+		};
+		renderHub();
+		await screen.findByText('Alice Worker');
+		openEmployee('Alice Worker', 'View');
+
+		expect(
+			await screen.findByText(/alice\.login.*Inactive access/i)
+		).toBeVisible();
+		expect(
+			screen.queryByRole('link', { name: 'Manage User Account' })
+		).not.toBeInTheDocument();
 	});
 });

@@ -95,6 +95,7 @@ import {
 	sumLoggedHoursForMonth,
 	type LoggedEntry,
 } from '@/lib/logged-hours';
+import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
 import { R, add, sub, mul, div, toNumber } from '@/lib/money';
 import {
 	selectPayrollRoster,
@@ -952,7 +953,7 @@ async function collectUtilizationMonths(): Promise<string[]> {
 		const [screenRows] = (await query(
 			`SELECT DATE_FORMAT(st.date, '%Y-%m') AS month
 			 FROM user_screen_time st
-			 JOIN users u ON u.id = st.user_id AND u.isDelete = 0
+			 JOIN users u ON u.id = st.user_id
 			 JOIN employees e ON e.id = u.employee_id AND e.isDelete = 0
 			      AND e.employee_type = 'Payroll'
 			 GROUP BY month
@@ -969,7 +970,7 @@ async function collectUtilizationMonths(): Promise<string[]> {
 		const [logRows] = (await query(
 			`SELECT DATE_FORMAT(al.created_at, '%Y-%m') AS month
 			 FROM user_activity_logs al
-			 JOIN users u ON u.id = al.user_id AND u.isDelete = 0
+			 JOIN users u ON u.id = al.user_id
 			 JOIN employees e ON e.id = u.employee_id AND e.isDelete = 0
 			      AND e.employee_type = 'Payroll'
 			 GROUP BY month
@@ -1007,8 +1008,6 @@ interface UtilizationEmployee {
 	id: number;
 	code: string;
 	name: string;
-	email: string;
-	username: string;
 	department: string | null;
 	employee_type: string | null;
 	status: string;
@@ -1042,7 +1041,7 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 	const [rows] = (await query(
 		`SELECT id, employee_id,
 		        CONCAT_WS(' ', first_name, last_name) AS name,
-		        email, username, department, employee_type, status,
+		        department, employee_type, status,
 		        DATE_FORMAT(joining_date, '%Y-%m-%d') AS joining_date,
 		        DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date,
 		        DATE_FORMAT(exit_date, '%Y-%m-%d') AS exit_date
@@ -1113,7 +1112,7 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 				        DATE_FORMAT(MIN(st.date), '%Y-%m-%d') AS first_date,
 				        DATE_FORMAT(MAX(st.date), '%Y-%m-%d') AS last_date
 				 FROM user_screen_time st
-				 JOIN users u ON u.id = st.user_id AND u.isDelete = 0
+				 JOIN users u ON u.id = st.user_id
 				 WHERE u.employee_id IN (${placeholders})
 				 GROUP BY u.employee_id`
 			);
@@ -1128,7 +1127,7 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 				        DATE_FORMAT(MIN(l.created_at), '%Y-%m-%d') AS first_date,
 				        DATE_FORMAT(MAX(l.created_at), '%Y-%m-%d') AS last_date
 				 FROM user_activity_logs l
-				 JOIN users u ON u.id = l.user_id AND u.isDelete = 0
+				 JOIN users u ON u.id = l.user_id
 				 WHERE u.employee_id IN (${placeholders})
 				 GROUP BY u.employee_id`
 			);
@@ -1150,8 +1149,6 @@ async function loadUtilizationEmployees(): Promise<UtilizationEmployee[]> {
 			id,
 			code: dbStr(r, 'employee_id'),
 			name: dbStr(r, 'name') || `Employee ${id}`,
-			email: dbStr(r, 'email'),
-			username: dbStr(r, 'username'),
 			department: dbStr(r, 'department') || null,
 			employee_type: dbStr(r, 'employee_type') || null,
 			status: dbStr(r, 'status'),
@@ -1193,37 +1190,6 @@ function toRosterInput(row: UtilizationEmployee): RosterEmployeeInput {
 		first_activity_log_date: row.first_activity_log_date,
 		last_activity_log_date: row.last_activity_log_date,
 	};
-}
-
-async function loadUtilizationUserMaps(
-	employees: UtilizationEmployee[]
-): Promise<{
-	userToEmployee: Map<number, number>;
-	userKeyToEmployee: Map<string, number>;
-}> {
-	const userToEmployee = new Map<number, number>();
-	const userKeyToEmployee = new Map<string, number>();
-	for (const e of employees) {
-		if (e.email) userKeyToEmployee.set(e.email.toLowerCase(), e.id);
-		if (e.username) userKeyToEmployee.set(e.username.toLowerCase(), e.id);
-	}
-	try {
-		const [userRows] = (await query(
-			`SELECT id, employee_id, email, username FROM users WHERE isDelete = 0`
-		)) as [DbRow[], unknown];
-		for (const u of userRows) {
-			const userId = dbNum(u, 'id');
-			const empId = dbNum(u, 'employee_id', 0);
-			if (userId && empId) userToEmployee.set(userId, empId);
-			const email = dbStr(u, 'email').toLowerCase();
-			const username = dbStr(u, 'username').toLowerCase();
-			if (email && empId) userKeyToEmployee.set(email, empId);
-			if (username && empId) userKeyToEmployee.set(username, empId);
-		}
-	} catch {
-		/* users table unavailable */
-	}
-	return { userToEmployee, userKeyToEmployee };
 }
 
 async function loadSalaryProfilesGrouped(): Promise<
@@ -1412,11 +1378,7 @@ async function loadUtilizationSpan(
 	const spanEnd = `${lastMonth}-${String(daysInMonth(lastMonth)).padStart(2, '0')}`;
 
 	const employees = await loadUtilizationEmployees();
-	const [salaryGrouped, { userToEmployee, userKeyToEmployee }] =
-		await Promise.all([
-			loadSalaryProfilesGrouped(),
-			loadUtilizationUserMaps(employees),
-		]);
+	const salaryGrouped = await loadSalaryProfilesGrouped();
 
 	// Capacity and the rate's Basis Hours consume the active NON-optional
 	// holidays only: an optional holiday is a full working day for this
@@ -1485,29 +1447,18 @@ async function loadUtilizationSpan(
 	const entriesByEmployee = new Map<number, unknown[]>();
 	try {
 		const [assignmentRows] = (await query(
-			`SELECT uaa.user_id, uaa.employee_id, uaa.daily_entries,
-			        u.email AS user_email, u.username AS user_username
+			`SELECT uaa.employee_id, uaa.daily_entries,
+			        u.employee_id AS user_employee_id
 			 FROM user_activity_assignments uaa
-			 LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
+			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.status <> 'Cancelled'
 			   AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of assignmentRows) {
-			let empId = dbNum(row, 'employee_id', 0) || null;
-			if (!empId) {
-				const userId = dbNum(row, 'user_id', 0) || null;
-				if (userId && userToEmployee.has(userId)) {
-					empId = userToEmployee.get(userId)!;
-				} else {
-					const email = dbStr(row, 'user_email').toLowerCase();
-					const username = dbStr(row, 'user_username').toLowerCase();
-					if (email && userKeyToEmployee.has(email)) {
-						empId = userKeyToEmployee.get(email)!;
-					} else if (username && userKeyToEmployee.has(username)) {
-						empId = userKeyToEmployee.get(username)!;
-					}
-				}
-			}
+			const empId = resolveLoggedHoursEmployeeId({
+				employee_id: dbNum(row, 'employee_id', 0) || null,
+				user_employee_id: dbNum(row, 'user_employee_id', 0) || null,
+			});
 			if (!empId) continue;
 			const arr = entriesByEmployee.get(empId) || [];
 			arr.push(row.daily_entries);

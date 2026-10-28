@@ -66,16 +66,14 @@ export async function GET(request) {
            FROM users u
            LEFT JOIN employees e ON u.employee_id = e.id
            LEFT JOIN roles r ON u.role_id = r.id
-           WHERE u.is_active = TRUE AND u.isDelete = 0
+           WHERE u.isDelete = 0
            ORDER BY u.created_at DESC
            LIMIT ? OFFSET ?`,
 					[limit, offset]
 				),
 
 				// 2. Total count
-				db.execute(
-					'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE AND isDelete = 0'
-				),
+				db.execute('SELECT COUNT(*) as total FROM users WHERE isDelete = 0'),
 
 				// 3. Stats
 				db.execute(`
@@ -85,7 +83,7 @@ export async function GET(request) {
             SUM(CASE WHEN status = 'inactive' OR status IS NULL THEN 1 ELSE 0 END) as inactive,
             SUM(CASE WHEN is_super_admin = TRUE THEN 1 ELSE 0 END) as admins
           FROM users
-          WHERE is_active = TRUE AND isDelete = 0
+          WHERE isDelete = 0
         `),
 			]);
 
@@ -114,11 +112,7 @@ export async function GET(request) {
 				_meta: { queryTimeMs: queryTime },
 			});
 
-			// Cache for 30 seconds
-			response.headers.set(
-				'Cache-Control',
-				'private, max-age=30, stale-while-revalidate=60'
-			);
+			response.headers.set('Cache-Control', 'no-store');
 
 			return response;
 		} finally {

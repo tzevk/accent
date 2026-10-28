@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import type { ChangeEvent, ReactNode } from 'react';
+import type { EmployeeOption } from '@/hooks/useEmployeeForm';
 import {
 	booleanValue,
 	stringValue,
@@ -7,8 +8,6 @@ import {
 	type EmployeeFormValue,
 	type EmployeeSection,
 } from '@/utils/employee-form';
-import type { EmployeeOption } from '@/hooks/useEmployeeForm';
-
 interface EmployeeFieldsProps {
 	section: EmployeeSection;
 	formData: EmployeeFormData;
@@ -17,9 +16,15 @@ interface EmployeeFieldsProps {
 	photoUploading: boolean;
 	readOnly?: boolean;
 	roles: EmployeeOption[];
-	users: EmployeeOption[];
 	companies: EmployeeOption[];
 	workplaces: string[];
+	linkedUser?: {
+		id: number | string;
+		username?: string;
+		status?: string;
+	} | null;
+	canReadUsers: boolean;
+	isNewEmployee: boolean;
 }
 
 interface FieldProps {
@@ -116,9 +121,11 @@ export default function EmployeeFields({
 	photoUploading,
 	readOnly = false,
 	roles,
-	users,
 	companies,
 	workplaces,
+	linkedUser,
+	canReadUsers,
+	isNewEmployee,
 }: EmployeeFieldsProps) {
 	const selectedRoleId = stringValue(formData.system_role_id);
 	const selectedRoleName =
@@ -281,29 +288,28 @@ export default function EmployeeFields({
 						options={roleOptions}
 						readOnly={readOnly}
 					/>
-					<SelectField
-						field="username"
-						label="Username (from User Master)"
-						formData={formData}
-						onChange={(field, value) => {
-							onChange(field, value);
-							const user = users.find((item) => item.username === value);
-							onChange('user_id', user?.id ?? null);
-						}}
-						readOnly={readOnly}
-						options={[
-							{ value: '', label: 'Select user' },
-							...users
-								.filter(
-									(user) =>
-										!user.employee_id || user.employee_id === formData.id
-								)
-								.map((user) => ({
-									value: String(user.username || ''),
-									label: `${String(user.username || '')}${user.full_name ? ` (${String(user.full_name)})` : ''}`,
-								})),
-						]}
-					/>
+					<div className="text-sm">
+						<p className="font-medium text-gray-700">Linked User Account</p>
+						<p className="mt-2 text-gray-600">
+							{isNewEmployee
+								? 'Save the employee before managing an account.'
+								: linkedUser
+									? `${linkedUser.username || 'User account'} — ${linkedUser.status === 'active' ? 'Active access' : 'Inactive access'}`
+									: 'No linked user account'}
+						</p>
+						{canReadUsers && !isNewEmployee && (
+							<a
+								className="mt-2 inline-block text-purple-700 underline"
+								href={
+									linkedUser
+										? `/masters/users?account=${encodeURIComponent(String(linkedUser.id))}`
+										: '/masters/users'
+								}
+							>
+								Manage User Account
+							</a>
+						)}
+					</div>
 					<SelectField
 						field="company_name"
 						label="Company"

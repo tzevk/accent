@@ -290,11 +290,6 @@ describe('buildBillingRows', () => {
 			},
 		],
 	]);
-	const userToEmployee = new Map([
-		[10, 1],
-		[11, 2],
-	]);
-	const contactMap = new Map([['alice@accent.com', 1]]);
 	const profiles = [
 		profile({ employee_id: 1, gross_salary: 20000 }),
 		profile({ employee_id: 2, gross_salary: 20800 }),
@@ -307,6 +302,7 @@ describe('buildBillingRows', () => {
 				{
 					id: 'a1',
 					user_id: 10,
+					user_employee_id: 1,
 					employee_id: null,
 					daily_entries: JSON.stringify([
 						{ date: '2026-04-01', hours: 8 },
@@ -316,19 +312,19 @@ describe('buildBillingRows', () => {
 				{
 					id: 'a2',
 					user_id: 10,
+					user_employee_id: 1,
 					employee_id: null,
 					daily_entries: JSON.stringify([{ date: '2026-04-03', hours: 4 }]),
 				},
 				{
 					id: 'b1',
 					user_id: 11,
+					user_employee_id: 2,
 					employee_id: null,
 					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 10 }]),
 				},
 			],
 			employees,
-			userToEmployee,
-			contactMap,
 			profiles,
 			new Map(),
 			'2026-04'
@@ -365,13 +361,12 @@ describe('buildBillingRows', () => {
 				{
 					id: 'm1',
 					user_id: 10,
+					user_employee_id: 1,
 					employee_id: null,
 					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 176 }]),
 				},
 			],
 			employees,
-			userToEmployee,
-			contactMap,
 			[
 				profile({
 					employee_id: 1,
@@ -401,13 +396,12 @@ describe('buildBillingRows', () => {
 				{
 					id: 'n1',
 					user_id: 10,
+					user_employee_id: 1,
 					employee_id: null,
 					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 20 }]),
 				},
 			],
 			employees,
-			userToEmployee,
-			contactMap,
 			[profile({ employee_id: 1, tds_percentage: 5 })],
 			new Map(),
 			'2026-04'
@@ -426,13 +420,12 @@ describe('buildBillingRows', () => {
 				{
 					id: 'd1',
 					user_id: 10,
+					user_employee_id: 1,
 					employee_id: null,
 					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 10 }]),
 				},
 			],
 			employees,
-			userToEmployee,
-			contactMap,
 			[profile({ employee_id: 1, tds_percentage: 0 })],
 			new Map(),
 			'2026-04'
@@ -441,42 +434,51 @@ describe('buildBillingRows', () => {
 		expect(rows[0].tds).toBe(96.15); // 961.54 × 10% = 96.154 → 96.15
 	});
 
-	it('resolves employees via explicit employee_id, then user link, then contact match', () => {
+	it('uses account links, not matching contact emails, and honors recorded Employee IDs', () => {
 		const rows = buildBillingRows(
 			[
-				// explicit employee_id (Carol, id 3)
 				{
-					id: 'c1',
+					// Alice's contact email matches, but this account has no Employee link.
+					id: 'unlinked',
 					user_id: 99,
-					employee_id: 3,
-					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 6 }]),
-				},
-				// no employee_id, user has no employee link, but email matches Alice
-				{
-					id: 'a1',
-					user_id: 99,
+					user_employee_id: null,
 					employee_id: null,
 					user_email: 'alice@accent.com',
-					user_username: '',
 					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 6 }]),
 				},
-				// unresolvable → dropped
 				{
-					id: 'x1',
-					user_id: 999,
+					// The login differs from Bob's contact email; the account link is authoritative.
+					id: 'linked',
+					user_id: 100,
+					user_employee_id: 2,
 					employee_id: null,
-					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 6 }]),
+					user_email: 'different-login@example.com',
+					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 7 }]),
+				},
+				{
+					id: 'historical',
+					user_id: 100,
+					user_employee_id: 2,
+					employee_id: 3,
+					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 4 }]),
 				},
 			],
 			employees,
-			new Map<number, number>(),
-			contactMap,
 			profiles,
 			new Map(),
 			'2026-04'
 		);
-		expect(rows).toHaveLength(2);
-		expect(rows.map((r) => r.employee_name).sort()).toEqual(['Alice', 'Carol']);
+
+		expect(
+			rows.map(({ employee_id, employee_name, total_manhours }) => ({
+				employee_id,
+				employee_name,
+				total_manhours,
+			}))
+		).toEqual([
+			{ employee_id: 2, employee_name: 'Bob', total_manhours: 7 },
+			{ employee_id: 3, employee_name: 'Carol', total_manhours: 4 },
+		]);
 	});
 
 	it('drops employees with no hours in the month', () => {
@@ -486,12 +488,11 @@ describe('buildBillingRows', () => {
 					id: 'z1',
 					user_id: 10,
 					employee_id: null,
+					user_employee_id: 1,
 					daily_entries: JSON.stringify([{ date: '2026-03-01', hours: 8 }]),
 				},
 			],
 			employees,
-			userToEmployee,
-			contactMap,
 			profiles,
 			new Map(),
 			'2026-04'
@@ -505,19 +506,19 @@ describe('buildBillingRows', () => {
 				{
 					id: 'b1',
 					user_id: 11,
+					user_employee_id: 2,
 					employee_id: null,
 					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 2 }]),
 				},
 				{
 					id: 'a1',
 					user_id: 10,
+					user_employee_id: 1,
 					employee_id: null,
 					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 2 }]),
 				},
 			],
 			employees,
-			userToEmployee,
-			contactMap,
 			profiles,
 			new Map(),
 			'2026-04'
@@ -685,8 +686,6 @@ describe('buildBillingRows with Project Manhours tab (deputation resources)', ()
 		const rows = buildBillingRows(
 			[],
 			employees,
-			new Map(),
-			new Map(),
 			[],
 			new Map(),
 			'2026-05',
@@ -716,6 +715,60 @@ describe('buildBillingRows with Project Manhours tab (deputation resources)', ()
 		expect(uttam.accent_charges).toBe(550);
 		expect(uttam.accent_amount).toBe(110000); // 200 * 550
 		expect(uttam.pnl_tds).toBe(18800); // 110000 - 91200
+	});
+});
+
+describe('buildAnnualBillingRows account attribution', () => {
+	it('uses canonical account links and recorded Employee IDs in annual assignment hours', () => {
+		const annualEmployees = new Map([
+			[
+				2,
+				{
+					employee_id: 2,
+					employee_code: 'ATS0002',
+					name: 'Bob',
+					designation: 'Designer',
+				},
+			],
+			[
+				3,
+				{
+					employee_id: 3,
+					employee_code: 'ATS0003',
+					name: 'Carol',
+					designation: 'Director',
+				},
+			],
+		]);
+		const rows = buildAnnualBillingRows(
+			[
+				{
+					employee_id: null,
+					user_employee_id: 2,
+					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 5 }]),
+				},
+				{
+					employee_id: 3,
+					user_employee_id: 2,
+					daily_entries: JSON.stringify([{ date: '2026-04-02', hours: 3 }]),
+				},
+			],
+			annualEmployees,
+			[],
+			[],
+			2026
+		);
+
+		expect(
+			rows.map(({ employee_id, employee_name, total_hours }) => ({
+				employee_id,
+				employee_name,
+				total_hours,
+			}))
+		).toEqual([
+			{ employee_id: 2, employee_name: 'Bob', total_hours: 5 },
+			{ employee_id: 3, employee_name: 'Carol', total_hours: 3 },
+		]);
 	});
 });
 
@@ -781,15 +834,7 @@ describe('buildAnnualBillingRows & buildAnnualTotals', () => {
 			},
 		];
 
-		const rows = buildAnnualBillingRows(
-			[],
-			employees,
-			new Map(),
-			new Map(),
-			[],
-			tabEntries,
-			2026
-		);
+		const rows = buildAnnualBillingRows([], employees, [], tabEntries, 2026);
 
 		expect(rows).toHaveLength(2);
 

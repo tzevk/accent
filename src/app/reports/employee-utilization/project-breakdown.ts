@@ -29,10 +29,7 @@
 
 import { R, add, toNumber } from '@/lib/money';
 import { sumLoggedHoursForMonth } from '@/lib/logged-hours';
-import {
-	buildLoggedHoursIdentifierMap,
-	resolveLoggedHoursEmployeeId,
-} from '@/lib/logged-hours-source';
+import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
 import { isValidUtilizationMonth } from '@/app/reports/employee-utilization/data-source';
 import { query } from '@/utils/database';
 import { dbNum, dbStr, type DbRow } from './db-values';
@@ -261,10 +258,10 @@ export function buildProjectBreakdown(input: {
 
 /**
  * One month's breakdown for one employee, queried for itself: the employee
- * record, the shared identifier map, then every non-cancelled assignment
- * resolved through the shared rule and summed for the month with the
- * canonical reader. Returns null for an invalid month or an employee that
- * does not exist — the route turns those into 400/404.
+ * record, then non-cancelled assignments resolved only by explicit assignment
+ * Employee id or canonical linked-user Employee id. Returns null for an
+ * invalid month or an employee that does not exist — the route turns those
+ * into 400/404.
  */
 export async function fetchProjectBreakdown(
 	month: string,
@@ -285,36 +282,14 @@ export async function fetchProjectBreakdown(
 		name: dbStr(employeeRows[0], 'name') || `Employee ${employeeId}`,
 	};
 
-	// The shared resolution rule's identifier map: employee records first,
-	// then user records; the first claim on a key wins.
-	const [directoryRows] = (await query(
-		`SELECT id, email, username FROM employees WHERE isDelete = 0`
-	)) as [DbRow[], unknown];
-	const [userRows] = (await query(
-		`SELECT employee_id, email, username FROM users WHERE isDelete = 0`
-	)) as [DbRow[], unknown];
-	const identifiers = buildLoggedHoursIdentifierMap(
-		directoryRows.map((row) => ({
-			id: dbNum(row, 'id'),
-			email: dbStr(row, 'email') || null,
-			username: dbStr(row, 'username') || null,
-		})),
-		userRows.map((row) => ({
-			employee_id: dbNum(row, 'employee_id', 0) || null,
-			email: dbStr(row, 'email') || null,
-			username: dbStr(row, 'username') || null,
-		}))
-	);
-
 	const [assignmentRows] = (await query(
-		`SELECT uaa.employee_id, uaa.user_id, uaa.daily_entries,
+		`SELECT uaa.employee_id, uaa.daily_entries,
 		        uaa.project_id, uaa.activity_name, uaa.discipline_name,
-		        u.email AS user_email, u.username AS user_username,
 		        u.employee_id AS user_employee_id,
 		        p.project_id AS resolved_project_id, p.project_code,
 		        p.project_title, p.name AS project_name, p.client_name
 		 FROM user_activity_assignments uaa
-		 LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
+		 LEFT JOIN users u ON u.id = uaa.user_id
 		 LEFT JOIN projects p ON p.project_id = uaa.project_id AND p.isDelete = 0
 		 WHERE uaa.status <> 'Cancelled'
 		   AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`
@@ -322,15 +297,10 @@ export async function fetchProjectBreakdown(
 
 	const assignments: BreakdownAssignment[] = [];
 	for (const row of assignmentRows) {
-		const resolvedEmployeeId = resolveLoggedHoursEmployeeId(
-			{
-				employee_id: dbNum(row, 'employee_id', 0) || null,
-				user_employee_id: dbNum(row, 'user_employee_id', 0) || null,
-				user_email: dbStr(row, 'user_email') || null,
-				user_username: dbStr(row, 'user_username') || null,
-			},
-			identifiers
-		);
+		const resolvedEmployeeId = resolveLoggedHoursEmployeeId({
+			employee_id: dbNum(row, 'employee_id', 0) || null,
+			user_employee_id: dbNum(row, 'user_employee_id', 0) || null,
+		});
 		if (resolvedEmployeeId !== employeeId) continue;
 
 		const hours = sumLoggedHoursForMonth([dbStr(row, 'daily_entries')], month);

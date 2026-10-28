@@ -327,3 +327,38 @@ For mutations, always call `logActivity()` after the DB write.
 6. **One session cookie.** The opaque `session` cookie is both identity and permission source: the proxy validates it, and `getCurrentUser()` re-derives permissions from the DB (cached). There is no separate `auth`/`session_permissions` pair.
 
 7. **Hierarchy defaults apply at login, not on every fetch.** `getCurrentUser()` deliberately does not auto-derive permissions from `role_hierarchy` (comment at `api-permissions.js:173-174`); `POST /api/login` applies `getDefaultPermissionsForLevel()` only when the role has no explicit permissions, and the admin UI uses it to pre-populate checkboxes.
+
+## Employee and User Account links
+
+An **Employee** is an employment record. A **User Account** is an identity for system access. They are separate: an Employee may have no account, and a User Account can be disabled while the Employee remains employed. The canonical relationship is `users.employee_id` → `employees.id`; do not use `employees.username`, email, or display name to infer an owner. Employee screens show the linked account as read-only, including its access state. Manage the account from the User Accounts screen.
+
+Ordinary account creation is the only way to establish an Employee link. Ordinary account editing cannot change ownership. Disabled accounts keep their Employee link, reserve that Employee from a second account, and retain ownership/history. Restore Access reactivates the existing account; disabling it is not a way to free the Employee for reassignment. Account access flags are kept coherent, and disabling access revokes sessions.
+
+An exceptional correction is separate from ordinary editing. A super-admin can repair an inactive account that has no historical activity, must give a reason, and the repair is recorded in an audit ledger. A repair is refused when history would lose attribution; do not guess from names or email. Existing history with an explicit `assignment.employee_id` uses that Employee first; otherwise reports use the canonical linked Employee. A retained link on a deleted account remains available to historical attribution and is not evidence for an active account or a candidate for reassignment.
+
+## User Account link migration
+
+Use a staged, reviewed rollout. The audit is read-only. It does not repair records.
+
+1. Run `npm run audit:account-links -- --environment production`. Review the reported records and counts.
+2. Stop if `canMigrate` is false. Blockers include duplicate connections, missing or deleted Employees, and conflicting legacy usernames.
+3. Review informational access-flag conflicts and unresolved historical attribution. These findings do not block the schema migration automatically.
+4. Back up the database and preserve the audit output.
+5. Apply the audit-ledger schema:
+
+   ```sh
+   npx cross-env NODE_ENV=production knex migrate:up 20261028110000_user_account_link_repairs.ts --env production
+   ```
+
+6. Deploy the corrected application while the old schema remains. It no longer depends on `employees.username`.
+7. Explicitly correct reviewed blocking records. The repair action rejects accounts with recorded activity.
+   Such cases need a separate reviewed correction that preserves historical attribution.
+8. Run the audit again. When blocking findings are clear, apply the constraints and remove the legacy column:
+
+   ```sh
+   npx cross-env NODE_ENV=production knex migrate:up 20261028120000_user_account_employee_links.ts --env production
+   ```
+
+Do not infer ownership from names, emails, or usernames.
+The legacy-column drop loses its old values. Rollback cannot recover them; preserve the backup and repair ledger.
+No step automatically repairs production data.

@@ -17,10 +17,7 @@ import {
 	normalizeSalaryProfile,
 } from './payroll-calculation';
 import { sumLoggedHoursForMonth } from '@/lib/logged-hours';
-import {
-	buildLoggedHoursIdentifierMap,
-	resolveLoggedHoursEmployeeId,
-} from '@/lib/logged-hours-source';
+import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
 
 export { calculatePayroll, normalizeSalaryProfile };
 
@@ -899,14 +896,11 @@ async function batchGetAttendance(db, employeeIds, month) {
 }
 
 /**
- * Logged project hours per employee for a payroll month, from
- * `user_activity_assignments.daily_entries` — the same source as the
- * timesheet, utilization and project-cost reports, and the one the Project
- * Activity Assignments screen writes. Rows resolve to an employee by
- * `employee_id`, else the linked user's `employee_id`, else an
- * email/username match, the resolution the company-wide cost report
- * established for rows without a link. A month with no logged rows yields 0
- * for that employee: hours alone decide pay.
+ * Logged project hours per employee for a payroll month. The assignment's
+ * recorded employee id wins; otherwise ownership comes from the linked
+ * account's `users.employee_id`. Display and login identifiers never establish
+ * attribution. A month with no logged rows yields 0 for that employee: hours
+ * alone decide pay.
  */
 async function batchGetLoggedHours(db, employeeIds, month) {
 	const wanted = new Set(
@@ -918,8 +912,7 @@ async function batchGetLoggedHours(db, employeeIds, month) {
 	const monthPrefix = String(month).substring(0, 7);
 	const [assignments] = await db.execute(
 		`SELECT uaa.employee_id, uaa.daily_entries,
-            u.employee_id AS user_employee_id,
-            u.email AS user_email, u.username AS user_username
+            u.employee_id AS user_employee_id
      FROM user_activity_assignments uaa
      LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
      WHERE uaa.status <> 'Cancelled'
@@ -927,18 +920,8 @@ async function batchGetLoggedHours(db, employeeIds, month) {
 	);
 	if (assignments.length === 0) return totals;
 
-	const [employees] = await db.execute(
-		`SELECT id, email, username FROM employees WHERE isDelete = 0`
-	);
-	const [users] = await db.execute(
-		`SELECT employee_id, email, username FROM users
-     WHERE isDelete = 0 AND employee_id IS NOT NULL`
-	);
-
-	const identifiers = buildLoggedHoursIdentifierMap(employees, users);
-
 	for (const row of assignments) {
-		const employeeId = resolveLoggedHoursEmployeeId(row, identifiers);
+		const employeeId = resolveLoggedHoursEmployeeId(row);
 		if (!employeeId || !wanted.has(employeeId)) continue;
 		const hours = sumLoggedHoursForMonth([row.daily_entries], monthPrefix);
 		if (hours > 0)

@@ -1,14 +1,17 @@
 'use client';
 
+import { Suspense, useEffect, useState } from 'react';
+
 import Navbar from '@/components/Navbar';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { apiGet, apiPost, apiPut } from '@/lib/api-client';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
 	RESOURCES as RBAC_RESOURCES,
 	PERMISSIONS as RBAC_PERMISSIONS,
 } from '@/utils/rbac';
+import Modal from '@/components/ui/modal';
 import {
 	UsersIcon,
 	ClockIcon,
@@ -151,7 +154,17 @@ export default function UserMasterPage() {
 
 					{/* Tab Content Area */}
 					<div className="p-6 min-h-[500px]">
-						{activeTab === 'users' && <UsersTabContent />}
+						{activeTab === 'users' && (
+							<Suspense
+								fallback={
+									<div className="py-12 text-center text-gray-500">
+										Loading user accounts...
+									</div>
+								}
+							>
+								<UsersTabContent />
+							</Suspense>
+						)}
 						{activeTab === 'audit' && <AuditTabContent />}
 					</div>
 				</div>
@@ -162,7 +175,11 @@ export default function UserMasterPage() {
 
 // Users Tab - Shows only users (employees with user accounts)
 function UsersTabContent() {
-	const router = useRouter();
+	const searchParams = useSearchParams();
+	const { user: sessionUser, can } = useSessionRBAC();
+	const canRepairLinks =
+		!!sessionUser?.is_super_admin &&
+		can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.UPDATE);
 	const [employees, setEmployees] = useState([]);
 	const [vendors, setVendors] = useState([]);
 	const [users, setUsers] = useState([]);
@@ -175,33 +192,120 @@ function UsersTabContent() {
 	const [selectedUserForReset, setSelectedUserForReset] = useState(null);
 	const [showEditModal, setShowEditModal] = useState(false);
 	const [selectedUserForEdit, setSelectedUserForEdit] = useState(null);
+	const [focusedAccountId, setFocusedAccountId] = useState('');
+	const [accountActionError, setAccountActionError] = useState('');
+	const [accountActionMessage, setAccountActionMessage] = useState('');
+	const [repairingUser, setRepairingUser] = useState(null);
+	const [accountLoadError, setAccountLoadError] = useState('');
+	const [auxiliaryLoadErrors, setAuxiliaryLoadErrors] = useState([]);
 
 	useEffect(() => {
 		fetchData();
 	}, []);
 
+	useEffect(() => {
+		const accountId = searchParams.get('account') || '';
+		setFocusedAccountId(accountId);
+		if (accountId) {
+			setFilterStatus('all');
+			setSearchQuery('');
+		}
+	}, [searchParams]);
+
+	useEffect(() => {
+		if (!focusedAccountId || loading) return;
+		const row = Array.from(document.querySelectorAll('[data-account-id]')).find(
+			(element) => element.dataset.accountId === focusedAccountId
+		);
+		row?.scrollIntoView?.({ block: 'center' });
+		row?.focus();
+	}, [focusedAccountId, loading, users]);
+
 	const fetchData = async () => {
 		setLoading(true);
+		setAccountLoadError('');
+		setAuxiliaryLoadErrors([]);
+		const auxiliaryErrors = [];
 		try {
-			// Use optimized /api/employees/list and /api/users/list endpoints for better TTFB
-			const [empRes, usersRes, vendorsRes] = await Promise.all([
-				fetch('/api/employees/list?limit=1000'),
-				fetch('/api/users/list?limit=1000'),
-				fetch('/api/vendors'),
-			]);
-
-			const empData = await empRes.json();
-			const usersData = await usersRes.json();
-			const vendorsData = await vendorsRes.json();
-
-			setEmployees(empData.employees || empData.data || []);
-			setUsers(usersData.data || []);
-			setVendors(vendorsData.data || []);
-		} catch (error) {
-			console.error('Error fetching data:', error);
+			const accountPromise = (async () => {
+				const allAccounts = [];
+				let page = 1;
+				let totalPages = 1;
+				do {
+					const response = await apiGet('/api/users/list', {
+						page,
+						limit: 1000,
+					});
+					allAccounts.push(...(response.data || []));
+					totalPages = Number(response.pagination?.total) || 1;
+					page = (Number(response.pagination?.current) || page) + 1;
+				} while (page <= totalPages);
+				setUsers(allAccounts);
+			})().catch((error) => {
+				setAccountLoadError(error.message || 'Could not load user accounts.');
+			});
+			const employeePromise = apiGet('/api/employees/list', { limit: 1000 })
+				.then((data) => setEmployees(data.employees || data.data || []))
+				.catch((error) =>
+					auxiliaryErrors.push(
+						`Employee candidates could not be loaded: ${error.message || 'Permission denied.'}`
+					)
+				);
+			const vendorPromise = apiGet('/api/vendors')
+				.then((data) => setVendors(data.data || []))
+				.catch((error) =>
+					auxiliaryErrors.push(
+						`Vendor candidates could not be loaded: ${error.message || 'Permission denied.'}`
+					)
+				);
+			await Promise.all([accountPromise, employeePromise, vendorPromise]);
 		} finally {
+			setAuxiliaryLoadErrors(auxiliaryErrors);
 			setLoading(false);
 		}
+	};
+
+	const unavailableCandidates = auxiliaryLoadErrors.length > 0;
+
+	const employeesWithoutAccount = employees.filter((emp) => {
+		if (!emp.id) return false;
+		const empIdStr = String(emp.id);
+		const hasAccountLink = users.some(
+			(user) =>
+				user.employee_id != null && String(user.employee_id) === empIdStr
+		);
+		const hasEmployeeLink =
+			emp.linked_user_id != null && String(emp.linked_user_id) !== '';
+		return !hasAccountLink && !hasEmployeeLink;
+	});
+
+	const changeAccess = async (user, status) => {
+		setAccountActionError('');
+		setAccountActionMessage('');
+		try {
+			await apiPut('/api/users', {
+				id: user.id,
+				status,
+				is_active: status === 'active' ? 1 : 0,
+			});
+			setAccountActionMessage(
+				status === 'active' ? 'Access restored.' : 'Access disabled.'
+			);
+			await fetchData();
+		} catch (error) {
+			setAccountActionError(error.message || 'Could not update access.');
+		}
+	};
+
+	const repairEmployeeLink = async (user, employeeId, reason) => {
+		setAccountActionError('');
+		setAccountActionMessage('');
+		await apiPost(`/api/users/${user.id}/employee-link-repair`, {
+			employee_id: employeeId === '' ? null : Number(employeeId),
+			reason,
+		});
+		setRepairingUser(null);
+		await fetchData();
 	};
 
 	const getEmployeeForUser = (employeeId) => {
@@ -211,18 +315,6 @@ function UsersTabContent() {
 	const getVendorForUser = (vendorId) => {
 		return vendors.find((v) => v.id === vendorId);
 	};
-
-	// Get employees without user accounts (for create user modal)
-	// Convert to strings for comparison to handle type mismatches
-	// Also handle null/undefined employee_id values
-	const employeesWithoutAccount = employees.filter((emp) => {
-		if (!emp.id) return false; // Skip employees without valid id
-		const empIdStr = String(emp.id);
-		const hasUser = users.some(
-			(u) => u.employee_id && String(u.employee_id) === empIdStr
-		);
-		return !hasUser;
-	});
 
 	// Get vendors without user accounts (for create user modal)
 	const vendorsWithoutAccount = vendors.filter((vnd) => {
@@ -238,22 +330,24 @@ function UsersTabContent() {
 	const filteredUsers = users.filter((user) => {
 		const employee = getEmployeeForUser(user.employee_id);
 		const vendor = getVendorForUser(user.vendor_id);
-		const fullName = employee
-			? `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase()
-			: vendor
-				? vendor.vendor_name?.toLowerCase()
-				: '';
+		const fullName = user.employee_id
+			? (user.employee_name || user.full_name || user.username).toLowerCase()
+			: employee
+				? `${employee.first_name || ''} ${employee.last_name || ''}`.toLowerCase()
+				: vendor
+					? vendor.vendor_name?.toLowerCase()
+					: '';
 		const matchesSearch =
 			!searchQuery ||
 			user.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
 			user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+			user.employee_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
 			fullName.includes(searchQuery.toLowerCase());
 
 		const matchesFilter =
 			filterStatus === 'all' ||
 			(filterStatus === 'active' && user.status === 'active') ||
 			(filterStatus === 'inactive' && user.status !== 'active');
-
 		return matchesSearch && matchesFilter;
 	});
 
@@ -290,6 +384,33 @@ function UsersTabContent() {
 
 	return (
 		<div className="space-y-6">
+			{!repairingUser && accountLoadError && (
+				<p
+					role="alert"
+					className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+				>
+					User accounts could not be loaded: {accountLoadError}
+				</p>
+			)}
+			{!repairingUser &&
+				auxiliaryLoadErrors.map((message) => (
+					<p
+						key={message}
+						role="alert"
+						className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+					>
+						{message}
+					</p>
+				))}
+			{!repairingUser && accountActionError && (
+				<p
+					role="alert"
+					className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+				>
+					{accountActionError}
+				</p>
+			)}
+
 			{/* Stats Cards */}
 			<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 				<div className="bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100 p-4">
@@ -334,8 +455,10 @@ function UsersTabContent() {
 				<button
 					onClick={() => setShowCreateModal(true)}
 					disabled={
-						employeesWithoutAccount.length === 0 &&
-						vendorsWithoutAccount.length === 0
+						!!accountLoadError ||
+						unavailableCandidates ||
+						(employeesWithoutAccount.length === 0 &&
+							vendorsWithoutAccount.length === 0)
 					}
 					className="inline-flex items-center gap-2 px-4 py-2 bg-[#64126D] text-white rounded-lg hover:bg-[#4a0d52] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 				>
@@ -371,27 +494,58 @@ function UsersTabContent() {
 							</tr>
 						</thead>
 						<tbody className="bg-white divide-y divide-gray-200">
+							{accountActionError && (
+								<tr>
+									<td colSpan={6}>
+										<p role="alert" className="px-6 py-2 text-sm text-red-700">
+											{accountActionError}
+										</p>
+									</td>
+								</tr>
+							)}
+							{accountActionMessage && (
+								<tr>
+									<td colSpan={6}>
+										<p
+											role="status"
+											className="px-6 py-2 text-sm text-green-700"
+										>
+											{accountActionMessage}
+										</p>
+									</td>
+								</tr>
+							)}
 							{filteredUsers.length === 0 ? (
 								<tr>
 									<td
 										colSpan={6}
 										className="px-6 py-12 text-center text-gray-500"
 									>
-										{users.length === 0
-											? 'No users found. Create a user from an employee.'
-											: 'No users match your search.'}
+										{accountLoadError
+											? 'User accounts are unavailable.'
+											: users.length === 0
+												? 'No users found. Create a user from an employee.'
+												: 'No users match your search.'}
 									</td>
 								</tr>
 							) : (
 								filteredUsers.map((user) => {
 									const employee = getEmployeeForUser(user.employee_id);
-									const fullName = employee
-										? `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
-										: user.full_name || user.username;
+									const fullName = user.employee_id
+										? user.employee_name || user.full_name || user.username
+										: employee
+											? `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+											: user.full_name || user.username;
 									const permCount = getPermissionCount(user);
-
 									return (
-										<tr key={user.id} className="hover:bg-gray-50">
+										<tr
+											key={user.id}
+											className={`hover:bg-gray-50 ${String(user.id) === focusedAccountId ? 'bg-purple-50 ring-2 ring-inset ring-[#64126D]' : ''}`}
+											data-account-id={user.id}
+											tabIndex={
+												String(user.id) === focusedAccountId ? -1 : undefined
+											}
+										>
 											<td className="px-6 py-4 whitespace-nowrap">
 												<div className="flex items-center">
 													<div className="h-10 w-10 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium">
@@ -408,7 +562,17 @@ function UsersTabContent() {
 												</div>
 											</td>
 											<td className="px-6 py-4 whitespace-nowrap">
-												{employee ? (
+												{user.employee_id ? (
+													<div>
+														<div className="text-sm font-medium text-gray-900">
+															{fullName}
+														</div>
+														<div className="text-sm text-gray-500">
+															{user.employee_code ||
+																`Employee #${user.employee_id}`}
+														</div>
+													</div>
+												) : employee ? (
 													<div>
 														<div className="text-sm font-medium text-gray-900">
 															{fullName}
@@ -483,6 +647,31 @@ function UsersTabContent() {
 														<ShieldCheckIcon className="h-3.5 w-3.5" />
 														Permissions
 													</button>
+													<button
+														type="button"
+														onClick={() =>
+															changeAccess(
+																user,
+																user.status === 'active' ? 'inactive' : 'active'
+															)
+														}
+														className="px-3 py-1.5 text-xs font-medium text-white bg-gray-700 hover:bg-gray-800 rounded-lg"
+													>
+														{user.status === 'active'
+															? 'Disable Access'
+															: 'Restore Access'}
+													</button>
+													{canRepairLinks &&
+														user.status !== 'active' &&
+														Number(user.is_active) === 0 && (
+															<button
+																type="button"
+																onClick={() => setRepairingUser(user)}
+																className="px-3 py-1.5 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"
+															>
+																Repair Employee Link
+															</button>
+														)}
 												</div>
 											</td>
 										</tr>
@@ -535,7 +724,6 @@ function UsersTabContent() {
 			{showEditModal && selectedUserForEdit && (
 				<EditUserModal
 					user={selectedUserForEdit}
-					employees={employees}
 					onClose={() => {
 						setShowEditModal(false);
 						setSelectedUserForEdit(null);
@@ -545,6 +733,16 @@ function UsersTabContent() {
 						setSelectedUserForEdit(null);
 						fetchData();
 					}}
+				/>
+			)}
+			{repairingUser && (
+				<EmployeeLinkRepairModal
+					user={repairingUser}
+					employees={employees}
+					onClose={() => setRepairingUser(null)}
+					onSubmit={(employeeId, reason) =>
+						repairEmployeeLink(repairingUser, employeeId, reason)
+					}
 				/>
 			)}
 		</div>
@@ -657,13 +855,7 @@ function SelectEmployeeModal({
 					selectedEntity.contact_person || selectedEntity.vendor_name;
 			}
 
-			const res = await fetch('/api/users', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
-			});
-
-			const data = await res.json();
+			const data = await apiPost('/api/users', payload);
 			if (data.success) {
 				if (data.data?.id) {
 					router.push(`/masters/users/${data.data.id}/permissions`);
@@ -1009,8 +1201,7 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
 	const [roles, setRoles] = useState([]);
 
 	useEffect(() => {
-		fetch('/api/roles/list')
-			.then((r) => r.json())
+		apiGet('/api/roles/list')
 			.then((d) => {
 				if (d.success) setRoles(d.data || []);
 			})
@@ -1040,20 +1231,14 @@ function CreateUserModal({ employee, onClose, onSuccess }) {
 
 		setSaving(true);
 		try {
-			const res = await fetch('/api/users', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					username: formData.username,
-					password: formData.password,
-					email: employee.email,
-					employee_id: employee.id,
-					permissions: [],
-					role_id: formData.role_id || null,
-				}),
+			const data = await apiPost('/api/users', {
+				username: formData.username,
+				password: formData.password,
+				email: employee.email,
+				employee_id: employee.id,
+				permissions: [],
+				role_id: formData.role_id || null,
 			});
-
-			const data = await res.json();
 			if (data.success) {
 				if (data.data?.id) {
 					router.push(`/masters/users/${data.data.id}/permissions`);
@@ -1257,16 +1442,10 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
 
 		setSaving(true);
 		try {
-			const res = await fetch('/api/users/reset-password', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					user_id: user.id,
-					new_password: formData.newPassword,
-				}),
+			const data = await apiPost('/api/users/reset-password', {
+				user_id: user.id,
+				new_password: formData.newPassword,
 			});
-
-			const data = await res.json();
 			if (data.success) {
 				setSuccess(data.message || 'Password reset successfully');
 				setTimeout(() => {
@@ -1406,8 +1585,7 @@ function ResetPasswordModal({ user, onClose, onSuccess }) {
 }
 
 // Edit User Modal
-function EditUserModal({ user, employees, onClose, onSuccess }) {
-	const employee = employees?.find((e) => e.id === user.employee_id);
+function EditUserModal({ user, onClose, onSuccess }) {
 	const [formData, setFormData] = useState({
 		username: user.username || '',
 		email: user.email || '',
@@ -1422,8 +1600,7 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
 	const [success, setSuccess] = useState('');
 
 	useEffect(() => {
-		fetch('/api/roles/list')
-			.then((r) => r.json())
+		apiGet('/api/roles/list')
 			.then((d) => {
 				if (d.success) setRoles(d.data || []);
 			})
@@ -1442,21 +1619,15 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
 
 		setSaving(true);
 		try {
-			const res = await fetch('/api/users', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					id: user.id,
-					username: formData.username,
-					email: formData.email,
-					full_name: formData.full_name,
-					status: formData.status,
-					department: formData.department,
-					role_id: formData.role_id || null,
-				}),
+			const data = await apiPut('/api/users', {
+				id: user.id,
+				username: formData.username,
+				email: formData.email,
+				full_name: formData.full_name,
+				status: formData.status,
+				department: formData.department,
+				role_id: formData.role_id || null,
 			});
-
-			const data = await res.json();
 			if (data.success) {
 				setSuccess('User updated successfully');
 				setTimeout(() => {
@@ -1492,22 +1663,17 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
 
 				<form onSubmit={handleSubmit} className="p-6 space-y-4">
 					{/* Linked Employee Info */}
-					{employee && (
+					{user.employee_id && (
 						<div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
-							<div className="flex items-center gap-3">
-								<div className="h-10 w-10 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium">
-									{(employee.first_name || 'U').charAt(0).toUpperCase()}
-								</div>
-								<div>
-									<p className="font-medium text-gray-900">
-										{employee.first_name} {employee.last_name}
-									</p>
-									<p className="text-xs text-gray-500">
-										{employee.department || 'No department'} •{' '}
-										{employee.position || 'No position'}
-									</p>
-								</div>
-							</div>
+							<p className="font-medium text-gray-900">
+								{user.employee_name || user.full_name || user.username}
+							</p>
+							<p className="text-xs text-gray-500">
+								{user.employee_code || `Employee #${user.employee_id}`}
+							</p>
+							<p className="text-xs text-gray-600">
+								Ownership cannot be changed while editing this account.
+							</p>
 						</div>
 					)}
 
@@ -1674,6 +1840,117 @@ function EditUserModal({ user, employees, onClose, onSuccess }) {
 				</form>
 			</div>
 		</div>
+	);
+}
+
+function EmployeeLinkRepairModal({ user, employees, onClose, onSubmit }) {
+	const [employeeId, setEmployeeId] = useState('');
+	const [reason, setReason] = useState('');
+	const [error, setError] = useState('');
+	const [pending, setPending] = useState(false);
+	const selectedEmployee = employees.find(
+		(employee) => String(employee.id) === String(employeeId)
+	);
+	const ownerName = user.employee_name || user.full_name || user.username;
+	const ownerCode = user.employee_code;
+	const submit = async (event) => {
+		event.preventDefault();
+		if (pending) return;
+		if (!reason.trim()) {
+			setError('Enter a reason for this repair.');
+			event.currentTarget.elements.namedItem('reason')?.focus();
+			return;
+		}
+		setError('');
+		setPending(true);
+		try {
+			await onSubmit(employeeId, reason.trim());
+		} catch (submitError) {
+			setError(submitError.message || 'Could not repair Employee link.');
+		} finally {
+			setPending(false);
+		}
+	};
+	return (
+		<Modal
+			open
+			onClose={pending ? () => {} : onClose}
+			title="Repair Employee Link"
+			size="md"
+		>
+			<form onSubmit={submit} className="space-y-4">
+				<p className="text-sm text-gray-700">
+					Confirming repair for <strong>{ownerName}</strong>
+					{ownerCode ? ` (${ownerCode})` : ''}. Choose the correct Employee.
+					This is available only for inactive accounts; the reason is recorded.
+				</p>
+				<p className="text-sm font-medium text-gray-800">
+					{selectedEmployee
+						? `Confirm link to ${selectedEmployee.first_name} ${selectedEmployee.last_name} (${selectedEmployee.employee_id}).`
+						: 'Confirm that this account should have no linked Employee.'}
+				</p>
+				<div>
+					<label
+						htmlFor="repair-employee"
+						className="block text-sm font-medium"
+					>
+						Employee
+					</label>
+					<select
+						id="repair-employee"
+						value={employeeId}
+						onChange={(event) => setEmployeeId(event.target.value)}
+						className="mt-1 w-full rounded border px-3 py-2"
+					>
+						<option value="">Unlink account</option>
+						{employees.map((employee) => (
+							<option key={employee.id} value={employee.id}>
+								{employee.first_name} {employee.last_name} (
+								{employee.employee_id})
+							</option>
+						))}
+					</select>
+				</div>
+				<div>
+					<label htmlFor="repair-reason" className="block text-sm font-medium">
+						Reason (required)
+					</label>
+					<textarea
+						id="repair-reason"
+						name="reason"
+						required
+						value={reason}
+						onChange={(event) => setReason(event.target.value)}
+						className="mt-1 w-full rounded border px-3 py-2"
+					/>
+				</div>
+				{error && (
+					<p
+						role="alert"
+						className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+					>
+						{error}
+					</p>
+				)}
+				<div className="flex justify-end gap-3">
+					<button
+						type="button"
+						disabled={pending}
+						onClick={onClose}
+						className="rounded border px-4 py-2 disabled:opacity-50"
+					>
+						Cancel
+					</button>
+					<button
+						type="submit"
+						disabled={pending}
+						className="rounded bg-[#64126D] px-4 py-2 text-white disabled:opacity-50"
+					>
+						{pending ? 'Repairing…' : 'Confirm Repair'}
+					</button>
+				</div>
+			</form>
+		</Modal>
 	);
 }
 

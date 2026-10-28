@@ -10,6 +10,11 @@ import {
 } from '@/utils/api-permissions';
 import { hashPassword } from '@/utils/password';
 import { revokeAllUserSessions } from '@/utils/session';
+import {
+	isAccountLinkConflict,
+	resolveAccessState,
+	ownershipChangeRequested,
+} from '@/utils/account-links';
 // GET - list users with optional pagination and role information
 export async function GET(request) {
 	let db;
@@ -44,7 +49,7 @@ export async function GET(request) {
        FROM users u
        LEFT JOIN employees e ON u.employee_id = e.id
        LEFT JOIN roles r ON u.role_id = r.id
-       WHERE u.is_active = TRUE AND u.isDelete = 0
+       WHERE u.is_active = TRUE AND u.status = 'active' AND u.isDelete = 0
        ORDER BY u.created_at DESC
        LIMIT ? OFFSET ?`,
 			[limit, offset]
@@ -52,10 +57,10 @@ export async function GET(request) {
 
 		// Get total count for pagination
 		const [countResult] = await db.execute(
-			'SELECT COUNT(*) as total FROM users WHERE is_active = TRUE AND isDelete = 0'
+			"SELECT COUNT(*) as total FROM users WHERE is_active = TRUE AND status = 'active' AND isDelete = 0"
 		);
 
-		return NextResponse.json({
+		const response = NextResponse.json({
 			success: true,
 			data: rows,
 			pagination: {
@@ -65,6 +70,8 @@ export async function GET(request) {
 				totalPages: Math.ceil(countResult[0].total / limit),
 			},
 		});
+		response.headers.set('Cache-Control', 'no-store');
+		return response;
 	} catch (error) {
 		console.error('Error fetching users:', error);
 		return NextResponse.json(
@@ -79,6 +86,8 @@ export async function GET(request) {
 // POST - create user with role-based system
 export async function POST(request) {
 	let db;
+	let transactionStarted = false;
+	let transactionCommitted = false;
 	try {
 		// RBAC: create users
 		const auth = await ensurePermission(
@@ -97,7 +106,6 @@ export async function POST(request) {
 			account_type,
 			role_id,
 			permissions,
-			created_by,
 		} = data;
 
 		if (!username || !password) {
@@ -107,20 +115,39 @@ export async function POST(request) {
 			);
 		}
 
-		// Validate account type - either employee or vendor must be provided
+		// Validate account type and account ownership compatibility.
 		const userAccountType = account_type || 'employee';
-		if (userAccountType === 'employee' && !employee_id) {
+		if (!['employee', 'vendor'].includes(userAccountType)) {
+			return NextResponse.json(
+				{ success: false, error: 'Invalid account_type' },
+				{ status: 400 }
+			);
+		}
+		if (
+			userAccountType === 'employee' &&
+			(!Number.isSafeInteger(employee_id) || employee_id <= 0)
+		) {
+			return NextResponse.json(
+				{ success: false, error: 'employee_id must be a valid Employee ID' },
+				{ status: 400 }
+			);
+		}
+		if (userAccountType === 'employee' && vendor_id != null) {
 			return NextResponse.json(
 				{
 					success: false,
-					error: 'employee_id is required for employee accounts',
+					error: 'vendor_id is not allowed for employee accounts',
 				},
 				{ status: 400 }
 			);
 		}
-		if (userAccountType === 'vendor' && !vendor_id) {
+		if (userAccountType === 'vendor' && (!vendor_id || employee_id != null)) {
 			return NextResponse.json(
-				{ success: false, error: 'vendor_id is required for vendor accounts' },
+				{
+					success: false,
+					error:
+						'vendor_id is required and employee_id is not allowed for vendor accounts',
+				},
 				{ status: 400 }
 			);
 		}
@@ -160,7 +187,7 @@ export async function POST(request) {
 		if (userAccountType === 'employee') {
 			// Ensure employee exists and get employee details
 			const [emp] = await db.execute(
-				'SELECT id, first_name, last_name, email as emp_email, department FROM employees WHERE id = ? LIMIT 1',
+				'SELECT id, first_name, last_name, email as emp_email, department FROM employees WHERE id = ? AND isDelete = 0 LIMIT 1',
 				[employee_id]
 			);
 			if (!emp || emp.length === 0) {
@@ -207,10 +234,38 @@ export async function POST(request) {
 			roleData = role[0];
 		}
 
-		// Hash the password before storing
+		// Hash before locking the Employee row to minimize lock duration.
 		const hashedPassword = await hashPassword(password);
 
-		// Create the user
+		if (userAccountType === 'employee') {
+			await db.beginTransaction();
+			transactionStarted = true;
+			const [lockedEmployees] = await db.execute(
+				'SELECT id FROM employees WHERE id = ? AND isDelete = 0 FOR UPDATE',
+				[employee_id]
+			);
+			if (!lockedEmployees || lockedEmployees.length === 0) {
+				return NextResponse.json(
+					{ success: false, error: 'Employee not found' },
+					{ status: 400 }
+				);
+			}
+			const [owners] = await db.execute(
+				'SELECT id FROM users WHERE employee_id = ? AND isDelete = 0 LIMIT 1',
+				[employee_id]
+			);
+			if (owners && owners.length > 0) {
+				return NextResponse.json(
+					{
+						success: false,
+						error:
+							'An account already owns this Employee. Restore or manage the existing account.',
+					},
+					{ status: 409 }
+				);
+			}
+		}
+
 		const [result] = await db.execute(
 			`INSERT INTO users (username, password_hash, email, employee_id, vendor_id, account_type, role_id, permissions, department, full_name, created_by) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -225,7 +280,7 @@ export async function POST(request) {
 				permissions ? JSON.stringify(permissions) : null,
 				roleData ? roleData.department : department,
 				fullName || null,
-				created_by || null,
+				auth.user?.id ?? null,
 			]
 		);
 
@@ -245,6 +300,11 @@ export async function POST(request) {
        WHERE u.id = ?`,
 			[result.insertId]
 		);
+		if (userAccountType === 'employee') {
+			await db.commit();
+			transactionStarted = false;
+			transactionCommitted = true;
+		}
 
 		return NextResponse.json(
 			{
@@ -256,12 +316,40 @@ export async function POST(request) {
 		);
 	} catch (error) {
 		console.error('Error creating user:', error);
-
+		if (transactionStarted && !transactionCommitted) {
+			try {
+				await db.rollback();
+				transactionStarted = false;
+			} catch (rollbackError) {
+				console.error('Error rolling back user creation:', rollbackError);
+			}
+		}
+		if (isAccountLinkConflict(error)) {
+			const isForeignKeyConflict =
+				error.code === 'ER_NO_REFERENCED_ROW_2' || error.errno === 1452;
+			return NextResponse.json(
+				{
+					success: false,
+					error: isForeignKeyConflict
+						? 'Employee or vendor not found'
+						: 'An account already owns this Employee. Restore or manage the existing account.',
+				},
+				{ status: isForeignKeyConflict ? 400 : 409 }
+			);
+		}
 		return NextResponse.json(
 			{ success: false, error: 'Failed to create user' },
 			{ status: 500 }
 		);
 	} finally {
+		if (db && transactionStarted && !transactionCommitted) {
+			try {
+				await db.rollback();
+			} catch (rollbackError) {
+				console.error('Error rolling back user creation:', rollbackError);
+			}
+			transactionStarted = false;
+		}
 		if (db) db.release();
 	}
 }
@@ -287,7 +375,7 @@ export async function PUT(request) {
 		db = await dbConnect();
 
 		const [existing] = await db.execute(
-			`SELECT u.id, u.is_super_admin, u.role_id, r.role_hierarchy
+			`SELECT u.id, u.employee_id, u.vendor_id, u.account_type, u.is_super_admin, u.role_id, r.role_hierarchy
        FROM users u
        LEFT JOIN roles_master r ON u.role_id = r.id
        WHERE u.id = ? AND u.isDelete = 0 LIMIT 1`,
@@ -297,6 +385,15 @@ export async function PUT(request) {
 			return NextResponse.json(
 				{ success: false, error: 'User not found' },
 				{ status: 404 }
+			);
+		}
+		if (ownershipChangeRequested(data, existing[0])) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'Account ownership cannot be changed through this endpoint',
+				},
+				{ status: 409 }
 			);
 		}
 
@@ -342,7 +439,6 @@ export async function PUT(request) {
 		const allowed = [
 			'username',
 			'email',
-			'employee_id',
 			'role',
 			'role_id',
 			'permissions',
@@ -356,30 +452,40 @@ export async function PUT(request) {
 		console.log('[PUT /api/users] Received data keys:', Object.keys(data));
 		console.log('[PUT /api/users] Permissions in request:', data.permissions);
 
-		allowed.forEach((k) => {
-			if (data.hasOwnProperty(k)) {
-				if (k === 'permissions' || k === 'field_permissions') {
-					fields.push(`${k} = ?`);
-					// Handle empty arrays - still save them as JSON
-					const jsonValue =
-						Array.isArray(data[k]) || (data[k] && typeof data[k] === 'object')
-							? JSON.stringify(data[k])
-							: null;
-					vals.push(jsonValue);
-					console.log(`[PUT /api/users] Setting ${k} to:`, jsonValue);
-				} else if (k === 'employee_id' || k === 'role_id') {
-					// Convert empty strings to NULL for integer fields
-					fields.push(`${k} = ?`);
-					vals.push(data[k] === '' || data[k] === null ? null : data[k]);
-				} else if (k === 'is_active') {
-					fields.push('is_active = ?');
-					vals.push(data.is_active ? 1 : 0);
-				} else {
-					fields.push(`${k} = ?`);
-					vals.push(data[k]);
+		const accessState = resolveAccessState(data);
+		if (!accessState) {
+			return NextResponse.json(
+				{
+					success: false,
+					error: 'status and is_active conflict or status is invalid',
+				},
+				{ status: 400 }
+			);
+		}
+		allowed
+			.filter((key) => key !== 'status' && key !== 'is_active')
+			.forEach((k) => {
+				if (Object.prototype.hasOwnProperty.call(data, k)) {
+					if (k === 'permissions' || k === 'field_permissions') {
+						fields.push(`${k} = ?`);
+						vals.push(
+							Array.isArray(data[k]) || (data[k] && typeof data[k] === 'object')
+								? JSON.stringify(data[k])
+								: null
+						);
+					} else if (k === 'role_id') {
+						fields.push(`${k} = ?`);
+						vals.push(data[k] === '' || data[k] === null ? null : data[k]);
+					} else {
+						fields.push(`${k} = ?`);
+						vals.push(data[k]);
+					}
 				}
-			}
-		});
+			});
+		if (data.status !== undefined || data.is_active !== undefined) {
+			fields.push('status = ?', 'is_active = ?');
+			vals.push(accessState.status, accessState.is_active);
+		}
 
 		if (fields.length === 0) {
 			return NextResponse.json(
@@ -395,10 +501,8 @@ export async function PUT(request) {
 		);
 		// If user was deactivated, revoke all active sessions immediately (SEC-05)
 		const isDeactivating =
-			data.is_active === false ||
-			data.is_active === 0 ||
-			data.is_active === '0' ||
-			data.status === 'inactive';
+			(data.is_active !== undefined || data.status !== undefined) &&
+			accessState.status === 'inactive';
 		if (isDeactivating) {
 			await revokeAllUserSessions(db, data.id);
 		}
