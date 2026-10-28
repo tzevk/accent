@@ -28,15 +28,14 @@ artifacts/security-scrub-dry-run.json`).
 - `npm run check:route-auth` and `checks.yml`, which never depended on the
   harness.
 
-## Open gap
+## Historical testing policy
 
-Route and page behaviour has no committed automated proof. The old doctrine made
-E2E the sole verification mechanism and forbade route, page, and component
-tests; both rules are gone. The replacement policy is now recorded in
-`AGENTS.md` under **Testing Notes**: unit tests are the default, behaviour worth
-proving but not pure logic moves into a shared module (precedent: #330's
-punch-span helper), and E2E is reserved for critical user journeys and runs on
-GitHub Actions only.
+At removal time, no browser harness was committed. The former policy made E2E
+the sole verification mechanism and forbade route, page, and component tests.
+The current browser-test scope and testing rules are in
+[CODING_STANDARDS.md](../../CODING_STANDARDS.md#testing-and-verification).
+This record documents the removed harness and the policy change; it does not
+state that route or page behavior currently lacks automated coverage.
 
 ## Reading older documents
 
