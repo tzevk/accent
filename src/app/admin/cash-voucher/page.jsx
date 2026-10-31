@@ -15,7 +15,7 @@ import {
 	ChevronRightIcon,
 	PencilSquareIcon,
 	TrashIcon,
-	ArrowDownTrayIcon,
+	PrinterIcon,
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '@/lib/format';
 
@@ -25,7 +25,6 @@ export default function CashVoucherPage() {
 
 	const [vouchers, setVouchers] = useState([]);
 	const [loading, setLoading] = useState(true);
-	const [printingId, setPrintingId] = useState(null);
 	const [pagination, setPagination] = useState({
 		page: 1,
 		limit: 20,
@@ -38,43 +37,11 @@ export default function CashVoucherPage() {
 	const [typeFilter, setTypeFilter] = useState('all');
 	const [statusFilter, setStatusFilter] = useState('all');
 
-	// Fetch the printable voucher HTML and open it in a real tab. Fetch +
-	// anchor is used instead of window.open because an anchor click is never
-	// popup-blocked, and instead of a doc-written iframe because printing an
-	// iframe produced a blank page in Chrome. The tab auto-prints on load.
-	const handlePrintVoucher = async (voucher) => {
-		setPrintingId(voucher.id);
-		try {
-			const res = await fetch(
-				`/api/admin/cash-vouchers/download?id=${voucher.id}`
-			);
-			const contentType = res.headers.get('content-type') || '';
-			if (!res.ok || contentType.includes('application/json')) {
-				const detail = contentType.includes('application/json')
-					? ((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`)
-					: `HTTP ${res.status}`;
-				throw new Error(detail);
-			}
-			const html = (await res.text()).replace(
-				'</body>',
-				'<script>window.addEventListener("load", function () { window.print(); });</script></body>'
-			);
-			const blob = new Blob([html], { type: 'text/html' });
-			const url = URL.createObjectURL(blob);
-			const link = document.createElement('a');
-			link.href = url;
-			link.target = '_blank';
-			link.rel = 'noopener';
-			document.body.appendChild(link);
-			link.click();
-			link.remove();
-			setTimeout(() => URL.revokeObjectURL(url), 60000);
-		} catch (error) {
-			alert(`Could not open the voucher for printing: ${error.message}`);
-		} finally {
-			setPrintingId(null);
-		}
-	};
+	// Print preview is a native same-origin link. Browser navigation sends the
+	// session cookie, keeps keyboard and new-tab behavior, and avoids popup
+	// or HTML-injection handling.
+	const getPrintHref = (voucher) =>
+		`/api/admin/cash-vouchers/download?id=${encodeURIComponent(voucher.id)}&print=true`;
 
 	// Stats
 	const [stats, setStats] = useState({
@@ -407,18 +374,16 @@ export default function CashVoucherPage() {
 												</td>
 												<td className="px-6 py-4">
 													<div className="flex items-center justify-center gap-1">
-														<button
-															onClick={() => handlePrintVoucher(voucher)}
-															disabled={printingId === voucher.id}
-															className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-															title="Print voucher"
+														<a
+															href={getPrintHref(voucher)}
+															target="_blank"
+															rel="noopener noreferrer"
+															className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+															title={`Print voucher ${voucher.voucher_number}`}
+															aria-label={`Print voucher ${voucher.voucher_number}`}
 														>
-															{printingId === voucher.id ? (
-																<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600" />
-															) : (
-																<ArrowDownTrayIcon className="h-5 w-5" />
-															)}
-														</button>
+															<PrinterIcon className="h-5 w-5" />
+														</a>
 														<button
 															onClick={() =>
 																router.push(
