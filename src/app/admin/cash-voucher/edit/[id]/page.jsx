@@ -13,8 +13,27 @@ import {
 	CheckIcon,
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDateInput } from '@/lib/format';
 import { add, div } from '@/lib/money';
+
+const inputClassName =
+	'w-full min-w-0 min-h-[40px] rounded-md border border-gray-300 bg-white px-3 py-2 text-base shadow-sm focus:border-[#64126D] focus:outline-none focus:ring-2 focus:ring-[#64126D]';
+const labelClassName = 'mb-1 block text-sm font-medium text-gray-700';
+const helperClassName = 'mt-1 text-sm text-gray-600 break-words';
+const hintClassName = 'mt-1 text-sm text-gray-600';
+const sectionClassName =
+	'rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6';
+
+const optionLabel = (options, value) =>
+	options.find((o) => o.value === value)?.label || '';
+
+// Total-only parsing: invalid input counts as 0, valid decimals pass through
+// to the money helpers. Raw line-item strings still persist untouched.
+const toMoneyNumber = (value) => {
+	if (value === '' || value === null || value === undefined) return 0;
+	const n = Number(value);
+	return Number.isFinite(n) ? n : 0;
+};
 
 export default function EditCashVoucherPage({ params }) {
 	const { id } = use(params);
@@ -66,21 +85,21 @@ export default function EditCashVoucherPage({ params }) {
 				if (data.success && data.data) {
 					const voucher = data.data;
 					setFormData({
-						voucher_number: voucher.voucher_number || '',
+						voucher_number: voucher.voucher_number ?? '',
 						voucher_date: voucher.voucher_date
 							? new Date(voucher.voucher_date).toISOString().split('T')[0]
 							: '',
-						paid_to: voucher.paid_to || '',
-						project_number: voucher.project_number || '',
+						paid_to: voucher.paid_to ?? '',
+						project_number: voucher.project_number ?? '',
 						payment_mode: voucher.payment_mode || 'cash',
-						total_amount: parseFloat(voucher.total_amount) || 0,
-						amount_in_words: voucher.amount_in_words || '',
-						prepared_by: voucher.prepared_by || '',
-						checked_by: voucher.checked_by || '',
-						approved_by: voucher.approved_by_name || '',
-						receiver_signature: voucher.receiver_signature || '',
-						description: voucher.description || '',
-						notes: voucher.notes || '',
+						total_amount: toMoneyNumber(voucher.total_amount),
+						amount_in_words: voucher.amount_in_words ?? '',
+						prepared_by: voucher.prepared_by ?? '',
+						checked_by: voucher.checked_by ?? '',
+						approved_by: voucher.approved_by_name ?? '',
+						receiver_signature: voucher.receiver_signature ?? '',
+						description: voucher.description ?? '',
+						notes: voucher.notes ?? '',
 					});
 
 					// Set line items
@@ -92,12 +111,12 @@ export default function EditCashVoucherPage({ params }) {
 						setLineItems(
 							voucher.line_items.map((item, index) => ({
 								sr_no: index + 1,
-								bill_date: item.bill_date || '',
-								bill_no: item.bill_no || '',
-								account_head: item.account_head || '',
-								amount_rs: item.amount_rs || '',
-								amount_ps: item.amount_ps || '',
-								description: item.description || '',
+								bill_date: item.bill_date ?? '',
+								bill_no: item.bill_no ?? '',
+								account_head: item.account_head ?? '',
+								amount_rs: item.amount_rs ?? '',
+								amount_ps: item.amount_ps ?? '',
+								description: item.description ?? '',
 							}))
 						);
 					}
@@ -173,9 +192,11 @@ export default function EditCashVoucherPage({ params }) {
 	// Calculate total
 	useEffect(() => {
 		const total = lineItems.reduce((sum, item) => {
-			const rs = parseFloat(item.amount_rs) || 0;
-			const ps = parseFloat(item.amount_ps) || 0;
-			return add(sum, rs, div(ps, 100)).toNumber();
+			return add(
+				sum,
+				toMoneyNumber(item.amount_rs),
+				div(toMoneyNumber(item.amount_ps), 100)
+			).toNumber();
 		}, 0);
 		setFormData((prev) => ({ ...prev, total_amount: total }));
 	}, [lineItems]);
@@ -268,14 +289,13 @@ export default function EditCashVoucherPage({ params }) {
 		return result + ' Only';
 	};
 
-	// Update amount in words when total changes
+	// Update amount in words when total changes; clear stale words at zero
 	useEffect(() => {
-		if (formData.total_amount > 0) {
-			setFormData((prev) => ({
-				...prev,
-				amount_in_words: numberToWords(prev.total_amount),
-			}));
-		}
+		setFormData((prev) => ({
+			...prev,
+			amount_in_words:
+				prev.total_amount > 0 ? numberToWords(prev.total_amount) : '',
+		}));
 	}, [formData.total_amount]);
 
 	// Add new line item
@@ -341,6 +361,31 @@ export default function EditCashVoucherPage({ params }) {
 		}
 	};
 
+	const employeeOptions = employees.map((emp) => ({
+		id: emp.id,
+		value: emp.full_name || `${emp.first_name} ${emp.last_name}`,
+		label: emp.full_name || `${emp.first_name} ${emp.last_name}`,
+	}));
+	const projectOptions = projects.map((proj) => ({
+		id: proj.id || proj.project_id,
+		value: proj.project_code || proj.project_id,
+		label: proj.project_code
+			? `${proj.project_code} - ${proj.name}`
+			: proj.name || proj.project_id,
+	}));
+	const accountHeadOptions = accountHeads.map((h) => ({
+		id: h.id,
+		value: h.account_head_name,
+		label: h.account_head_name,
+	}));
+	const descriptionOptions = descriptions.map((d) => ({
+		id: d.id,
+		value: d.description_name,
+		label: d.description_name,
+	}));
+	const paidToLabel = optionLabel(employeeOptions, formData.paid_to);
+	const projectLabel = optionLabel(projectOptions, formData.project_number);
+
 	if (authLoading || loading) {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
@@ -360,236 +405,309 @@ export default function EditCashVoucherPage({ params }) {
 			<div className="flex-1 flex flex-col">
 				<Navbar />
 
-				<main className="flex-1 px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 overflow-auto w-screen mx-auto">
+				<main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
 					{/* Header */}
-					<div className="flex items-center justify-between mb-6">
-						<div className="flex items-center gap-4">
-							<button
-								onClick={() => router.back()}
-								className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-							>
-								<ArrowLeftIcon className="h-5 w-5" />
-							</button>
-							<div>
-								<h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-									<BanknotesIcon className="h-7 w-7 text-purple-600" />
-									Edit Cash Voucher
-								</h1>
-								<p className="text-sm text-gray-500 mt-1">
-									Edit voucher #{formData.voucher_number}
-								</p>
-							</div>
+					<div className="mb-6 flex items-center gap-4">
+						<button
+							type="button"
+							onClick={() => router.back()}
+							aria-label="Go back"
+							className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+						>
+							<ArrowLeftIcon aria-hidden="true" className="h-5 w-5" />
+						</button>
+						<div className="min-w-0">
+							<h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
+								<BanknotesIcon
+									aria-hidden="true"
+									className="h-7 w-7 shrink-0 text-[#64126D]"
+								/>
+								<span className="break-words">Edit Cash Voucher</span>
+							</h1>
+							<p className="mt-1 break-words text-sm text-gray-500">
+								Edit voucher #{formData.voucher_number}
+							</p>
 						</div>
 					</div>
 
-					{/* Voucher Form - styled like the physical form */}
-					<form onSubmit={handleSubmit}>
-						<div className="bg-white border-2 border-gray-800 rounded-lg overflow-hidden max-w-7xl mx-auto">
-							{/* Header Section */}
-							<div className="border-b-2 border-gray-800 flex">
-								{/* Company Info */}
-								<div className="flex-1 p-4 border-r-2 border-gray-800">
-									<h2 className="text-lg font-bold text-gray-900">
+					<form
+						onSubmit={handleSubmit}
+						className="mx-auto w-full max-w-5xl space-y-6"
+					>
+						{/* Company header */}
+						<div className={sectionClassName}>
+							<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+								<div className="min-w-0">
+									<p className="text-base font-bold text-gray-900">
 										Accent Techno Solutions Pvt. Ltd.
-									</h2>
-									<p className="text-sm text-gray-600">
-										17/130, Anand Nagar, Neharu Road, Vakola,
 									</p>
 									<p className="text-sm text-gray-600">
-										Santacruz (E), Mumbai - 400 055.
+										17/130, Anand Nagar, Neharu Road, Vakola, Santacruz (E),
+										Mumbai - 400 055.
 									</p>
 								</div>
-								{/* Title */}
-								<div className="flex-1 p-4 border-r-2 border-gray-800 text-center">
-									<h1 className="text-xl font-bold text-gray-900">PETTY</h1>
-									<h1 className="text-xl font-bold text-gray-900">
-										CASH-CHEQUE
-									</h1>
-									<h1 className="text-xl font-bold text-gray-900">VOUCHER</h1>
+								<p className="shrink-0 text-sm font-bold tracking-wide text-[#64126D]">
+									PETTY CASH-CHEQUE VOUCHER
+								</p>
+							</div>
+						</div>
+
+						{/* Voucher details */}
+						<section
+							aria-labelledby="voucher-details-heading"
+							className={sectionClassName}
+						>
+							<h2
+								id="voucher-details-heading"
+								className="mb-4 text-lg font-semibold text-gray-900"
+							>
+								Voucher details
+							</h2>
+							<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+								<div className="min-w-0">
+									<label htmlFor="voucher-number" className={labelClassName}>
+										Voucher number
+									</label>
+									<input
+										id="voucher-number"
+										name="voucher_number"
+										type="text"
+										value={formData.voucher_number}
+										className={`${inputClassName} bg-gray-50`}
+										readOnly
+									/>
 								</div>
-								{/* Voucher Details */}
-								<div className="w-150">
-									<div className="flex border-b border-gray-800">
-										<div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">
-											SR. NO.:
-										</div>
-										<input
-											type="text"
-											value={formData.voucher_number}
-											className="flex-1 px-3 py-2 bg-transparent border-r border-gray-800 text-lg font-bold text-purple-700"
-											readOnly
-										/>
-									</div>
-									<div className="flex border-b border-gray-800">
-										<input
-											type="date"
-											value={formData.voucher_date}
-											onChange={(e) =>
-												setFormData((prev) => ({
-													...prev,
-													voucher_date: e.target.value,
-												}))
-											}
-											className="w-full px-3 py-2 bg-transparent"
-										/>
-									</div>
-									<div className="flex border-b border-gray-800">
-										<div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">
-											PROJECT:
-										</div>
-										<SearchableSelect
-											options={projects.map((proj) => ({
-												id: proj.id || proj.project_id,
-												value: proj.project_code || proj.project_id,
-												label: proj.project_code
-													? `${proj.project_code} - ${proj.name}`
-													: proj.name || proj.project_id,
-											}))}
-											value={formData.project_number}
-											onChange={(val) =>
-												setFormData((prev) => ({
-													...prev,
-													project_number: val,
-												}))
-											}
-											placeholder="Select Project"
-											className="flex-1"
-											buttonClassName="px-3 py-2 border-r border-gray-800"
-										/>
-									</div>
-									<div className="flex border-b border-gray-800">
-										<div className="px-3 py-2 border-r border-gray-800 text-sm font-semibold bg-white w-24">
-											PAID TO:
-										</div>
-										<SearchableSelect
-											options={employees.map((emp) => ({
-												id: emp.id,
-												value:
-													emp.full_name || `${emp.first_name} ${emp.last_name}`,
-												label:
-													emp.full_name || `${emp.first_name} ${emp.last_name}`,
-											}))}
-											value={formData.paid_to}
-											onChange={(val) =>
-												setFormData((prev) => ({
-													...prev,
-													paid_to: val,
-												}))
-											}
-											placeholder="Select Employee"
-											className="flex-1"
-											buttonClassName="px-3 py-2 border-r border-gray-800"
-										/>
-									</div>
+								<div className="min-w-0">
+									<label htmlFor="voucher-date" className={labelClassName}>
+										Voucher date
+									</label>
+									<input
+										id="voucher-date"
+										name="voucher_date"
+										type="date"
+										value={formData.voucher_date}
+										onChange={(e) =>
+											setFormData((prev) => ({
+												...prev,
+												voucher_date: e.target.value,
+											}))
+										}
+										className={inputClassName}
+									/>
+								</div>
+								<div className="min-w-0">
+									<span className={labelClassName}>Paid to</span>
+									<SearchableSelect
+										options={employeeOptions}
+										value={formData.paid_to}
+										onChange={(val) =>
+											setFormData((prev) => ({
+												...prev,
+												paid_to: val,
+											}))
+										}
+										placeholder="Select Employee"
+										aria-label="Paid to"
+										className="w-full min-w-0"
+										buttonClassName="min-h-[40px] border-gray-300"
+									/>
+									{paidToLabel ? (
+										<p className={helperClassName}>Selected: {paidToLabel}</p>
+									) : null}
+								</div>
+								<div className="min-w-0">
+									<span className={labelClassName}>Project</span>
+									<SearchableSelect
+										options={projectOptions}
+										value={formData.project_number}
+										onChange={(val) =>
+											setFormData((prev) => ({
+												...prev,
+												project_number: val,
+											}))
+										}
+										placeholder="Select Project"
+										aria-label="Project"
+										className="w-full min-w-0"
+										buttonClassName="min-h-[40px] border-gray-300"
+									/>
+									{projectLabel ? (
+										<p className={helperClassName}>Selected: {projectLabel}</p>
+									) : null}
 								</div>
 							</div>
+						</section>
 
-							{/* Line Items Table */}
-							<div className="border-b-2 border-gray-800">
-								<table className="w-full">
-									<thead>
-										<tr className="bg-white">
-											<th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-14">
-												SR. NO.
-											</th>
-											<th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-28">
-												BILL DATE
-											</th>
-											<th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-24">
-												BILL NO.
-											</th>
-											<th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700 w-40">
-												ACCOUNT HEAD
-											</th>
-											<th
-												className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700"
-												colSpan="2"
-											>
-												<div>AMOUNT</div>
-												<div className="flex border-t border-gray-800 mt-1">
-													<div className="flex-1 border-r border-gray-800 px-1">
-														RS.
-													</div>
-													<div className="flex-1 px-1">PS.</div>
-												</div>
-											</th>
-											<th className="border-r border-gray-800 px-2 py-2 text-xs font-semibold text-gray-700">
-												DESCRIPTION
-											</th>
-											<th className="px-2 py-2 text-xs font-semibold text-gray-700 w-10"></th>
-										</tr>
-									</thead>
-									<tbody>
-										{lineItems.map((item, index) => (
-											<tr key={index} className="border-t border-gray-800">
-												<td className="border-r border-gray-800 px-2 py-1 text-center text-sm">
-													{item.sr_no}
-												</td>
-												<td className="border-r border-gray-800 px-1 py-1">
+						{/* Line items */}
+						<section
+							aria-labelledby="line-items-heading"
+							className={sectionClassName}
+						>
+							<h2
+								id="line-items-heading"
+								className="mb-4 text-lg font-semibold text-gray-900"
+							>
+								Line items
+							</h2>
+							<div className="space-y-4">
+								{lineItems.map((item, index) => {
+									const itemNo = index + 1;
+									const accountHeadLabel = optionLabel(
+										accountHeadOptions,
+										item.account_head
+									);
+									const descriptionLabel = optionLabel(
+										descriptionOptions,
+										item.description
+									);
+									return (
+										<fieldset
+											key={index}
+											className="min-w-0 rounded-lg border border-gray-200 bg-slate-50/50 p-4"
+										>
+											<legend className="px-1 text-sm font-semibold text-gray-900">
+												Item {itemNo}
+											</legend>
+											<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+												<div className="min-w-0">
+													<label
+														htmlFor={`item-${index}-bill-date`}
+														className={labelClassName}
+													>
+														Bill date{' '}
+														<span className="sr-only">for item {itemNo}</span>
+													</label>
 													<input
+														id={`item-${index}-bill-date`}
+														name={`item-${index}-bill-date`}
 														type="date"
-														value={item.bill_date}
+														value={formatDateInput(item.bill_date)}
 														onChange={(e) =>
 															updateLineItem(index, 'bill_date', e.target.value)
 														}
-														className="w-full px-1 py-1 bg-transparent text-sm"
+														className={inputClassName}
 													/>
-												</td>
-												<td className="border-r border-gray-800 px-1 py-1">
+												</div>
+												<div className="min-w-0">
+													<label
+														htmlFor={`item-${index}-bill-no`}
+														className={labelClassName}
+													>
+														Bill no.{' '}
+														<span className="sr-only">for item {itemNo}</span>
+													</label>
 													<input
+														id={`item-${index}-bill-no`}
+														name={`item-${index}-bill-no`}
 														type="text"
-														value={item.bill_no}
+														autoComplete="off"
+														value={item.bill_no ?? ''}
 														onChange={(e) =>
 															updateLineItem(index, 'bill_no', e.target.value)
 														}
-														className="w-full px-1 py-1 bg-transparent text-sm"
-														placeholder="Bill #"
+														className={inputClassName}
+														placeholder="Bill number"
 													/>
-												</td>
-												<td className="border-r border-gray-800 px-1 py-1">
+												</div>
+												<div className="min-w-0 sm:col-span-2">
+													<span className={labelClassName}>
+														Account head{' '}
+														<span className="sr-only">for item {itemNo}</span>
+													</span>
 													<SearchableSelect
-														options={accountHeads.map((h) => ({
-															id: h.id,
-															value: h.account_head_name,
-															label: h.account_head_name,
-														}))}
+														options={accountHeadOptions}
 														value={item.account_head}
 														onChange={(val) =>
 															updateLineItem(index, 'account_head', val)
 														}
 														placeholder="Select Account Head"
+														aria-label={`Item ${itemNo} account head`}
+														className="w-full min-w-0"
+														buttonClassName="min-h-[40px] border-gray-300"
 													/>
-												</td>
-												<td className="border-r border-gray-800 px-1 py-1 w-20">
-													<input
-														type="number"
-														value={item.amount_rs}
-														onChange={(e) =>
-															updateLineItem(index, 'amount_rs', e.target.value)
-														}
-														className="w-full px-1 py-1 bg-transparent text-sm text-right"
-														placeholder="0"
-													/>
-												</td>
-												<td className="border-r border-gray-800 px-1 py-1 w-16">
-													<input
-														type="number"
-														value={item.amount_ps}
-														onChange={(e) =>
-															updateLineItem(index, 'amount_ps', e.target.value)
-														}
-														className="w-full px-1 py-1 bg-transparent text-sm text-right"
-														placeholder="00"
-														max="99"
-													/>
-												</td>
-												<td className="border-r border-gray-800 px-1 py-1">
+													{accountHeadLabel ? (
+														<p className={helperClassName}>
+															Selected: {accountHeadLabel}
+														</p>
+													) : null}
+												</div>
+												<div className="min-w-0 sm:col-span-2">
+													<div
+														role="group"
+														aria-label={`Item ${itemNo} amount`}
+														className="grid grid-cols-2 gap-4"
+													>
+														<div className="min-w-0">
+															<label
+																htmlFor={`item-${index}-amount-rs`}
+																className={labelClassName}
+															>
+																Rupees (Rs){' '}
+																<span className="sr-only">
+																	for item {itemNo}
+																</span>
+															</label>
+															<input
+																id={`item-${index}-amount-rs`}
+																name={`item-${index}-amount-rs`}
+																type="number"
+																min="0"
+																step="any"
+																inputMode="numeric"
+																value={item.amount_rs ?? ''}
+																onChange={(e) =>
+																	updateLineItem(
+																		index,
+																		'amount_rs',
+																		e.target.value
+																	)
+																}
+																className={inputClassName}
+																placeholder="0"
+															/>
+														</div>
+														<div className="min-w-0">
+															<label
+																htmlFor={`item-${index}-amount-ps`}
+																className={labelClassName}
+															>
+																Paise (Ps){' '}
+																<span className="sr-only">
+																	for item {itemNo}
+																</span>
+															</label>
+															<input
+																id={`item-${index}-amount-ps`}
+																name={`item-${index}-amount-ps`}
+																type="number"
+																min="0"
+																max="99"
+																step="1"
+																inputMode="numeric"
+																value={item.amount_ps ?? ''}
+																onChange={(e) =>
+																	updateLineItem(
+																		index,
+																		'amount_ps',
+																		e.target.value
+																	)
+																}
+																className={inputClassName}
+																placeholder="00"
+															/>
+														</div>
+													</div>
+													<p className={hintClassName}>
+														Rupees and paise stay separate. Paise from 0 to 99.
+													</p>
+												</div>
+												<div className="min-w-0 sm:col-span-2">
+													<span className={labelClassName}>
+														Description{' '}
+														<span className="sr-only">for item {itemNo}</span>
+													</span>
 													<SearchableSelect
-														options={descriptions.map((d) => ({
-															id: d.id,
-															value: d.description_name,
-															label: d.description_name,
-														}))}
+														options={descriptionOptions}
 														value={item.description}
 														onChange={(val) => {
 															updateLineItem(index, 'description', val);
@@ -599,102 +717,151 @@ export default function EditCashVoucherPage({ params }) {
 															}));
 														}}
 														placeholder="Select Description"
+														aria-label={`Item ${itemNo} description`}
+														className="w-full min-w-0"
+														buttonClassName="min-h-[40px] border-gray-300"
 													/>
-												</td>
-												<td className="px-1 py-1 text-center">
-													{lineItems.length > 1 && (
-														<button
-															type="button"
-															onClick={() => removeLineItem(index)}
-															className="text-red-500 hover:text-red-700"
-														>
-															<TrashIcon className="h-4 w-4" />
-														</button>
-													)}
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
+													{descriptionLabel ? (
+														<p className={helperClassName}>
+															Selected: {descriptionLabel}
+														</p>
+													) : null}
+												</div>
+											</div>
+											{lineItems.length > 1 && (
+												<div className="mt-3 flex justify-end">
+													<button
+														type="button"
+														onClick={() => removeLineItem(index)}
+														aria-label={`Remove item ${itemNo}`}
+														className="inline-flex min-h-[40px] items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+													>
+														<TrashIcon aria-hidden="true" className="h-4 w-4" />
+														Remove
+													</button>
+												</div>
+											)}
+										</fieldset>
+									);
+								})}
+							</div>
+							<button
+								type="button"
+								onClick={addLineItem}
+								className="mt-4 inline-flex min-h-[40px] items-center gap-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-[#64126D] hover:bg-purple-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+							>
+								<PlusIcon aria-hidden="true" className="h-4 w-4" />
+								Add row
+							</button>
+						</section>
 
-								{/* Add Row Button */}
-								<div className="border-t border-gray-800 p-2">
-									<button
-										type="button"
-										onClick={addLineItem}
-										className="flex items-center gap-1 px-3 py-1 text-sm text-purple-600 hover:bg-purple-50 rounded"
+						{/* Payment summary */}
+						<section
+							aria-labelledby="payment-summary-heading"
+							className={sectionClassName}
+						>
+							<h2
+								id="payment-summary-heading"
+								className="mb-4 text-lg font-semibold text-gray-900"
+							>
+								Payment summary
+							</h2>
+							<fieldset className="min-w-0">
+								<legend className="text-sm font-medium text-gray-700">
+									Payment method
+								</legend>
+								<div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+									<div className="flex min-h-[40px] items-center gap-2">
+										<input
+											id="payment-mode-cash"
+											name="payment_mode"
+											type="radio"
+											value="cash"
+											checked={formData.payment_mode === 'cash'}
+											onChange={(e) =>
+												setFormData((prev) => ({
+													...prev,
+													payment_mode: e.target.value,
+												}))
+											}
+											className="h-4 w-4 accent-[#64126D] focus-visible:ring-2 focus-visible:ring-[#64126D]"
+										/>
+										<label
+											htmlFor="payment-mode-cash"
+											className="text-base text-gray-900"
+										>
+											Cash
+										</label>
+									</div>
+									<div className="flex min-h-[40px] items-center gap-2">
+										<input
+											id="payment-mode-cheque"
+											name="payment_mode"
+											type="radio"
+											value="cheque"
+											checked={formData.payment_mode === 'cheque'}
+											onChange={(e) =>
+												setFormData((prev) => ({
+													...prev,
+													payment_mode: e.target.value,
+												}))
+											}
+											className="h-4 w-4 accent-[#64126D] focus-visible:ring-2 focus-visible:ring-[#64126D]"
+										/>
+										<label
+											htmlFor="payment-mode-cheque"
+											className="text-base text-gray-900"
+										>
+											Cheque
+										</label>
+									</div>
+								</div>
+							</fieldset>
+							<div className="mt-4 grid grid-cols-1 gap-4 border-t border-gray-200 pt-4 sm:grid-cols-2">
+								<div className="min-w-0">
+									<p className="text-sm font-medium text-gray-700">Total</p>
+									<p
+										aria-live="polite"
+										className="mt-1 break-words text-2xl font-bold text-gray-900"
 									>
-										<PlusIcon className="h-4 w-4" />
-										Add Row
-									</button>
-								</div>
-							</div>
-
-							{/* Total Section */}
-							<div className="border-b-2 border-gray-800 flex">
-								<div className="flex-1 p-3 border-r-2 border-gray-800">
-									<div className="flex items-center gap-4">
-										<span className="font-semibold text-sm">Paid by</span>
-										<label className="flex items-center gap-2">
-											<input
-												type="radio"
-												name="payment_mode"
-												value="cash"
-												checked={formData.payment_mode === 'cash'}
-												onChange={(e) =>
-													setFormData((prev) => ({
-														...prev,
-														payment_mode: e.target.value,
-													}))
-												}
-												className="text-purple-600"
-											/>
-											<span>Cash</span>
-										</label>
-										<label className="flex items-center gap-2">
-											<input
-												type="radio"
-												name="payment_mode"
-												value="cheque"
-												checked={formData.payment_mode === 'cheque'}
-												onChange={(e) =>
-													setFormData((prev) => ({
-														...prev,
-														payment_mode: e.target.value,
-													}))
-												}
-												className="text-purple-600"
-											/>
-											<span>Cheque</span>
-										</label>
-									</div>
-								</div>
-								<div className="w-40 p-3 border-r-2 border-gray-800 bg-white">
-									<div className="text-xs font-semibold text-gray-600">
-										TOTAL
-									</div>
-									<div className="text-lg font-bold text-gray-900">
 										{formatCurrency(formData.total_amount)}
-									</div>
+									</p>
 								</div>
-								<div className="flex-1 p-3">
-									<div className="text-xs font-semibold text-gray-600 mb-1">
-										Rs. (In Words)
-									</div>
-									<div className="text-sm text-gray-800">
-										{formData.amount_in_words || '-'}
-									</div>
+								<div className="min-w-0">
+									<p className="text-sm font-medium text-gray-700">
+										Amount in words
+									</p>
+									<p
+										aria-live="polite"
+										className="mt-1 break-words text-base text-gray-900"
+									>
+										{formData.amount_in_words || '—'}
+									</p>
 								</div>
 							</div>
+						</section>
 
-							{/* Signatures Section */}
-							<div className="flex">
-								<div className="flex-1 p-4 border-r-2 border-gray-800">
-									<div className="text-xs font-semibold text-gray-600 mb-2 text-center">
-										PREPARED BY
-									</div>
+						{/* Sign-off */}
+						<section
+							aria-labelledby="sign-off-heading"
+							className={sectionClassName}
+						>
+							<h2
+								id="sign-off-heading"
+								className="mb-4 text-lg font-semibold text-gray-900"
+							>
+								Sign-off
+							</h2>
+							<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+								<div className="min-w-0">
+									<label htmlFor="prepared-by" className={labelClassName}>
+										Prepared by
+									</label>
 									<input
+										id="prepared-by"
+										name="prepared_by"
 										type="text"
+										autoComplete="off"
 										value={formData.prepared_by}
 										onChange={(e) =>
 											setFormData((prev) => ({
@@ -702,15 +869,18 @@ export default function EditCashVoucherPage({ params }) {
 												prepared_by: e.target.value,
 											}))
 										}
-										className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
+										className={inputClassName}
 									/>
 								</div>
-								<div className="flex-1 p-4 border-r-2 border-gray-800">
-									<div className="text-xs font-semibold text-gray-600 mb-2 text-center">
-										CHECKED BY
-									</div>
+								<div className="min-w-0">
+									<label htmlFor="checked-by" className={labelClassName}>
+										Checked by
+									</label>
 									<input
+										id="checked-by"
+										name="checked_by"
 										type="text"
+										autoComplete="off"
 										value={formData.checked_by}
 										onChange={(e) =>
 											setFormData((prev) => ({
@@ -718,16 +888,19 @@ export default function EditCashVoucherPage({ params }) {
 												checked_by: e.target.value,
 											}))
 										}
-										className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
+										className={inputClassName}
 										placeholder="Name"
 									/>
 								</div>
-								<div className="flex-1 p-4 border-r-2 border-gray-800">
-									<div className="text-xs font-semibold text-gray-600 mb-2 text-center">
-										APPROVED BY
-									</div>
+								<div className="min-w-0">
+									<label htmlFor="approved-by" className={labelClassName}>
+										Approved by
+									</label>
 									<input
+										id="approved-by"
+										name="approved_by"
 										type="text"
+										autoComplete="off"
 										value={formData.approved_by}
 										onChange={(e) =>
 											setFormData((prev) => ({
@@ -735,16 +908,22 @@ export default function EditCashVoucherPage({ params }) {
 												approved_by: e.target.value,
 											}))
 										}
-										className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
+										className={inputClassName}
 										placeholder="Name"
 									/>
 								</div>
-								<div className="flex-1 p-4">
-									<div className="text-xs font-semibold text-gray-600 mb-2 text-center">
-										RECEIVER SIGNATURE
-									</div>
+								<div className="min-w-0">
+									<label
+										htmlFor="receiver-signature"
+										className={labelClassName}
+									>
+										Receiver signature
+									</label>
 									<input
+										id="receiver-signature"
+										name="receiver_signature"
 										type="text"
+										autoComplete="off"
 										value={formData.receiver_signature}
 										onChange={(e) =>
 											setFormData((prev) => ({
@@ -752,26 +931,26 @@ export default function EditCashVoucherPage({ params }) {
 												receiver_signature: e.target.value,
 											}))
 										}
-										className="w-full px-2 py-1 bg-transparent border-b border-gray-400 text-center text-sm"
+										className={inputClassName}
 										placeholder="Name"
 									/>
 								</div>
 							</div>
-						</div>
+						</section>
 
 						{/* Action Buttons */}
-						<div className="flex justify-center gap-4 mt-6">
+						<div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
 							<button
 								type="button"
 								onClick={() => router.back()}
-								className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+								className="min-h-[40px] rounded-lg border border-gray-300 bg-white px-6 py-2 text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 							>
 								Cancel
 							</button>
 							<button
 								type="submit"
 								disabled={saving}
-								className="flex items-center gap-2 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+								className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg bg-[#64126D] px-6 py-2 text-white transition-colors hover:bg-[#52105a] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2"
 							>
 								{saving ? (
 									<>
@@ -780,7 +959,7 @@ export default function EditCashVoucherPage({ params }) {
 									</>
 								) : (
 									<>
-										<CheckIcon className="h-5 w-5" />
+										<CheckIcon aria-hidden="true" className="h-5 w-5" />
 										Update Voucher
 									</>
 								)}
