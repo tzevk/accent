@@ -238,6 +238,9 @@ The proxy does **not** check resource-level permissions — API routes authorize
 
 ### Permission editor: `/masters/users/[id]/permissions`
 
+- **Loading and access:** waits for session authorization before requesting the user. Missing `users:read` shows Access Denied.
+- **Load failures:** shows the API error and a Back to Users button instead of leaving the loading screen active.
+- **Employee details:** loads the optional Employee display name separately. Its failure does not block permission editing.
 - **Left sidebar:** modules grouped by category (Main Modules, Masters, Financial Documents, Admin) with checkboxes
 - **Right panel** (when a module is selected):
   - Module-level CRUD toggles (read/create/update/delete/export/import + special: convert/approve/assign/close)

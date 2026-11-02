@@ -2,6 +2,8 @@
 
 import Navbar from '@/components/Navbar';
 import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api-client';
 import { useParams, useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
@@ -1476,6 +1478,7 @@ export default function UserPermissionsPage() {
 	const params = useParams();
 	const router = useRouter();
 	const userId = params.id;
+	const queryClient = useQueryClient();
 
 	const { loading: rbacLoading, can, user: currentUser } = useSessionRBAC();
 	const canUsersRead =
@@ -1488,7 +1491,6 @@ export default function UserPermissionsPage() {
 			can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.UPDATE));
 
 	const [user, setUser] = useState(null);
-	const [employee, setEmployee] = useState(null);
 	const [fieldPermissions, setFieldPermissions] = useState({});
 	const [modulePermissions, setModulePermissions] = useState({}); // module-level CRUD
 	const [enabledModules, setEnabledModules] = useState({}); // which modules are enabled
@@ -1496,26 +1498,33 @@ export default function UserPermissionsPage() {
 	const [originalPermissions, setOriginalPermissions] = useState({});
 	const [activeModule, setActiveModule] = useState(null); // currently selected module for field editing
 	const [expandedSections, setExpandedSections] = useState({});
-	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [hasChanges, setHasChanges] = useState(false);
-	const [isReady, setIsReady] = useState(false); // Prevents UI flash until everything is loaded
+	const [initializationError, setInitializationError] = useState(null);
 	const [moduleSearch, setModuleSearch] = useState('');
 
-	useEffect(() => {
-		if (userId && !rbacLoading) {
-			fetchUserData();
-		}
-	}, [userId, rbacLoading]);
-
-	// Mark as ready only when all data is loaded and permissions are checked
-	useEffect(() => {
-		if (!rbacLoading && !loading && user !== null) {
-			// Small delay to ensure all state is settled
-			const timer = setTimeout(() => setIsReady(true), 50);
-			return () => clearTimeout(timer);
-		}
-	}, [rbacLoading, loading, user]);
+	const {
+		data: userData,
+		error: userError,
+		isPending: loading,
+	} = useQuery({
+		queryKey: ['user-permissions', userId],
+		enabled: !!userId && !!canUsersRead,
+		queryFn: async () => {
+			const data = await apiGet(`/api/users/${userId}`);
+			if (!data.success || !data.data) {
+				throw new Error(data.error || 'Failed to load user permissions.');
+			}
+			return data;
+		},
+	});
+	const { data: employeeData } = useQuery({
+		queryKey: ['permission-editor-employee', userData?.data?.employee_id],
+		enabled: !!canUsersRead && !!userData?.data?.employee_id,
+		queryFn: () => apiGet(`/api/employees/${userData.data.employee_id}`),
+	});
+	const employee = employeeData?.data || null;
+	const loadError = userError || initializationError;
 
 	// Track changes
 	useEffect(() => {
@@ -1545,194 +1554,164 @@ export default function UserPermissionsPage() {
 		}
 	}, [activeModule]);
 
-	const fetchUserData = async () => {
-		setLoading(true);
+	useEffect(() => {
+		if (!userData || !canUsersRead || user?.id === userData.data.id) return;
+		setInitializationError(null);
 		try {
-			const userRes = await fetch(`/api/users/${userId}`);
-
-			if (!userRes.ok) {
-				console.error('Failed to fetch user, status:', userRes.status);
-				setLoading(false);
-				return;
-			}
-
-			const contentType = userRes.headers.get('content-type');
-			if (!contentType || !contentType.includes('application/json')) {
-				console.error('Response is not JSON:', contentType);
-				setLoading(false);
-				return;
-			}
-
-			const userData = await userRes.json();
-
-			if (userData.success && userData.data) {
-				setUser(userData.data);
-
-				// Parse existing permissions (flat array for backward compatibility)
-				let existingPerms = userData.data.permissions;
-				if (typeof existingPerms === 'string') {
-					try {
-						existingPerms = JSON.parse(existingPerms);
-					} catch {
-						existingPerms = [];
-					}
+			// Parse existing permissions (flat array for backward compatibility)
+			let existingPerms = userData.data.permissions;
+			if (typeof existingPerms === 'string') {
+				try {
+					existingPerms = JSON.parse(existingPerms);
+				} catch {
+					existingPerms = [];
 				}
-				existingPerms = existingPerms || [];
+			}
+			existingPerms = existingPerms || [];
 
-				// Parse field_permissions - now supports nested structure
-				let fieldPerms = userData.data.field_permissions;
-				if (typeof fieldPerms === 'string') {
-					try {
-						fieldPerms = JSON.parse(fieldPerms);
-					} catch {
-						fieldPerms = {};
-					}
+			// Parse field_permissions - now supports nested structure
+			let fieldPerms = userData.data.field_permissions;
+			if (typeof fieldPerms === 'string') {
+				try {
+					fieldPerms = JSON.parse(fieldPerms);
+				} catch {
+					fieldPerms = {};
 				}
-				fieldPerms = fieldPerms || {};
+			}
+			fieldPerms = fieldPerms || {};
 
-				// Check if we have the new nested structure
-				const isNestedStructure = fieldPerms.modules !== undefined;
+			// Check if we have the new nested structure
+			const isNestedStructure = fieldPerms.modules !== undefined;
 
-				// Initialize state from nested structure or legacy format
-				const initialFieldPerms = {};
-				const modulePerms = {};
-				const enabled = {};
-				const sectionEnabled = {};
+			// Initialize state from nested structure or legacy format
+			const initialFieldPerms = {};
+			const modulePerms = {};
+			const enabled = {};
+			const sectionEnabled = {};
 
-				Object.keys(MODULE_FIELDS).forEach((moduleKey) => {
-					const moduleDef = MODULE_FIELDS[moduleKey];
-					initialFieldPerms[moduleKey] = {};
-					sectionEnabled[moduleKey] = {};
+			Object.keys(MODULE_FIELDS).forEach((moduleKey) => {
+				const moduleDef = MODULE_FIELDS[moduleKey];
+				initialFieldPerms[moduleKey] = {};
+				sectionEnabled[moduleKey] = {};
 
-					if (isNestedStructure && fieldPerms.modules?.[moduleKey]) {
-						// Load from nested structure
-						const savedModule = fieldPerms.modules[moduleKey];
-						enabled[moduleKey] = savedModule.enabled || false;
-						const permObj = {
-							read: savedModule.crud?.read || false,
-							create: savedModule.crud?.create || false,
-							update: savedModule.crud?.update || false,
-							delete: savedModule.crud?.delete || false,
-							export: savedModule.crud?.export || false,
-							import: savedModule.crud?.import || false,
-							convert: savedModule.crud?.convert || false,
-							approve: savedModule.crud?.approve || false,
-							assign: savedModule.crud?.assign || false,
-							close: savedModule.crud?.close || false,
-						};
-						modulePerms[moduleKey] = permObj;
+				if (isNestedStructure && fieldPerms.modules?.[moduleKey]) {
+					// Load from nested structure
+					const savedModule = fieldPerms.modules[moduleKey];
+					enabled[moduleKey] = savedModule.enabled || false;
+					const permObj = {
+						read: savedModule.crud?.read || false,
+						create: savedModule.crud?.create || false,
+						update: savedModule.crud?.update || false,
+						delete: savedModule.crud?.delete || false,
+						export: savedModule.crud?.export || false,
+						import: savedModule.crud?.import || false,
+						convert: savedModule.crud?.convert || false,
+						approve: savedModule.crud?.approve || false,
+						assign: savedModule.crud?.assign || false,
+						close: savedModule.crud?.close || false,
+					};
+					modulePerms[moduleKey] = permObj;
 
-						// Load sections and fields
-						const sections = moduleDef.sections || {};
-						Object.keys(sections).forEach((sectionKey) => {
-							const savedSection = savedModule.sections?.[sectionKey];
-							sectionEnabled[moduleKey][sectionKey] =
-								savedSection?.enabled || false;
+					// Load sections and fields
+					const sections = moduleDef.sections || {};
+					Object.keys(sections).forEach((sectionKey) => {
+						const savedSection = savedModule.sections?.[sectionKey];
+						sectionEnabled[moduleKey][sectionKey] =
+							savedSection?.enabled || false;
 
-							const fields = sections[sectionKey].fields || {};
-							Object.keys(fields).forEach((fieldKey) => {
-								const savedField = savedSection?.fields?.[fieldKey];
+						const fields = sections[sectionKey].fields || {};
+						Object.keys(fields).forEach((fieldKey) => {
+							const savedField = savedSection?.fields?.[fieldKey];
+							initialFieldPerms[moduleKey][fieldKey] =
+								savedField?.permission ||
+								(SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
+									? 'edit'
+									: fields[fieldKey].sensitive
+										? 'hidden'
+										: 'view');
+						});
+					});
+				} else {
+					// Legacy format - parse from flat arrays
+					const hasRead = existingPerms.includes(`${moduleKey}:read`);
+					const hasCreate = existingPerms.includes(`${moduleKey}:create`);
+					const hasUpdate = existingPerms.includes(`${moduleKey}:update`);
+					const hasDelete = existingPerms.includes(`${moduleKey}:delete`);
+					const hasExport = existingPerms.includes(`${moduleKey}:export`);
+					const hasImport = existingPerms.includes(`${moduleKey}:import`);
+
+					const hasConvert = existingPerms.includes(`${moduleKey}:convert`);
+					const hasApprove = existingPerms.includes(`${moduleKey}:approve`);
+					const hasAssign = existingPerms.includes(`${moduleKey}:assign`);
+
+					modulePerms[moduleKey] = {
+						read: hasRead,
+						create: hasCreate,
+						update: hasUpdate,
+						delete: hasDelete,
+						export: hasExport,
+						import: hasImport,
+						convert: hasConvert,
+						approve: hasApprove,
+						assign: hasAssign,
+					};
+
+					enabled[moduleKey] =
+						hasRead ||
+						hasCreate ||
+						hasUpdate ||
+						hasDelete ||
+						hasExport ||
+						hasImport ||
+						hasConvert ||
+						hasApprove ||
+						hasAssign;
+
+					// Load legacy field permissions
+					const sections = moduleDef.sections || {};
+					Object.keys(sections).forEach((sectionKey) => {
+						const fields = sections[sectionKey].fields || {};
+						let hasVisibleField = false;
+
+						Object.keys(fields).forEach((fieldKey) => {
+							// Check legacy format (direct module.field mapping)
+							const legacyPerm = fieldPerms[moduleKey]?.[fieldKey];
+							if (legacyPerm && typeof legacyPerm === 'string') {
+								initialFieldPerms[moduleKey][fieldKey] = legacyPerm;
+								if (legacyPerm !== 'hidden') hasVisibleField = true;
+							} else {
 								initialFieldPerms[moduleKey][fieldKey] =
-									savedField?.permission ||
-									(SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
+									SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
 										? 'edit'
 										: fields[fieldKey].sensitive
 											? 'hidden'
-											: 'view');
-							});
+											: 'view';
+								if (!fields[fieldKey].sensitive) hasVisibleField = true;
+							}
 						});
-					} else {
-						// Legacy format - parse from flat arrays
-						const hasRead = existingPerms.includes(`${moduleKey}:read`);
-						const hasCreate = existingPerms.includes(`${moduleKey}:create`);
-						const hasUpdate = existingPerms.includes(`${moduleKey}:update`);
-						const hasDelete = existingPerms.includes(`${moduleKey}:delete`);
-						const hasExport = existingPerms.includes(`${moduleKey}:export`);
-						const hasImport = existingPerms.includes(`${moduleKey}:import`);
 
-						const hasConvert = existingPerms.includes(`${moduleKey}:convert`);
-						const hasApprove = existingPerms.includes(`${moduleKey}:approve`);
-						const hasAssign = existingPerms.includes(`${moduleKey}:assign`);
-
-						modulePerms[moduleKey] = {
-							read: hasRead,
-							create: hasCreate,
-							update: hasUpdate,
-							delete: hasDelete,
-							export: hasExport,
-							import: hasImport,
-							convert: hasConvert,
-							approve: hasApprove,
-							assign: hasAssign,
-						};
-
-						enabled[moduleKey] =
-							hasRead ||
-							hasCreate ||
-							hasUpdate ||
-							hasDelete ||
-							hasExport ||
-							hasImport ||
-							hasConvert ||
-							hasApprove ||
-							hasAssign;
-
-						// Load legacy field permissions
-						const sections = moduleDef.sections || {};
-						Object.keys(sections).forEach((sectionKey) => {
-							const fields = sections[sectionKey].fields || {};
-							let hasVisibleField = false;
-
-							Object.keys(fields).forEach((fieldKey) => {
-								// Check legacy format (direct module.field mapping)
-								const legacyPerm = fieldPerms[moduleKey]?.[fieldKey];
-								if (legacyPerm && typeof legacyPerm === 'string') {
-									initialFieldPerms[moduleKey][fieldKey] = legacyPerm;
-									if (legacyPerm !== 'hidden') hasVisibleField = true;
-								} else {
-									initialFieldPerms[moduleKey][fieldKey] =
-										SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
-											? 'edit'
-											: fields[fieldKey].sensitive
-												? 'hidden'
-												: 'view';
-									if (!fields[fieldKey].sensitive) hasVisibleField = true;
-								}
-							});
-
-							sectionEnabled[moduleKey][sectionKey] =
-								enabled[moduleKey] && hasVisibleField;
-						});
-					}
-				});
-
-				setFieldPermissions(initialFieldPerms);
-				setModulePermissions(modulePerms);
-				setEnabledModules(enabled);
-				setEnabledSections(sectionEnabled);
-				setOriginalPermissions({
-					fieldPermissions: initialFieldPerms,
-					modulePermissions: modulePerms,
-					enabledModules: enabled,
-					enabledSections: sectionEnabled,
-				});
-
-				if (userData.data.employee_id) {
-					const empRes = await fetch(
-						`/api/employees/${userData.data.employee_id}`
-					);
-					const empData = await empRes.json();
-					if (empData.success || empData.data) {
-						setEmployee(empData.data || empData);
-					}
+						sectionEnabled[moduleKey][sectionKey] =
+							enabled[moduleKey] && hasVisibleField;
+					});
 				}
-			}
+			});
+
+			setFieldPermissions(initialFieldPerms);
+			setModulePermissions(modulePerms);
+			setEnabledModules(enabled);
+			setEnabledSections(sectionEnabled);
+			setOriginalPermissions({
+				fieldPermissions: initialFieldPerms,
+				modulePermissions: modulePerms,
+				enabledModules: enabled,
+				enabledSections: sectionEnabled,
+			});
+
+			setUser(userData.data);
 		} catch (error) {
-			console.error('Error fetching user:', error);
-		} finally {
-			setLoading(false);
+			setInitializationError(error);
 		}
-	};
+	}, [userData, canUsersRead, user?.id]);
 
 	const toggleSection = (sectionKey) => {
 		setExpandedSections((prev) => ({
@@ -2035,6 +2014,14 @@ export default function UserPermissionsPage() {
 
 			const data = await res.json();
 			if (data.success) {
+				queryClient.setQueryData(['user-permissions', userId], {
+					...userData,
+					data: {
+						...user,
+						permissions: permissionsArray,
+						field_permissions: nestedPermissions,
+					},
+				});
 				// Log the permission change to audit logs
 				try {
 					await fetch('/api/audit-logs', {
@@ -2184,7 +2171,10 @@ export default function UserPermissionsPage() {
 	};
 
 	// Show loading until everything is ready - prevents UI glitch
-	if (!isReady || rbacLoading || loading) {
+	if (
+		rbacLoading ||
+		(canUsersRead && !loadError && (loading || user?.id !== userData?.data?.id))
+	) {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
 				<Navbar />
@@ -2216,6 +2206,34 @@ export default function UserPermissionsPage() {
 							</p>
 						</div>
 					</div>
+				</div>
+			</div>
+		);
+	}
+
+	if (loadError) {
+		return (
+			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+				<Navbar />
+				<div className="px-4 sm:px-6 lg:px-8 py-8 max-w-[1800px] mx-auto">
+					<div
+						role="alert"
+						className="rounded-lg border border-red-200 bg-red-50 p-6"
+					>
+						<h1 className="text-xl font-semibold text-gray-900">
+							Unable to load permissions
+						</h1>
+						<p className="mt-2 text-gray-700">
+							{loadError.message || 'Failed to load user permissions.'}
+						</p>
+					</div>
+					<button
+						type="button"
+						onClick={() => router.push('/masters/users')}
+						className="mt-4 rounded-lg bg-[#64126D] px-4 py-2 text-white hover:bg-[#52105a]"
+					>
+						Back to Users
+					</button>
 				</div>
 			</div>
 		);
