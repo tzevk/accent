@@ -382,3 +382,19 @@ No step automatically repairs production data.
 
 Disposable MariaDB, HTTP, and browser smoke checks exercised linking, access changes, repair rejection, concurrency, and historical attribution.
 These checks do not prove production deployment.
+
+## Dashboard Log In / Log Out (2026-11-02)
+
+The dashboard shows Log In and Log Out instead of Punch In, Punch Out, and CRM Time.
+Log In is the day's first recorded app entry, including entry with an existing authenticated Session, and stays fixed across later logins, refreshes, and tabs.
+Log Out is the day's latest recorded app contact, advances while the app stays open, and carries the disclaimer "Last recorded app access; updates while the app is open."
+It is last access only, not explicit sign-out, departure, attendance credit, or hours worked.
+Device punches stay in the Attendance Report; the HR attendance grid is unchanged.
+
+The browser-close epoch writer fix is retained: browser-reported close instants enter as numeric epochs converted by MariaDB, sweep signals stay database wall-clock strings, and explicit logout uses the database clock.
+No global driver timezone, attendance policy, payroll formula, or device-punch derivation changes.
+No attendance approval workflow or production data repair was added.
+
+Disposable MariaDB checks exercised first-entry/latest-access days (including a day with no explicit logout), first-entry stability across a later login, empty versus unavailable days, and self-only read-only access without Work Session or biometric tables.
+Chromium dashboard replays exercised fixed first entry, advancing last access, the immediate entry acknowledgement, failed-versus-empty states, and assignment-processing failures.
+See the [updated Work Session decision](../adr/0033-presence-silence-counted-from-activity-evidence.md#dashboard-log-in--log-out-presentation-2026-11-02).

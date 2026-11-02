@@ -327,6 +327,16 @@ _Avoid_: Unverified export, Filtered company total, Ad-hoc spreadsheet
 A User's recently reported activity and availability within Accent. It does not establish attendance, Logged Hours, or productivity.
 _Avoid_: Employee presence, Productivity, Time Present
 
+**Dashboard Log In**:
+One User's first recorded entry into Accent for the day, including entry with an already-signed-in Session.
+It stays fixed across later logins, refreshes, and tabs.
+_Avoid_: First Punch, Sign-in time, Session start
+
+**Dashboard Log Out**:
+One User's latest recorded app contact for the day, which advances while Accent stays open.
+It is last access only, not proof of explicit sign-out, departure, attendance credit, or hours worked.
+_Avoid_: Sign-out, Last Punch, Session end
+
 **Work Session**:
 A User's system-observed presence span on one day — opened by the day's first
 activity event and ended by an explicit logout, by the page-close beacon when the tab

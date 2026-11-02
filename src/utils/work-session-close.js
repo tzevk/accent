@@ -31,9 +31,10 @@ export const WORK_SESSION_END_SOURCES = ['logout', 'beacon', 'sweep'];
  * }} [options]
  *   `endSource` — written to `user_work_sessions.end_source` (once the column
  *     exists; a database without the column still closes the session).
- *   `endedAt` — the end to stamp: the close time the browser reported, or the
- *     last activity signal the sweep saw. Defaults to `CURRENT_TIMESTAMP`,
- *     which is what the logout writes.
+ *   `endedAt` — the end to stamp: a `Date` is the browser-reported instant,
+ *     converted in the database session timezone; a string is the sweep's
+ *     database wall-clock signal, stored as-is; null (the default, what the
+ *     logout writes) stamps `CURRENT_TIMESTAMP`.
  *   `refreshWorkDates` — `'today'` (default, the logout's behaviour) refreshes
  *     today's summary row only; `'all'` refreshes every work date the user has
  *     ended sessions on, which the sweep needs because it ends sessions
@@ -56,14 +57,27 @@ export async function endUserSession(userId, options = {}) {
 		const writesEndSource =
 			!!endSource && (await hasColumn(db, 'user_work_sessions', 'end_source'));
 
-		const params = [endedAt, endedAt];
+		// A browser Date is an absolute instant, but the driver encodes it in the
+		// app's timezone while the database reads the literal in its own session
+		// timezone — the same wall clock in two zones. Binding epoch milliseconds
+		// and converting with FROM_UNIXTIME keeps the instant fixed whatever the
+		// app timezone is. A sweep string is already a database wall-clock literal
+		// and passes through untouched; null stamps the database's own now.
+		const endedAtMs = endedAt instanceof Date ? endedAt.getTime() : NaN;
+		const isBrowserInstant = Number.isFinite(endedAtMs);
+		const endExpr = isBrowserInstant
+			? 'FROM_UNIXTIME(? / 1000)'
+			: 'COALESCE(?, CURRENT_TIMESTAMP)';
+		const endParam = isBrowserInstant ? endedAtMs : endedAt;
+
+		const params = [endParam, endParam];
 		if (writesEndSource) params.push(endSource);
 		params.push(userId);
 
 		await db.execute(
 			`UPDATE user_work_sessions
-       SET session_end = COALESCE(?, CURRENT_TIMESTAMP),
-           duration_minutes = GREATEST(0, TIMESTAMPDIFF(MINUTE, session_start, COALESCE(?, CURRENT_TIMESTAMP))),
+       SET session_end = ${endExpr},
+           duration_minutes = GREATEST(0, TIMESTAMPDIFF(MINUTE, session_start, ${endExpr})),
            status = 'ended'
            ${writesEndSource ? ', end_source = ?' : ''}
        WHERE user_id = ? AND status = 'active'`,

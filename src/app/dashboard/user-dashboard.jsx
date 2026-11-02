@@ -14,7 +14,8 @@ import React, {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { fetchJSON } from '@/utils/http';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api-client';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
 	ClockIcon,
@@ -33,7 +34,6 @@ import {
 } from '@heroicons/react/24/outline';
 import LeaveLoginToast from '@/components/LeaveLoginToast';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
-import { EXPECTED_WORK_MINS, isLateLogin, isOvertime } from '@/lib/shift-times';
 
 // ── Lazy-load heavy components (code-split, only fetched when needed) ──
 const TodoList = lazy(() => import('@/components/TodoList'));
@@ -41,7 +41,7 @@ const ProjectActivityAssignments = lazy(
 	() => import('@/components/ProjectActivityAssignments')
 );
 
-// ── Shift times and the tile remarks (src/lib/shift-times.ts) ──
+// ── Tile remarks ──
 // A tile with no recorded value shows a plain dash. A bare `--:--` read as a
 // broken fetch, so a day that recorded nothing now says so in words (#340).
 // One "no value" character repository-wide: src/lib/format.js returns '—'.
@@ -232,11 +232,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	const { user: contextUser } = useSessionRBAC();
 	const user = verifiedUser || contextUser;
 	const [loading, setLoading] = useState(true);
-	// How today's attendance and the project assignments finished loading
-	// (#340): 'loading' → 'ok' | 'empty' | 'error'. The tiles read this to tell
-	// a day that recorded nothing from a fetch that failed, and each state gets
-	// its own line — never one shared "no data" rendering.
-	const [attendanceLoad, setAttendanceLoad] = useState(LOAD_PENDING);
+	// How the project assignments finished loading (#340): 'loading' →
+	// 'ok' | 'error'. Attendance carries its own query state below, so the
+	// tiles tell a day that recorded nothing from a fetch that failed, and
+	// each state gets its own line — never one shared "no data" rendering.
 	const [assignmentsLoad, setAssignmentsLoad] = useState(LOAD_PENDING);
 	const [statsReady, setStatsReady] = useState(false);
 	const [todoPanelOpen, setTodoPanelOpen] = useState(false);
@@ -283,22 +282,32 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		[]
 	);
 
-	// Attendance
-	const [attendance, setAttendance] = useState({
-		inTime: null,
-		outTime: null,
+	// Attendance: the server's day payload, read through the shared query
+	// client so the page-load read and the two-minute poll share one cache
+	// entry keyed by user. Log In is the first app entry of the database
+	// day; Log Out is the latest recorded app contact, which advances while
+	// the app stays open. Defaults keep every tile honest before the first
+	// read.
+	const currentUserId = verifiedUser?.id || user?.id;
+	const queryClient = useQueryClient();
+	const attendanceQueryKey = useMemo(
+		() => ['users', currentUserId, 'attendance'],
+		[currentUserId]
+	);
+	const attendanceQuery = useQuery({
+		queryKey: attendanceQueryKey,
+		queryFn: () => apiGet(`/api/users/${currentUserId}/attendance`),
+		enabled: !!currentUserId,
+		refetchInterval: 120000, // Matches heartbeat interval
+		refetchIntervalInBackground: true,
+	});
+	const attendanceDay = attendanceQuery.data?.data ?? null;
+	const attendance = {
+		idleTime: 0,
 		loginTime: null,
 		logoutTime: null,
-		endSource: null,
-		// The day's Punches, resolved server-side with the linked Employee
-		// (ticket #334): the device is the value on the Punch In / Punch Out
-		// tiles, and `punchEmployeeId` null means the account has no linked
-		// Employee record at all.
-		punchInTime: null,
-		punchOutTime: null,
-		punchCount: 0,
-		punchComputable: false,
-		punchEmployeeId: null,
+		accessStatus: 'ok',
+		accessDate: null,
 		currentMonth: '',
 		daysInMonth: 0,
 		daysPresent: 0,
@@ -306,88 +315,45 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		holidays: 0,
 		overtimeHours: 0,
 		leaves: { total: 24, used: 0, balance: 24 },
-	});
+		...(attendanceDay || {}),
+	};
+	// A failed fetch and a day that recorded nothing are different facts
+	// (#340): the query state decides which one the tiles see, and a
+	// successful poll clears either back to the day's own state. The access
+	// source names its own failure, so the clocks never read stale or
+	// fabricated times.
+	const accessSourceError = attendance.accessStatus === 'error';
+	const attendanceLoad = attendanceQuery.isError
+		? LOAD_ERROR
+		: !attendanceQuery.data
+			? LOAD_PENDING
+			: accessSourceError || attendance.loginTime || attendance.logoutTime
+				? LOAD_OK
+				: LOAD_EMPTY;
+	const accessSourceUnknown =
+		attendanceLoad === LOAD_ERROR || accessSourceError;
 
-	// Live total time: (now - loginTime) - cumulative idle
-	const [liveTotalTime, setLiveTotalTime] = useState({
-		hrs: 0,
-		mins: 0,
-		elapsedHrs: 0,
-		elapsedMins: 0,
-		idleHrs: 0,
-		idleMins: 0,
-	});
+	// An app-entry acknowledgement races the page-load read: the initial
+	// GET may have landed before the entry row was written, so the ack
+	// cancels that in-flight read and forces a fresh one. The ack is
+	// keyed to the viewed user, never the admin viewer's own report, and
+	// an old user's acknowledgement never repaints the new user's tiles.
 	useEffect(() => {
-		const calcTotal = () => {
-			const lt = attendance.loginTime;
-			if (!lt) {
-				setLiveTotalTime({
-					hrs: 0,
-					mins: 0,
-					elapsedHrs: 0,
-					elapsedMins: 0,
-					idleHrs: 0,
-					idleMins: 0,
+		if (!currentUserId) return;
+		const onAccessRecorded = (event) => {
+			if (event?.detail?.userId !== currentUserId) return;
+			const key = ['users', currentUserId, 'attendance'];
+			void queryClient
+				.cancelQueries({ queryKey: key })
+				.catch(() => {})
+				.finally(() => {
+					void queryClient.invalidateQueries({ queryKey: key });
 				});
-				return;
-			}
-			const now = new Date();
-			const [lh, lm] = (typeof lt === 'string' ? lt : lt.toString())
-				.split(':')
-				.map(Number);
-			const loginDate = new Date(
-				now.getFullYear(),
-				now.getMonth(),
-				now.getDate(),
-				lh,
-				lm || 0
-			);
-
-			let endDate = now;
-			// If logged out, cap elapsed time at logout
-			if (attendance.logoutTime) {
-				const [oh, om] = (
-					typeof attendance.logoutTime === 'string'
-						? attendance.logoutTime
-						: attendance.logoutTime.toString()
-				)
-					.split(':')
-					.map(Number);
-				endDate = new Date(
-					now.getFullYear(),
-					now.getMonth(),
-					now.getDate(),
-					oh,
-					om || 0
-				);
-			}
-
-			const elapsedMin = Math.max(0, Math.floor((endDate - loginDate) / 60000));
-			// After logout, only use DB idle time — don't add live cumulative idle
-			const idleMin = attendance.logoutTime
-				? attendance.idleTime || 0
-				: Math.floor(cumulativeIdleSeconds / 60) + (attendance.idleTime || 0);
-			const netMin = Math.max(0, elapsedMin - idleMin);
-			setLiveTotalTime({
-				hrs: Math.floor(netMin / 60),
-				mins: netMin % 60,
-				elapsedHrs: Math.floor(elapsedMin / 60),
-				elapsedMins: elapsedMin % 60,
-				idleHrs: Math.floor(idleMin / 60),
-				idleMins: idleMin % 60,
-			});
 		};
-		calcTotal();
-		// Don't keep interval running after logout
-		if (attendance.logoutTime) return;
-		const iv = setInterval(calcTotal, 50000);
-		return () => clearInterval(iv);
-	}, [
-		attendance.loginTime,
-		attendance.logoutTime,
-		attendance.idleTime,
-		cumulativeIdleSeconds,
-	]);
+		window.addEventListener('app-access-recorded', onAccessRecorded);
+		return () =>
+			window.removeEventListener('app-access-recorded', onAccessRecorded);
+	}, [currentUserId, queryClient]);
 
 	// Module data
 	const [moduleAssignments, setModuleAssignments] = useState({
@@ -441,6 +407,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	});
 
 	// ── Data fetching with tiered loading + AbortController ──
+	// Attendance rides the shared query above, so this effect owns only the
+	// activity assignments and the tier-2 reads. The shell still waits for
+	// the attendance query before its first paint.
 	useEffect(() => {
 		const userId = verifiedUser?.id || user?.id;
 		if (!userId) return;
@@ -450,44 +419,23 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 		const loadData = async () => {
 			setLoading(true);
+			setAssignmentsLoad(LOAD_PENDING);
 			const today = new Date().toISOString().split('T')[0];
 
 			try {
-				// ── Tier 1 (critical path): attendance + activity assignments ──
+				// ── Tier 1 (critical path): activity assignments ──
 				// These paint the header & stats — fetch first so shell renders fast
-				const [attendanceRes, activityRes] = await Promise.allSettled([
-					fetchJSON(`/api/users/${userId}/attendance`, { signal }).catch(
-						() => null
-					),
-					fetch(`/api/users/${userId}/activity-assignments`, { signal })
-						.then((r) => r.json())
-						.catch(() => null),
-				]);
+				const activityRes = await fetch(
+					`/api/users/${userId}/activity-assignments`,
+					{ signal }
+				)
+					.then((r) => r.json())
+					.then(
+						(value) => ({ status: 'fulfilled', value }),
+						() => ({ status: 'rejected', value: null })
+					);
 
 				if (signal.aborted) return;
-
-				// A failed fetch and a day that recorded nothing are different
-				// facts, so each source is named as one of them (#340).
-				const attendanceOk =
-					attendanceRes.status === 'fulfilled' && attendanceRes.value?.success;
-				if (attendanceOk) {
-					const day = attendanceRes.value.data;
-					setAttendance(day);
-					// Everything the payload's day can carry decides whether the
-					// day recorded something: the session times and the device's
-					// own punches (#334). A punch-only day is not an empty day.
-					setAttendanceLoad(
-						day?.loginTime ||
-							day?.logoutTime ||
-							day?.punchInTime ||
-							day?.punchOutTime
-							? LOAD_OK
-							: LOAD_EMPTY
-					);
-				} else {
-					setAttendanceLoad(LOAD_ERROR);
-				}
-
 				let assignmentsList = [];
 				const assignmentsOk =
 					activityRes.status === 'fulfilled' && activityRes.value?.success;
@@ -528,8 +476,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					setAssignmentsLoad(LOAD_ERROR);
 				}
 
-				// First paint is ready
-				setLoading(false);
+				// First paint waits for the attendance query too — the header
+				// and the tiles read it, so an early shell would flash empty.
+				// Tier 2 stays non-blocking below.
 
 				// ── Tier 2 (non-blocking): messages, todos, work-logs ──
 				// Fetched after shell renders so user sees content sooner
@@ -600,7 +549,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					setModuleAccess((prev) => ({ ...prev, ...accessPatch }));
 			} catch (error) {
 				console.error('Failed to load dashboard data:', error);
-				setLoading(false);
+				if (signal.aborted) return;
+				// A throw before tier-1 settles must still release the shell;
+				// a later tier-2 throw must not demote an already-settled source.
+				setAssignmentsLoad((prev) =>
+					prev === LOAD_PENDING ? LOAD_ERROR : prev
+				);
 			}
 		};
 
@@ -608,74 +562,31 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return () => ac.abort();
 	}, [verifiedUser?.id, user?.id]);
 
-	// ── Did the day's end come from inference rather than choice? (#331) ──
-	// A sweep or beacon end is an inference about presence: the sweep stamps
-	// the last activity signal, the beacon a close the browser had to time. A
-	// logout — or no end at all — is the user's own choice. One named test,
-	// used by the poll's stop condition below and the Punch Out tile's
-	// disclosure.
-	const endWasInferred =
-		attendance.endSource === 'sweep' || attendance.endSource === 'beacon';
-
-	// ── Poll attendance data (especially idle time) every 2 minutes ──
+	// The shell clears once both tier-1 reads settled: the assignments
+	// effect above and the attendance query. Either may fail — the tiles
+	// name their own failure — but neither may leave the loader spinning.
+	// A later poll refetches behind the painted shell, never through it.
 	useEffect(() => {
-		const userId = verifiedUser?.id || user?.id;
-		// Only a real logout ends the day. A beacon or sweep end is an inferred
-		// one (ticket #331), so the poll keeps running — a punch the device
-		// pushes late still has to reach the tile (ticket #334).
-		const hasRealLogout = !!attendance.logoutTime && !endWasInferred;
-		if (!userId || hasRealLogout) return; // Don't poll if logged out
+		if (
+			assignmentsLoad !== LOAD_PENDING &&
+			!attendanceQuery.isPending &&
+			(attendanceQuery.isSuccess || attendanceQuery.isError)
+		) {
+			setLoading(false);
+		}
+	}, [
+		assignmentsLoad,
+		attendanceQuery.isPending,
+		attendanceQuery.isSuccess,
+		attendanceQuery.isError,
+	]);
 
-		let retryCount = 0;
-		const maxRetries = 3;
-		let isPolling = false;
-
-		const pollAttendance = async () => {
-			// Skip if already polling (prevents concurrent requests)
-			if (isPolling) return;
-
-			isPolling = true;
-			try {
-				// `no-store`: the endpoint answers with a 30-second cache header,
-				// which would otherwise serve the poll the page-load response.
-				const res = await fetchJSON(`/api/users/${userId}/attendance`, {
-					cache: 'no-store',
-				});
-				if (res?.success) {
-					// Only the figures the poll exists to refresh, so nothing
-					// else on the card is disrupted mid-render.
-					setAttendance((prev) => ({
-						...prev,
-						idleTime: res.data.idleTime || prev.idleTime,
-						punchInTime: res.data.punchInTime ?? prev.punchInTime,
-						punchOutTime: res.data.punchOutTime ?? prev.punchOutTime,
-						punchCount: res.data.punchCount ?? prev.punchCount,
-						punchComputable: res.data.punchComputable ?? prev.punchComputable,
-						punchEmployeeId: res.data.punchEmployeeId ?? prev.punchEmployeeId,
-					}));
-					retryCount = 0; // Reset retry count on success
-				}
-			} catch (error) {
-				retryCount++;
-				// Log only if it's a persistent issue (not just network blip)
-				if (retryCount >= maxRetries) {
-					console.warn('Attendance polling failed multiple times:', error);
-				}
-			} finally {
-				isPolling = false;
-			}
-		};
-
-		const pollInterval = setInterval(pollAttendance, 120000); // Poll every 2 minutes (matches heartbeat interval)
-
-		// Do an initial poll after 10 seconds
-		const initialPoll = setTimeout(pollAttendance, 10000);
-
-		return () => {
-			clearInterval(pollInterval);
-			clearTimeout(initialPoll);
-		};
-	}, [verifiedUser?.id, user?.id, attendance.logoutTime, attendance.endSource]);
+	// The shared query's own interval is the poll: every refetch replaces
+	// the whole day payload, including null clears, and a later recorded
+	// access lands on the next tick. The interval never stops — the Log Out
+	// clock advances while the app stays open — and the query key scopes
+	// each read to its user, so a stale response after a user change or
+	// unmount never reaches these tiles.
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
@@ -688,25 +599,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return time;
 	}, []);
 
-	// ── The day's Punches on the tiles (ticket #334) ──
-	// A computable punch pair makes the device the value and the session times
-	// the sub-line; without one the sign-in or logout stays the value and the
-	// sub-line says which gap the device left. A punch never moves a work
-	// figure, so Total Time keeps reading the session times.
-	const punchPair = attendance.punchComputable === true;
-	const punchLinked = attendance.punchEmployeeId != null;
-	const punchInValue = punchPair
-		? attendance.punchInTime
-		: attendance.loginTime;
-	const punchOutValue = punchPair
-		? attendance.punchOutTime
-		: attendance.logoutTime;
-	/** Why a tile is showing a session time instead of a punch, if it is. */
-	const punchFallbackNote = !punchLinked
-		? 'No Employee record is linked to this account, so no punch can exist.'
-		: !punchPair
-			? 'The device recorded no punch pair for the day.'
-			: null;
+	// ── The day's app-access clocks ──
+	// Log In is the first app entry of the database day, including entry
+	// with an existing authenticated session; it stays fixed across later
+	// logins, refreshes, and tabs. Log Out is the latest recorded app
+	// contact — periodic activity included — and is not proof of explicit
+	// sign-out, departure, or attendance credit.
+	const loginValue = attendance.loginTime;
+	const logoutValue = attendance.logoutTime;
 
 	// ── Loading state ──
 	if (loading) {
@@ -999,8 +899,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								{/* The day's own state (#340): a fetch that failed names
 								    the next step in a live error line; a day with nothing
 								    recorded is named as recorded, in plain neutral text.
-								    One or the other, never both, never neither — and the
-								    error line has no timer, so a slow reader keeps it. */}
+								    An unknown access source is neither — the empty claim
+								    stays off while the access tiles name it unavailable —
+								    and the error line has no timer, so a slow reader keeps it. */}
 								{attendanceLoad === LOAD_ERROR && (
 									<div
 										data-testid="attendance-fetch-error"
@@ -1018,7 +919,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										</p>
 									</div>
 								)}
-								{attendanceLoad === LOAD_EMPTY && (
+								{attendanceLoad === LOAD_EMPTY && !accessSourceUnknown && (
 									<p
 										data-testid="attendance-empty-state"
 										data-state="empty"
@@ -1027,18 +928,18 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										Nothing recorded yet today.
 									</p>
 								)}
-								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-8">
-									{/* Punch In */}
+								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-6">
+									{/* Log In — first app entry of the day */}
 									<div className="group relative rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-emerald-50 p-3 hover:shadow-lg hover:border-green-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-green-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchInValue ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${loginValue ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowRightStartOnRectangleIcon className="h-4 w-4" />
 												</div>
-												{punchInValue && (
+												{loginValue && (
 													<div
 														data-motion="pulse"
 														className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300"
@@ -1046,170 +947,63 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 												)}
 											</div>
 											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-												Punch In
+												Log In
 											</p>
 											<p
-												data-testid="punch-in-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchInValue ? (isLateLogin(punchInValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
+												data-testid="login-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${loginValue ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{punchInValue ? formatTime(punchInValue) : NO_VALUE}
-												{punchInValue && isLateLogin(punchInValue) && (
-													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
-														Late
-													</span>
-												)}
+												{loginValue ? formatTime(loginValue) : NO_VALUE}
 											</p>
-											{punchPair && attendance.loginTime && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													Signed in {formatTime(attendance.loginTime)}
+											{accessSourceUnknown ? (
+												<p className="mt-1 text-xs leading-snug text-red-700">
+													App access unavailable. Refresh the page.
 												</p>
-											)}
-											{punchFallbackNote && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{punchFallbackNote}
-												</p>
+											) : (
+												!loginValue && (
+													<p className="mt-1 text-xs leading-snug text-gray-500">
+														No app entry recorded yet today.
+													</p>
+												)
 											)}
 										</div>
 									</div>
-									{/* Punch Out */}
+									{/* Log Out — latest recorded app access */}
 									<div className="group relative rounded-xl border border-red-200 bg-gradient-to-br from-red-50 via-white to-rose-50 p-3 hover:shadow-lg hover:border-red-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-red-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchOutValue ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${logoutValue ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
 											</div>
 											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-												Punch Out
+												Log Out
 											</p>
 											<p
-												data-testid="punch-out-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchOutValue ? (isOvertime(punchOutValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
+												data-testid="logout-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${logoutValue ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{punchOutValue ? formatTime(punchOutValue) : NO_VALUE}
-												{punchOutValue && isOvertime(punchOutValue) && (
-													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
-														OT
-													</span>
-												)}
+												{logoutValue ? formatTime(logoutValue) : NO_VALUE}
 											</p>
-											{punchPair && attendance.logoutTime && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{endWasInferred ? 'Session ended' : 'Logged out'}{' '}
-													{formatTime(attendance.logoutTime)}
+											<p className="mt-1 text-xs leading-snug text-gray-500">
+												Last recorded app access; updates while the app is open.
+											</p>
+											{accessSourceUnknown ? (
+												<p className="mt-1 text-xs leading-snug text-red-700">
+													App access unavailable. Refresh the page.
 												</p>
-											)}
-											{attendance.logoutTime && endWasInferred && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													No logout recorded — ended from your last activity.
-												</p>
-											)}
-											{punchFallbackNote && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{punchFallbackNote}
-												</p>
+											) : (
+												!logoutValue && (
+													<p className="mt-1 text-xs leading-snug text-gray-500">
+														No app access recorded yet today.
+													</p>
+												)
 											)}
 										</div>
 									</div>
-									{/* Total Time */}
-									{(() => {
-										const totalMins =
-											liveTotalTime.hrs * 60 + liveTotalTime.mins;
-										const isComplete = totalMins >= EXPECTED_WORK_MINS;
-										const hasLogin = !!attendance.loginTime;
-										return (
-											<div
-												className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${
-													!hasLogin
-														? 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50'
-														: isComplete
-															? 'border-green-300 bg-gradient-to-br from-green-50 via-white to-emerald-50'
-															: 'border-red-300 bg-gradient-to-br from-red-50 via-white to-rose-50'
-												}`}
-											>
-												<div
-													className={`absolute top-0 right-0 w-20 h-20 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500 ${
-														!hasLogin
-															? 'bg-indigo-200/30'
-															: isComplete
-																? 'bg-green-200/30'
-																: 'bg-red-200/30'
-													}`}
-												/>
-												<div className="relative">
-													<div className="flex items-center justify-between mb-2">
-														<div
-															className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${
-																!hasLogin
-																	? 'bg-gray-200 text-gray-500'
-																	: isComplete
-																		? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md'
-																		: 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md'
-															}`}
-														>
-															<ClockIcon className="h-4 w-4" />
-														</div>
-														{hasLogin && (
-															<div
-																data-motion="pulse"
-																className={`w-2 h-2 rounded-full animate-pulse shadow-sm ${isComplete ? 'bg-green-500 shadow-green-300' : 'bg-red-500 shadow-red-300'}`}
-															/>
-														)}
-													</div>
-													<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-														Total Time
-													</p>
-													<p
-														data-testid="total-time-figure"
-														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${!hasLogin ? 'text-gray-500' : isComplete ? 'text-green-700' : 'text-red-600'}`}
-													>
-														{hasLogin
-															? `${liveTotalTime.hrs}h ${liveTotalTime.mins}m`
-															: NO_VALUE}
-														{hasLogin && isComplete && (
-															<span className="ml-1 text-xs font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">
-																✓
-															</span>
-														)}
-													</p>
-													{hasLogin && (
-														<p
-															data-testid="total-time-breakdown"
-															className={`text-xs mt-1 font-medium leading-snug tabular-nums ${isComplete ? 'text-green-600' : 'text-red-700'}`}
-														>
-															{liveTotalTime.elapsedHrs}h{' '}
-															{liveTotalTime.elapsedMins}m
-															<span className="text-red-700 font-bold">
-																{' '}
-																−{' '}
-																{liveTotalTime.idleHrs > 0
-																	? `${liveTotalTime.idleHrs}h `
-																	: ''}
-																{liveTotalTime.idleMins}m
-															</span>
-															<span className="text-gray-500"> idle</span>
-														</p>
-													)}
-													{hasLogin && !isComplete && (
-														<p
-															data-testid="total-time-remaining"
-															className="text-xs text-red-700 mt-0.5 font-semibold tabular-nums"
-														>
-															{Math.floor(
-																(EXPECTED_WORK_MINS - totalMins) / 60
-															) > 0
-																? `${Math.floor((EXPECTED_WORK_MINS - totalMins) / 60)}h `
-																: ''}
-															{(EXPECTED_WORK_MINS - totalMins) % 60}m remaining
-														</p>
-													)}
-												</div>
-											</div>
-										);
-									})()}
 									{/* Present Days */}
 									<div className="group relative rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-3 hover:shadow-lg hover:border-blue-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-blue-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
@@ -1324,14 +1118,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									</div>
 									{/* Idle Time (Live + Total) */}
 									{(() => {
-										// After logout, only show DB idle — don't add live cumulative
-										const effectiveIdleSecs = attendance.logoutTime
-											? 0
-											: idleSeconds;
-										const totalIdleMin = attendance.logoutTime
-											? attendance.idleTime || 0
-											: Math.floor(cumulativeIdleSeconds / 60) +
-												(attendance.idleTime || 0);
+										// Recorded idle plus the live cumulative figure,
+										// informational only — the app-access clocks no
+										// longer infer an ended workday.
+										const effectiveIdleSecs = idleSeconds;
+										const totalIdleMin =
+											Math.floor(cumulativeIdleSeconds / 60) +
+											(attendance.idleTime || 0);
 										return (
 											<div
 												className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${
@@ -1382,9 +1175,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 																	: 'text-emerald-800'
 														}`}
 													>
-														{attendance.logoutTime
-															? `${totalIdleMin}m`
-															: fmtIdle(effectiveIdleSecs)}
+														{fmtIdle(effectiveIdleSecs)}
 													</p>
 													<p
 														data-testid="idle-caption"
@@ -1393,15 +1184,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 														<span
 															className={`w-1.5 h-1.5 rounded-full inline-block ${effectiveIdleSecs > 1800 ? 'bg-red-500' : effectiveIdleSecs > 300 ? 'bg-amber-500' : 'bg-emerald-500'}`}
 														/>
-														{attendance.logoutTime
-															? 'session ended'
-															: totalIdleMin > 0
-																? `Total ${totalIdleMin}m today`
-																: effectiveIdleSecs > 1800
-																	? 'action needed'
-																	: effectiveIdleSecs > 300
-																		? 'getting idle'
-																		: 'all good'}
+														{totalIdleMin > 0
+															? `Total ${totalIdleMin}m today`
+															: effectiveIdleSecs > 1800
+																? 'action needed'
+																: effectiveIdleSecs > 300
+																	? 'getting idle'
+																	: 'all good'}
 													</p>
 												</div>
 											</div>

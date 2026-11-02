@@ -2,18 +2,6 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { isWeeklyOff } from '@/utils/weekly-off';
-import { hasColumn } from '@/utils/schema-cache';
-import { computeDayPunchSpan } from '@/lib/time-present';
-import { linkedEmployeeId } from '@/app/api/me/_lib/session-employee';
-
-const DAY_MS = 86_400_000;
-
-/** 'YYYY-MM-DD' shifted by whole days, in UTC so the padding never shifts. */
-function addDays(day, delta) {
-	return new Date(Date.parse(`${day}T00:00:00Z`) + delta * DAY_MS)
-		.toISOString()
-		.slice(0, 10);
-}
 
 /**
  * GET /api/users/[id]/attendance
@@ -60,12 +48,8 @@ export async function GET(request, { params }) {
 			idleTime: 0,
 			loginTime: null,
 			logoutTime: null,
-			endSource: null,
-			punchInTime: null,
-			punchOutTime: null,
-			punchCount: 0,
-			punchComputable: false,
-			punchEmployeeId: null,
+			accessStatus: 'error',
+			accessDate: null,
 			currentMonth: now.toLocaleString('default', {
 				month: 'long',
 				year: 'numeric',
@@ -203,102 +187,42 @@ export async function GET(request, { params }) {
 			attendanceData.weeklyOff = weeklyOff;
 		}
 
-		// Fetch login/logout times from user_daily_summary / user_work_sessions
+		// Today's app access, read from successful user_activity_logs rows in
+		// the database's current calendar day. Log In is the earliest app
+		// entry: real logins plus the initial authenticated app-entry
+		// status_change — never a logout, heartbeat, or idle transition. Log
+		// Out is the latest recorded contact of any kind, heartbeats and
+		// explicit logout included. Both clocks are SQL-formatted HH:MM in
+		// the database session timezone; the host never parses dates here.
 		try {
-			const [dailySummary] = await db.execute(
-				`SELECT first_login, last_activity FROM user_daily_summary WHERE user_id = ? AND date = CURDATE() LIMIT 1`,
+			const [accessRows] = await db.execute(
+				`SELECT
+           DATE_FORMAT(MIN(CASE
+             WHEN action_type = 'logout' THEN NULL
+             WHEN resource_type = 'heartbeat' THEN NULL
+             WHEN action_type = 'status_change' AND JSON_UNQUOTE(JSON_EXTRACT(details, '$.status')) = 'idle' THEN NULL
+             ELSE created_at
+           END), '%H:%i') AS login_time,
+           DATE_FORMAT(MAX(created_at), '%H:%i') AS logout_time,
+           DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS access_date
+         FROM user_activity_logs
+         WHERE user_id = ?
+           AND status = 'success'
+           AND created_at >= CURDATE()
+           AND created_at < CURDATE() + INTERVAL 1 DAY`,
 				[requestedUserId]
 			);
-			if (dailySummary.length > 0) {
-				if (dailySummary[0].first_login) {
-					const fl = new Date(dailySummary[0].first_login);
-					attendanceData.loginTime = fl.toTimeString().slice(0, 5); // HH:MM
-				}
-			}
-
-			// Get latest ended session_end as logout time. `end_source` says how
-			// that end was recorded: a real logout, the page-close beacon, or the
-			// sweep (ticket #331 — the Punch Out tile discloses an inferred end).
-			// NULL is a row written before the column existed: a pre-existing
-			// end, never an inferred one.
-			const hasEndSource = await hasColumn(
-				db,
-				'user_work_sessions',
-				'end_source'
-			);
-			const [lastSession] = await db.execute(
-				`SELECT session_end${hasEndSource ? ', end_source' : ''}
-         FROM user_work_sessions
-         WHERE user_id = ? AND DATE(session_start) = CURDATE() AND status = 'ended' AND session_end IS NOT NULL
-         ORDER BY session_end DESC LIMIT 1`,
-				[requestedUserId]
-			);
-			if (lastSession.length > 0 && lastSession[0].session_end) {
-				const se = new Date(lastSession[0].session_end);
-				attendanceData.logoutTime = se.toTimeString().slice(0, 5);
-				attendanceData.endSource = hasEndSource
-					? (lastSession[0].end_source ?? null)
-					: null;
-			}
-		} catch (loginErr) {
-			console.log('Login/logout time fetch skipped:', loginErr.message);
-		}
-
-		// The day's Punches, for the Punch In and Punch Out tiles (ticket
-		// #334): the device is the value, the session times the sub-line.
-		try {
-			// The linked Employee is resolved here, server-side, from the
-			// account's own `users.employee_id` → `employees.id` link. No
-			// client-side employee lookup exists, so the admin
-			// live-monitoring view of another user's dashboard keeps working.
-			const linkedId = await linkedEmployeeId(db, requestedUserId);
-			const employeeId = linkedId != null ? Number(linkedId) : null;
-			attendanceData.punchEmployeeId = employeeId;
-
-			// One day of padding either side — the Attendance report's own rule:
-			// the day before feeds the walk, and the day after lets a night
-			// shift's first punch join within the shared 12-hour window.
-			const [todayRow] = await db.execute(
-				`SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS today`
-			);
-			const today = todayRow[0].today;
-			let punchRows = [];
-			if (employeeId != null) {
-				const [rows] = await db.execute(
-					`SELECT employee_code, log_date, employee_id
-             FROM attendance_logs
-             WHERE employee_id = ?
-               AND log_date >= ? AND log_date < ?`,
-					[
-						employeeId,
-						`${addDays(today, -1)} 00:00:00`,
-						`${addDays(today, 2)} 00:00:00`,
-					]
-				);
-				punchRows = rows;
-			}
-
-			// The shared rule the Attendance report reads by, over that window.
-			const span = computeDayPunchSpan(punchRows, {
-				date: today,
-				employeeId,
-			});
-			attendanceData.punchCount = span.punchCount;
-			attendanceData.punchComputable = span.computable;
-			// The punch times are the day's measured endpoints. Without a
-			// computable pair there is nothing to show — a lone punch must
-			// never render as a zero-length span — and the tile keeps the
-			// sign-in or logout instead.
-			attendanceData.punchInTime =
-				span.computable && span.firstPunch
-					? span.firstPunch.log_date.slice(11, 16)
-					: null;
-			attendanceData.punchOutTime =
-				span.computable && span.lastPunch
-					? span.lastPunch.log_date.slice(11, 16)
-					: null;
-		} catch (punchErr) {
-			console.log('Punch fetch skipped:', punchErr.message);
+			const accessRow = accessRows?.[0] ?? null;
+			attendanceData.loginTime = accessRow?.login_time ?? null;
+			attendanceData.logoutTime = accessRow?.logout_time ?? null;
+			attendanceData.accessDate = accessRow?.access_date ?? null;
+			attendanceData.accessStatus = accessRows?.length ? 'ok' : 'error';
+		} catch (accessErr) {
+			console.log('App access fetch skipped:', accessErr.message);
+			attendanceData.loginTime = null;
+			attendanceData.logoutTime = null;
+			attendanceData.accessDate = null;
+			attendanceData.accessStatus = 'error';
 		}
 
 		// Try to get leave data (still using same db connection)
