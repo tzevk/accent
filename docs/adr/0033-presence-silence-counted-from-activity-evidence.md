@@ -14,6 +14,9 @@ Consequences: a day's Total Time now sums spans that stop when the User stops, s
 
 ## Dashboard correction (2026-11-02)
 
+> The dashboard presentation below is superseded by the Log In / Log Out section later in this record.
+> The browser-close timestamp fix remains current.
+
 The dashboard no longer substitutes CRM times under Punch In or Punch Out.
 Those tiles show device evidence only. A lone First Punch remains visible without inventing a Last Punch.
 The separate CRM Time figure measures observed Work Session intervals, not attendance, Logged Hours, or pay.
@@ -31,3 +34,17 @@ Browser-reported close instants now enter the close writer as numeric epochs.
 MariaDB converts them through `FROM_UNIXTIME` in its session timezone, independently of the app server timezone.
 Sweep signals remain database wall-clock strings. Explicit logout still uses the database clock.
 No global driver timezone, attendance policy, payroll formula, or device-punch derivation changes.
+
+## Dashboard Log In / Log Out presentation (2026-11-02)
+
+The dashboard no longer shows Punch In, Punch Out, or CRM Time.
+It shows Dashboard Log In (first recorded app entry of the day, including entry with an existing Session)
+and Dashboard Log Out (latest recorded app contact of the day, including heartbeats and real logout).
+The Log Out label names last access and is disclaimed as such; it is not explicit sign-out,
+departure, attendance credit, or hours worked. Device punches stay in the Attendance Report,
+and the HR attendance grid is unchanged. Work Session recording continues as before;
+the new cards only stop reading it.
+
+The browser-close epoch writer fix above is retained unchanged:
+browser-reported close instants still enter as numeric epochs converted by MariaDB,
+sweep signals stay database wall-clock strings, and explicit logout still uses the database clock.

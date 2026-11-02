@@ -71,10 +71,10 @@ export function useActivityTracker() {
 	// Send important activity data immediately
 	const sendActivityData = useCallback(
 		async (data) => {
-			if (!user?.id) return;
+			if (!user?.id) return false;
 
 			try {
-				await fetch('/api/activity-logs/track-activity', {
+				const response = await fetch('/api/activity-logs/track-activity', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					credentials: 'include',
@@ -84,8 +84,11 @@ export function useActivityTracker() {
 						timestamp: new Date().toISOString(),
 					}),
 				});
+				const payload = await response.json().catch(() => null);
+				return response.ok && payload?.success !== false;
 			} catch {
 				// Silently fail
+				return false;
 			}
 		},
 		[user?.id]
@@ -228,7 +231,7 @@ export function useActivityTracker() {
 		pageStartTimeRef.current = Date.now();
 
 		// Set up intervals - but delay start to not interfere with page load
-		setTimeout(() => {
+		const intervalTimeout = setTimeout(() => {
 			heartbeatIntervalRef.current = setInterval(
 				sendHeartbeat,
 				HEARTBEAT_INTERVAL
@@ -243,12 +246,24 @@ export function useActivityTracker() {
 			);
 		}, 5000); // Wait 5 seconds after mount before starting intervals
 
-		// Don't send initial session start immediately - queue it for the first batch
-		queueActivityData({
+		// Record this authenticated app entry now instead of leaving it for
+		// the first batch. A successful ack tells the dashboard its initial
+		// read may have raced the insert; failures stay silent.
+		let entryActive = true;
+		const entryUserId = user.id;
+		void sendActivityData({
 			actionType: 'status_change',
 			resourceType: 'session',
 			description: 'Session started',
 			details: { status: 'active' },
+		}).then((acknowledged) => {
+			if (acknowledged && entryActive) {
+				window.dispatchEvent(
+					new CustomEvent('app-access-recorded', {
+						detail: { userId: entryUserId },
+					})
+				);
+			}
 		});
 
 		// Handle browser close
@@ -286,6 +301,7 @@ export function useActivityTracker() {
 
 		// Cleanup
 		return () => {
+			entryActive = false;
 			window.removeEventListener('mousemove', throttledActivity);
 			window.removeEventListener('click', throttledActivity);
 			window.removeEventListener('keydown', throttledActivity);
@@ -293,10 +309,14 @@ export function useActivityTracker() {
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 
+			clearTimeout(intervalTimeout);
 			clearInterval(heartbeatIntervalRef.current);
 			clearInterval(idleCheckIntervalRef.current);
 			clearInterval(batchIntervalRef.current);
 			clearTimeout(activityTimeout);
+			heartbeatIntervalRef.current = null;
+			idleCheckIntervalRef.current = null;
+			batchIntervalRef.current = null;
 		};
 	}, [
 		user?.id,

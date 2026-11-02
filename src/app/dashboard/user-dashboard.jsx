@@ -14,7 +14,7 @@ import React, {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet } from '@/lib/api-client';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
@@ -34,7 +34,6 @@ import {
 } from '@heroicons/react/24/outline';
 import LeaveLoginToast from '@/components/LeaveLoginToast';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
-import { isLateLogin, isOvertime } from '@/lib/shift-times';
 
 // ── Lazy-load heavy components (code-split, only fetched when needed) ──
 const TodoList = lazy(() => import('@/components/TodoList'));
@@ -42,7 +41,7 @@ const ProjectActivityAssignments = lazy(
 	() => import('@/components/ProjectActivityAssignments')
 );
 
-// ── Shift times and the tile remarks (src/lib/shift-times.ts) ──
+// ── Tile remarks ──
 // A tile with no recorded value shows a plain dash. A bare `--:--` read as a
 // broken fetch, so a day that recorded nothing now says so in words (#340).
 // One "no value" character repository-wide: src/lib/format.js returns '—'.
@@ -285,36 +284,30 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 	// Attendance: the server's day payload, read through the shared query
 	// client so the page-load read and the two-minute poll share one cache
-	// entry keyed by user. Punch fields ride independently from the CRM
-	// session snapshot; `sessionActive` selects which snapshot the CRM tile
-	// advances, and `sessionTimeInvalid` names a corrupt row instead of
-	// timing it. Defaults keep every tile honest before the first read.
+	// entry keyed by user. Log In is the first app entry of the database
+	// day; Log Out is the latest recorded app contact, which advances while
+	// the app stays open. Defaults keep every tile honest before the first
+	// read.
 	const currentUserId = verifiedUser?.id || user?.id;
+	const queryClient = useQueryClient();
+	const attendanceQueryKey = useMemo(
+		() => ['users', currentUserId, 'attendance'],
+		[currentUserId]
+	);
 	const attendanceQuery = useQuery({
-		queryKey: ['users', currentUserId, 'attendance'],
+		queryKey: attendanceQueryKey,
 		queryFn: () => apiGet(`/api/users/${currentUserId}/attendance`),
 		enabled: !!currentUserId,
 		refetchInterval: 120000, // Matches heartbeat interval
 		refetchIntervalInBackground: true,
 	});
 	const attendanceDay = attendanceQuery.data?.data ?? null;
-	const attendanceReceivedAt = attendanceQuery.dataUpdatedAt || 0;
 	const attendance = {
-		inTime: null,
-		outTime: null,
 		idleTime: 0,
-		sessionStartTime: null,
-		sessionEndTime: null,
-		sessionEndSource: null,
-		sessionElapsedMinutes: null,
-		sessionAsOf: null,
-		sessionActive: false,
-		sessionTimeInvalid: false,
-		punchInTime: null,
-		punchOutTime: null,
-		punchCount: 0,
-		punchComputable: false,
-		punchEmployeeId: null,
+		loginTime: null,
+		logoutTime: null,
+		accessStatus: 'ok',
+		accessDate: null,
 		currentMonth: '',
 		daysInMonth: 0,
 		daysPresent: 0,
@@ -326,52 +319,41 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	};
 	// A failed fetch and a day that recorded nothing are different facts
 	// (#340): the query state decides which one the tiles see, and a
-	// successful poll clears either back to the day's own state.
+	// successful poll clears either back to the day's own state. The access
+	// source names its own failure, so the clocks never read stale or
+	// fabricated times.
+	const accessSourceError = attendance.accessStatus === 'error';
 	const attendanceLoad = attendanceQuery.isError
 		? LOAD_ERROR
 		: !attendanceQuery.data
 			? LOAD_PENDING
-			: attendance.sessionStartTime ||
-				  attendance.sessionEndTime ||
-				  attendance.punchInTime ||
-				  attendance.punchOutTime
+			: accessSourceError || attendance.loginTime || attendance.logoutTime
 				? LOAD_OK
 				: LOAD_EMPTY;
+	const accessSourceUnknown =
+		attendanceLoad === LOAD_ERROR || accessSourceError;
 
-	// Live CRM time: the observed elapsed snapshot, advanced locally only
-	// while a session is active and the interval is valid. The fetch
-	// receipt is the anchor, so skew between the browser clock and the
-	// database clock never enters the figure; idle stays a separate
-	// recorded figure, never subtracted again. The state is keyed to the
-	// current user and receipt, so a user switch or a fresh poll cannot
-	// flash the previous owner's live total before the effect settles.
-	const [liveCrm, setLiveCrm] = useState({ key: null, minutes: null });
-	const liveCrmKey = `${currentUserId ?? 'none'}:${attendanceReceivedAt}`;
+	// An app-entry acknowledgement races the page-load read: the initial
+	// GET may have landed before the entry row was written, so the ack
+	// cancels that in-flight read and forces a fresh one. The ack is
+	// keyed to the viewed user, never the admin viewer's own report, and
+	// an old user's acknowledgement never repaints the new user's tiles.
 	useEffect(() => {
-		const snapshot = attendance.sessionElapsedMinutes;
-		const validSnapshot =
-			typeof snapshot === 'number' && Number.isFinite(snapshot);
-		if (!validSnapshot || attendance.sessionTimeInvalid) {
-			setLiveCrm({ key: liveCrmKey, minutes: null });
-			return;
-		}
-		if (!attendance.sessionActive) {
-			setLiveCrm({ key: liveCrmKey, minutes: snapshot });
-			return;
-		}
-		const anchor = performance.now();
-		setLiveCrm({ key: liveCrmKey, minutes: snapshot });
-		const iv = setInterval(() => {
-			const elapsedSinceReceipt = (performance.now() - anchor) / 60000;
-			setLiveCrm({ key: liveCrmKey, minutes: snapshot + elapsedSinceReceipt });
-		}, 50000);
-		return () => clearInterval(iv);
-	}, [
-		attendance.sessionElapsedMinutes,
-		attendance.sessionActive,
-		attendance.sessionTimeInvalid,
-		liveCrmKey,
-	]);
+		if (!currentUserId) return;
+		const onAccessRecorded = (event) => {
+			if (event?.detail?.userId !== currentUserId) return;
+			const key = ['users', currentUserId, 'attendance'];
+			void queryClient
+				.cancelQueries({ queryKey: key })
+				.catch(() => {})
+				.finally(() => {
+					void queryClient.invalidateQueries({ queryKey: key });
+				});
+		};
+		window.addEventListener('app-access-recorded', onAccessRecorded);
+		return () =>
+			window.removeEventListener('app-access-recorded', onAccessRecorded);
+	}, [currentUserId, queryClient]);
 
 	// Module data
 	const [moduleAssignments, setModuleAssignments] = useState({
@@ -599,20 +581,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		attendanceQuery.isError,
 	]);
 
-	// ── Did the day's end come from inference rather than choice? (#331) ──
-	// A sweep or beacon end is an inference about presence: the sweep stamps
-	// the last activity signal, the beacon a close the browser had to time.
-	// A logout — or no end at all — is the user's own choice. The CRM tile
-	// reads this to label the end honestly, never as a logout that happened.
-	const endWasInferred =
-		attendance.sessionEndSource === 'sweep' ||
-		attendance.sessionEndSource === 'beacon';
 	// The shared query's own interval is the poll: every refetch replaces
-	// the whole day payload, including null and zero clears, and a resumed
-	// session or a late device punch lands on the next tick. The interval
-	// never stops after an end — the day can resume in another tab — and
-	// the query key scopes each read to its user, so a stale response after
-	// a user change or unmount never reaches these tiles.
+	// the whole day payload, including null clears, and a later recorded
+	// access lands on the next tick. The interval never stops — the Log Out
+	// clock advances while the app stays open — and the query key scopes
+	// each read to its user, so a stale response after a user change or
+	// unmount never reaches these tiles.
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
@@ -625,73 +599,14 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return time;
 	}, []);
 
-	// ── The day's Punches on the tiles (ticket #334) ──
-	// The device is the only value a Punch tile reads. A missing punch is a
-	// dash with its own note — never a CRM clock under a Punch heading, and
-	// never a claim about absence or remote work. The Late and OT chips read
-	// these device values only.
-	const punchLinked = attendance.punchEmployeeId != null;
-	const punchInValue = attendance.punchInTime;
-	const punchOutValue = attendance.punchOutTime;
-	// A lone punch is honest: the In tile reads the device's first punch,
-	// the Out tile stays a dash until a valid pair exists. Neither borrows
-	// a session time, and no OT comes from an inferred end.
-	/** Why a tile shows a dash instead of a punch, if it does. */
-	const punchInNote = !punchLinked
-		? 'No Employee record is linked to this account, so no punch can exist.'
-		: !punchInValue
-			? 'The device recorded no punch in for the day.'
-			: null;
-	/** Why the Out tile shows a dash instead of a punch, if it does. */
-	const punchOutNote = !punchLinked
-		? 'No Employee record is linked to this account, so no punch can exist.'
-		: !punchOutValue
-			? 'The device recorded no punch out for the day.'
-			: null;
-	// CRM session clocks, labelled as CRM wherever they render. A missing
-	// or unparseable clock renders as a dash with the row's own story: a
-	// corrupt row names support, while an active day with no observed start
-	// simply says nothing was recorded. An unreadable source is unknown,
-	// never empty: the error state or a missing snapshot receipt names it
-	// unavailable instead of claiming nothing was recorded.
-	const crmStartValue = attendance.sessionStartTime;
-	const crmEndValue = attendance.sessionEndTime;
-	const sessionInvalid = attendance.sessionTimeInvalid === true;
-	const sessionSourceUnknown =
-		attendanceLoad === LOAD_ERROR || attendance.sessionAsOf == null;
-	// The live total belongs to one user and one receipt. While a fresh
-	// user or poll is still settling, the render falls back to the current
-	// payload's own snapshot — never the previous owner's live figure.
-	const liveCrmMinutes = liveCrm.key === liveCrmKey ? liveCrm.minutes : null;
-	const crmSnapshot =
-		attendanceDay != null &&
-		typeof attendance.sessionElapsedMinutes === 'number' &&
-		Number.isFinite(attendance.sessionElapsedMinutes)
-			? attendance.sessionElapsedMinutes
-			: null;
-	const crmDisplayMinutes = liveCrmMinutes ?? crmSnapshot;
-	const crmMinutes =
-		typeof crmDisplayMinutes === 'number' && Number.isFinite(crmDisplayMinutes)
-			? Math.max(0, Math.floor(crmDisplayMinutes))
-			: null;
-	const hasCrmDuration = crmMinutes !== null && !sessionInvalid;
-	const crmDurationLabel =
-		crmMinutes === null || sessionInvalid
-			? NO_VALUE
-			: `${Math.floor(crmMinutes / 60)}h ${crmMinutes % 60}m`;
-	const crmEndLabel =
-		attendance.sessionEndSource === 'logout'
-			? 'CRM end (logout)'
-			: attendance.sessionEndSource === 'beacon'
-				? 'CRM end (inferred close)'
-				: attendance.sessionEndSource === 'sweep'
-					? 'CRM end (inferred close)'
-					: 'CRM end';
-	// The day counts as ended only through a valid observed end: an active
-	// session suppresses it, and a corrupt row carries no end at all. The
-	// Idle tile reads this, never a user-change-stale answer.
-	const sessionEnded =
-		!attendance.sessionActive && !sessionInvalid && crmEndValue != null;
+	// ── The day's app-access clocks ──
+	// Log In is the first app entry of the database day, including entry
+	// with an existing authenticated session; it stays fixed across later
+	// logins, refreshes, and tabs. Log Out is the latest recorded app
+	// contact — periodic activity included — and is not proof of explicit
+	// sign-out, departure, or attendance credit.
+	const loginValue = attendance.loginTime;
+	const logoutValue = attendance.logoutTime;
 
 	// ── Loading state ──
 	if (loading) {
@@ -984,9 +899,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								{/* The day's own state (#340): a fetch that failed names
 								    the next step in a live error line; a day with nothing
 								    recorded is named as recorded, in plain neutral text.
-								    An unknown session source is neither — the empty claim
-								    stays off while the CRM tile names it unavailable — and
-								    the error line has no timer, so a slow reader keeps it. */}
+								    An unknown access source is neither — the empty claim
+								    stays off while the access tiles name it unavailable —
+								    and the error line has no timer, so a slow reader keeps it. */}
 								{attendanceLoad === LOAD_ERROR && (
 									<div
 										data-testid="attendance-fetch-error"
@@ -1004,7 +919,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										</p>
 									</div>
 								)}
-								{attendanceLoad === LOAD_EMPTY && !sessionSourceUnknown && (
+								{attendanceLoad === LOAD_EMPTY && !accessSourceUnknown && (
 									<p
 										data-testid="attendance-empty-state"
 										data-state="empty"
@@ -1013,18 +928,18 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										Nothing recorded yet today.
 									</p>
 								)}
-								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-8">
-									{/* Punch In */}
+								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-6">
+									{/* Log In — first app entry of the day */}
 									<div className="group relative rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-emerald-50 p-3 hover:shadow-lg hover:border-green-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-green-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchInValue ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${loginValue ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowRightStartOnRectangleIcon className="h-4 w-4" />
 												</div>
-												{punchInValue && (
+												{loginValue && (
 													<div
 														data-motion="pulse"
 														className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300"
@@ -1032,149 +947,63 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 												)}
 											</div>
 											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-												Punch In
+												Log In
 											</p>
 											<p
-												data-testid="punch-in-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchInValue ? (isLateLogin(punchInValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
+												data-testid="login-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${loginValue ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{punchInValue ? formatTime(punchInValue) : NO_VALUE}
-												{punchInValue && isLateLogin(punchInValue) && (
-													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
-														Late
-													</span>
-												)}
+												{loginValue ? formatTime(loginValue) : NO_VALUE}
 											</p>
-											{punchInNote && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{punchInNote}
+											{accessSourceUnknown ? (
+												<p className="mt-1 text-xs leading-snug text-red-700">
+													App access unavailable. Refresh the page.
 												</p>
+											) : (
+												!loginValue && (
+													<p className="mt-1 text-xs leading-snug text-gray-500">
+														No app entry recorded yet today.
+													</p>
+												)
 											)}
 										</div>
 									</div>
-									{/* Punch Out */}
+									{/* Log Out — latest recorded app access */}
 									<div className="group relative rounded-xl border border-red-200 bg-gradient-to-br from-red-50 via-white to-rose-50 p-3 hover:shadow-lg hover:border-red-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-red-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${punchOutValue ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${logoutValue ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
 											</div>
 											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-												Punch Out
+												Log Out
 											</p>
 											<p
-												data-testid="punch-out-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${punchOutValue ? (isOvertime(punchOutValue) ? 'text-red-600' : 'text-gray-900') : 'text-gray-500'}`}
+												data-testid="logout-figure"
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${logoutValue ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{punchOutValue ? formatTime(punchOutValue) : NO_VALUE}
-												{punchOutValue && isOvertime(punchOutValue) && (
-													<span className="ml-1 text-xs font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full align-middle">
-														OT
-													</span>
-												)}
+												{logoutValue ? formatTime(logoutValue) : NO_VALUE}
 											</p>
-											{punchOutNote && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{punchOutNote}
+											<p className="mt-1 text-xs leading-snug text-gray-500">
+												Last recorded app access; updates while the app is open.
+											</p>
+											{accessSourceUnknown ? (
+												<p className="mt-1 text-xs leading-snug text-red-700">
+													App access unavailable. Refresh the page.
 												</p>
+											) : (
+												!logoutValue && (
+													<p className="mt-1 text-xs leading-snug text-gray-500">
+														No app access recorded yet today.
+													</p>
+												)
 											)}
 										</div>
 									</div>
-									{/* CRM Time */}
-									{(() => {
-										const hasCrmStart = crmStartValue != null;
-										const tileTone = !hasCrmStart
-											? 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50'
-											: sessionInvalid
-												? 'border-amber-300 bg-gradient-to-br from-amber-50 via-white to-yellow-50'
-												: 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50';
-										const dotTone = !hasCrmStart
-											? 'bg-indigo-200/30'
-											: sessionInvalid
-												? 'bg-amber-200/40'
-												: 'bg-indigo-200/30';
-										const iconTone = !hasCrmStart
-											? 'bg-gray-200 text-gray-500'
-											: sessionInvalid
-												? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200 group-hover:shadow-amber-300 group-hover:shadow-md'
-												: 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-indigo-200 group-hover:shadow-indigo-300 group-hover:shadow-md';
-										return (
-											<div
-												className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${tileTone}`}
-											>
-												<div
-													className={`absolute top-0 right-0 w-20 h-20 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500 ${dotTone}`}
-												/>
-												<div className="relative">
-													<div className="flex items-center justify-between mb-2">
-														<div
-															className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${iconTone}`}
-														>
-															<ClockIcon className="h-4 w-4" />
-														</div>
-														{attendance.sessionActive && !sessionInvalid && (
-															<div
-																data-motion="pulse"
-																className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-sm shadow-indigo-300"
-															/>
-														)}
-													</div>
-													<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-														CRM Time
-													</p>
-													<p
-														data-testid="crm-time-figure"
-														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${hasCrmDuration ? 'text-gray-900' : 'text-gray-500'}`}
-													>
-														{crmDurationLabel}
-													</p>
-													{/* Observed browser sessions, not attendance or pay. */}
-													<p className="mt-1 text-xs leading-snug text-gray-500">
-														Observed CRM activity, not attendance or pay.
-													</p>
-													{hasCrmStart ? (
-														<p className="mt-1 text-xs leading-snug text-gray-500">
-															CRM start {formatTime(crmStartValue)}
-															{crmEndValue != null &&
-																!attendance.sessionActive &&
-																!sessionInvalid &&
-																` · ${crmEndLabel} ${formatTime(crmEndValue)}`}
-														</p>
-													) : !sessionInvalid && sessionSourceUnknown ? (
-														<p className="mt-1 text-xs leading-snug text-red-700">
-															CRM session unavailable. Refresh the page.
-														</p>
-													) : (
-														!sessionInvalid &&
-														!sessionSourceUnknown && (
-															<p className="mt-1 text-xs leading-snug text-gray-500">
-																No CRM session recorded yet today.
-															</p>
-														)
-													)}
-													{endWasInferred &&
-														crmEndValue != null &&
-														!attendance.sessionActive &&
-														!sessionInvalid && (
-															<p className="mt-1 text-xs leading-snug text-gray-500">
-																{attendance.sessionEndSource === 'beacon'
-																	? 'No logout recorded — ended when the page closed.'
-																	: 'No logout recorded — ended from your last activity.'}
-															</p>
-														)}
-													{sessionInvalid && (
-														<p className="mt-1 text-xs leading-snug text-amber-700">
-															Session times are inconsistent. Contact support.
-														</p>
-													)}
-												</div>
-											</div>
-										);
-									})()}
 									{/* Present Days */}
 									<div className="group relative rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-3 hover:shadow-lg hover:border-blue-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-blue-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
@@ -1289,13 +1118,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									</div>
 									{/* Idle Time (Live + Total) */}
 									{(() => {
-										// After the CRM session ends, only show DB idle —
-										// don't add live cumulative idle to a closed day.
-										const effectiveIdleSecs = sessionEnded ? 0 : idleSeconds;
-										const totalIdleMin = sessionEnded
-											? attendance.idleTime || 0
-											: Math.floor(cumulativeIdleSeconds / 60) +
-												(attendance.idleTime || 0);
+										// Recorded idle plus the live cumulative figure,
+										// informational only — the app-access clocks no
+										// longer infer an ended workday.
+										const effectiveIdleSecs = idleSeconds;
+										const totalIdleMin =
+											Math.floor(cumulativeIdleSeconds / 60) +
+											(attendance.idleTime || 0);
 										return (
 											<div
 												className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${
@@ -1346,9 +1175,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 																	: 'text-emerald-800'
 														}`}
 													>
-														{sessionEnded
-															? `${totalIdleMin}m`
-															: fmtIdle(effectiveIdleSecs)}
+														{fmtIdle(effectiveIdleSecs)}
 													</p>
 													<p
 														data-testid="idle-caption"
@@ -1357,15 +1184,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 														<span
 															className={`w-1.5 h-1.5 rounded-full inline-block ${effectiveIdleSecs > 1800 ? 'bg-red-500' : effectiveIdleSecs > 300 ? 'bg-amber-500' : 'bg-emerald-500'}`}
 														/>
-														{sessionEnded
-															? 'session ended'
-															: totalIdleMin > 0
-																? `Total ${totalIdleMin}m today`
-																: effectiveIdleSecs > 1800
-																	? 'action needed'
-																	: effectiveIdleSecs > 300
-																		? 'getting idle'
-																		: 'all good'}
+														{totalIdleMin > 0
+															? `Total ${totalIdleMin}m today`
+															: effectiveIdleSecs > 1800
+																? 'action needed'
+																: effectiveIdleSecs > 300
+																	? 'getting idle'
+																	: 'all good'}
 													</p>
 												</div>
 											</div>

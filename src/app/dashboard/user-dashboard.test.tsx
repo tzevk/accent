@@ -45,27 +45,16 @@ vi.mock('@/lib/api-client', () => ({ apiGet }));
 import UserDashboard from '@/app/dashboard/user-dashboard.jsx';
 
 /**
- * The 2026-10-26 production shape: one ended Work Session whose end sits
- * before its start (the 04:07 beacon end against a 09:06 start), no device
- * punches, idle recorded. The API surfaces the corrupt row instead of
- * repairing it, so every session snapshot field reads invalid/empty.
+ * App-access day: first entry stays fixed at 09:06 while the latest
+ * recorded access advances to 18:11. No device punch or Work Session
+ * fields — the Log In/Log Out cards read only these access clocks.
  */
-const INVALID_SESSION_DAY = {
-	inTime: null,
-	outTime: null,
-	idleTime: 12,
-	sessionStartTime: '09:06',
-	sessionEndTime: null,
-	sessionEndSource: null,
-	sessionElapsedMinutes: null,
-	sessionAsOf: Date.parse('2026-10-26T12:00:00.000Z'),
-	sessionActive: false,
-	sessionTimeInvalid: true,
-	punchInTime: null,
-	punchOutTime: null,
-	punchCount: 0,
-	punchComputable: false,
-	punchEmployeeId: 7,
+const ACCESS_DAY = {
+	loginTime: '09:06',
+	logoutTime: '18:11',
+	accessStatus: 'ok' as const,
+	accessDate: '2026-10-26',
+	idleTime: 9,
 	currentMonth: 'October 2026',
 	daysInMonth: 31,
 	daysPresent: 5,
@@ -75,35 +64,6 @@ const INVALID_SESSION_DAY = {
 	leaves: { total: 21, used: 1, balance: 20 },
 };
 
-const ENDED_SESSION_DAY = {
-	...INVALID_SESSION_DAY,
-	idleTime: 9,
-	sessionStartTime: '09:06',
-	sessionEndTime: '18:11',
-	sessionEndSource: 'logout',
-	sessionElapsedMinutes: 545,
-	sessionAsOf: Date.parse('2026-10-26T12:40:00.000Z'),
-	sessionActive: false,
-	sessionTimeInvalid: false,
-	punchInTime: '09:12',
-	punchOutTime: '18:05',
-	punchCount: 2,
-	punchComputable: true,
-};
-
-const RESUMED_SESSION_DAY = {
-	...ENDED_SESSION_DAY,
-	idleTime: 0,
-	sessionEndTime: null,
-	sessionEndSource: null,
-	sessionElapsedMinutes: 545,
-	sessionAsOf: Date.parse('2026-10-26T12:42:00.000Z'),
-	sessionActive: true,
-	punchInTime: '09:12',
-	punchOutTime: null,
-	punchCount: 1,
-	punchComputable: false,
-};
 /**
  * One assignment with no entry for today, so assignment processing takes
  * the pending path into sessionStorage.
@@ -117,33 +77,37 @@ const PENDING_ASSIGNMENT = {
 };
 
 /**
- * A successful day whose session source is unknown rather than empty:
- * every session field reads null with no snapshot receipt. Missing data
- * is not an unavailable source, so the tiles must not claim an empty day.
+ * A successful day whose access source failed: null clocks with an error
+ * status mean the source could not be read, not that the day is empty.
  */
-const UNAVAILABLE_SESSION_DAY = {
-	...INVALID_SESSION_DAY,
-	idleTime: 0,
-	sessionStartTime: null,
-	sessionEndTime: null,
-	sessionEndSource: null,
-	sessionElapsedMinutes: null,
-	sessionAsOf: null,
-	sessionActive: false,
-	sessionTimeInvalid: false,
-	punchInTime: null,
-	punchOutTime: null,
-	punchCount: 0,
-	punchComputable: false,
+const ACCESS_ERROR_DAY = {
+	...ACCESS_DAY,
+	loginTime: null,
+	logoutTime: null,
+	accessStatus: 'error' as const,
+	accessDate: null,
 };
 
 /**
- * A genuinely empty day: the same null session fields, but the finite
- * snapshot receipt confirms the source was read and recorded nothing.
+ * A genuinely empty day: null clocks with an ok status confirm the source
+ * was read and recorded nothing yet.
  */
-const VALID_EMPTY_DAY = {
-	...UNAVAILABLE_SESSION_DAY,
-	sessionAsOf: Date.parse('2026-10-26T12:00:00.000Z'),
+const ACCESS_EMPTY_DAY = {
+	...ACCESS_DAY,
+	idleTime: 0,
+	loginTime: null,
+	logoutTime: null,
+	accessStatus: 'ok' as const,
+};
+
+/**
+ * A later poll of the same day: first entry stays fixed while the latest
+ * recorded access advances, with no explicit sign-out anywhere.
+ */
+const ACCESS_DAY_LATER = {
+	...ACCESS_DAY,
+	idleTime: 0,
+	logoutTime: '19:02',
 };
 
 function mockTierFetches(): void {
@@ -210,47 +174,64 @@ describe('user dashboard attendance sources', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('keeps an invalid CRM interval off the punch tiles and names it instead of timing it', async () => {
-		apiGet.mockResolvedValue({ success: true, data: INVALID_SESSION_DAY });
+	it('renders Log In first entry and Log Out latest access with no punch or CRM tiles', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
 		renderDashboard();
 
 		const card = await screen.findByTestId('attendance-card');
 
-		// Punch tiles read the device only: no punches means dashes, never a
-		// session clock, and the pre-shift end must not tag an OT chip.
-		expect(within(card).getByTestId('punch-in-figure')).toHaveTextContent('—');
-		expect(within(card).getByTestId('punch-out-figure')).toHaveTextContent('—');
-		expect(within(card).queryByText('OT')).not.toBeInTheDocument();
-		expect(within(card).queryByText('Late')).not.toBeInTheDocument();
-		expect(within(card).queryByText(/logged out/i)).not.toBeInTheDocument();
-
-		// The day recorded CRM evidence, so it is not an empty day.
+		// New app-access clocks: first entry fixed, latest access advanced.
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
+		);
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+			'6:11 PM'
+		);
+		expect(within(card).getByText('Log In')).toBeInTheDocument();
+		expect(within(card).getByText('Log Out')).toBeInTheDocument();
 		expect(
-			within(card).queryByTestId('attendance-empty-state')
+			within(card).getByText(
+				'Last recorded app access; updates while the app is open.'
+			)
+		).toBeInTheDocument();
+
+		// Old device/session tiles and their captions are gone.
+		expect(within(card).queryByText('Punch In')).not.toBeInTheDocument();
+		expect(within(card).queryByText('Punch Out')).not.toBeInTheDocument();
+		expect(within(card).queryByText('CRM Time')).not.toBeInTheDocument();
+		expect(
+			within(card).queryByTestId('punch-in-figure')
+		).not.toBeInTheDocument();
+		expect(
+			within(card).queryByTestId('punch-out-figure')
+		).not.toBeInTheDocument();
+		expect(
+			within(card).queryByTestId('crm-time-figure')
+		).not.toBeInTheDocument();
+		expect(
+			within(card).queryByText(/device recorded no punch/i)
+		).not.toBeInTheDocument();
+		expect(within(card).queryByText(/CRM start/i)).not.toBeInTheDocument();
+		expect(
+			within(card).queryByText(/Observed CRM activity/i)
 		).not.toBeInTheDocument();
 
-		// The corrupt interval is labelled and dashed with a support next
-		// step — never a 0h 0m duration, OT, or hours-remaining figure.
-		expect(within(card).getByText(/CRM start/i)).toBeInTheDocument();
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent('—');
-		expect(
-			within(card).getByText(/session times are inconsistent/i)
-		).toBeInTheDocument();
-		expect(within(card).getByText(/contact support/i)).toBeInTheDocument();
-		expect(within(card).queryByText(/0h 0m/)).not.toBeInTheDocument();
+		// No attendance grading on the app clocks.
+		expect(within(card).queryByText('Late')).not.toBeInTheDocument();
+		expect(within(card).queryByText('OT')).not.toBeInTheDocument();
 		expect(
 			within(card).queryByTestId('total-time-remaining')
 		).not.toBeInTheDocument();
 		expect(within(card).queryByText(/m remaining/)).not.toBeInTheDocument();
 	});
 
-	it('replaces ended CRM state with a resumed session, including null and zero clears', async () => {
+	it('keeps first entry fixed while a later poll advances latest access', async () => {
 		const client = new QueryClient({
 			defaultOptions: { queries: { retry: false, gcTime: 0 } },
 		});
 		apiGet
-			.mockResolvedValueOnce({ success: true, data: ENDED_SESSION_DAY })
-			.mockResolvedValue({ success: true, data: RESUMED_SESSION_DAY });
+			.mockResolvedValueOnce({ success: true, data: ACCESS_DAY })
+			.mockResolvedValue({ success: true, data: ACCESS_DAY_LATER });
 		render(
 			<QueryClientProvider client={client}>
 				<UserDashboard verifiedUser={{ id: 7, full_name: 'Test User' }} />
@@ -258,45 +239,31 @@ describe('user dashboard attendance sources', () => {
 		);
 
 		const card = await screen.findByTestId('attendance-card');
-		expect(within(card).getByText(/CRM end \(logout\)/i)).toBeInTheDocument();
-		expect(within(card).getByTestId('idle-figure')).toHaveTextContent('9m');
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-			'9h 5m'
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
 		);
-		// The valid device pair stays on the punch tiles while the CRM end
-		// carries its own logout label.
-		expect(within(card).getByTestId('punch-in-figure')).toHaveTextContent(
-			'9:12 AM'
-		);
-		expect(within(card).getByTestId('punch-out-figure')).toHaveTextContent(
-			'6:05 PM'
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+			'6:11 PM'
 		);
 
-		// A poll refetch replaces the whole day, and the observer
-		// notifies on a macrotask after the refetch promise settles, so
-		// the assertions wait for the repaint, not the fetch: the
-		// end/source nulls and the idle zero land together with the
-		// resumed session and its lone device punch, and nothing
-		// ended sticks around.
+		// A poll refetch replaces the whole day, and the observer notifies
+		// on a macrotask after the refetch promise settles, so the
+		// assertions wait for the repaint, not the fetch: the first entry
+		// stays fixed while the latest access advances with no explicit
+		// logout anywhere.
 		await act(async () => {
 			await client.refetchQueries({ queryKey: ['users', 7, 'attendance'] });
 		});
 		await waitFor(() => {
-			expect(within(card).getByTestId('punch-out-figure')).toHaveTextContent(
-				'—'
+			expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+				'7:02 PM'
 			);
 		});
-		expect(within(card).getByTestId('punch-in-figure')).toHaveTextContent(
-			'9:12 AM'
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
 		);
-		expect(within(card).getByText(/no punch out/i)).toBeInTheDocument();
-		expect(
-			within(card).queryByText(/CRM end \(logout\)/i)
-		).not.toBeInTheDocument();
-		expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-			'9h 5m'
-		);
+		expect(within(card).queryByText('Late')).not.toBeInTheDocument();
+		expect(within(card).queryByText('OT')).not.toBeInTheDocument();
 		client.clear();
 	});
 
@@ -306,7 +273,7 @@ describe('user dashboard attendance sources', () => {
 		});
 		apiGet
 			.mockRejectedValueOnce(new Error('network down'))
-			.mockResolvedValue({ success: true, data: RESUMED_SESSION_DAY });
+			.mockResolvedValue({ success: true, data: ACCESS_DAY });
 		render(
 			<QueryClientProvider client={client}>
 				<UserDashboard verifiedUser={{ id: 7, full_name: 'Test User' }} />
@@ -330,8 +297,11 @@ describe('user dashboard attendance sources', () => {
 				within(card).queryByTestId('attendance-fetch-error')
 			).not.toBeInTheDocument();
 		});
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-			'9h 5m'
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
+		);
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+			'6:11 PM'
 		);
 		client.clear();
 	});
@@ -342,7 +312,7 @@ describe('user dashboard attendance sources', () => {
 		apiGet.mockImplementation(async (url: string) => {
 			if (url === '/api/users/7/attendance') return firstRead;
 			if (url === '/api/users/9/attendance') {
-				return { success: true, data: RESUMED_SESSION_DAY };
+				return { success: true, data: ACCESS_DAY };
 			}
 			throw new Error(`Unexpected request: ${url}`);
 		});
@@ -364,29 +334,39 @@ describe('user dashboard attendance sources', () => {
 			</QueryClientProvider>
 		);
 		const card = await screen.findByTestId('attendance-card');
-		expect(await within(card).findByText('9:12 AM')).toBeInTheDocument();
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-			'9h 5m'
+		expect(await within(card).findByText('9:06 AM')).toBeInTheDocument();
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+			'6:11 PM'
 		);
+		const staleDay = {
+			...ACCESS_DAY,
+			loginTime: '08:15',
+			logoutTime: '08:20',
+		};
 		await act(async () => {
-			releaseFirst({ success: true, data: INVALID_SESSION_DAY });
+			releaseFirst({ success: true, data: staleDay });
 			await firstRead;
 		});
 		// The stale read resolved into user 7's cache entry while the tiles
 		// read user 9's, so nothing on screen moves.
-		expect(
-			within(card).queryByText(/session times are inconsistent/i)
-		).not.toBeInTheDocument();
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-			'9h 5m'
+		expect(within(card).queryByText('8:15 AM')).not.toBeInTheDocument();
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
+		);
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+			'6:11 PM'
 		);
 		unmount();
 		client.clear();
 	});
 
-	it('drops the previous live total when a loaded viewer switches users', async () => {
-		const USER_A_DAY = { ...RESUMED_SESSION_DAY, sessionElapsedMinutes: 545 };
-		const USER_B_DAY = { ...RESUMED_SESSION_DAY, sessionElapsedMinutes: 31 };
+	it('drops the previous access clocks when a loaded viewer switches users', async () => {
+		const USER_A_DAY = { ...ACCESS_DAY };
+		const USER_B_DAY = {
+			...ACCESS_DAY,
+			loginTime: '08:15',
+			logoutTime: '08:20',
+		};
 		const { promise: userBRead, resolve: releaseUserB } =
 			Promise.withResolvers<unknown>();
 		apiGet.mockImplementation(async (url: string) => {
@@ -405,13 +385,12 @@ describe('user dashboard attendance sources', () => {
 			</QueryClientProvider>
 		);
 
-		// User 7 loads fully, so the live total is keyed to user 7's
-		// receipt; switching to user 9 hides the tiles behind the shell
-		// loader until user 9 settles, so no stale 9h 5m is visible
-		// while user 9's own read is still pending.
+		// User 7 loads fully; switching to user 9 hides the tiles behind
+		// the shell loader until user 9 settles, so no stale clocks are
+		// visible while user 9's own read is still pending.
 		const card = await screen.findByTestId('attendance-card');
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-			'9h 5m'
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
 		);
 		rerender(
 			<QueryClientProvider client={client}>
@@ -419,7 +398,7 @@ describe('user dashboard attendance sources', () => {
 			</QueryClientProvider>
 		);
 		expect(screen.queryByTestId('attendance-card')).not.toBeInTheDocument();
-		expect(screen.queryByText('9h 5m')).not.toBeInTheDocument();
+		expect(screen.queryByText('9:06 AM')).not.toBeInTheDocument();
 		expect(
 			screen.queryByTestId('attendance-fetch-error')
 		).not.toBeInTheDocument();
@@ -427,76 +406,128 @@ describe('user dashboard attendance sources', () => {
 			releaseUserB({ success: true, data: USER_B_DAY });
 			await userBRead;
 		});
-		// User 9 lands on its own 31m total, never user 7's 9h 5m.
+		// User 9 lands on its own clocks, never user 7's.
 		const cardB = await screen.findByTestId('attendance-card');
 		await waitFor(() => {
-			expect(within(cardB).getByTestId('crm-time-figure')).toHaveTextContent(
-				'0h 31m'
+			expect(within(cardB).getByTestId('login-figure')).toHaveTextContent(
+				'8:15 AM'
 			);
 		});
+		expect(within(cardB).getByTestId('logout-figure')).toHaveTextContent(
+			'8:20 AM'
+		);
 		unmount();
 		client.clear();
 	});
 
-	it('advances the active CRM total on monotonic time, ignoring wall-clock skew and idle', async () => {
-		vi.useFakeTimers();
-		try {
-			// 31 minutes observed with a 90-minute recorded idle cushion; the
-			// skew fixture below must not pull the tile off the monotonic
-			// anchor, and the idle cushion must not subtract from it.
-			const ACTIVE_DAY = {
-				...RESUMED_SESSION_DAY,
-				idleTime: 90,
-				sessionElapsedMinutes: 31,
-			};
-			apiGet.mockResolvedValue({ success: true, data: ACTIVE_DAY });
-			const client = new QueryClient({
-				defaultOptions: { queries: { retry: false, gcTime: 0 } },
-			});
-			const { unmount } = render(
-				<QueryClientProvider client={client}>
-					<UserDashboard verifiedUser={{ id: 7, full_name: 'Test User' }} />
-				</QueryClientProvider>
-			);
+	it('refetches the viewed user on an app-entry acknowledgement and ignores other users', async () => {
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false, gcTime: 0 } },
+		});
+		apiGet
+			.mockResolvedValueOnce({ success: true, data: ACCESS_DAY })
+			.mockResolvedValue({ success: true, data: ACCESS_DAY_LATER });
+		render(
+			<QueryClientProvider client={client}>
+				<UserDashboard verifiedUser={{ id: 7, full_name: 'Test User' }} />
+			</QueryClientProvider>
+		);
 
-			// Fake timers capture the async machinery, so the first paint
-			// needs a sync microtask flush plus one timer pump for the
-			// observer's scheduled notification.
-			await act(async () => {});
-			await act(async () => {
-				await vi.advanceTimersByTimeAsync(0);
-			});
-			const card = screen.getByTestId('attendance-card');
-			expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-				'0h 31m'
-			);
-			// The 90m recorded idle never subtracts from the observed
-			// 31m figure, which is the monotonic anchor below.
-			expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
+		const card = await screen.findByTestId('attendance-card');
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+			'6:11 PM'
+		);
+		const readsBefore = apiGet.mock.calls.filter(
+			(call: unknown[]) => call[0] === '/api/users/7/attendance'
+		).length;
 
-			// 100 seconds on the monotonic anchor crosses one 50s display
-			// tick (before the 120s poll) and lands the total on 32m; then
-			// a 5h wall-clock jump must not move it further.
-			await act(async () => {
-				await vi.advanceTimersByTimeAsync(100_000);
-			});
-			expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-				'0h 32m'
+		// An acknowledgement for another user is not this viewer's entry:
+		// it must neither refetch nor repaint these tiles.
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent('app-access-recorded', { detail: { userId: 9 } })
 			);
-			await act(async () => {
-				vi.setSystemTime(new Date('2026-10-26T17:00:00'));
-				await vi.advanceTimersByTimeAsync(0);
-			});
-			expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-				'0h 32m'
+		});
+		expect(
+			apiGet.mock.calls.filter(
+				(call: unknown[]) => call[0] === '/api/users/7/attendance'
+			).length
+		).toBe(readsBefore);
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+			'6:11 PM'
+		);
+
+		// The matching acknowledgement forces a fresh read even though the
+		// day already painted: first entry stays fixed while latest access
+		// advances to the newly recorded contact.
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent('app-access-recorded', { detail: { userId: 7 } })
 			);
-			unmount();
-			client.clear();
-		} finally {
-			vi.useRealTimers();
-			vi.setSystemTime(new Date('2026-10-26T12:00:00'));
-		}
+		});
+		await waitFor(() => {
+			expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+				'7:02 PM'
+			);
+		});
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
+		);
+		expect(
+			apiGet.mock.calls.filter(
+				(call: unknown[]) => call[0] === '/api/users/7/attendance'
+			).length
+		).toBeGreaterThan(readsBefore);
+		client.clear();
 	});
+
+	it('forces a fresh read when the acknowledgement races a pending initial query', async () => {
+		const { promise: firstRead, resolve: releaseFirst } =
+			Promise.withResolvers<unknown>();
+		let reads = 0;
+		apiGet.mockImplementation(async (url: string) => {
+			if (url !== '/api/users/7/attendance') {
+				throw new Error(`Unexpected request: ${url}`);
+			}
+			reads += 1;
+			if (reads === 1) return firstRead;
+			return { success: true, data: ACCESS_DAY_LATER };
+		});
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false, gcTime: 0 } },
+		});
+		render(
+			<QueryClientProvider client={client}>
+				<UserDashboard verifiedUser={{ id: 7, full_name: 'Test User' }} />
+			</QueryClientProvider>
+		);
+
+		// The acknowledgement lands while the initial read is still
+		// pending: the dashboard cancels that older read and refetches, so
+		// the tiles must never paint its stale empty answer.
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent('app-access-recorded', { detail: { userId: 7 } })
+			);
+			releaseFirst({ success: true, data: ACCESS_EMPTY_DAY });
+			await firstRead;
+		});
+		const card = await screen.findByTestId('attendance-card');
+		await waitFor(() => {
+			expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
+				'7:02 PM'
+			);
+		});
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
+		);
+		expect(
+			within(card).queryByTestId('attendance-empty-state')
+		).not.toBeInTheDocument();
+		expect(reads).toBeGreaterThan(1);
+		client.clear();
+	});
+
 	it('releases the shell with an assignments error when assignment processing throws', async () => {
 		// The pending assignment drives loadData into sessionStorage,
 		// which throws mid-processing; the shell must still clear and
@@ -534,22 +565,22 @@ describe('user dashboard attendance sources', () => {
 		};
 		vi.stubGlobal('sessionStorage', failingStorage);
 		try {
-			apiGet.mockResolvedValue({ success: true, data: ENDED_SESSION_DAY });
+			apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
 			renderDashboard();
 
 			const card = await screen.findByTestId('attendance-card');
 			expect(
 				await screen.findByTestId('assignments-fetch-error')
 			).toBeInTheDocument();
-			expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent(
-				'9h 5m'
+			expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+				'9:06 AM'
 			);
 		} finally {
 			vi.stubGlobal('sessionStorage', originalStorage);
 		}
 	});
 
-	it('does not claim an empty CRM day when the whole attendance read fails', async () => {
+	it('does not claim an empty access day when the whole attendance read fails', async () => {
 		apiGet.mockRejectedValue(new Error('network down'));
 		renderDashboard();
 
@@ -559,45 +590,52 @@ describe('user dashboard attendance sources', () => {
 		).toBeInTheDocument();
 
 		// A failed source is unknown, never empty: no global empty claim
-		// and no recorded-nothing CRM line, just an unavailable source.
+		// and no recorded-nothing access line, just an unavailable source.
 		expect(
 			within(card).queryByTestId('attendance-empty-state')
 		).not.toBeInTheDocument();
 		expect(
-			within(card).queryByText(/no CRM session recorded yet today/i)
+			within(card).queryByText(/no app access recorded yet today/i)
+		).not.toBeInTheDocument();
+		expect(
+			within(card).queryByText(/no app entry recorded yet today/i)
 		).not.toBeInTheDocument();
 		expect(
 			within(card).getAllByText(/unavailable/i).length
 		).toBeGreaterThanOrEqual(1);
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent('—');
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent('—');
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent('—');
 	});
 
-	it('names the CRM source unavailable when the session snapshot is missing', async () => {
-		apiGet.mockResolvedValue({ success: true, data: UNAVAILABLE_SESSION_DAY });
+	it('names the access source unavailable when the access status reports an error', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_ERROR_DAY });
 		renderDashboard();
 
 		const card = await screen.findByTestId('attendance-card');
 
-		// Null session fields with no snapshot receipt mean the source
-		// could not be read, not that the day recorded nothing.
+		// Null clocks with an error status mean the source could not be
+		// read, not that the day recorded nothing.
 		expect(
 			within(card).queryByTestId('attendance-empty-state')
 		).not.toBeInTheDocument();
 		expect(
-			within(card).queryByText(/no CRM session recorded yet today/i)
+			within(card).queryByText(/no app access recorded yet today/i)
+		).not.toBeInTheDocument();
+		expect(
+			within(card).queryByText(/no app entry recorded yet today/i)
 		).not.toBeInTheDocument();
 		expect(
 			within(card).getAllByText(/unavailable/i).length
 		).toBeGreaterThanOrEqual(1);
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent('—');
-		// Unknown is not corrupt: the invalid-row support line stays off.
-		expect(
-			within(card).queryByText(/session times are inconsistent/i)
-		).not.toBeInTheDocument();
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent('—');
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent('—');
+		// A failed source is never an attendance verdict: no Late/OT chip.
+		expect(within(card).queryByText('Late')).not.toBeInTheDocument();
+		expect(within(card).queryByText('OT')).not.toBeInTheDocument();
 	});
 
-	it('keeps the neutral empty day when the session snapshot confirms nothing was recorded', async () => {
-		apiGet.mockResolvedValue({ success: true, data: VALID_EMPTY_DAY });
+	it('keeps the neutral empty day when the access source confirms nothing was recorded', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_EMPTY_DAY });
 		renderDashboard();
 
 		const card = await screen.findByTestId('attendance-card');
@@ -605,9 +643,13 @@ describe('user dashboard attendance sources', () => {
 			await within(card).findByTestId('attendance-empty-state')
 		).toBeInTheDocument();
 		expect(
-			within(card).getByText(/no CRM session recorded yet today/i)
+			within(card).getByText(/no app access recorded yet today/i)
 		).toBeInTheDocument();
-		expect(within(card).getByTestId('crm-time-figure')).toHaveTextContent('—');
+		expect(
+			within(card).getByText(/no app entry recorded yet today/i)
+		).toBeInTheDocument();
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent('—');
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent('—');
 		expect(within(card).queryByText(/unavailable/i)).not.toBeInTheDocument();
 		expect(
 			within(card).queryByTestId('attendance-fetch-error')

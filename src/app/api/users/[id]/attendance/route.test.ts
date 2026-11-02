@@ -21,42 +21,16 @@ const db = {
 	release: mocks.mockRelease,
 };
 
-interface SessionRow {
-	start_ms: unknown;
-	end_ms: unknown;
-	start_label: unknown;
-	end_label: unknown;
-	end_source: unknown;
-	status: unknown;
-	as_of_ms: unknown;
+interface AccessRow {
+	login_time: string | null;
+	logout_time: string | null;
+	access_date: string | null;
 }
 
-interface PunchRow {
-	employee_code: string;
-	log_date: string;
-	employee_id: number | null;
-}
-
-// Production 2026-10-26 evidence: Work Session starts 09:06:11, ends 04:07:37
-// the same day, end_source=beacon. Epochs are DECIMAL strings, exactly what
-// mysql2 hands back for UNIX_TIMESTAMP(...)*1000.
-const START_MS = Date.UTC(2026, 9, 26, 9, 6, 11);
-const END_MS = Date.UTC(2026, 9, 26, 4, 7, 37);
-const AS_OF_MS = Date.UTC(2026, 9, 26, 18, 30, 0, 123);
-
-const REVERSED_ROW: SessionRow = {
-	start_ms: String(START_MS),
-	end_ms: String(END_MS),
-	start_label: '09:06',
-	end_label: '04:07',
-	end_source: 'beacon',
-	status: 'ended',
-	as_of_ms: String(AS_OF_MS),
-};
-
-let sessionRows: SessionRow[] = [REVERSED_ROW];
-let sessionQueryFails = false;
-let punchRows: PunchRow[] = [];
+let accessRows: AccessRow[] = [
+	{ login_time: '09:06', logout_time: '18:11', access_date: '2026-10-26' },
+];
+let accessQueryFails = false;
 
 function result<T>(rows: T[]): [T[], []] {
 	return [rows, []];
@@ -65,28 +39,14 @@ function result<T>(rows: T[]): [T[], []] {
 /** Route a single mock query to its canned rows. */
 function answer(sql: unknown): Promise<[unknown[], []]> | null {
 	const text = String(sql);
-	if (text.includes('FROM user_work_sessions')) {
-		if (sessionQueryFails) {
-			return Promise.reject(new Error('connection lost'));
-		}
-		// The old latest-end lookup predates the epoch read and sees no
-		// rows; the contract query reads every row of the day at once.
-		if (!text.includes('UNIX_TIMESTAMP')) {
+	if (text.includes('FROM user_activity_logs')) {
+		if (text.includes('days_active')) {
 			return Promise.resolve(result([]));
 		}
-		return Promise.resolve(result(sessionRows));
-	}
-	if (text.includes('INFORMATION_SCHEMA')) {
-		return Promise.resolve(result([{ COLUMN_NAME: 'end_source' }]));
-	}
-	if (text.includes('FROM users WHERE id')) {
-		return Promise.resolve(result([{ employee_id: 7 }]));
-	}
-	if (text.includes('FROM attendance_logs')) {
-		return Promise.resolve(result(punchRows));
-	}
-	if (text.includes('DATE_FORMAT(CURDATE()')) {
-		return Promise.resolve(result([{ today: '2026-10-26' }]));
+		if (accessQueryFails) {
+			return Promise.reject(new Error('connection lost'));
+		}
+		return Promise.resolve(result(accessRows));
 	}
 	if (text.includes('overtime_hours')) {
 		return Promise.resolve(result([{ overtime_hours: 0 }]));
@@ -119,7 +79,7 @@ async function attendance(userId = '42'): Promise<{
 	return { status: response.status, body: await response.json() };
 }
 
-describe('GET /api/users/[id]/attendance — work session contract', () => {
+describe('GET /api/users/[id]/attendance — app access contract', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.mockDbConnect.mockResolvedValue(db);
@@ -127,102 +87,93 @@ describe('GET /api/users/[id]/attendance — work session contract', () => {
 			id: 42,
 			is_super_admin: false,
 		});
-		sessionRows = [REVERSED_ROW];
-		sessionQueryFails = false;
-		punchRows = [];
+		accessRows = [
+			{
+				login_time: '09:06',
+				logout_time: '18:11',
+				access_date: '2026-10-26',
+			},
+		];
+		accessQueryFails = false;
 		mocks.mockExecute.mockImplementation((sql: unknown) => {
 			return answer(sql) ?? Promise.resolve(result([] as unknown[]));
 		});
 	});
 
-	it('surfaces the reversed 09:06/04:07 session as invalid with no invented duration', async () => {
+	it('exposes first entry 09:06 and last contact 18:11 with no biometric lookup or legacy clocks', async () => {
 		const { status, body } = await attendance();
 		const data = body.data as Record<string, unknown>;
 
 		expect(status).toBe(200);
-		expect(data.sessionStartTime).toBe('09:06');
-		expect(data.sessionTimeInvalid).toBe(true);
-		expect(data.sessionElapsedMinutes).toBeNull();
-		expect(data.sessionEndTime).toBeNull();
-		expect(data.sessionEndSource).toBeNull();
-		expect(data.sessionActive).toBe(false);
-		expect(data.sessionAsOf).toBe(AS_OF_MS);
-		// The old claimed-login fields are gone with the contract.
-		expect(data.loginTime).toBeUndefined();
-		expect(data.logoutTime).toBeUndefined();
-		expect(data.endSource).toBeUndefined();
+		expect(data.loginTime).toBe('09:06');
+		expect(data.logoutTime).toBe('18:11');
+		expect(data.accessStatus).toBe('ok');
+		expect(data.accessDate).toBe('2026-10-26');
+		expect(data.sessionStartTime).toBeUndefined();
+		expect(data.sessionEndTime).toBeUndefined();
+		expect(data.sessionEndSource).toBeUndefined();
+		expect(data.sessionElapsedMinutes).toBeUndefined();
+		expect(data.sessionAsOf).toBeUndefined();
+		expect(data.sessionActive).toBeUndefined();
+		expect(data.sessionTimeInvalid).toBeUndefined();
+		expect(data.punchInTime).toBeUndefined();
+		expect(data.punchOutTime).toBeUndefined();
+		expect(data.punchCount).toBeUndefined();
+		expect(data.punchComputable).toBeUndefined();
+		expect(data.punchEmployeeId).toBeUndefined();
 	});
 
-	it('unions a closed span with the active one and suppresses the old end', async () => {
-		// 31 finished minutes plus a session open since 18:15, read at the
-		// 18:30 snapshot: 46 observed minutes with no end to report.
-		sessionRows = [
+	it('keeps a later relogin from replacing the earlier first entry', async () => {
+		accessRows = [
 			{
-				start_ms: String(Date.UTC(2026, 9, 26, 9, 6, 11)),
-				end_ms: String(Date.UTC(2026, 9, 26, 9, 37, 11)),
-				start_label: '09:06',
-				end_label: '09:37',
-				end_source: 'logout',
-				status: 'ended',
-				as_of_ms: String(AS_OF_MS),
-			},
-			{
-				start_ms: String(Date.UTC(2026, 9, 26, 18, 15, 0)),
-				end_ms: null,
-				start_label: '18:15',
-				end_label: null,
-				end_source: null,
-				status: 'active',
-				as_of_ms: String(AS_OF_MS),
+				login_time: '09:06',
+				logout_time: '19:42',
+				access_date: '2026-10-26',
 			},
 		];
 
-		const { body } = await attendance();
-		const data = body.data as Record<string, unknown>;
+		const first = await attendance();
+		const second = await attendance();
 
-		expect(data.sessionActive).toBe(true);
-		expect(data.sessionTimeInvalid).toBe(false);
-		expect(data.sessionElapsedMinutes).toBe(46);
-		expect(data.sessionEndTime).toBeNull();
-		expect(data.sessionEndSource).toBeNull();
-		expect(data.sessionStartTime).toBe('09:06');
-		expect(data.sessionAsOf).toBe(AS_OF_MS);
+		expect((first.body.data as Record<string, unknown>).loginTime).toBe(
+			'09:06'
+		);
+		expect((second.body.data as Record<string, unknown>).loginTime).toBe(
+			'09:06'
+		);
+		expect((second.body.data as Record<string, unknown>).logoutTime).toBe(
+			'19:42'
+		);
 	});
 
-	it('exposes a lone First Punch as Punch In while Punch Out stays null', async () => {
-		// One 09:07 device event: proof of presence for the In tile, but no
-		// pair, so the Out tile shows nothing rather than a zero span.
-		punchRows = [
-			{
-				employee_code: 'EMP-007',
-				log_date: '2026-10-26 09:07:00',
-				employee_id: 7,
-			},
+	it('answers an empty day with null clocks and ok status', async () => {
+		accessRows = [
+			{ login_time: null, logout_time: null, access_date: '2026-10-26' },
 		];
-
-		const { body } = await attendance();
-		const data = body.data as Record<string, unknown>;
-
-		expect(data.punchCount).toBe(1);
-		expect(data.punchComputable).toBe(false);
-		expect(data.punchInTime).toBe('09:07');
-		expect(data.punchOutTime).toBeNull();
-	});
-
-	it('answers an unavailable snapshot when the session query fails', async () => {
-		sessionQueryFails = true;
 
 		const { status, body } = await attendance();
 		const data = body.data as Record<string, unknown>;
 
 		expect(status).toBe(200);
-		expect(data.sessionStartTime).toBeNull();
-		expect(data.sessionEndTime).toBeNull();
-		expect(data.sessionEndSource).toBeNull();
-		expect(data.sessionElapsedMinutes).toBeNull();
-		expect(data.sessionAsOf).toBeNull();
-		expect(data.sessionActive).toBe(false);
-		expect(data.sessionTimeInvalid).toBe(false);
+		expect(data.loginTime).toBeNull();
+		expect(data.logoutTime).toBeNull();
+		expect(data.accessStatus).toBe('ok');
+		expect(data.accessDate).toBe('2026-10-26');
+		expect(data.idleTime).toBe(5);
+	});
+
+	it('answers null clocks with error status when the access read fails', async () => {
+		accessQueryFails = true;
+
+		const { status, body } = await attendance();
+		const data = body.data as Record<string, unknown>;
+
+		expect(status).toBe(200);
+		expect(data.loginTime).toBeNull();
+		expect(data.logoutTime).toBeNull();
+		expect(data.accessStatus).toBe('error');
+		expect(data.accessDate).toBeNull();
+		expect(data.idleTime).toBe(5);
 	});
 
 	it('denies other-user data to a non-admin without touching the database', async () => {
