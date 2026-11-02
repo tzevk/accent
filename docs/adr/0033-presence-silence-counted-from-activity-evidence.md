@@ -48,3 +48,9 @@ the new cards only stop reading it.
 The browser-close epoch writer fix above is retained unchanged:
 browser-reported close instants still enter as numeric epochs converted by MariaDB,
 sweep signals stay database wall-clock strings, and explicit logout still uses the database clock.
+
+## Dashboard Log Out display correction (2026-11-02)
+
+Supersedes the Log Out presentation above: the dashboard now shows a dash instead of a time.
+Last app access is not sign-out; displaying it under Log Out confuses users.
+Log In, activity tracking, stored access times, and attendance calculations remain unchanged.

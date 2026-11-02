@@ -44,11 +44,7 @@ vi.mock('@/lib/api-client', () => ({ apiGet }));
 
 import UserDashboard from '@/app/dashboard/user-dashboard.jsx';
 
-/**
- * App-access day: first entry stays fixed at 09:06 while the latest
- * recorded access advances to 18:11. No device punch or Work Session
- * fields — the Log In/Log Out cards read only these access clocks.
- */
+/** App-access times remain in the API payload; Log Out does not display them. */
 const ACCESS_DAY = {
 	loginTime: '09:06',
 	logoutTime: '18:11',
@@ -174,26 +170,19 @@ describe('user dashboard attendance sources', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('renders Log In first entry and Log Out latest access with no punch or CRM tiles', async () => {
+	it('keeps Log Out blank even when latest app access has a time', async () => {
 		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
 		renderDashboard();
 
 		const card = await screen.findByTestId('attendance-card');
 
-		// New app-access clocks: first entry fixed, latest access advanced.
+		// Recorded app access must not look like an explicit sign-out.
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
 		);
-		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-			'6:11 PM'
-		);
+		expect(within(card).getByTestId('logout-figure')).toHaveTextContent('—');
 		expect(within(card).getByText('Log In')).toBeInTheDocument();
 		expect(within(card).getByText('Log Out')).toBeInTheDocument();
-		expect(
-			within(card).getByText(
-				'Last recorded app access; updates while the app is open.'
-			)
-		).toBeInTheDocument();
 
 		// Old device/session tiles and their captions are gone.
 		expect(within(card).queryByText('Punch In')).not.toBeInTheDocument();
@@ -225,7 +214,7 @@ describe('user dashboard attendance sources', () => {
 		expect(within(card).queryByText(/m remaining/)).not.toBeInTheDocument();
 	});
 
-	it('keeps first entry fixed while a later poll advances latest access', async () => {
+	it('keeps first entry fixed while a later poll refreshes attendance', async () => {
 		const client = new QueryClient({
 			defaultOptions: { queries: { retry: false, gcTime: 0 } },
 		});
@@ -242,22 +231,13 @@ describe('user dashboard attendance sources', () => {
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
 		);
-		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-			'6:11 PM'
-		);
 
-		// A poll refetch replaces the whole day, and the observer notifies
-		// on a macrotask after the refetch promise settles, so the
-		// assertions wait for the repaint, not the fetch: the first entry
-		// stays fixed while the latest access advances with no explicit
-		// logout anywhere.
+		// A poll updates visible attendance while Log In remains fixed.
 		await act(async () => {
 			await client.refetchQueries({ queryKey: ['users', 7, 'attendance'] });
 		});
 		await waitFor(() => {
-			expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-				'7:02 PM'
-			);
+			expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
 		});
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
@@ -300,9 +280,6 @@ describe('user dashboard attendance sources', () => {
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
 		);
-		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-			'6:11 PM'
-		);
 		client.clear();
 	});
 
@@ -335,9 +312,6 @@ describe('user dashboard attendance sources', () => {
 		);
 		const card = await screen.findByTestId('attendance-card');
 		expect(await within(card).findByText('9:06 AM')).toBeInTheDocument();
-		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-			'6:11 PM'
-		);
 		const staleDay = {
 			...ACCESS_DAY,
 			loginTime: '08:15',
@@ -352,9 +326,6 @@ describe('user dashboard attendance sources', () => {
 		expect(within(card).queryByText('8:15 AM')).not.toBeInTheDocument();
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
-		);
-		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-			'6:11 PM'
 		);
 		unmount();
 		client.clear();
@@ -413,9 +384,6 @@ describe('user dashboard attendance sources', () => {
 				'8:15 AM'
 			);
 		});
-		expect(within(cardB).getByTestId('logout-figure')).toHaveTextContent(
-			'8:20 AM'
-		);
 		unmount();
 		client.clear();
 	});
@@ -434,9 +402,6 @@ describe('user dashboard attendance sources', () => {
 		);
 
 		const card = await screen.findByTestId('attendance-card');
-		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-			'6:11 PM'
-		);
 		const readsBefore = apiGet.mock.calls.filter(
 			(call: unknown[]) => call[0] === '/api/users/7/attendance'
 		).length;
@@ -453,22 +418,15 @@ describe('user dashboard attendance sources', () => {
 				(call: unknown[]) => call[0] === '/api/users/7/attendance'
 			).length
 		).toBe(readsBefore);
-		expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-			'6:11 PM'
-		);
 
-		// The matching acknowledgement forces a fresh read even though the
-		// day already painted: first entry stays fixed while latest access
-		// advances to the newly recorded contact.
+		// A matching acknowledgement refreshes the day's attendance.
 		await act(async () => {
 			window.dispatchEvent(
 				new CustomEvent('app-access-recorded', { detail: { userId: 7 } })
 			);
 		});
 		await waitFor(() => {
-			expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-				'7:02 PM'
-			);
+			expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
 		});
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
@@ -514,9 +472,7 @@ describe('user dashboard attendance sources', () => {
 		});
 		const card = await screen.findByTestId('attendance-card');
 		await waitFor(() => {
-			expect(within(card).getByTestId('logout-figure')).toHaveTextContent(
-				'7:02 PM'
-			);
+			expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
 		});
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
@@ -641,9 +597,6 @@ describe('user dashboard attendance sources', () => {
 		const card = await screen.findByTestId('attendance-card');
 		expect(
 			await within(card).findByTestId('attendance-empty-state')
-		).toBeInTheDocument();
-		expect(
-			within(card).getByText(/no app access recorded yet today/i)
 		).toBeInTheDocument();
 		expect(
 			within(card).getByText(/no app entry recorded yet today/i)
