@@ -16,6 +16,31 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 | Understand Client Balance                         | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
 | Understand project expenditure accounting         | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
 
+## Cash vouchers
+
+- Create vouchers at `/admin/cash-voucher/new`.
+- Edit vouchers at `/admin/cash-voucher/edit/[id]`.
+- Voucher number is editable on new. It is read-only on edit.
+- Set the voucher date and paid-to. Project is optional; choose **No project** to clear it.
+- Each line has bill date, bill number, and account head.
+- Each line has a rupees input. It allows decimals.
+- Each line has a paise input. It takes whole numbers 0-99.
+- Each line has a description from the list.
+- Choose cash or cheque. Total and words fill in by themselves.
+- Sign-off has prepared, checked, approved, and receiver fields.
+- Print opens the voucher in a new tab. It starts printing.
+- Use Print or Save as PDF in the print window.
+- In Chrome or Edge, open **More settings** and turn off **Headers and footers**.
+- This removes the browser's date, title, URL, and page number.
+- The preview shows this printing tip. The tip does not appear on the printed voucher.
+- The sheet is A4. CSS margins are 12mm, 10mm, and 14mm.
+- Long vouchers run across pages. Table headers repeat.
+- Each printed line shows one amount. It merges rupees and paise.
+- The sheet keeps the total, words, and four signatures.
+- Printed vouchers omit the Project row when no project is set.
+- The sheet uses the real Accent logo.
+- Layout ideas follow Stripe invoice branding: https://docs.stripe.com/invoicing/customize.
+
 ## System explanations
 
 - [Daily activity entries](explanations/activity-daily-entries.md)
