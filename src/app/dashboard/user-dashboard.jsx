@@ -282,12 +282,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		[]
 	);
 
-	// Attendance: the server's day payload, read through the shared query
-	// client so the page-load read and the two-minute poll share one cache
-	// entry keyed by user. Log In is the first app entry of the database
-	// day; Log Out is the latest recorded app contact, which advances while
-	// the app stays open. Defaults keep every tile honest before the first
-	// read.
+	// Attendance reads share a per-user cache with the two-minute poll.
+	// Log In shows the first app entry; Log Out stays a dash.
 	const currentUserId = verifiedUser?.id || user?.id;
 	const queryClient = useQueryClient();
 	const attendanceQueryKey = useMemo(
@@ -581,12 +577,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		attendanceQuery.isError,
 	]);
 
-	// The shared query's own interval is the poll: every refetch replaces
-	// the whole day payload, including null clears, and a later recorded
-	// access lands on the next tick. The interval never stops — the Log Out
-	// clock advances while the app stays open — and the query key scopes
-	// each read to its user, so a stale response after a user change or
-	// unmount never reaches these tiles.
+	// Polling replaces the day's payload, including null clears.
+	// The per-user query key isolates reads across viewer changes.
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
@@ -599,14 +591,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return time;
 	}, []);
 
-	// ── The day's app-access clocks ──
-	// Log In is the first app entry of the database day, including entry
-	// with an existing authenticated session; it stays fixed across later
-	// logins, refreshes, and tabs. Log Out is the latest recorded app
-	// contact — periodic activity included — and is not proof of explicit
-	// sign-out, departure, or attendance credit.
+	// Log In stays fixed across later logins, refreshes, and tabs.
 	const loginValue = attendance.loginTime;
-	const logoutValue = attendance.logoutTime;
 
 	// ── Loading state ──
 	if (loading) {
@@ -968,14 +954,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											)}
 										</div>
 									</div>
-									{/* Log Out — latest recorded app access */}
+									{/* Log Out stays blank: last app access is not a sign-out. */}
 									<div className="group relative rounded-xl border border-red-200 bg-gradient-to-br from-red-50 via-white to-rose-50 p-3 hover:shadow-lg hover:border-red-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-red-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
-												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${logoutValue ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
-												>
+												<div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm bg-gray-200 text-gray-500">
 													<ArrowLeftStartOnRectangleIcon className="h-4 w-4" />
 												</div>
 											</div>
@@ -984,24 +968,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											</p>
 											<p
 												data-testid="logout-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${logoutValue ? 'text-gray-900' : 'text-gray-500'}`}
+												className="text-base font-extrabold leading-tight tracking-tight text-gray-500"
 											>
-												{logoutValue ? formatTime(logoutValue) : NO_VALUE}
+												{NO_VALUE}
 											</p>
-											<p className="mt-1 text-xs leading-snug text-gray-500">
-												Last recorded app access; updates while the app is open.
-											</p>
-											{accessSourceUnknown ? (
-												<p className="mt-1 text-xs leading-snug text-red-700">
-													App access unavailable. Refresh the page.
-												</p>
-											) : (
-												!logoutValue && (
-													<p className="mt-1 text-xs leading-snug text-gray-500">
-														No app access recorded yet today.
-													</p>
-												)
-											)}
 										</div>
 									</div>
 									{/* Present Days */}
