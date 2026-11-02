@@ -11,3 +11,23 @@ Considered: keeping the heartbeat as the staleness key and shortening the window
 This is the first record in this area, so the domain line is written down: a Work Session is not a Session, not Time Present and not a Punch. A Session is the authenticated login revocation acts on, Time Present is the device-measured office span, and a Punch is a device event (ADR-0007). The Work Session is only the browser's reported span, and a sweep-stamped end is an inference that work stopped — not a close, and not an attendance fact. No Work Session figure reaches payroll: the span feeds the day's Total Time (`user_daily_summary.total_work_minutes`, read by `/api/work-summary`), while pay is priced from Logged Hours (ADR-0010) and the Attendance Record stays authored by HR or measured by the device. A future reader must not merge them, because doing so would re-price payroll.
 
 Consequences: a day's Total Time now sums spans that stop when the User stops, so a User who leaves the tab open reads a shorter figure than before — the figure the work actually justifies. An idle end becomes ordinary rather than exceptional, so the inferred-end disclosure is load-bearing rather than decoration: it is what keeps a sweep end apart from the logout the User chose. Nothing else about the sweep moves — the same one query, the same close path, the same ten-minute window, and the sweep stays idempotent and rerunnable because only `status = 'active'` rows are touched and the read falls back. The three figures behind the effective end are one computation (five minutes of client idle threshold, two minutes of heartbeat lag, ten minutes of window), so a later change to any of them must be read against the end stated here.
+
+## Dashboard correction (2026-11-02)
+
+The dashboard no longer substitutes CRM times under Punch In or Punch Out.
+Those tiles show device evidence only. A lone First Punch remains visible without inventing a Last Punch.
+The separate CRM Time figure measures observed Work Session intervals, not attendance, Logged Hours, or pay.
+It unions overlapping intervals and excludes gaps between sessions. Recorded idle remains separate and is not subtracted again.
+The CRM figure carries no eight-hour completion target.
+
+The attendance endpoint reads full timestamps as database-generated epochs and formats clock labels in the database timezone.
+An active Work Session suppresses an earlier session end. Polling replaces null and zero values as well as recorded values.
+Invalid stored intervals show an unavailable duration and a support message, never a valid-looking zero.
+This change does not rewrite historical evidence or guess a corrected timestamp.
+An unavailable CRM read remains distinct from a confirmed empty day and shows an actionable message.
+Assignments-processing errors release the loading screen without changing a source that already loaded successfully.
+
+Browser-reported close instants now enter the close writer as numeric epochs.
+MariaDB converts them through `FROM_UNIXTIME` in its session timezone, independently of the app server timezone.
+Sweep signals remain database wall-clock strings. Explicit logout still uses the database clock.
+No global driver timezone, attendance policy, payroll formula, or device-punch derivation changes.

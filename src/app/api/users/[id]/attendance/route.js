@@ -4,6 +4,10 @@ import { getCurrentUser } from '@/utils/api-permissions';
 import { isWeeklyOff } from '@/utils/weekly-off';
 import { hasColumn } from '@/utils/schema-cache';
 import { computeDayPunchSpan } from '@/lib/time-present';
+import {
+	summarizeWorkSessions,
+	unavailableWorkSessionSummary,
+} from '@/lib/work-session-summary';
 import { linkedEmployeeId } from '@/app/api/me/_lib/session-employee';
 
 const DAY_MS = 86_400_000;
@@ -58,9 +62,13 @@ export async function GET(request, { params }) {
 			inTime: null,
 			outTime: null,
 			idleTime: 0,
-			loginTime: null,
-			logoutTime: null,
-			endSource: null,
+			sessionStartTime: null,
+			sessionEndTime: null,
+			sessionEndSource: null,
+			sessionElapsedMinutes: null,
+			sessionAsOf: null,
+			sessionActive: false,
+			sessionTimeInvalid: false,
 			punchInTime: null,
 			punchOutTime: null,
 			punchCount: 0,
@@ -203,45 +211,75 @@ export async function GET(request, { params }) {
 			attendanceData.weeklyOff = weeklyOff;
 		}
 
-		// Fetch login/logout times from user_daily_summary / user_work_sessions
+		// The day's Work Sessions: observed browser spans, read as SQL epochs
+		// with SQL-formatted HH:MM labels in the database timezone. The host
+		// never parses dates here, and the summary never trusts stored
+		// `duration_minutes`. `end_source` says how an end was recorded: a
+		// real logout, the page-close beacon, or the sweep (ticket #331).
+		// NULL is a row written before the column existed: a pre-existing
+		// end, never an inferred one.
 		try {
-			const [dailySummary] = await db.execute(
-				`SELECT first_login, last_activity FROM user_daily_summary WHERE user_id = ? AND date = CURDATE() LIMIT 1`,
-				[requestedUserId]
-			);
-			if (dailySummary.length > 0) {
-				if (dailySummary[0].first_login) {
-					const fl = new Date(dailySummary[0].first_login);
-					attendanceData.loginTime = fl.toTimeString().slice(0, 5); // HH:MM
-				}
-			}
-
-			// Get latest ended session_end as logout time. `end_source` says how
-			// that end was recorded: a real logout, the page-close beacon, or the
-			// sweep (ticket #331 — the Punch Out tile discloses an inferred end).
-			// NULL is a row written before the column existed: a pre-existing
-			// end, never an inferred one.
 			const hasEndSource = await hasColumn(
 				db,
 				'user_work_sessions',
 				'end_source'
 			);
-			const [lastSession] = await db.execute(
-				`SELECT session_end${hasEndSource ? ', end_source' : ''}
+			const [sessionRows] = await db.execute(
+				`SELECT
+           UNIX_TIMESTAMP(session_start) * 1000 AS start_ms,
+           UNIX_TIMESTAMP(session_end) * 1000 AS end_ms,
+           DATE_FORMAT(session_start, '%H:%i') AS start_label,
+           DATE_FORMAT(session_end, '%H:%i') AS end_label,
+           ${hasEndSource ? 'end_source' : 'NULL AS end_source'},
+           status,
+           UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS as_of_ms
          FROM user_work_sessions
-         WHERE user_id = ? AND DATE(session_start) = CURDATE() AND status = 'ended' AND session_end IS NOT NULL
-         ORDER BY session_end DESC LIMIT 1`,
+         WHERE user_id = ? AND DATE(session_start) = CURDATE()
+           AND status IN ('active', 'ended')
+         ORDER BY session_start ASC`,
 				[requestedUserId]
 			);
-			if (lastSession.length > 0 && lastSession[0].session_end) {
-				const se = new Date(lastSession[0].session_end);
-				attendanceData.logoutTime = se.toTimeString().slice(0, 5);
-				attendanceData.endSource = hasEndSource
-					? (lastSession[0].end_source ?? null)
-					: null;
+			// The snapshot clock rides each row; a day with no rows still
+			// needs it from the database, never the host.
+			let asOfRaw = sessionRows?.[0]?.as_of_ms ?? null;
+			if ((sessionRows ?? []).length === 0) {
+				try {
+					const [clockRows] = await db.execute(
+						`SELECT UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS as_of_ms`
+					);
+					asOfRaw = clockRows?.[0]?.as_of_ms ?? null;
+				} catch {
+					asOfRaw = null;
+				}
 			}
-		} catch (loginErr) {
-			console.log('Login/logout time fetch skipped:', loginErr.message);
+			const summary = summarizeWorkSessions(
+				(sessionRows ?? []).map((row) => ({
+					startMs: row.start_ms,
+					endMs: row.end_ms,
+					startLabel: row.start_label,
+					endLabel: row.end_label,
+					endSource: row.end_source,
+					status: row.status,
+				})),
+				asOfRaw
+			);
+			attendanceData.sessionStartTime = summary.sessionStartTime;
+			attendanceData.sessionEndTime = summary.sessionEndTime;
+			attendanceData.sessionEndSource = summary.sessionEndSource;
+			attendanceData.sessionElapsedMinutes = summary.sessionElapsedMinutes;
+			attendanceData.sessionAsOf = summary.sessionAsOf;
+			attendanceData.sessionActive = summary.sessionActive;
+			attendanceData.sessionTimeInvalid = summary.sessionTimeInvalid;
+		} catch (sessionErr) {
+			console.log('Work session fetch skipped:', sessionErr.message);
+			const unavailable = unavailableWorkSessionSummary();
+			attendanceData.sessionStartTime = unavailable.sessionStartTime;
+			attendanceData.sessionEndTime = unavailable.sessionEndTime;
+			attendanceData.sessionEndSource = unavailable.sessionEndSource;
+			attendanceData.sessionElapsedMinutes = unavailable.sessionElapsedMinutes;
+			attendanceData.sessionAsOf = unavailable.sessionAsOf;
+			attendanceData.sessionActive = unavailable.sessionActive;
+			attendanceData.sessionTimeInvalid = unavailable.sessionTimeInvalid;
 		}
 
 		// The day's Punches, for the Punch In and Punch Out tiles (ticket
@@ -285,14 +323,13 @@ export async function GET(request, { params }) {
 			});
 			attendanceData.punchCount = span.punchCount;
 			attendanceData.punchComputable = span.computable;
-			// The punch times are the day's measured endpoints. Without a
-			// computable pair there is nothing to show — a lone punch must
-			// never render as a zero-length span — and the tile keeps the
-			// sign-in or logout instead.
-			attendanceData.punchInTime =
-				span.computable && span.firstPunch
-					? span.firstPunch.log_date.slice(11, 16)
-					: null;
+			// Punch In is the day's First Punch wherever one exists — a lone
+			// punch still proves the User was at the device — while Punch Out
+			// needs the computable pair the shared rule measured. A lone punch
+			// is never a zero-length span.
+			attendanceData.punchInTime = span.firstPunch
+				? span.firstPunch.log_date.slice(11, 16)
+				: null;
 			attendanceData.punchOutTime =
 				span.computable && span.lastPunch
 					? span.lastPunch.log_date.slice(11, 16)

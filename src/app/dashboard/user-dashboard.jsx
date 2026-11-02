@@ -14,7 +14,8 @@ import React, {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { fetchJSON } from '@/utils/http';
+import { useQuery } from '@tanstack/react-query';
+import { apiGet } from '@/lib/api-client';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
 	ClockIcon,
@@ -33,7 +34,7 @@ import {
 } from '@heroicons/react/24/outline';
 import LeaveLoginToast from '@/components/LeaveLoginToast';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
-import { EXPECTED_WORK_MINS, isLateLogin, isOvertime } from '@/lib/shift-times';
+import { isLateLogin, isOvertime } from '@/lib/shift-times';
 
 // ── Lazy-load heavy components (code-split, only fetched when needed) ──
 const TodoList = lazy(() => import('@/components/TodoList'));
@@ -232,11 +233,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	const { user: contextUser } = useSessionRBAC();
 	const user = verifiedUser || contextUser;
 	const [loading, setLoading] = useState(true);
-	// How today's attendance and the project assignments finished loading
-	// (#340): 'loading' → 'ok' | 'empty' | 'error'. The tiles read this to tell
-	// a day that recorded nothing from a fetch that failed, and each state gets
-	// its own line — never one shared "no data" rendering.
-	const [attendanceLoad, setAttendanceLoad] = useState(LOAD_PENDING);
+	// How the project assignments finished loading (#340): 'loading' →
+	// 'ok' | 'error'. Attendance carries its own query state below, so the
+	// tiles tell a day that recorded nothing from a fetch that failed, and
+	// each state gets its own line — never one shared "no data" rendering.
 	const [assignmentsLoad, setAssignmentsLoad] = useState(LOAD_PENDING);
 	const [statsReady, setStatsReady] = useState(false);
 	const [todoPanelOpen, setTodoPanelOpen] = useState(false);
@@ -283,17 +283,33 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		[]
 	);
 
-	// Attendance
-	const [attendance, setAttendance] = useState({
+	// Attendance: the server's day payload, read through the shared query
+	// client so the page-load read and the two-minute poll share one cache
+	// entry keyed by user. Punch fields ride independently from the CRM
+	// session snapshot; `sessionActive` selects which snapshot the CRM tile
+	// advances, and `sessionTimeInvalid` names a corrupt row instead of
+	// timing it. Defaults keep every tile honest before the first read.
+	const currentUserId = verifiedUser?.id || user?.id;
+	const attendanceQuery = useQuery({
+		queryKey: ['users', currentUserId, 'attendance'],
+		queryFn: () => apiGet(`/api/users/${currentUserId}/attendance`),
+		enabled: !!currentUserId,
+		refetchInterval: 120000, // Matches heartbeat interval
+		refetchIntervalInBackground: true,
+	});
+	const attendanceDay = attendanceQuery.data?.data ?? null;
+	const attendanceReceivedAt = attendanceQuery.dataUpdatedAt || 0;
+	const attendance = {
 		inTime: null,
 		outTime: null,
-		loginTime: null,
-		logoutTime: null,
-		endSource: null,
-		// The day's Punches, resolved server-side with the linked Employee
-		// (ticket #334): the device is the value on the Punch In / Punch Out
-		// tiles, and `punchEmployeeId` null means the account has no linked
-		// Employee record at all.
+		idleTime: 0,
+		sessionStartTime: null,
+		sessionEndTime: null,
+		sessionEndSource: null,
+		sessionElapsedMinutes: null,
+		sessionAsOf: null,
+		sessionActive: false,
+		sessionTimeInvalid: false,
 		punchInTime: null,
 		punchOutTime: null,
 		punchCount: 0,
@@ -306,87 +322,55 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		holidays: 0,
 		overtimeHours: 0,
 		leaves: { total: 24, used: 0, balance: 24 },
-	});
+		...(attendanceDay || {}),
+	};
+	// A failed fetch and a day that recorded nothing are different facts
+	// (#340): the query state decides which one the tiles see, and a
+	// successful poll clears either back to the day's own state.
+	const attendanceLoad = attendanceQuery.isError
+		? LOAD_ERROR
+		: !attendanceQuery.data
+			? LOAD_PENDING
+			: attendance.sessionStartTime ||
+				  attendance.sessionEndTime ||
+				  attendance.punchInTime ||
+				  attendance.punchOutTime
+				? LOAD_OK
+				: LOAD_EMPTY;
 
-	// Live total time: (now - loginTime) - cumulative idle
-	const [liveTotalTime, setLiveTotalTime] = useState({
-		hrs: 0,
-		mins: 0,
-		elapsedHrs: 0,
-		elapsedMins: 0,
-		idleHrs: 0,
-		idleMins: 0,
-	});
+	// Live CRM time: the observed elapsed snapshot, advanced locally only
+	// while a session is active and the interval is valid. The fetch
+	// receipt is the anchor, so skew between the browser clock and the
+	// database clock never enters the figure; idle stays a separate
+	// recorded figure, never subtracted again. The state is keyed to the
+	// current user and receipt, so a user switch or a fresh poll cannot
+	// flash the previous owner's live total before the effect settles.
+	const [liveCrm, setLiveCrm] = useState({ key: null, minutes: null });
+	const liveCrmKey = `${currentUserId ?? 'none'}:${attendanceReceivedAt}`;
 	useEffect(() => {
-		const calcTotal = () => {
-			const lt = attendance.loginTime;
-			if (!lt) {
-				setLiveTotalTime({
-					hrs: 0,
-					mins: 0,
-					elapsedHrs: 0,
-					elapsedMins: 0,
-					idleHrs: 0,
-					idleMins: 0,
-				});
-				return;
-			}
-			const now = new Date();
-			const [lh, lm] = (typeof lt === 'string' ? lt : lt.toString())
-				.split(':')
-				.map(Number);
-			const loginDate = new Date(
-				now.getFullYear(),
-				now.getMonth(),
-				now.getDate(),
-				lh,
-				lm || 0
-			);
-
-			let endDate = now;
-			// If logged out, cap elapsed time at logout
-			if (attendance.logoutTime) {
-				const [oh, om] = (
-					typeof attendance.logoutTime === 'string'
-						? attendance.logoutTime
-						: attendance.logoutTime.toString()
-				)
-					.split(':')
-					.map(Number);
-				endDate = new Date(
-					now.getFullYear(),
-					now.getMonth(),
-					now.getDate(),
-					oh,
-					om || 0
-				);
-			}
-
-			const elapsedMin = Math.max(0, Math.floor((endDate - loginDate) / 60000));
-			// After logout, only use DB idle time — don't add live cumulative idle
-			const idleMin = attendance.logoutTime
-				? attendance.idleTime || 0
-				: Math.floor(cumulativeIdleSeconds / 60) + (attendance.idleTime || 0);
-			const netMin = Math.max(0, elapsedMin - idleMin);
-			setLiveTotalTime({
-				hrs: Math.floor(netMin / 60),
-				mins: netMin % 60,
-				elapsedHrs: Math.floor(elapsedMin / 60),
-				elapsedMins: elapsedMin % 60,
-				idleHrs: Math.floor(idleMin / 60),
-				idleMins: idleMin % 60,
-			});
-		};
-		calcTotal();
-		// Don't keep interval running after logout
-		if (attendance.logoutTime) return;
-		const iv = setInterval(calcTotal, 50000);
+		const snapshot = attendance.sessionElapsedMinutes;
+		const validSnapshot =
+			typeof snapshot === 'number' && Number.isFinite(snapshot);
+		if (!validSnapshot || attendance.sessionTimeInvalid) {
+			setLiveCrm({ key: liveCrmKey, minutes: null });
+			return;
+		}
+		if (!attendance.sessionActive) {
+			setLiveCrm({ key: liveCrmKey, minutes: snapshot });
+			return;
+		}
+		const anchor = performance.now();
+		setLiveCrm({ key: liveCrmKey, minutes: snapshot });
+		const iv = setInterval(() => {
+			const elapsedSinceReceipt = (performance.now() - anchor) / 60000;
+			setLiveCrm({ key: liveCrmKey, minutes: snapshot + elapsedSinceReceipt });
+		}, 50000);
 		return () => clearInterval(iv);
 	}, [
-		attendance.loginTime,
-		attendance.logoutTime,
-		attendance.idleTime,
-		cumulativeIdleSeconds,
+		attendance.sessionElapsedMinutes,
+		attendance.sessionActive,
+		attendance.sessionTimeInvalid,
+		liveCrmKey,
 	]);
 
 	// Module data
@@ -441,6 +425,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	});
 
 	// ── Data fetching with tiered loading + AbortController ──
+	// Attendance rides the shared query above, so this effect owns only the
+	// activity assignments and the tier-2 reads. The shell still waits for
+	// the attendance query before its first paint.
 	useEffect(() => {
 		const userId = verifiedUser?.id || user?.id;
 		if (!userId) return;
@@ -450,44 +437,23 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 		const loadData = async () => {
 			setLoading(true);
+			setAssignmentsLoad(LOAD_PENDING);
 			const today = new Date().toISOString().split('T')[0];
 
 			try {
-				// ── Tier 1 (critical path): attendance + activity assignments ──
+				// ── Tier 1 (critical path): activity assignments ──
 				// These paint the header & stats — fetch first so shell renders fast
-				const [attendanceRes, activityRes] = await Promise.allSettled([
-					fetchJSON(`/api/users/${userId}/attendance`, { signal }).catch(
-						() => null
-					),
-					fetch(`/api/users/${userId}/activity-assignments`, { signal })
-						.then((r) => r.json())
-						.catch(() => null),
-				]);
+				const activityRes = await fetch(
+					`/api/users/${userId}/activity-assignments`,
+					{ signal }
+				)
+					.then((r) => r.json())
+					.then(
+						(value) => ({ status: 'fulfilled', value }),
+						() => ({ status: 'rejected', value: null })
+					);
 
 				if (signal.aborted) return;
-
-				// A failed fetch and a day that recorded nothing are different
-				// facts, so each source is named as one of them (#340).
-				const attendanceOk =
-					attendanceRes.status === 'fulfilled' && attendanceRes.value?.success;
-				if (attendanceOk) {
-					const day = attendanceRes.value.data;
-					setAttendance(day);
-					// Everything the payload's day can carry decides whether the
-					// day recorded something: the session times and the device's
-					// own punches (#334). A punch-only day is not an empty day.
-					setAttendanceLoad(
-						day?.loginTime ||
-							day?.logoutTime ||
-							day?.punchInTime ||
-							day?.punchOutTime
-							? LOAD_OK
-							: LOAD_EMPTY
-					);
-				} else {
-					setAttendanceLoad(LOAD_ERROR);
-				}
-
 				let assignmentsList = [];
 				const assignmentsOk =
 					activityRes.status === 'fulfilled' && activityRes.value?.success;
@@ -528,8 +494,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					setAssignmentsLoad(LOAD_ERROR);
 				}
 
-				// First paint is ready
-				setLoading(false);
+				// First paint waits for the attendance query too — the header
+				// and the tiles read it, so an early shell would flash empty.
+				// Tier 2 stays non-blocking below.
 
 				// ── Tier 2 (non-blocking): messages, todos, work-logs ──
 				// Fetched after shell renders so user sees content sooner
@@ -600,7 +567,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					setModuleAccess((prev) => ({ ...prev, ...accessPatch }));
 			} catch (error) {
 				console.error('Failed to load dashboard data:', error);
-				setLoading(false);
+				if (signal.aborted) return;
+				// A throw before tier-1 settles must still release the shell;
+				// a later tier-2 throw must not demote an already-settled source.
+				setAssignmentsLoad((prev) =>
+					prev === LOAD_PENDING ? LOAD_ERROR : prev
+				);
 			}
 		};
 
@@ -608,74 +580,39 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		return () => ac.abort();
 	}, [verifiedUser?.id, user?.id]);
 
+	// The shell clears once both tier-1 reads settled: the assignments
+	// effect above and the attendance query. Either may fail — the tiles
+	// name their own failure — but neither may leave the loader spinning.
+	// A later poll refetches behind the painted shell, never through it.
+	useEffect(() => {
+		if (
+			assignmentsLoad !== LOAD_PENDING &&
+			!attendanceQuery.isPending &&
+			(attendanceQuery.isSuccess || attendanceQuery.isError)
+		) {
+			setLoading(false);
+		}
+	}, [
+		assignmentsLoad,
+		attendanceQuery.isPending,
+		attendanceQuery.isSuccess,
+		attendanceQuery.isError,
+	]);
+
 	// ── Did the day's end come from inference rather than choice? (#331) ──
 	// A sweep or beacon end is an inference about presence: the sweep stamps
-	// the last activity signal, the beacon a close the browser had to time. A
-	// logout — or no end at all — is the user's own choice. One named test,
-	// used by the poll's stop condition below and the Punch Out tile's
-	// disclosure.
+	// the last activity signal, the beacon a close the browser had to time.
+	// A logout — or no end at all — is the user's own choice. The CRM tile
+	// reads this to label the end honestly, never as a logout that happened.
 	const endWasInferred =
-		attendance.endSource === 'sweep' || attendance.endSource === 'beacon';
-
-	// ── Poll attendance data (especially idle time) every 2 minutes ──
-	useEffect(() => {
-		const userId = verifiedUser?.id || user?.id;
-		// Only a real logout ends the day. A beacon or sweep end is an inferred
-		// one (ticket #331), so the poll keeps running — a punch the device
-		// pushes late still has to reach the tile (ticket #334).
-		const hasRealLogout = !!attendance.logoutTime && !endWasInferred;
-		if (!userId || hasRealLogout) return; // Don't poll if logged out
-
-		let retryCount = 0;
-		const maxRetries = 3;
-		let isPolling = false;
-
-		const pollAttendance = async () => {
-			// Skip if already polling (prevents concurrent requests)
-			if (isPolling) return;
-
-			isPolling = true;
-			try {
-				// `no-store`: the endpoint answers with a 30-second cache header,
-				// which would otherwise serve the poll the page-load response.
-				const res = await fetchJSON(`/api/users/${userId}/attendance`, {
-					cache: 'no-store',
-				});
-				if (res?.success) {
-					// Only the figures the poll exists to refresh, so nothing
-					// else on the card is disrupted mid-render.
-					setAttendance((prev) => ({
-						...prev,
-						idleTime: res.data.idleTime || prev.idleTime,
-						punchInTime: res.data.punchInTime ?? prev.punchInTime,
-						punchOutTime: res.data.punchOutTime ?? prev.punchOutTime,
-						punchCount: res.data.punchCount ?? prev.punchCount,
-						punchComputable: res.data.punchComputable ?? prev.punchComputable,
-						punchEmployeeId: res.data.punchEmployeeId ?? prev.punchEmployeeId,
-					}));
-					retryCount = 0; // Reset retry count on success
-				}
-			} catch (error) {
-				retryCount++;
-				// Log only if it's a persistent issue (not just network blip)
-				if (retryCount >= maxRetries) {
-					console.warn('Attendance polling failed multiple times:', error);
-				}
-			} finally {
-				isPolling = false;
-			}
-		};
-
-		const pollInterval = setInterval(pollAttendance, 120000); // Poll every 2 minutes (matches heartbeat interval)
-
-		// Do an initial poll after 10 seconds
-		const initialPoll = setTimeout(pollAttendance, 10000);
-
-		return () => {
-			clearInterval(pollInterval);
-			clearTimeout(initialPoll);
-		};
-	}, [verifiedUser?.id, user?.id, attendance.logoutTime, attendance.endSource]);
+		attendance.sessionEndSource === 'sweep' ||
+		attendance.sessionEndSource === 'beacon';
+	// The shared query's own interval is the poll: every refetch replaces
+	// the whole day payload, including null and zero clears, and a resumed
+	// session or a late device punch lands on the next tick. The interval
+	// never stops after an end — the day can resume in another tab — and
+	// the query key scopes each read to its user, so a stale response after
+	// a user change or unmount never reaches these tiles.
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
@@ -689,24 +626,72 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	}, []);
 
 	// ── The day's Punches on the tiles (ticket #334) ──
-	// A computable punch pair makes the device the value and the session times
-	// the sub-line; without one the sign-in or logout stays the value and the
-	// sub-line says which gap the device left. A punch never moves a work
-	// figure, so Total Time keeps reading the session times.
-	const punchPair = attendance.punchComputable === true;
+	// The device is the only value a Punch tile reads. A missing punch is a
+	// dash with its own note — never a CRM clock under a Punch heading, and
+	// never a claim about absence or remote work. The Late and OT chips read
+	// these device values only.
 	const punchLinked = attendance.punchEmployeeId != null;
-	const punchInValue = punchPair
-		? attendance.punchInTime
-		: attendance.loginTime;
-	const punchOutValue = punchPair
-		? attendance.punchOutTime
-		: attendance.logoutTime;
-	/** Why a tile is showing a session time instead of a punch, if it is. */
-	const punchFallbackNote = !punchLinked
+	const punchInValue = attendance.punchInTime;
+	const punchOutValue = attendance.punchOutTime;
+	// A lone punch is honest: the In tile reads the device's first punch,
+	// the Out tile stays a dash until a valid pair exists. Neither borrows
+	// a session time, and no OT comes from an inferred end.
+	/** Why a tile shows a dash instead of a punch, if it does. */
+	const punchInNote = !punchLinked
 		? 'No Employee record is linked to this account, so no punch can exist.'
-		: !punchPair
-			? 'The device recorded no punch pair for the day.'
+		: !punchInValue
+			? 'The device recorded no punch in for the day.'
 			: null;
+	/** Why the Out tile shows a dash instead of a punch, if it does. */
+	const punchOutNote = !punchLinked
+		? 'No Employee record is linked to this account, so no punch can exist.'
+		: !punchOutValue
+			? 'The device recorded no punch out for the day.'
+			: null;
+	// CRM session clocks, labelled as CRM wherever they render. A missing
+	// or unparseable clock renders as a dash with the row's own story: a
+	// corrupt row names support, while an active day with no observed start
+	// simply says nothing was recorded. An unreadable source is unknown,
+	// never empty: the error state or a missing snapshot receipt names it
+	// unavailable instead of claiming nothing was recorded.
+	const crmStartValue = attendance.sessionStartTime;
+	const crmEndValue = attendance.sessionEndTime;
+	const sessionInvalid = attendance.sessionTimeInvalid === true;
+	const sessionSourceUnknown =
+		attendanceLoad === LOAD_ERROR || attendance.sessionAsOf == null;
+	// The live total belongs to one user and one receipt. While a fresh
+	// user or poll is still settling, the render falls back to the current
+	// payload's own snapshot — never the previous owner's live figure.
+	const liveCrmMinutes = liveCrm.key === liveCrmKey ? liveCrm.minutes : null;
+	const crmSnapshot =
+		attendanceDay != null &&
+		typeof attendance.sessionElapsedMinutes === 'number' &&
+		Number.isFinite(attendance.sessionElapsedMinutes)
+			? attendance.sessionElapsedMinutes
+			: null;
+	const crmDisplayMinutes = liveCrmMinutes ?? crmSnapshot;
+	const crmMinutes =
+		typeof crmDisplayMinutes === 'number' && Number.isFinite(crmDisplayMinutes)
+			? Math.max(0, Math.floor(crmDisplayMinutes))
+			: null;
+	const hasCrmDuration = crmMinutes !== null && !sessionInvalid;
+	const crmDurationLabel =
+		crmMinutes === null || sessionInvalid
+			? NO_VALUE
+			: `${Math.floor(crmMinutes / 60)}h ${crmMinutes % 60}m`;
+	const crmEndLabel =
+		attendance.sessionEndSource === 'logout'
+			? 'CRM end (logout)'
+			: attendance.sessionEndSource === 'beacon'
+				? 'CRM end (inferred close)'
+				: attendance.sessionEndSource === 'sweep'
+					? 'CRM end (inferred close)'
+					: 'CRM end';
+	// The day counts as ended only through a valid observed end: an active
+	// session suppresses it, and a corrupt row carries no end at all. The
+	// Idle tile reads this, never a user-change-stale answer.
+	const sessionEnded =
+		!attendance.sessionActive && !sessionInvalid && crmEndValue != null;
 
 	// ── Loading state ──
 	if (loading) {
@@ -999,8 +984,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								{/* The day's own state (#340): a fetch that failed names
 								    the next step in a live error line; a day with nothing
 								    recorded is named as recorded, in plain neutral text.
-								    One or the other, never both, never neither — and the
-								    error line has no timer, so a slow reader keeps it. */}
+								    An unknown session source is neither — the empty claim
+								    stays off while the CRM tile names it unavailable — and
+								    the error line has no timer, so a slow reader keeps it. */}
 								{attendanceLoad === LOAD_ERROR && (
 									<div
 										data-testid="attendance-fetch-error"
@@ -1018,7 +1004,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										</p>
 									</div>
 								)}
-								{attendanceLoad === LOAD_EMPTY && (
+								{attendanceLoad === LOAD_EMPTY && !sessionSourceUnknown && (
 									<p
 										data-testid="attendance-empty-state"
 										data-state="empty"
@@ -1059,14 +1045,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													</span>
 												)}
 											</p>
-											{punchPair && attendance.loginTime && (
+											{punchInNote && (
 												<p className="mt-1 text-xs leading-snug text-gray-500">
-													Signed in {formatTime(attendance.loginTime)}
-												</p>
-											)}
-											{punchFallbackNote && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{punchFallbackNote}
+													{punchInNote}
 												</p>
 											)}
 										</div>
@@ -1096,114 +1077,98 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 													</span>
 												)}
 											</p>
-											{punchPair && attendance.logoutTime && (
+											{punchOutNote && (
 												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{endWasInferred ? 'Session ended' : 'Logged out'}{' '}
-													{formatTime(attendance.logoutTime)}
-												</p>
-											)}
-											{attendance.logoutTime && endWasInferred && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													No logout recorded — ended from your last activity.
-												</p>
-											)}
-											{punchFallbackNote && (
-												<p className="mt-1 text-xs leading-snug text-gray-500">
-													{punchFallbackNote}
+													{punchOutNote}
 												</p>
 											)}
 										</div>
 									</div>
-									{/* Total Time */}
+									{/* CRM Time */}
 									{(() => {
-										const totalMins =
-											liveTotalTime.hrs * 60 + liveTotalTime.mins;
-										const isComplete = totalMins >= EXPECTED_WORK_MINS;
-										const hasLogin = !!attendance.loginTime;
+										const hasCrmStart = crmStartValue != null;
+										const tileTone = !hasCrmStart
+											? 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50'
+											: sessionInvalid
+												? 'border-amber-300 bg-gradient-to-br from-amber-50 via-white to-yellow-50'
+												: 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50';
+										const dotTone = !hasCrmStart
+											? 'bg-indigo-200/30'
+											: sessionInvalid
+												? 'bg-amber-200/40'
+												: 'bg-indigo-200/30';
+										const iconTone = !hasCrmStart
+											? 'bg-gray-200 text-gray-500'
+											: sessionInvalid
+												? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200 group-hover:shadow-amber-300 group-hover:shadow-md'
+												: 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-indigo-200 group-hover:shadow-indigo-300 group-hover:shadow-md';
 										return (
 											<div
-												className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${
-													!hasLogin
-														? 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-50'
-														: isComplete
-															? 'border-green-300 bg-gradient-to-br from-green-50 via-white to-emerald-50'
-															: 'border-red-300 bg-gradient-to-br from-red-50 via-white to-rose-50'
-												}`}
+												className={`group relative rounded-xl border p-3 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 overflow-hidden ${tileTone}`}
 											>
 												<div
-													className={`absolute top-0 right-0 w-20 h-20 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500 ${
-														!hasLogin
-															? 'bg-indigo-200/30'
-															: isComplete
-																? 'bg-green-200/30'
-																: 'bg-red-200/30'
-													}`}
+													className={`absolute top-0 right-0 w-20 h-20 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500 ${dotTone}`}
 												/>
 												<div className="relative">
 													<div className="flex items-center justify-between mb-2">
 														<div
-															className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${
-																!hasLogin
-																	? 'bg-gray-200 text-gray-500'
-																	: isComplete
-																		? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-green-200 group-hover:shadow-green-300 group-hover:shadow-md'
-																		: 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-red-200 group-hover:shadow-red-300 group-hover:shadow-md'
-															}`}
+															className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${iconTone}`}
 														>
 															<ClockIcon className="h-4 w-4" />
 														</div>
-														{hasLogin && (
+														{attendance.sessionActive && !sessionInvalid && (
 															<div
 																data-motion="pulse"
-																className={`w-2 h-2 rounded-full animate-pulse shadow-sm ${isComplete ? 'bg-green-500 shadow-green-300' : 'bg-red-500 shadow-red-300'}`}
+																className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-sm shadow-indigo-300"
 															/>
 														)}
 													</div>
 													<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-														Total Time
+														CRM Time
 													</p>
 													<p
-														data-testid="total-time-figure"
-														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${!hasLogin ? 'text-gray-500' : isComplete ? 'text-green-700' : 'text-red-600'}`}
+														data-testid="crm-time-figure"
+														className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${hasCrmDuration ? 'text-gray-900' : 'text-gray-500'}`}
 													>
-														{hasLogin
-															? `${liveTotalTime.hrs}h ${liveTotalTime.mins}m`
-															: NO_VALUE}
-														{hasLogin && isComplete && (
-															<span className="ml-1 text-xs font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full align-middle">
-																✓
-															</span>
-														)}
+														{crmDurationLabel}
 													</p>
-													{hasLogin && (
-														<p
-															data-testid="total-time-breakdown"
-															className={`text-xs mt-1 font-medium leading-snug tabular-nums ${isComplete ? 'text-green-600' : 'text-red-700'}`}
-														>
-															{liveTotalTime.elapsedHrs}h{' '}
-															{liveTotalTime.elapsedMins}m
-															<span className="text-red-700 font-bold">
-																{' '}
-																−{' '}
-																{liveTotalTime.idleHrs > 0
-																	? `${liveTotalTime.idleHrs}h `
-																	: ''}
-																{liveTotalTime.idleMins}m
-															</span>
-															<span className="text-gray-500"> idle</span>
+													{/* Observed browser sessions, not attendance or pay. */}
+													<p className="mt-1 text-xs leading-snug text-gray-500">
+														Observed CRM activity, not attendance or pay.
+													</p>
+													{hasCrmStart ? (
+														<p className="mt-1 text-xs leading-snug text-gray-500">
+															CRM start {formatTime(crmStartValue)}
+															{crmEndValue != null &&
+																!attendance.sessionActive &&
+																!sessionInvalid &&
+																` · ${crmEndLabel} ${formatTime(crmEndValue)}`}
 														</p>
+													) : !sessionInvalid && sessionSourceUnknown ? (
+														<p className="mt-1 text-xs leading-snug text-red-700">
+															CRM session unavailable. Refresh the page.
+														</p>
+													) : (
+														!sessionInvalid &&
+														!sessionSourceUnknown && (
+															<p className="mt-1 text-xs leading-snug text-gray-500">
+																No CRM session recorded yet today.
+															</p>
+														)
 													)}
-													{hasLogin && !isComplete && (
-														<p
-															data-testid="total-time-remaining"
-															className="text-xs text-red-700 mt-0.5 font-semibold tabular-nums"
-														>
-															{Math.floor(
-																(EXPECTED_WORK_MINS - totalMins) / 60
-															) > 0
-																? `${Math.floor((EXPECTED_WORK_MINS - totalMins) / 60)}h `
-																: ''}
-															{(EXPECTED_WORK_MINS - totalMins) % 60}m remaining
+													{endWasInferred &&
+														crmEndValue != null &&
+														!attendance.sessionActive &&
+														!sessionInvalid && (
+															<p className="mt-1 text-xs leading-snug text-gray-500">
+																{attendance.sessionEndSource === 'beacon'
+																	? 'No logout recorded — ended when the page closed.'
+																	: 'No logout recorded — ended from your last activity.'}
+															</p>
+														)}
+													{sessionInvalid && (
+														<p className="mt-1 text-xs leading-snug text-amber-700">
+															Session times are inconsistent. Contact support.
 														</p>
 													)}
 												</div>
@@ -1324,11 +1289,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									</div>
 									{/* Idle Time (Live + Total) */}
 									{(() => {
-										// After logout, only show DB idle — don't add live cumulative
-										const effectiveIdleSecs = attendance.logoutTime
-											? 0
-											: idleSeconds;
-										const totalIdleMin = attendance.logoutTime
+										// After the CRM session ends, only show DB idle —
+										// don't add live cumulative idle to a closed day.
+										const effectiveIdleSecs = sessionEnded ? 0 : idleSeconds;
+										const totalIdleMin = sessionEnded
 											? attendance.idleTime || 0
 											: Math.floor(cumulativeIdleSeconds / 60) +
 												(attendance.idleTime || 0);
@@ -1382,7 +1346,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 																	: 'text-emerald-800'
 														}`}
 													>
-														{attendance.logoutTime
+														{sessionEnded
 															? `${totalIdleMin}m`
 															: fmtIdle(effectiveIdleSecs)}
 													</p>
@@ -1393,7 +1357,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 														<span
 															className={`w-1.5 h-1.5 rounded-full inline-block ${effectiveIdleSecs > 1800 ? 'bg-red-500' : effectiveIdleSecs > 300 ? 'bg-amber-500' : 'bg-emerald-500'}`}
 														/>
-														{attendance.logoutTime
+														{sessionEnded
 															? 'session ended'
 															: totalIdleMin > 0
 																? `Total ${totalIdleMin}m today`

@@ -382,3 +382,16 @@ No step automatically repairs production data.
 
 Disposable MariaDB, HTTP, and browser smoke checks exercised linking, access changes, repair rejection, concurrency, and historical attribution.
 These checks do not prove production deployment.
+
+## Dashboard punch and CRM time correction (2026-11-02)
+
+Fixed timezone handling for browser-close timestamps without changing the global database driver configuration.
+Punch tiles now show device evidence only; a CRM close cannot appear as a biometric punch-out.
+CRM Time uses dated Work Session intervals instead of subtracting two clock strings.
+Resumed activity clears earlier session ends, including null and zero fields received by polling.
+Invalid historical session intervals remain unchanged and show an explicit unavailable state.
+No attendance approval workflow or production data repair was added.
+
+Disposable MariaDB checks exercised UTC browser-close instants against an India-time database, sweep signals, and explicit logout.
+Actual attendance-route SQL and Chromium dashboard replays exercised invalid intervals, resumed sessions, and missing punch-outs.
+See the [updated Work Session decision](../adr/0033-presence-silence-counted-from-activity-evidence.md#dashboard-correction-2026-11-02).
