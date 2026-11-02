@@ -73,6 +73,33 @@ describe('lineItemTotalRs', () => {
 });
 
 describe('renderCashVoucherPrintDocument', () => {
+	it.each([undefined, null, '', '   '])(
+		'omits the project detail when no project is set (%j)',
+		(projectNumber) => {
+			const input = makeInput();
+			input.voucher.project_number = projectNumber;
+			const document = new DOMParser().parseFromString(
+				renderCashVoucherPrintDocument(input),
+				'text/html'
+			);
+			expect(
+				Array.from(document.querySelectorAll('dt'), (term) => term.textContent)
+			).not.toContain('Project');
+			expect(document.body.textContent).toContain('Ravi Sharma');
+		}
+	);
+
+	it('shows the project detail when a project is set', () => {
+		const document = new DOMParser().parseFromString(
+			renderCashVoucherPrintDocument(makeInput()),
+			'text/html'
+		);
+		const projectTerm = Array.from(document.querySelectorAll('dt')).find(
+			(term) => term.textContent === 'Project'
+		);
+		expect(projectTerm?.nextElementSibling?.textContent).toBe('PRJ-7');
+	});
+
 	it('shows the per-line rupees + paise total', () => {
 		const html = renderCashVoucherPrintDocument(makeInput());
 		expect(visibleText(html)).toContain('1,000.25');

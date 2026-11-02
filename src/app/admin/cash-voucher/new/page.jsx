@@ -495,9 +495,12 @@ export default function NewCashVoucherPage() {
 									) : null}
 								</div>
 								<div className="min-w-0">
-									<span className={labelClassName}>Project</span>
+									<span className={labelClassName}>Project (optional)</span>
 									<SearchableSelect
-										options={projectOptions}
+										options={[
+											{ value: '', label: 'No project' },
+											...projectOptions,
+										]}
 										value={formData.project_number}
 										onChange={(val) =>
 											setFormData((prev) => ({
@@ -505,8 +508,8 @@ export default function NewCashVoucherPage() {
 												project_number: val,
 											}))
 										}
-										placeholder="Select Project"
-										aria-label="Project"
+										placeholder="No project"
+										aria-label="Project (optional)"
 										className="w-full min-w-0"
 										buttonClassName="min-h-[40px] border-gray-300"
 									/>

@@ -104,6 +104,7 @@ body {
   cursor: pointer;
 }
 .toolbar button:hover { background: #52105a; }
+.print-hint { margin: 12px 0 0; max-width: 75ch; font-size: 14px; color: #444444; }
 .sheet {
   max-width: 820px;
   margin: 16px auto 48px;
@@ -322,7 +323,8 @@ export function renderCashVoucherPrintDocument(
 </head>
 <body>
   <div class="toolbar no-print" role="toolbar" aria-label="Print actions">
-    <button type="button" onclick="window.print()">Print / Save as PDF</button>
+    <button type="button" aria-describedby="print-guidance" onclick="window.print()">Print / Save as PDF</button>
+    <p id="print-guidance" class="print-hint"><strong>Printing tip:</strong> In Chrome or Edge, open <strong>More settings</strong> in the print dialog and turn off <strong>Headers and footers</strong>. This removes the date, title, URL, and page number added by the browser.</p>
   </div>
 
   <main class="sheet">
@@ -344,7 +346,7 @@ export function renderCashVoucherPrintDocument(
     <section class="meta" aria-label="Voucher details">
       <dl>
         <div class="meta-row"><dt>Paid to</dt><dd>${text(voucher.paid_to)}</dd></div>
-        <div class="meta-row"><dt>Project</dt><dd>${text(voucher.project_number)}</dd></div>
+        ${String(voucher.project_number ?? '').trim() ? `<div class="meta-row"><dt>Project</dt><dd>${text(voucher.project_number)}</dd></div>` : ''}
         <div class="meta-row"><dt>Paid by</dt><dd>${paymentModeLabel(voucher.payment_mode)}</dd></div>
       </dl>
     </section>
