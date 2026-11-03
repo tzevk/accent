@@ -1,10 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { z } from 'zod';
 import { hashFixturePassword } from '../support.ts';
-import type {
-	LoginHttpClient,
-	ScenarioContext,
-} from '../client.ts';
+import type { LoginHttpClient, ScenarioContext } from '../client.ts';
 
 // Audit evidence and Data coverage (#404). The report is proved through its
 // authenticated HTTP reads only. Fixtures are written straight into the
@@ -43,9 +40,7 @@ const EvidenceRowSchema = z
 		summary: z.string(),
 		has_narrative: z.boolean(),
 		legacy: z.boolean(),
-		change_fields: z.array(
-			z.object({ field: z.string(), label: z.string() })
-		),
+		change_fields: z.array(z.object({ field: z.string(), label: z.string() })),
 		downstream: z
 			.object({
 				proposal: z
@@ -132,9 +127,13 @@ const AuditEnvelopeSchema = z
 								is_unknown: z.boolean(),
 							})
 							.passthrough(),
-						activity_type: z.object({ value: z.string().nullable() }).passthrough(),
+						activity_type: z
+							.object({ value: z.string().nullable() })
+							.passthrough(),
 						outcome: z.object({ value: z.string().nullable() }).passthrough(),
-						event_type: z.object({ value: z.string().nullable() }).passthrough(),
+						event_type: z
+							.object({ value: z.string().nullable() })
+							.passthrough(),
 						undated: z.object({ value: z.boolean() }).passthrough(),
 						ignored: z.array(
 							z.object({ filter: z.string(), reason: z.string() })
@@ -368,11 +367,7 @@ async function readAudit(
 		`/api/reports/lead-audit/audit${query(values)}`,
 		token
 	);
-	assert.equal(
-		response.status,
-		200,
-		`audit status (body: ${response.text})`
-	);
+	assert.equal(response.status, 200, `audit status (body: ${response.text})`);
 	return AuditEnvelopeSchema.parse(response.json()).data;
 }
 
@@ -385,11 +380,7 @@ async function readDeleted(
 		`/api/reports/lead-audit/audit/deleted${query(values)}`,
 		token
 	);
-	assert.equal(
-		response.status,
-		200,
-		`deleted status (body: ${response.text})`
-	);
+	assert.equal(response.status, 200, `deleted status (body: ${response.text})`);
 	return DeletedEnvelopeSchema.parse(response.json()).data;
 }
 
@@ -449,7 +440,11 @@ async function expectValidationCode(
 	code: string
 ): Promise<void> {
 	const response = await context.http.get(path, token);
-	assert.equal(response.status, 422, `422 for ${path} (body: ${response.text})`);
+	assert.equal(
+		response.status,
+		422,
+		`422 for ${path} (body: ${response.text})`
+	);
 	const body = ErrorEnvelopeSchema.parse(response.json());
 	assert.equal(body.code, code, `validation code for ${path}`);
 }
@@ -540,13 +535,7 @@ async function insertOwnerChange(
 		`INSERT INTO lead_ownership_history (
       lead_id, prior_owner_user_id, owner_user_id, actor_user_id, created_at
     ) VALUES (?, ?, ?, ?, ?)`,
-		[
-			leadId,
-			input.priorOwnerId,
-			input.ownerId,
-			input.actorId,
-			input.recordedAt,
-		]
+		[leadId, input.priorOwnerId, input.ownerId, input.actorId, input.recordedAt]
 	);
 	return result.insertId;
 }
@@ -646,29 +635,38 @@ async function snapshotTables(
 	return snapshot;
 }
 
-function byType(body: { by_type: Array<{ value: string; count: number }> }, value: string): number {
+function byType(
+	body: { by_type: Array<{ value: string; count: number }> },
+	value: string
+): number {
 	const entry = body.by_type.find((type) => type.value === value);
 	assert.ok(entry, `evidence type ${value} is reported`);
 	return entry.count;
 }
 
-function stat(body: { stats: Array<{ code: string; count: number | null }> }, code: string): number {
+function stat(
+	body: { stats: Array<{ code: string; count: number | null }> },
+	code: string
+): number {
 	const entry = body.stats.find((item) => item.code === code);
 	assert.ok(entry, `coverage stat ${code} is reported`);
 	assert.ok(entry.count !== null, `coverage stat ${code} is a count`);
 	return entry.count;
 }
 
-function exclusion(body: { exclusions: Array<{ metric: string; excluded: number | null }> }, metric: string): number {
+function exclusion(
+	body: { exclusions: Array<{ metric: string; excluded: number | null }> },
+	metric: string
+): number {
 	const entry = body.exclusions.find((item) => item.metric === metric);
 	assert.ok(entry, `exclusion ${metric} is reported`);
 	return entry.excluded ?? 0;
 }
 
-async function seedPrivilegedReader(
-	context: ScenarioContext
-): Promise<string> {
-	const username = `${context.runTag}-auditpriv`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+async function seedPrivilegedReader(context: ScenarioContext): Promise<string> {
+	const username = `${context.runTag}-auditpriv`
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, '-');
 	const passwordHash = await hashFixturePassword(FIXTURE_PASSWORD);
 	await context.reader.fixtureWrite(
 		`INSERT INTO users (
@@ -688,9 +686,11 @@ async function seedPrivilegedReader(
 			]),
 		]
 	);
-	const login = await (
-		context.http as unknown as LoginHttpClient
-	).login(username, FIXTURE_PASSWORD, '127.0.0.42');
+	const login = await (context.http as unknown as LoginHttpClient).login(
+		username,
+		FIXTURE_PASSWORD,
+		'127.0.0.42'
+	);
 	return login.sessionToken;
 }
 
@@ -934,8 +934,16 @@ export async function reportAuditScenario(
 	assert.equal(byType(audit.summary, 'correction'), 1);
 	assert.equal(byType(audit.summary, 'legacy_review'), 2);
 	assert.equal(byType(audit.summary, 'conversion'), 1);
-	assert.equal(audit.summary.undated_evidence, 1, 'undated activity is explicit');
-	assert.equal(audit.summary.unknown_actor, 2, 'missing author and automatic reviewer');
+	assert.equal(
+		audit.summary.undated_evidence,
+		1,
+		'undated activity is explicit'
+	);
+	assert.equal(
+		audit.summary.unknown_actor,
+		2,
+		'missing author and automatic reviewer'
+	);
 	assert.ok(
 		audit.evidence_filters.date_basis.toLowerCase().includes('recording'),
 		'recording-time date basis is disclosed'
@@ -950,8 +958,14 @@ export async function reportAuditScenario(
 	assert.ok(references.includes(`legacy_review:${legacyReview}`));
 	assert.ok(references.includes(`legacy_review:${automaticReview}`));
 	assert.ok(references.includes(`conversion:${conversion}`));
-	assert.ok(!references.includes(`activity:${activityA3}`), 'late recording is outside September');
-	assert.ok(!references.includes(`activity:${deletedActivity}`), 'deleted activity is separate');
+	assert.ok(
+		!references.includes(`activity:${activityA3}`),
+		'late recording is outside September'
+	);
+	assert.ok(
+		!references.includes(`activity:${deletedActivity}`),
+		'deleted activity is separate'
+	);
 
 	const undatedRow = audit.evidence.find(
 		(row) => row.evidence_id === activityA2 && row.evidence_type === 'activity'
@@ -963,7 +977,10 @@ export async function reportAuditScenario(
 
 	const tieActivityIndex = references.indexOf(`activity:${activityTie}`);
 	const tieStageIndex = references.indexOf(`stage_change:${stageTie}`);
-	assert.ok(tieActivityIndex >= 0 && tieStageIndex >= 0, 'tie rows are present');
+	assert.ok(
+		tieActivityIndex >= 0 && tieStageIndex >= 0,
+		'tie rows are present'
+	);
 	assert.ok(
 		tieActivityIndex < tieStageIndex,
 		'mixed-type ties order by evidence type'
@@ -991,7 +1008,13 @@ export async function reportAuditScenario(
 	// ── Evidence filters and explicit incompatible scope ────────────────────
 	const actorUnknown = await readAudit(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, actor: 'unknown', limit: 100 },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			actor: 'unknown',
+			limit: 100,
+		},
 		token
 	);
 	assert.equal(actorUnknown.summary.evidence_in_period, 2);
@@ -1012,7 +1035,10 @@ export async function reportAuditScenario(
 		token
 	);
 	assert.equal(assigneeOnly.summary.evidence_in_period, 2);
-	assert.equal(assigneeOnly.evidence_filters.actor.label, context.assignee.fullName);
+	assert.equal(
+		assigneeOnly.evidence_filters.actor.label,
+		context.assignee.fullName
+	);
 
 	const callsOnly = await readAudit(
 		context,
@@ -1064,7 +1090,10 @@ export async function reportAuditScenario(
 		token
 	);
 	assert.equal(correctionsOnly.summary.evidence_in_period, 1);
-	assert.equal(correctionsOnly.evidence[0]?.reference, `correction:${correction}`);
+	assert.equal(
+		correctionsOnly.evidence[0]?.reference,
+		`correction:${correction}`
+	);
 	assert.ok(correctionsOnly.evidence[0]?.change_fields.length > 0);
 	assert.ok(
 		correctionsOnly.evidence[0]?.change_fields.some(
@@ -1075,7 +1104,13 @@ export async function reportAuditScenario(
 
 	const undatedOnly = await readAudit(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, undated: 1, limit: 100 },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			undated: 1,
+			limit: 100,
+		},
 		token
 	);
 	assert.equal(undatedOnly.summary.evidence_in_period, 1);
@@ -1093,6 +1128,25 @@ export async function reportAuditScenario(
 		})}`,
 		token,
 		'incompatible_filters'
+	);
+	await expectValidationCode(
+		context,
+		`/api/reports/lead-audit${query({
+			view: 'audit',
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			activity_type: 'Call',
+			event_type: 'conversion',
+		})}`,
+		token,
+		'incompatible_filters'
+	);
+	await expectValidationCode(
+		context,
+		`/api/reports/lead-audit${query({ view: 'not_a_view' })}`,
+		token,
+		'invalid_view'
 	);
 	await expectValidationCode(
 		context,
@@ -1176,9 +1230,14 @@ export async function reportAuditScenario(
 		const current = audit.evidence[index];
 		assert.ok(previous && current);
 		if (previous.recorded_at === current.recorded_at) {
-			const typeOrder = previous.evidence_type.localeCompare(current.evidence_type);
+			const typeOrder = previous.evidence_type.localeCompare(
+				current.evidence_type
+			);
 			if (typeOrder === 0) {
-				assert.ok(previous.evidence_id < current.evidence_id, 'id tie-break ascends');
+				assert.ok(
+					previous.evidence_id < current.evidence_id,
+					'id tie-break ascends'
+				);
 			} else {
 				assert.ok(typeOrder < 0, 'type tie-break ascends');
 			}
@@ -1200,7 +1259,8 @@ export async function reportAuditScenario(
 	assert.equal(deletedSection.deletion_facts.at, null);
 	assert.ok(
 		deletedSection.evidence.some(
-			(row) => row.evidence_id === deletedActivity && row.deleted_record === 'evidence'
+			(row) =>
+				row.evidence_id === deletedActivity && row.deleted_record === 'evidence'
 		),
 		'deleted activity on a live Lead is retained evidence'
 	);
@@ -1209,11 +1269,7 @@ export async function reportAuditScenario(
 		'deleted Lead evidence is labelled'
 	);
 
-	const deletedList = await readDeleted(
-		context,
-		{ search, limit: 100 },
-		token
-	);
+	const deletedList = await readDeleted(context, { search, limit: 100 }, token);
 	assert.equal(deletedList.summary.evidence_in_view, 3);
 	assert.equal(deletedList.pagination.total, 3);
 	const deletedResponse = await context.http.get(
@@ -1234,7 +1290,9 @@ export async function reportAuditScenario(
 		token
 	);
 	assert.equal(correctionNarrative.reference, `correction:${correction}`);
-	const reasonField = correctionNarrative.fields.find((field) => field.key === 'reason');
+	const reasonField = correctionNarrative.fields.find(
+		(field) => field.key === 'reason'
+	);
 	assert.equal(reasonField?.value, 'Client confirmed the call');
 	assert.equal(correctionNarrative.actor.id, context.assignee.id);
 	const outcomeChange = correctionNarrative.changes.find(
@@ -1256,8 +1314,14 @@ export async function reportAuditScenario(
 		activityA1,
 		token
 	);
-	const activityNotes = activityNarrative.fields.find((field) => field.key === 'notes');
-	assert.equal(activityNotes?.value, 'Corrected note', 'the live corrected fact is read');
+	const activityNotes = activityNarrative.fields.find(
+		(field) => field.key === 'notes'
+	);
+	assert.equal(
+		activityNotes?.value,
+		'Corrected note',
+		'the live corrected fact is read'
+	);
 	assert.equal(activityNarrative.changes.length, 0);
 
 	const legacyNarrative = await readNarrative(
@@ -1267,11 +1331,13 @@ export async function reportAuditScenario(
 		token
 	);
 	assert.equal(
-		legacyNarrative.fields.find((field) => field.key === 'original_value')?.value,
+		legacyNarrative.fields.find((field) => field.key === 'original_value')
+			?.value,
 		'Hot Lead'
 	);
 	assert.equal(
-		legacyNarrative.fields.find((field) => field.key === 'resolved_value')?.value,
+		legacyNarrative.fields.find((field) => field.key === 'resolved_value')
+			?.value,
 		'Qualified'
 	);
 
@@ -1366,7 +1432,8 @@ export async function reportAuditScenario(
 		privilegedToken
 	);
 	assert.equal(
-		privilegedNarrative.fields.find((field) => field.key === 'proposal_title')?.value,
+		privilegedNarrative.fields.find((field) => field.key === 'proposal_title')
+			?.value,
 		`${marker} Proposal Title`
 	);
 
@@ -1409,7 +1476,10 @@ export async function reportAuditScenario(
 		'deleted_facts',
 		'not_compliance_log',
 	]) {
-		assert.ok(historyCodes.includes(code), `history limit ${code} is disclosed`);
+		assert.ok(
+			historyCodes.includes(code),
+			`history limit ${code} is disclosed`
+		);
 	}
 	assert.ok(
 		coverage.disclosures.some(
@@ -1474,14 +1544,17 @@ export async function reportAuditScenario(
 	);
 	assert.equal(superAdminAudit.summary.evidence_in_period, 10);
 	assert.equal(
-		superAdminAudit.evidence.find(
-			(row) => row.evidence_type === 'conversion'
-		)?.downstream?.proposal_state,
+		superAdminAudit.evidence.find((row) => row.evidence_type === 'conversion')
+			?.downstream?.proposal_state,
 		'available',
 		'an established super admin bypasses the source grants'
 	);
 
 	// ── Report reads leave every source row untouched ──────────────────────
 	const after = await snapshotTables(context, leadIds);
-	assert.deepEqual(after, before, 'report reads never mutate evidence or Leads');
+	assert.deepEqual(
+		after,
+		before,
+		'report reads never mutate evidence or Leads'
+	);
 }

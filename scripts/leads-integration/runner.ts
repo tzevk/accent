@@ -216,13 +216,14 @@ function requiredNumber(value: unknown, what: string): number {
 	return Number(value);
 }
 
-function makeHttp(baseUrl: string): LoginHttpClient {
+function makeHttp(baseUrl: string, getClientIp: () => string): LoginHttpClient {
 	async function request(
 		path: string,
 		init: RequestInit,
 		sessionToken?: string
 	): Promise<HttpResponse> {
 		const headers = new Headers(init.headers);
+		headers.set('x-vercel-forwarded-for', getClientIp());
 		if (sessionToken) headers.set('Cookie', `session=${sessionToken}`);
 		const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
 		const text = await response.text();
@@ -242,6 +243,7 @@ function makeHttp(baseUrl: string): LoginHttpClient {
 		get: (path, sessionToken) => request(path, { method: 'GET' }, sessionToken),
 		download: async (path, sessionToken) => {
 			const headers = new Headers();
+			headers.set('x-vercel-forwarded-for', getClientIp());
 			if (sessionToken) headers.set('Cookie', `session=${sessionToken}`);
 			const response = await fetch(`${baseUrl}${path}`, { headers });
 			return {
@@ -296,7 +298,7 @@ function makeHttp(baseUrl: string): LoginHttpClient {
 			const headers: Record<string, string> = {
 				'Content-Type': 'application/json',
 			};
-			if (clientIp) headers['x-vercel-forwarded-for'] = clientIp;
+			headers['x-vercel-forwarded-for'] = clientIp ?? getClientIp();
 			const response = await fetch(`${baseUrl}/api/login`, {
 				method: 'POST',
 				headers,
@@ -2065,7 +2067,13 @@ export async function runLeadsIntegration(
 				fail(`migration ${migration} not recorded applied`);
 		}
 
-		const http = makeHttp(baseUrl);
+		// Each scenario is a separate local client. Keep production rate limits
+		// active without unrelated scenarios sharing one IP bucket.
+		const http = makeHttp(
+			baseUrl,
+			() =>
+				`127.1.${Math.floor(passedScenarios / 254)}.${(passedScenarios % 254) + 1}`
+		);
 		server = startAppServer(resolved, port);
 		const trackedLeads: number[] = [];
 		await waitForHealth(baseUrl, server, 180000);

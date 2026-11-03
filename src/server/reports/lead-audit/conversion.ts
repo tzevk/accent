@@ -581,7 +581,7 @@ export async function readLeadAuditConversionSection(
 		1 - includeProposals,
 		includeProposals,
 		includeProposals,
-		1 - includeProjects,
+		includeProjects,
 		includeProposals,
 		includeProjects,
 		...base.params,

@@ -225,8 +225,8 @@ export default function WorkView({
 						</h2>
 						<p className="mt-0.5 max-w-3xl text-sm text-gray-600">
 							{work.scope.from_date} to {work.scope.to_date}. Completed work is
-							dated by when the activity occurred, independently of when the Lead
-							was recorded or the activity was entered.
+							dated by when the activity occurred, independently of when the
+							Lead was recorded or the activity was entered.
 						</p>
 					</div>
 					<p className="text-xs text-gray-600">
@@ -251,8 +251,8 @@ export default function WorkView({
 						onClick={() => selectMetric('outreach')}
 					>
 						{count(summary.distinct_leads_with_outreach)} distinct Lead
-						{summary.distinct_leads_with_outreach === 1 ? '' : 's'} reached.
-						Notes are not outreach.
+						{summary.distinct_leads_with_outreach === 1 ? '' : 's'} with
+						outreach. Notes are not outreach.
 					</FigureCard>
 					<FigureCard
 						title="Successful contact"
@@ -260,7 +260,8 @@ export default function WorkView({
 						unit="connected calls and confirmed replies"
 						onClick={() => selectMetric('successful_contact')}
 					>
-						{count(summary.distinct_leads_with_successful_contact)} distinct Lead
+						{count(summary.distinct_leads_with_successful_contact)} distinct
+						Lead
 						{summary.distinct_leads_with_successful_contact === 1 ? '' : 's'}.
 						Failed calls and unconfirmed emails never count.
 					</FigureCard>
@@ -504,25 +505,46 @@ export default function WorkView({
 									<th scope="col" className="py-1.5 pr-3 font-semibold">
 										Recorded author
 									</th>
-									<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+									<th
+										scope="col"
+										className="py-1.5 pr-3 text-right font-semibold"
+									>
 										Completed
 									</th>
-									<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+									<th
+										scope="col"
+										className="py-1.5 pr-3 text-right font-semibold"
+									>
 										Calls
 									</th>
-									<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+									<th
+										scope="col"
+										className="py-1.5 pr-3 text-right font-semibold"
+									>
 										Emails
 									</th>
-									<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+									<th
+										scope="col"
+										className="py-1.5 pr-3 text-right font-semibold"
+									>
 										Meetings
 									</th>
-									<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+									<th
+										scope="col"
+										className="py-1.5 pr-3 text-right font-semibold"
+									>
 										Notes
 									</th>
-									<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+									<th
+										scope="col"
+										className="py-1.5 pr-3 text-right font-semibold"
+									>
 										Outreach
 									</th>
-									<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+									<th
+										scope="col"
+										className="py-1.5 pr-3 text-right font-semibold"
+									>
 										Successful contact
 									</th>
 									<th scope="col" className="py-1.5 text-right font-semibold">
@@ -533,7 +555,11 @@ export default function WorkView({
 							<tbody>
 								{work.authors.map((row) => (
 									<tr
-										key={row.author.is_unknown ? 'unknown' : row.author.id ?? 'missing'}
+										key={
+											row.author.is_unknown
+												? 'unknown'
+												: (row.author.id ?? 'missing')
+										}
 										className="border-b border-gray-50"
 									>
 										<th
@@ -542,7 +568,7 @@ export default function WorkView({
 										>
 											{row.author.is_unknown
 												? 'Unknown author'
-												: row.author.name ?? `Unknown user #${row.author.id}`}
+												: (row.author.name ?? `Unknown user #${row.author.id}`)}
 											{row.author.is_inactive ? (
 												<span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900">
 													Inactive
@@ -641,7 +667,11 @@ export default function WorkView({
 				</ul>
 			</section>
 
-			<div className="flex flex-wrap gap-2" role="group" aria-label="Work evidence metric">
+			<div
+				className="flex flex-wrap gap-2"
+				role="group"
+				aria-label="Work evidence metric"
+			>
 				{METRIC_LABELS.map((option) => {
 					const selected = option.key === metric;
 					return (

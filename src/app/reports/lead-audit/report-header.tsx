@@ -84,11 +84,11 @@ export default function ReportHeader({
 			<div className="relative flex flex-col gap-3">
 				<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
 					<div className="flex min-w-0 items-start gap-3">
-						<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
+						<div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 sm:flex">
 							<ChartBarIcon className="h-6 w-6" aria-hidden="true" />
 						</div>
 						<div className="min-w-0">
-							<h1 className="text-xl font-bold tracking-tight sm:text-2xl">
+							<h1 className="break-words text-xl font-bold tracking-tight sm:text-2xl">
 								Lead Audit and Performance
 							</h1>
 							<p className="mt-0.5 text-sm text-white/85">

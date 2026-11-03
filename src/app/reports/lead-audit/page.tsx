@@ -10,6 +10,7 @@ import {
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
+import { LEAD_AUDIT_VIEWS } from '@/server/reports/lead-audit/types';
 import FilterToolbar from './filter-toolbar';
 import ReportHeader from './report-header';
 import IntakeView from './views/intake-view';
@@ -98,10 +99,11 @@ export default function LeadAuditPage() {
 		!!user && (isSuperAdmin || (hasReportsRead && hasLeadsRead));
 
 	const queryParams = useMemo(() => draftToQuery(applied), [applied]);
+	const reportParams = { ...queryParams, view: activeView };
 
 	const reportQuery = useQuery<ReportEnvelope>({
-		queryKey: ['reports', 'lead-audit', 'report', queryParams],
-		queryFn: () => apiGet('/api/reports/lead-audit', queryParams),
+		queryKey: ['reports', 'lead-audit', 'report', reportParams],
+		queryFn: () => apiGet('/api/reports/lead-audit', reportParams),
 		enabled: !authLoading && hasAccess,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
@@ -176,7 +178,10 @@ export default function LeadAuditPage() {
 		);
 	}, [report, applied.preset]);
 
-	const tabs = useMemo(() => report?.available_views ?? [], [report]);
+	const tabs = useMemo(
+		() => report?.available_views ?? LEAD_AUDIT_VIEWS,
+		[report]
+	);
 	useEffect(() => {
 		if (tabs.length === 0) return;
 		if (!tabs.some((tab) => tab.key === activeView)) {
@@ -314,8 +319,24 @@ export default function LeadAuditPage() {
 								Lead Audit and Performance
 							</h1>
 							<p className="mt-1 text-sm text-gray-600">
-								Intake and sources for the applied period.
+								Lead evidence and management figures for the applied scope.
 							</p>
+							<nav
+								aria-label="Lead Audit views"
+								className="mt-3 flex flex-wrap gap-2"
+							>
+								{tabs.map((tab) => (
+									<button
+										type="button"
+										key={tab.key}
+										onClick={() => setActiveView(tab.key)}
+										aria-current={tab.key === activeView ? 'page' : undefined}
+										className="rounded-md border border-gray-300 px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-[#64126D]"
+									>
+										{tab.label}
+									</button>
+								))}
+							</nav>
 						</div>
 					)}
 
@@ -429,7 +450,7 @@ export default function LeadAuditPage() {
 								onSelectGroup={selectCurrentGroup}
 							/>
 						</div>
-					) : activeView === 'audit' ? (
+					) : activeView === 'audit' && report.audit !== null ? (
 						<AuditView
 							report={report.audit}
 							appliedQuery={appliedQuery}

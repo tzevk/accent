@@ -164,11 +164,13 @@ export interface LeadAuditIntakeSection {
 }
 
 export interface LeadAuditReport extends LeadAuditIntakeSection {
+	view: LeadAuditViewKey;
 	work: LeadAuditWorkSection;
 	current_state: LeadAuditCurrentStateSection;
 	conversion: LeadAuditConversionSection;
 	timing: LeadAuditTimingSection;
-	audit: LeadAuditEvidenceSection;
+	/** Loaded only for the requested Audit evidence view. */
+	audit: LeadAuditEvidenceSection | null;
 	coverage: LeadAuditCoverageSection;
 }
 

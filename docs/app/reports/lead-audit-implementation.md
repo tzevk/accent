@@ -14,8 +14,10 @@ basis, applied filters, and the coverage limits of this slice.
 **Route:** `src/app/reports/lead-audit/`
 **APIs:**
 
-- `GET /api/reports/lead-audit` — overview, intake trends, source volumes,
-  filter options, and coverage disclosures.
+- `GET /api/reports/lead-audit?view=overview|intake|work|audit|coverage` —
+  shared management figures, filter options, and coverage. The default is
+  Overview. Audit evidence loads only for `view=audit`; other views return
+  `audit: null`, not fabricated empty audit counts.
 - `GET /api/reports/lead-audit/register` — one page of Lead evidence for the
   selected metric, retaining every applied filter.
 
@@ -42,8 +44,8 @@ Section definitions and evidence contracts:
 | Super admin, regardless of individual grants         | `200` (existing bypass) |
 
 The page applies the same conjunction in the client before loading data. The
-server is authoritative: the page gate is not an access control. Both API
-routes call `getCurrentUser` directly, then `canReadLeadAudit` from the report
+server is authoritative: the page gate is not an access control. Every report
+API calls `getCurrentUser` directly, then `canReadLeadAudit` from the report
 module. No automatic grants or ownership-based restrictions are added.
 
 ## Filters and date policy
@@ -79,6 +81,11 @@ all labels; use `source_missing=1` to select missing labels.
 Apply is the primary action; Reset restores the current month and all-record
 scope. Draft filters do not affect the report until Apply.
 
+Each view validates its relevant evidence-filter combinations. An incompatible
+audit combination returns `422` in the Audit view without rejecting valid
+Overview or Work figures. The view buttons remain available during errors,
+so readers can return to another population without discarding applied filters.
+
 ## Metric contract in this slice
 
 | Figure                    | Population                                                                 | Date basis                      | Disclosure                                                           |
@@ -91,7 +98,7 @@ scope. Draft filters do not affect the report until Apply.
 All totals are distinct Lead counts. The intake reads never join child tables,
 so activities or Proposals cannot multiply a Lead. Soft-deleted Leads are
 excluded from every operational figure, trend, source group, and register row.
-Retained deleted-record evidence is out of scope for this slice.
+Retained deleted-record evidence appears separately in the Audit view.
 
 Imports are counted at their recording time because the import writes
 `created_at = NOW()`. An imported Lead whose Enquiry Date is outside the
@@ -232,3 +239,9 @@ Verification record:
   test files (1,421 tests) passed. Targeted authenticated current-state and
   timing scenarios passed. Work and conversion scenarios exposed population
   defects; their corrected integration runs are recorded separately below.
+- **2026-11-03 — complete interactive-data run:** all 89 authenticated HTTP
+  scenarios passed against MariaDB 10.11.15. This includes corrected work
+  deletion guards, cohort aggregation, independent downstream grants, view
+  validation, timing boundaries, audit narratives, and source non-mutation.
+  Each scenario uses its own loopback client address, keeping production
+  rate limits active without sharing one unrelated scenario's IP bucket.

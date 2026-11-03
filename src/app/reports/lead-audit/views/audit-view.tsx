@@ -93,7 +93,7 @@ function NarrativeDetail({
 				role="status"
 			>
 				<ArrowPathIcon
-					className="h-4 w-4 animate-spin text-[#64126D]"
+					className="h-4 w-4 motion-safe:animate-spin text-[#64126D]"
 					aria-hidden="true"
 				/>
 				Loading narrative evidence…
@@ -102,7 +102,10 @@ function NarrativeDetail({
 	}
 	if (error !== '') {
 		return (
-			<div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3" role="alert">
+			<div
+				className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3"
+				role="alert"
+			>
 				<p className="text-sm font-semibold text-red-900">
 					Narrative evidence could not be loaded.
 				</p>
@@ -141,8 +144,8 @@ function NarrativeDetail({
 					</dt>
 					<dd className="text-gray-900">
 						{narrative.actor.is_unknown
-							? narrative.actor.name ?? 'Unknown actor'
-							: narrative.actor.name ?? 'Unknown name'}
+							? (narrative.actor.name ?? 'Unknown actor')
+							: (narrative.actor.name ?? 'Unknown name')}
 					</dd>
 				</div>
 				<div>
@@ -182,7 +185,12 @@ function NarrativeDetail({
 				</dl>
 			) : null}
 			{narrative.changes.length > 0 ? (
-				<div className="mt-3 overflow-x-auto">
+				<div
+					className="mt-3 overflow-x-auto"
+					role="region"
+					tabIndex={0}
+					aria-label="Correction changes. Scroll horizontally for more columns."
+				>
 					<table className="min-w-[32rem] w-full border-collapse text-sm">
 						<caption className="pb-1 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
 							Correction changes
@@ -206,7 +214,10 @@ function NarrativeDetail({
 									key={change.field}
 									className="border-b border-gray-50 align-top"
 								>
-									<th scope="row" className="py-1.5 pr-2 text-left font-medium text-gray-800">
+									<th
+										scope="row"
+										className="py-1.5 pr-2 text-left font-medium text-gray-800"
+									>
 										{change.label}
 									</th>
 									<td className="whitespace-pre-wrap break-words py-1.5 pr-2 text-gray-700">
@@ -257,15 +268,22 @@ function EvidenceTable({
 }) {
 	if (rows.length === 0) {
 		return (
-			<p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">{emptyText}</p>
+			<p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
+				{emptyText}
+			</p>
 		);
 	}
 	return (
-		<div className="overflow-x-auto">
+		<div
+			className="overflow-x-auto"
+			role="region"
+			tabIndex={0}
+			aria-label="Audit evidence table. Scroll horizontally for more columns."
+		>
 			<table className="min-w-[64rem] w-full border-collapse text-sm">
 				<caption className="pb-2 text-left text-xs text-gray-600">
-					Mixed evidence in recording-time order. Ties are ordered by
-					evidence type and id.
+					Mixed evidence in recording-time order. Ties are ordered by evidence
+					type and id.
 				</caption>
 				<thead>
 					<tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-600">
@@ -294,7 +312,10 @@ function EvidenceTable({
 				</thead>
 				<tbody>
 					{rows.map((row) => (
-						<tr key={row.reference} className="border-b border-gray-100 align-top">
+						<tr
+							key={row.reference}
+							className="border-b border-gray-100 align-top"
+						>
 							<th scope="row" className="py-2 pr-3 text-left">
 								<span className="block font-semibold text-gray-900">
 									{row.evidence_type}
@@ -327,12 +348,16 @@ function EvidenceTable({
 								<span className="block">{row.summary}</span>
 								{row.change_fields.length > 0 ? (
 									<span className="block text-xs text-gray-600">
-										Changed: {row.change_fields.map((field) => field.label).join(', ')}
+										Changed:{' '}
+										{row.change_fields.map((field) => field.label).join(', ')}
 									</span>
 								) : null}
 								{row.downstream ? (
 									<span className="mt-1 flex items-center gap-1 text-xs text-gray-600">
-										<LockClosedIcon className="h-3.5 w-3.5" aria-hidden="true" />
+										<LockClosedIcon
+											className="h-3.5 w-3.5"
+											aria-hidden="true"
+										/>
 										{row.downstream.proposal_state === 'restricted'
 											? 'Proposal details restricted'
 											: row.downstream.proposal_state === 'available'
@@ -359,7 +384,9 @@ function EvidenceTable({
 								) : null}
 							</td>
 							<td className="py-2 text-gray-700">
-								{row.has_narrative ? 'Notes or reason recorded' : 'Structured only'}
+								{row.has_narrative
+									? 'Notes or reason recorded'
+									: 'Structured only'}
 							</td>
 						</tr>
 					))}
@@ -394,7 +421,12 @@ function DeletedTable({
 		);
 	}
 	return (
-		<div className="overflow-x-auto">
+		<div
+			className="overflow-x-auto"
+			role="region"
+			tabIndex={0}
+			aria-label="Retained deleted evidence table. Scroll horizontally for more columns."
+		>
 			<table className="min-w-[62rem] w-full border-collapse text-sm">
 				<caption className="pb-2 text-left text-xs text-gray-600">
 					Separate retained deleted-record evidence. It never enters an
@@ -427,12 +459,17 @@ function DeletedTable({
 				</thead>
 				<tbody>
 					{rows.map((row) => (
-						<tr key={`deleted:${row.reference}`} className="border-b border-amber-100 align-top">
+						<tr
+							key={`deleted:${row.reference}`}
+							className="border-b border-amber-100 align-top"
+						>
 							<th scope="row" className="py-2 pr-3 text-left">
 								<span className="block font-semibold text-gray-900">
 									{row.evidence_type}
 								</span>
-								<span className="block text-xs text-gray-600">{row.reference}</span>
+								<span className="block text-xs text-gray-600">
+									{row.reference}
+								</span>
 							</th>
 							<td className="py-2 pr-3">
 								<span className="block font-medium text-gray-900">
@@ -446,7 +483,9 @@ function DeletedTable({
 							<td className="whitespace-nowrap py-2 pr-3 tabular-nums text-gray-800">
 								{displayTime(row.recorded_at)}
 							</td>
-							<td className="py-2 pr-3 text-gray-800">{displayOccurrence(row)}</td>
+							<td className="py-2 pr-3 text-gray-800">
+								{displayOccurrence(row)}
+							</td>
 							<td className="py-2 pr-3 text-gray-800">
 								<span className="block">{row.summary}</span>
 								<button
@@ -467,11 +506,11 @@ function DeletedTable({
 							</td>
 							<td className="py-2 text-amber-900">
 								<span className="block text-xs font-semibold">
-									{row.deleted_record === 'lead' ? 'Deleted Lead' : 'Deleted activity row'}
+									{row.deleted_record === 'lead'
+										? 'Deleted Lead'
+										: 'Deleted activity row'}
 								</span>
-								<span className="block text-xs">
-									Actor and time unknown
-								</span>
+								<span className="block text-xs">Actor and time unknown</span>
 							</td>
 						</tr>
 					))}
@@ -489,8 +528,9 @@ export default function AuditView({
 	const [page, setPage] = useState(1);
 	const [deletedPage, setDeletedPage] = useState(1);
 	const [inspected, setInspected] = useState('');
-	const [narrative, setNarrative] =
-		useState<LeadAuditEvidenceNarrative | null>(null);
+	const [narrative, setNarrative] = useState<LeadAuditEvidenceNarrative | null>(
+		null
+	);
 	const [narrativeLoading, setNarrativeLoading] = useState(false);
 	const [narrativeError, setNarrativeError] = useState('');
 
@@ -515,7 +555,14 @@ export default function AuditView({
 	});
 
 	const deletedQuery = useQuery<DeletedEnvelope>({
-		queryKey: ['reports', 'lead-audit', 'audit', 'deleted', appliedQuery, deletedPage],
+		queryKey: [
+			'reports',
+			'lead-audit',
+			'audit',
+			'deleted',
+			appliedQuery,
+			deletedPage,
+		],
 		queryFn: () =>
 			apiGet('/api/reports/lead-audit/audit/deleted', {
 				...appliedQuery,
@@ -553,9 +600,7 @@ export default function AuditView({
 	}
 
 	const currentEvidence =
-		page === 1
-			? report.evidence
-			: (evidenceQuery.data?.data?.evidence ?? []);
+		page === 1 ? report.evidence : (evidenceQuery.data?.data?.evidence ?? []);
 	const currentPagination =
 		page === 1
 			? report.pagination
@@ -585,9 +630,9 @@ export default function AuditView({
 						Audit evidence
 					</h2>
 					<p className="text-sm text-gray-600">
-						Available activity, stage, ownership, correction, legacy-review,
-						and conversion evidence selected by its recording time. This is
-						not a complete compliance-grade change log.
+						Available activity, stage, ownership, correction, legacy-review, and
+						conversion evidence selected by its recording time. This is not a
+						complete compliance-grade change log.
 					</p>
 				</div>
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -628,7 +673,9 @@ export default function AuditView({
 				<div className="flex flex-wrap gap-2 text-sm">
 					<button
 						type="button"
-						onClick={() => onDrillDown?.({ undated: true, eventType: 'activity' })}
+						onClick={() =>
+							onDrillDown?.({ undated: true, eventType: 'activity' })
+						}
 						className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-amber-950 hover:border-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
 					>
 						<span className="block text-xs font-semibold uppercase tracking-wide">
@@ -678,7 +725,9 @@ export default function AuditView({
 						<dt className="text-xs font-semibold uppercase tracking-wide text-gray-600">
 							Actor
 						</dt>
-						<dd className="text-gray-900">{report.evidence_filters.actor.label}</dd>
+						<dd className="text-gray-900">
+							{report.evidence_filters.actor.label}
+						</dd>
 					</div>
 					<div>
 						<dt className="text-xs font-semibold uppercase tracking-wide text-gray-600">
@@ -715,8 +764,8 @@ export default function AuditView({
 				</dl>
 				{filtersActive ? (
 					<p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900">
-						Evidence filters are active. Clearing actor, activity type,
-						outcome, event type, and undated restores all available evidence.
+						Evidence filters are active. Clearing actor, activity type, outcome,
+						event type, and undated restores all available evidence.
 					</p>
 				) : null}
 				<ul className="mt-2 space-y-1 text-xs text-gray-600">
@@ -732,12 +781,10 @@ export default function AuditView({
 			<section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 				<div className="flex flex-wrap items-end justify-between gap-2">
 					<div>
-						<h3 className="text-base font-bold text-gray-900">
-							Evidence rows
-						</h3>
+						<h3 className="text-base font-bold text-gray-900">Evidence rows</h3>
 						<p className="text-sm text-gray-600">
-							Ordered by recording time, then evidence type and id. Totals
-							cover the full filtered result, not just this page.
+							Ordered by recording time, then evidence type and id. Totals cover
+							the full filtered result, not just this page.
 						</p>
 					</div>
 					<p className="text-sm tabular-nums text-gray-700">
@@ -747,7 +794,10 @@ export default function AuditView({
 					</p>
 				</div>
 				{evidenceQuery.isError ? (
-					<div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3" role="alert">
+					<div
+						className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3"
+						role="alert"
+					>
 						<div className="flex items-start gap-2">
 							<ExclamationTriangleIcon
 								className="mt-0.5 h-4 w-4 shrink-0 text-red-700"
@@ -836,7 +886,9 @@ export default function AuditView({
 							Deleted activity rows
 						</dt>
 						<dd className="text-lg font-bold tabular-nums text-amber-950">
-							{currentDeleted.summary.deleted_activities.toLocaleString('en-IN')}
+							{currentDeleted.summary.deleted_activities.toLocaleString(
+								'en-IN'
+							)}
 						</dd>
 					</div>
 					<div>
@@ -852,7 +904,10 @@ export default function AuditView({
 					{currentDeleted.deletion_facts.note}
 				</p>
 				{deletedQuery.isError ? (
-					<div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3" role="alert">
+					<div
+						className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3"
+						role="alert"
+					>
 						<p className="text-sm text-red-900">
 							{deletedQuery.error instanceof Error
 								? deletedQuery.error.message

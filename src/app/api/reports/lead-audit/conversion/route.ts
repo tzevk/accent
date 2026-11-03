@@ -8,6 +8,7 @@ import {
 	resolveLeadAuditConversionOptions,
 } from '@/server/reports/lead-audit/conversion';
 import { parseLeadAuditFilters } from '@/server/reports/lead-audit/filters';
+import { parseLeadAuditConversionEvidence } from '@/server/reports/lead-audit/conversion-filters';
 import { LeadAuditValidationError } from '@/server/reports/lead-audit/types';
 
 /**
@@ -49,6 +50,7 @@ export async function GET(request: Request): Promise<Response> {
 
 	try {
 		const searchParams = new URL(request.url).searchParams;
+		parseLeadAuditConversionEvidence(searchParams);
 		const options = resolveLeadAuditConversionOptions(user);
 		const data = await withLeadAuditConnection(async (db) => {
 			const clock = await readLeadAuditClock(db);

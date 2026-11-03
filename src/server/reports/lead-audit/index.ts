@@ -29,7 +29,12 @@ import {
 } from './timing';
 import { readLeadAuditEvidenceSection } from './audit';
 import { readLeadAuditCoverageSection } from './coverage';
-import type { LeadAuditReport } from './types';
+import {
+	LEAD_AUDIT_VIEWS,
+	LeadAuditValidationError,
+	type LeadAuditReport,
+	type LeadAuditViewKey,
+} from './types';
 
 export { canReadLeadAudit } from './access';
 export { readLeadAuditClock } from './clock';
@@ -83,6 +88,16 @@ export async function readLeadAuditReport(
 		includeProjects: false,
 	}
 ): Promise<LeadAuditReport> {
+	const view = (
+		(source instanceof URLSearchParams ? source.get('view') : source.view) ||
+		'overview'
+	).trim();
+	if (!LEAD_AUDIT_VIEWS.some((entry) => entry.key === view)) {
+		throw new LeadAuditValidationError(
+			'invalid_view',
+			`Unknown report view: ${view}`
+		);
+	}
 	return withLeadAuditConnection(async (db) => {
 		const clock = await readLeadAuditClock(db);
 		const filters = parseLeadAuditFilters(source, clock.today);
@@ -103,17 +118,19 @@ export async function readLeadAuditReport(
 					},
 					clock
 				),
-				readLeadAuditEvidenceSection(db, filters, clock, {
-					evidenceFilters,
-					undated: evidenceFilters.undated,
-					...downstream,
-				}),
+				view === 'audit'
+					? readLeadAuditEvidenceSection(db, filters, clock, {
+							evidenceFilters,
+							undated: evidenceFilters.undated,
+							...downstream,
+						})
+					: Promise.resolve(null),
 				readLeadAuditCoverageSection(db, filters, clock),
 			]);
 		const actors = new Map(
 			work.filter_options.actors.map((actor) => [actor.id, actor])
 		);
-		for (const actor of audit.filter_options.actors) {
+		for (const actor of audit?.filter_options.actors ?? []) {
 			actors.set(actor.id, {
 				id: actor.id,
 				name: actor.full_name,
@@ -128,6 +145,7 @@ export async function readLeadAuditReport(
 		});
 		return {
 			...intake,
+			view: view as LeadAuditViewKey,
 			filter_options: {
 				...intake.filter_options,
 				actors: [...actors.values()],

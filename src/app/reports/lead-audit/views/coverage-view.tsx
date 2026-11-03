@@ -77,7 +77,12 @@ export default function CoverageView({ report }: CoverageViewProps) {
 					Evidence recorded in the selected period under the applied Lead
 					filters, counted by its recording time.
 				</p>
-				<div className="mt-2 overflow-x-auto">
+				<div
+					className="mt-2 overflow-x-auto"
+					role="region"
+					tabIndex={0}
+					aria-label="Audit evidence coverage table. Scroll horizontally for more columns."
+				>
 					<table className="min-w-[28rem] w-full border-collapse text-sm">
 						<caption className="sr-only">
 							Audit evidence recorded in the selected period by type
@@ -119,7 +124,12 @@ export default function CoverageView({ report }: CoverageViewProps) {
 					These rows are excluded from the named metrics by design. They stay
 					inspectable elsewhere in the report; they are not silent zeroes.
 				</p>
-				<div className="mt-2 overflow-x-auto">
+				<div
+					className="mt-2 overflow-x-auto"
+					role="region"
+					tabIndex={0}
+					aria-label="Metric exclusions table. Scroll horizontally for more columns."
+				>
 					<table className="min-w-[42rem] w-full border-collapse text-sm">
 						<caption className="sr-only">
 							Metric exclusions and their reasons
@@ -129,7 +139,10 @@ export default function CoverageView({ report }: CoverageViewProps) {
 								<th scope="col" className="py-1.5 pr-2 font-semibold">
 									Metric
 								</th>
-								<th scope="col" className="py-1.5 pr-2 text-right font-semibold">
+								<th
+									scope="col"
+									className="py-1.5 pr-2 text-right font-semibold"
+								>
 									Excluded
 								</th>
 								<th scope="col" className="py-1.5 font-semibold">
@@ -139,8 +152,14 @@ export default function CoverageView({ report }: CoverageViewProps) {
 						</thead>
 						<tbody>
 							{report.exclusions.map((exclusion) => (
-								<tr key={exclusion.metric} className="border-b border-amber-100 align-top">
-									<th scope="row" className="py-1.5 pr-2 text-left font-medium text-amber-950">
+								<tr
+									key={exclusion.metric}
+									className="border-b border-amber-100 align-top"
+								>
+									<th
+										scope="row"
+										className="py-1.5 pr-2 text-left font-medium text-amber-950"
+									>
 										{exclusion.label}
 									</th>
 									<td className="py-1.5 pr-2 text-right tabular-nums text-amber-950">
@@ -190,7 +209,8 @@ export default function CoverageView({ report }: CoverageViewProps) {
 					{report.deleted_evidence.deleted_leads.toLocaleString('en-IN')}{' '}
 					deleted Lead(s) and{' '}
 					{report.deleted_evidence.deleted_activities.toLocaleString('en-IN')}{' '}
-					deleted activity row(s) are retained separately. {report.deleted_evidence.note}
+					deleted activity row(s) are retained separately.{' '}
+					{report.deleted_evidence.note}
 				</p>
 			</section>
 
