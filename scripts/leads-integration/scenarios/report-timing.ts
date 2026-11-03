@@ -533,31 +533,25 @@ export async function leadAuditTimingScenario(
 		occurredAt: '2026-07-08 10:00:00',
 	});
 
-	// A corrected call: the real correction endpoint moves the occurrence
-	// time of the one activity row and keeps its history.
+	// A corrected call: the real correction endpoint changes the recorded
+	// outcome of the one activity row and keeps its history. The occurrence
+	// time stays an explicit fixture value, so no host time zone can move it.
 	const corrected = await seedLead(context, 'Mixed 11 Corrected', {
 		recordedAt: '2026-07-09 09:00:00',
 		ownerUserId: context.assignee.id,
 	});
-	const logged = await context.http.post(
-		`/api/leads/${corrected.id}/activities`,
-		{
-			activity_type: 'Call',
-			call_outcome: 'No Answer',
-			notes: 'The first record of this call.',
-		},
-		context.assignee.sessionToken
-	);
-	assert.equal(logged.status, 200, `logged call status (body: ${logged.text})`);
-	const loggedActivityId = z
-		.object({ data: z.object({ activity_id: z.number() }) })
-		.parse(logged.json()).data.activity_id;
+	const loggedActivityId = await seedActivity(context, corrected.id, {
+		activityType: 'Call',
+		status: 'Completed',
+		occurredAt: '2026-07-09 12:00:00',
+		notes: 'The first record of this call.',
+	});
 	const correctedResponse = await context.http.post(
 		`/api/leads/${corrected.id}/activities/${loggedActivityId}/corrections`,
 		{
 			version: 1,
-			reason: 'The occurrence time was recorded wrongly.',
-			occurred_at: '2026-07-09T12:00:00',
+			reason: 'The call outcome was recorded wrongly.',
+			call_outcome: 'Connected',
 		},
 		context.assignee.sessionToken
 	);
