@@ -69,8 +69,9 @@ same next-day bound.
 Invalid calendar dates, incomplete or reversed custom ranges, unknown
 presets, unknown stages, unknown priorities, malformed owner ids, conflicting
 source filters, and unknown register metrics return `422` with a named `code`.
-Source labels are not a closed vocabulary: an unfamiliar stored label is a
-valid exact filter.
+Source labels are not a closed vocabulary. Every non-empty label is an exact
+filter, including literal `all` and `__missing__`. Omit `source` to select
+all labels; use `source_missing=1` to select missing labels.
 
 Apply is the primary action; Reset restores the current month and all-record
 scope. Draft filters do not affect the report until Apply.
@@ -144,12 +145,12 @@ register metric and the same applied filters. The register:
 | `register.ts`    | Paginated Lead evidence for one metric                                                                  |
 | `connection.ts`  | One shared-pool connection per observation                                                              |
 
-Section readers accept `(db, filters, clock)`. A later workbook export can
-open one `withLeadAuditConnection` observation, read every section on that
-connection, and use one generation time without introducing a report-specific
-pool. Later slices add their own section files and compose them into the
-report response and `available_views`; they do not need to change the filter,
-date, authorization, or connection contract.
+Section readers accept `(db, filters, clock)`. `withLeadAuditConnection`
+starts one read-only, repeatable-read snapshot on the shared pool.
+Every section and complete export detail uses that snapshot and one generation
+time. Success commits the read transaction; errors roll it back before release.
+This keeps a concurrent correction from splitting summary and detail facts.
+Later slices compose their own section readers without creating another pool.
 
 UI sections are separate files:
 

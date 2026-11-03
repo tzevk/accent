@@ -15,9 +15,7 @@ import {
 	type LeadAuditPriority,
 } from './types';
 
-type QuerySource =
-	| URLSearchParams
-	| Record<string, string | null | undefined>;
+type QuerySource = URLSearchParams | Record<string, string | null | undefined>;
 
 function readRaw(source: QuerySource, key: string): string {
 	const value =
@@ -70,10 +68,7 @@ export function parseLeadAuditFilters(
 	} else {
 		const preset = rawPreset === '' ? 'current_month' : rawPreset;
 		if (preset === 'custom') {
-			fail(
-				'invalid_range',
-				'Custom periods require from_date and to_date'
-			);
+			fail('invalid_range', 'Custom periods require from_date and to_date');
 		}
 		period = resolvePresetRange(preset, today);
 	}
@@ -95,7 +90,7 @@ export function parseLeadAuditFilters(
 	const rawSourceMissing = read(source, 'source_missing');
 	const sourceMissing =
 		rawSourceMissing === '1' || rawSourceMissing.toLowerCase() === 'true';
-	if (sourceLabel !== '' && sourceLabel !== 'all' && sourceMissing) {
+	if (sourceLabel !== '' && sourceMissing) {
 		fail(
 			'invalid_source',
 			'Choose either an exact source label or the missing-source filter'
@@ -128,8 +123,7 @@ export function parseLeadAuditFilters(
 		toDate: period.toDate,
 		ownerUserId,
 		ownerUnassigned,
-		source:
-			sourceLabel === '' || sourceLabel === 'all' ? null : sourceLabel,
+		source: sourceLabel === '' ? null : sourceLabel,
 		sourceMissing,
 		stage,
 		priority,

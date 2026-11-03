@@ -24,7 +24,10 @@ const ReportEnvelopeSchema = z
 						date_basis: z.string(),
 						effective_filters: z
 							.object({
-								owner: z.object({ value: z.string().nullable(), label: z.string() }),
+								owner: z.object({
+									value: z.string().nullable(),
+									label: z.string(),
+								}),
 								source: z.object({
 									value: z.string().nullable(),
 									label: z.string(),
@@ -395,7 +398,10 @@ export async function leadAuditIntakeScenario(
 	assert.equal(defaults.scope.from_date, monthStart(today));
 	assert.equal(defaults.scope.to_date, today);
 	assert.match(defaults.scope.date_basis, /inclusive|calendar/i);
-	assert.match(defaults.meta.generated_at, /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/);
+	assert.match(
+		defaults.meta.generated_at,
+		/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/
+	);
 	assert.equal(defaults.meta.today, today);
 	assert.ok(defaults.meta.time_zone.label.length > 0, 'time zone is disclosed');
 	assert.match(
@@ -453,7 +459,11 @@ export async function leadAuditIntakeScenario(
 	assert.equal(intakeByDate.get('2026-05-01'), 1, 'start boundary included');
 	assert.equal(intakeByDate.get('2026-05-31'), 1, 'end day 23:59:59 included');
 	assert.equal(intakeByDate.get('2026-06-01'), undefined, 'next day excluded');
-	assert.equal(intakeByDate.get('2026-04-30'), undefined, 'day before excluded');
+	assert.equal(
+		intakeByDate.get('2026-04-30'),
+		undefined,
+		'day before excluded'
+	);
 	assert.equal(
 		[...intakeByDate.values()].reduce((sum, value) => sum + value, 0),
 		8
@@ -461,9 +471,17 @@ export async function leadAuditIntakeScenario(
 	const enquiryByDate = new Map(
 		may.trends.enquiry_date.map((entry) => [entry.date, entry.count])
 	);
-	assert.equal(enquiryByDate.get('2026-05-10'), 1, 'earlier Lead enquiry counted');
+	assert.equal(
+		enquiryByDate.get('2026-05-10'),
+		1,
+		'earlier Lead enquiry counted'
+	);
 	assert.equal(enquiryByDate.get('2026-05-31'), 1);
-	assert.equal(enquiryByDate.get('2026-04-20'), undefined, 'outside enquiry excluded');
+	assert.equal(
+		enquiryByDate.get('2026-04-20'),
+		undefined,
+		'outside enquiry excluded'
+	);
 	assert.equal(
 		[...enquiryByDate.values()].reduce((sum, value) => sum + value, 0),
 		7
@@ -471,7 +489,11 @@ export async function leadAuditIntakeScenario(
 
 	// ── Source labels are preserved, never merged ───────────────────────────
 	assert.equal(sourceGroup(may, 'Website').count, 2, 'deleted Lead excluded');
-	assert.equal(sourceGroup(may, 'website').count, 1, 'case stays a separate label');
+	assert.equal(
+		sourceGroup(may, 'website').count,
+		1,
+		'case stays a separate label'
+	);
 	assert.equal(
 		sourceGroup(may, '  Website  ').count,
 		1,
@@ -718,11 +740,9 @@ export async function leadAuditIntakeScenario(
 		token
 	);
 	assert.equal(pageThree.leads.length, 2);
-	const allIds = [
-		...pageOne.leads,
-		...pageTwo.leads,
-		...pageThree.leads,
-	].map((lead) => lead.id);
+	const allIds = [...pageOne.leads, ...pageTwo.leads, ...pageThree.leads].map(
+		(lead) => lead.id
+	);
 	assert.equal(new Set(allIds).size, 8, 'each Lead appears once across pages');
 	assert.equal(allIds.includes(g.id), false, 'a deleted Lead stays out');
 	assert.equal(allIds.includes(d.id), false, 'a next-day Lead stays out');
@@ -812,12 +832,22 @@ export async function leadAuditIntakeScenario(
 		token
 	);
 	assert.equal(invalidMetric.status, 422);
-	assert.equal(ErrorEnvelopeSchema.parse(invalidMetric.json()).code, 'invalid_metric');
+	assert.equal(
+		ErrorEnvelopeSchema.parse(invalidMetric.json()).code,
+		'invalid_metric'
+	);
 
 	// ── Imports count when recorded, not by their Enquiry Date ──────────────
 	const importedCompany = withPrefix(context, 'L Imported');
 	const csv = [
-		['Company', 'Contact Name', 'Email', 'Project Description', 'Enquiry Date', 'Source'],
+		[
+			'Company',
+			'Contact Name',
+			'Email',
+			'Project Description',
+			'Enquiry Date',
+			'Source',
+		],
 		[
 			importedCompany,
 			'Imported Contact',
@@ -853,7 +883,11 @@ export async function leadAuditIntakeScenario(
 		{ from_date: today, to_date: today, search },
 		token
 	);
-	assert.equal(todayReport.summary.leads_recorded, 1, 'import counted at entry');
+	assert.equal(
+		todayReport.summary.leads_recorded,
+		1,
+		'import counted at entry'
+	);
 	assert.equal(
 		todayReport.summary.enquiries_dated,
 		0,
@@ -880,6 +914,33 @@ export async function leadAuditIntakeScenario(
 		1
 	);
 
+	// Free-text source labels must not collide with UI or API sentinels.
+	const literalAll = await seedLead(context, 'M Literal All Source', {
+		recordedAt: '2026-05-26 09:00:00',
+		source: 'all',
+		stage: 'New',
+	});
+	const literalMissing = await seedLead(context, 'N Literal Missing Source', {
+		recordedAt: '2026-05-27 09:00:00',
+		source: '__missing__',
+		stage: 'New',
+	});
+	for (const [source, expectedId] of [
+		['all', literalAll.id],
+		['__missing__', literalMissing.id],
+	] as const) {
+		const evidence = await readRegister(
+			context,
+			{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, source },
+			token
+		);
+		assert.equal(evidence.pagination.total, 1, `exact source: ${source}`);
+		assert.deepEqual(
+			evidence.leads.map((lead) => lead.id),
+			[expectedId]
+		);
+	}
+
 	// The report is a read: the fixture rows and their facts are unchanged.
 	for (const fixture of [a, b, c, d, e, f, g, h, i, j, k]) {
 		const row = await context.reader.leadRow(fixture.id);
@@ -887,5 +948,8 @@ export async function leadAuditIntakeScenario(
 		assert.equal(row.company_name, fixture.company);
 	}
 	assert.equal((await context.reader.leadRow(g.id))?.isDelete, 1);
-	assert.equal((await context.reader.leadRow(f.id))?.enquiry_status, 'Attempting Contact');
+	assert.equal(
+		(await context.reader.leadRow(f.id))?.enquiry_status,
+		'Attempting Contact'
+	);
 }
