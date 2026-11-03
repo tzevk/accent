@@ -99,11 +99,11 @@ reason instead of silently treating them as effective.
 | `src/app/api/reports/lead-audit/timing/evidence/route.ts` | Authenticated, paginated evidence read |
 | `src/app/reports/lead-audit/views/timing-view.tsx` | Summary, coverage, disclosures, and drill-down evidence table |
 
-The readers accept `(db, filters, clock, …)` and never open their own
-connection or transaction. `readLeadAuditTimingDetail` returns every cohort
-row on the caller's connection for a complete workbook export, so exports do
-not paginate through HTTP. Reads are SELECT-only and leave Leads, activities,
-corrections, and stored source labels unchanged.
+The section and evidence readers accept `(db, filters, clock, …)` and never
+open their own connection or transaction. `readLeadAuditTimingDetail(db,
+filters)` returns every cohort row on the caller's connection for a complete
+workbook export, so exports do not paginate through HTTP. Reads are SELECT-only
+and leave Leads, activities, corrections, and stored source labels unchanged.
 
 ## Verification scenario
 
