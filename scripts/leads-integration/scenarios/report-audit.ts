@@ -144,9 +144,15 @@ const AuditEnvelopeSchema = z
 				filter_options: z
 					.object({
 						actors: z.array(z.object({ id: z.number() }).passthrough()),
-						activity_types: z.array(z.string()),
-						outcomes: z.array(z.string()),
-						event_types: z.array(z.string()),
+						activity_types: z.array(
+							z.object({ value: z.string(), label: z.string() })
+						),
+						outcomes: z.array(
+							z.object({ value: z.string(), label: z.string() })
+						),
+						event_types: z.array(
+							z.object({ value: z.string(), label: z.string() })
+						),
 					})
 					.passthrough(),
 				evidence: z.array(EvidenceRowSchema),
