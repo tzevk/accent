@@ -144,12 +144,12 @@ register metric and the same applied filters. The register:
 | `register.ts`    | Paginated Lead evidence for one metric                                                                  |
 | `connection.ts`  | One shared-pool connection per observation                                                              |
 
-Section readers accept `(db, filters, clock)`. A later workbook export can
-open one `withLeadAuditConnection` observation, read every section on that
-connection, and use one generation time without introducing a report-specific
-pool. Later slices add their own section files and compose them into the
-report response and `available_views`; they do not need to change the filter,
-date, authorization, or connection contract.
+Section readers accept `(db, filters, clock)`. `withLeadAuditConnection`
+starts one read-only, repeatable-read snapshot on the shared pool.
+Every section and complete export detail uses that snapshot and one generation
+time. Success commits the read transaction; errors roll it back before release.
+This keeps a concurrent correction from splitting summary and detail facts.
+Later slices compose their own section readers without creating another pool.
 
 UI sections are separate files:
 
