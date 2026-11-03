@@ -114,7 +114,9 @@ literal and independent of the report's aggregates. It covers:
 
 - odd, even, one-item, and empty samples, including the even-sample average
   and nearest-rank 90th percentile;
-- contiguous March, April, May, June, July, and September cohorts;
+- a cohort with Leads but no valid sample, reported unavailable with its
+  coverage rather than as zero duration;
+- contiguous March, April, May, June, July, September, and November cohorts;
 - inclusive period boundaries and excluded adjacent days, including
   outreach that occurs after the intake period;
 - notes, scheduled, cancelled, and deleted activities staying outside

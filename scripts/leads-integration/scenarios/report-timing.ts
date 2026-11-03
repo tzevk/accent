@@ -155,6 +155,7 @@ const ONE = { from: '2026-05-01', to: '2026-05-31' };
 const EMPTY = { from: '2026-06-01', to: '2026-06-30' };
 const MIXED = { from: '2026-07-01', to: '2026-07-31' };
 const BOUNDARY = { from: '2026-09-01', to: '2026-09-30' };
+const NO_VALID = { from: '2026-11-01', to: '2026-11-30' };
 
 function query(
 	values: Record<string, string | number | null | undefined>
@@ -606,6 +607,24 @@ export async function leadAuditTimingScenario(
 		occurredAt: '2026-10-01 01:00:00',
 	});
 
+	// ── A cohort with Leads but no valid sample stays unavailable ───────────
+	const noValidNote = await seedLead(context, 'No Valid Note', {
+		recordedAt: '2026-11-05 09:00:00',
+	});
+	await seedActivity(context, noValidNote.id, {
+		activityType: 'Note',
+		status: 'Completed',
+		occurredAt: '2026-11-05 10:00:00',
+	});
+	const noValidScheduled = await seedLead(context, 'No Valid Scheduled', {
+		recordedAt: '2026-11-06 09:00:00',
+	});
+	await seedActivity(context, noValidScheduled.id, {
+		activityType: 'Call',
+		status: 'Scheduled',
+		scheduledFor: '2026-11-07',
+	});
+
 	// Snapshot the fixture sources before any report read: every timing read
 	// below must leave Leads, activities, and stored labels unchanged.
 	const allIds = [
@@ -636,6 +655,8 @@ export async function leadAuditTimingScenario(
 		boundaryEnd,
 		boundaryBefore,
 		boundaryAfter,
+		noValidNote,
+		noValidScheduled,
 	].map((fixture) => fixture.id);
 	const placeholders = allIds.map(() => '?').join(', ');
 	const readLeads = () =>
@@ -766,6 +787,32 @@ export async function leadAuditTimingScenario(
 	assert.equal(emptyEvidence.rows.length, 0);
 	assert.equal(emptyEvidence.pagination.total, 0);
 	assert.equal(emptyEvidence.pagination.total_pages, 0);
+
+	// A cohort with Leads but no valid sample is unavailable, not zero.
+	const noValid = await readTiming(
+		context,
+		{ from_date: NO_VALID.from, to_date: NO_VALID.to, search },
+		token
+	);
+	assert.equal(noValid.cohort_leads, 2);
+	assert.equal(noValid.valid_samples, 0);
+	assert.equal(noValid.available, false);
+	assert.equal(noValid.median_seconds, null);
+	assert.equal(noValid.p90_seconds, null);
+	assert.equal(noValid.without_outreach, 2);
+	assert.equal(noValid.without_outreach_share, 1);
+	assert.equal(noValid.exclusions.total, 0);
+	assert.ok(disclosureCodes(noValid).includes('no_valid_samples'));
+	const noValidEvidence = await readEvidence(
+		context,
+		{ from_date: NO_VALID.from, to_date: NO_VALID.to, search, metric: 'all' },
+		token
+	);
+	assert.equal(noValidEvidence.pagination.total, 2);
+	assert.deepEqual(
+		noValidEvidence.rows.map((row) => row.status),
+		['no_outreach', 'no_outreach']
+	);
 
 	// ── Exclusions, zero, duplicate evidence, deleted rows, correction ──────
 	const mixed = await readTiming(
