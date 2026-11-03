@@ -783,6 +783,26 @@ export async function reportAuditScenario(
 		status: 'Completed',
 		notes: 'Tie activity',
 	});
+	// A scheduled call legitimately has no outcome yet; it is audit evidence
+	// but never a completed call with a missing outcome. A completed call
+	// without a recorded outcome is the real coverage gap.
+	const scheduledCall = await insertActivity(context, leadB, {
+		recordedAt: '2026-09-24 09:00:00',
+		occurredAt: null,
+		actorId: context.creator.id,
+		activityType: 'Call',
+		status: 'Scheduled',
+		callOutcome: null,
+		scheduledFor: '2026-09-30 09:00:00',
+	});
+	const completedUnknownCall = await insertActivity(context, leadB, {
+		recordedAt: '2026-09-25 09:00:00',
+		occurredAt: '2026-09-25 08:30:00',
+		actorId: context.creator.id,
+		activityType: 'Call',
+		status: 'Completed',
+		callOutcome: null,
+	});
 	const deletedActivity = await insertActivity(context, leadA, {
 		recordedAt: '2026-09-23 08:00:00',
 		occurredAt: '2026-09-23 08:00:00',
@@ -872,6 +892,19 @@ export async function reportAuditScenario(
 		reviewerId: null,
 	});
 
+	// A Proposal-link review stores Proposal facts in its free-text columns;
+	// a reader without proposals:read must not receive them.
+	const proposalReview = await insertLegacyReview(context, leadB, {
+		recordedAt: '2026-09-23 12:00:00',
+		reviewType: 'proposal_link',
+		originalValue: '7, 8',
+		resolvedValue: 'Proposal #7 — Secret Title',
+		resolvedReference: 7,
+		reason: 'Two stored links, one canonical choice',
+		resolutionSource: 'reviewer',
+		reviewerId: context.creator.id,
+	});
+
 	// Conversion evidence with permission-controlled downstream context.
 	const proposalId = (
 		await context.reader.fixtureWrite(
@@ -926,16 +959,16 @@ export async function reportAuditScenario(
 	);
 	assert.equal(audit.scope.from_date, PERIOD_FROM);
 	assert.equal(audit.scope.to_date, PERIOD_TO);
-	assert.equal(audit.summary.evidence_in_period, 10, 'in-period evidence rows');
-	assert.equal(byType(audit.summary, 'activity'), 3);
+	assert.equal(audit.summary.evidence_in_period, 13, 'in-period evidence rows');
+	assert.equal(byType(audit.summary, 'activity'), 5);
 	assert.equal(byType(audit.summary, 'stage_change'), 2);
 	assert.equal(byType(audit.summary, 'owner_change'), 1);
 	assert.equal(byType(audit.summary, 'correction'), 1);
-	assert.equal(byType(audit.summary, 'legacy_review'), 2);
+	assert.equal(byType(audit.summary, 'legacy_review'), 3);
 	assert.equal(byType(audit.summary, 'conversion'), 1);
 	assert.equal(
 		audit.summary.undated_evidence,
-		1,
+		2,
 		'undated activity is explicit'
 	);
 	assert.equal(
@@ -956,6 +989,7 @@ export async function reportAuditScenario(
 	assert.ok(references.includes(`correction:${correction}`));
 	assert.ok(references.includes(`legacy_review:${legacyReview}`));
 	assert.ok(references.includes(`legacy_review:${automaticReview}`));
+	assert.ok(references.includes(`legacy_review:${proposalReview}`));
 	assert.ok(references.includes(`conversion:${conversion}`));
 	assert.ok(
 		!references.includes(`activity:${activityA3}`),
@@ -1050,8 +1084,21 @@ export async function reportAuditScenario(
 		},
 		token
 	);
-	assert.equal(callsOnly.summary.evidence_in_period, 1);
-	assert.equal(callsOnly.evidence[0]?.reference, `activity:${activityA1}`);
+	assert.equal(callsOnly.summary.evidence_in_period, 3);
+	const callReferences = callsOnly.evidence.map((row) => row.reference);
+	assert.ok(callReferences.includes(`activity:${activityA1}`));
+	assert.ok(
+		callReferences.includes(`activity:${scheduledCall}`),
+		'a scheduled call is audit evidence'
+	);
+	assert.ok(
+		callReferences.includes(`activity:${completedUnknownCall}`),
+		'a completed call without an outcome is audit evidence'
+	);
+	assert.equal(
+		callsOnly.evidence[0]?.reference,
+		`activity:${completedUnknownCall}`
+	);
 	assert.equal(
 		callsOnly.evidence_filters.activity_type.excludes_other_evidence,
 		true
@@ -1112,8 +1159,13 @@ export async function reportAuditScenario(
 		},
 		token
 	);
-	assert.equal(undatedOnly.summary.evidence_in_period, 1);
-	assert.equal(undatedOnly.evidence[0]?.reference, `activity:${activityA2}`);
+	assert.equal(undatedOnly.summary.evidence_in_period, 2);
+	const undatedReferences = undatedOnly.evidence.map((row) => row.reference);
+	assert.ok(undatedReferences.includes(`activity:${activityA2}`));
+	assert.ok(
+		undatedReferences.includes(`activity:${scheduledCall}`),
+		'a scheduled call has no occurrence time'
+	);
 	assert.equal(undatedOnly.evidence_filters.undated.value, true);
 
 	await expectValidationCode(
@@ -1202,15 +1254,15 @@ export async function reportAuditScenario(
 		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, page: 2, limit: 3 },
 		token
 	);
-	assert.equal(pageOne.pagination.total, 10);
-	assert.equal(pageOne.pagination.total_pages, 4);
+	assert.equal(pageOne.pagination.total, 13);
+	assert.equal(pageOne.pagination.total_pages, 5);
 	assert.deepEqual(
 		pageTwo.evidence.map((row) => row.reference),
 		pageTwoRepeat.evidence.map((row) => row.reference),
 		'repeated pages are stable'
 	);
 	const pagedReferences: string[] = [];
-	for (let page = 1; page <= 4; page += 1) {
+	for (let page = 1; page <= 5; page += 1) {
 		const body = await readAudit(
 			context,
 			{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, page, limit: 3 },
@@ -1218,7 +1270,7 @@ export async function reportAuditScenario(
 		);
 		pagedReferences.push(...body.evidence.map((row) => row.reference));
 	}
-	assert.equal(new Set(pagedReferences).size, 10, 'pages never repeat a row');
+	assert.equal(new Set(pagedReferences).size, 13, 'pages never repeat a row');
 	assert.deepEqual(
 		pagedReferences,
 		references,
@@ -1340,6 +1392,51 @@ export async function reportAuditScenario(
 		'Qualified'
 	);
 
+	// A Proposal-link review stores Proposal ids and titles in its free-text
+	// columns. Without proposals:read every one of them is Restricted; the
+	// same reference read with the grant shows the stored facts.
+	const proposalNarrative = await readNarrative(
+		context,
+		'legacy_review',
+		proposalReview,
+		token
+	);
+	for (const key of [
+		'original_value',
+		'resolved_value',
+		'resolved_reference',
+	]) {
+		assert.equal(
+			proposalNarrative.fields.find((field) => field.key === key)?.value,
+			'Restricted',
+			`${key} is withheld without proposals:read`
+		);
+	}
+	const privilegedProposalNarrative = await readNarrative(
+		context,
+		'legacy_review',
+		proposalReview,
+		privilegedToken
+	);
+	assert.equal(
+		privilegedProposalNarrative.fields.find(
+			(field) => field.key === 'original_value'
+		)?.value,
+		'7, 8'
+	);
+	assert.equal(
+		privilegedProposalNarrative.fields.find(
+			(field) => field.key === 'resolved_value'
+		)?.value,
+		'Proposal #7 — Secret Title'
+	);
+	assert.equal(
+		privilegedProposalNarrative.fields.find(
+			(field) => field.key === 'resolved_reference'
+		)?.value,
+		'7'
+	);
+
 	const deletedNarrative = await readNarrative(
 		context,
 		'activity',
@@ -1452,16 +1549,20 @@ export async function reportAuditScenario(
 	assert.equal(stat(coverage, 'proposal_link_conflict'), 1);
 	assert.equal(stat(coverage, 'converted_without_date'), 1);
 	assert.equal(stat(coverage, 'converted_without_evidence'), 1);
-	assert.equal(stat(coverage, 'evidence_in_period'), 10);
-	assert.equal(stat(coverage, 'undated_activity_evidence'), 1);
+	assert.equal(stat(coverage, 'evidence_in_period'), 13);
+	assert.equal(stat(coverage, 'undated_activity_evidence'), 2);
 	assert.equal(stat(coverage, 'unknown_activity_author'), 1);
-	assert.equal(stat(coverage, 'unknown_call_outcome'), 0);
+	assert.equal(
+		stat(coverage, 'unknown_call_outcome'),
+		1,
+		'only completed calls without an outcome are coverage gaps'
+	);
 	assert.equal(stat(coverage, 'unknown_email_reply'), 0);
 	assert.equal(stat(coverage, 'automatic_legacy_reviews'), 1);
 	assert.equal(byType({ by_type: coverage.evidence_by_type }, 'correction'), 1);
 	assert.equal(byType({ by_type: coverage.evidence_by_type }, 'conversion'), 1);
-	assert.equal(exclusion(coverage, 'period_work'), 1);
-	assert.equal(exclusion(coverage, 'audit_occurrence_totals'), 1);
+	assert.equal(exclusion(coverage, 'period_work'), 2);
+	assert.equal(exclusion(coverage, 'audit_occurrence_totals'), 2);
 	assert.equal(exclusion(coverage, 'operational_totals'), 2);
 	assert.equal(coverage.deleted_evidence.deleted_leads, 1);
 	assert.equal(coverage.deleted_evidence.deleted_activities, 1);
@@ -1541,7 +1642,7 @@ export async function reportAuditScenario(
 		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, limit: 100 },
 		context.superAdmin.sessionToken
 	);
-	assert.equal(superAdminAudit.summary.evidence_in_period, 10);
+	assert.equal(superAdminAudit.summary.evidence_in_period, 13);
 	assert.equal(
 		superAdminAudit.evidence.find((row) => row.evidence_type === 'conversion')
 			?.downstream?.proposal_state,

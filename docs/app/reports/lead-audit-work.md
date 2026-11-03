@@ -42,20 +42,20 @@ the period to count.
 
 ## Metric definitions
 
-| Figure | Definition | Not included |
-| --- | --- | --- |
-| Completed work | Completed activities with a known occurrence in the period | Scheduled, cancelled, transferred copies, soft-deleted rows |
-| Completed calls | Completed `Call` rows | Scheduled or cancelled calls |
-| Completed emails | Completed `Email` rows, replied or not | Unconfirmed emails are still completed emails |
-| Completed meetings | Completed `Meeting` rows | Meetings never establish successful contact alone |
-| Completed notes | Completed `Note` rows | Notes are not outreach |
-| Unknown activity type | Completed rows whose stored type is missing or non-canonical | They are never guessed into a type |
-| Lead Outreach | Completed `Call` + `Email` + `Meeting` activities | Notes, scheduled next actions |
-| Distinct Leads with outreach | `COUNT(DISTINCT lead_id)` over outreach activities | Repeated attempts never inflate this count |
-| Successful contact | Completed `Call` with `call_outcome = 'Connected'` plus completed `Email` with `reply_confirmed = 1` | `No Answer`, `Busy`, `Voicemail`, `Wrong Number`, unconfirmed or unevidenced emails, meetings |
-| Failed calls | Completed calls with a canonical non-connected outcome | Calls with no usable outcome are *outcome unknown*, not failed |
-| Unconfirmed sent emails | Completed emails with `reply_confirmed` null or `0` | They are completed work and outreach, not contact |
-| Corrected activities | Completed rows whose `version > 1` | A correction is not another completed activity |
+| Figure                       | Definition                                                                                           | Not included                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Completed work               | Completed activities with a known occurrence in the period                                           | Scheduled, cancelled, transferred copies, soft-deleted rows                                   |
+| Completed calls              | Completed `Call` rows                                                                                | Scheduled or cancelled calls                                                                  |
+| Completed emails             | Completed `Email` rows, replied or not                                                               | Unconfirmed emails are still completed emails                                                 |
+| Completed meetings           | Completed `Meeting` rows                                                                             | Meetings never establish successful contact alone                                             |
+| Completed notes              | Completed `Note` rows                                                                                | Notes are not outreach                                                                        |
+| Unknown activity type        | Completed rows whose stored type is missing or non-canonical                                         | They are never guessed into a type                                                            |
+| Lead Outreach                | Completed `Call` + `Email` + `Meeting` activities                                                    | Notes, scheduled next actions                                                                 |
+| Distinct Leads with outreach | `COUNT(DISTINCT lead_id)` over outreach activities                                                   | Repeated attempts never inflate this count                                                    |
+| Successful contact           | Completed `Call` with `call_outcome = 'Connected'` plus completed `Email` with `reply_confirmed = 1` | `No Answer`, `Busy`, `Voicemail`, `Wrong Number`, unconfirmed or unevidenced emails, meetings |
+| Failed calls                 | Completed calls with a canonical non-connected outcome                                               | Calls with no usable outcome are _outcome unknown_, not failed                                |
+| Unconfirmed sent emails      | Completed emails with `reply_confirmed` null or `0`                                                  | They are completed work and outreach, not contact                                             |
+| Corrected activities         | Completed rows whose `version > 1`                                                                   | A correction is not another completed activity                                                |
 
 Reconciliation guarantees the figures follow from the population:
 
@@ -73,7 +73,9 @@ never by the Lead's current owner:
 - `created_by IS NULL` is **Unknown author**;
 - a stored reference whose user record is missing is shown as
   `Unknown user #id`, preserving the reference;
-- an inactive account keeps its name and is marked **Inactive**;
+- an inactive account keeps its name and is marked **Inactive**. The state is
+  read once as disabled (`is_active = 0`), stored `status = 'inactive'`, or a
+  soft-deleted user row, matching the current-owner section;
 - the activity evidence shows the current owner as present-state context
   only. Reassigning a Lead changes no author figure.
 
@@ -169,7 +171,7 @@ not missing:
 - completed activities with no occurrence time (outside every dated total);
 - completed activities with unknown stored types;
 - completed activities with no recorded author, and those recorded by a
-  now-inactive account;
+  now-inactive or soft-deleted account;
 - completed calls with no outcome and with an unrecognized outcome value;
 - completed emails with no reply evidence at all;
 - cancelled activities with a known occurrence in the period;

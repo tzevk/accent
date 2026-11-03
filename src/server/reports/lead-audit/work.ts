@@ -32,10 +32,7 @@ import {
 	type LeadAuditEvidenceEffectiveFilters,
 	type LeadAuditEvidenceFilters,
 } from './evidence-filters';
-import {
-	parseLeadAuditFilters,
-	parseLeadAuditPagination,
-} from './filters';
+import { parseLeadAuditFilters, parseLeadAuditPagination } from './filters';
 import { nextDay } from './period';
 import {
 	buildLeadAuditMeta,
@@ -300,12 +297,19 @@ function authorOf(
 			? null
 			: String(row.author_name);
 	const active = row.author_is_active;
+	const status = row.author_status;
+	const deleted = row.author_is_deleted;
+	// The same inactive test the current-owner section uses: a disabled
+	// account, a stored inactive status, or a soft-deleted user row.
+	const inactive =
+		(active !== null && active !== undefined && Number(active) === 0) ||
+		String(status ?? '').toLowerCase() === 'inactive' ||
+		(deleted !== null && deleted !== undefined && Number(deleted) === 1);
 	return {
 		id,
 		name,
 		is_unknown: false,
-		is_inactive:
-			active !== null && active !== undefined && Number(active) === 0,
+		is_inactive: inactive,
 	};
 }
 
@@ -508,7 +512,7 @@ function buildEvidenceDisclosures(
 		{ code: 'work_definition', text: metric.definition },
 		{
 			code: 'authorship',
-			text: "The author column is the recorded author (`created_by`). The current owner is present-state context only: it does not attribute the activity, and an inactive or missing author reference stays as recorded.",
+			text: 'The author column is the recorded author (`created_by`). The current owner is present-state context only: it does not attribute the activity, and an inactive or missing author reference stays as recorded.',
 		},
 		{
 			code: 'reconciliation',
@@ -533,6 +537,8 @@ interface EvidenceActivityRow {
 	created_by: number | string | null;
 	author_name: string | null;
 	author_is_active: number | string | null;
+	author_status: string | null;
+	author_is_deleted: number | string | null;
 	lead_numeric_id: number | string;
 	lead_reference: string | null;
 	company_name: string;
@@ -590,6 +596,8 @@ function toEvidenceRow(row: EvidenceActivityRow): LeadAuditWorkEvidenceRow {
 			created_by: row.created_by,
 			author_name: row.author_name,
 			author_is_active: row.author_is_active,
+			author_status: row.author_status,
+			author_is_deleted: row.author_is_deleted,
 		}),
 		is_outreach: isLeadOutreachType(activityType.value),
 		is_successful_contact:
@@ -605,6 +613,8 @@ function evidenceSelect(condition: SqlCondition, tail: string): string {
            a.created_by,
            COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS author_name,
            u.is_active AS author_is_active,
+           u.status AS author_status,
+           u.isDelete AS author_is_deleted,
            l.id AS lead_numeric_id, l.lead_id AS lead_reference,
            l.company_name,
            l.owner_user_id AS current_owner_id,
@@ -757,6 +767,8 @@ export async function readLeadAuditWorkSection(
 			`SELECT a.created_by,
               COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS author_name,
               u.is_active AS author_is_active,
+              u.status AS author_status,
+              u.isDelete AS author_is_deleted,
               COUNT(*) AS completed_total,
               SUM(CASE WHEN a.activity_type = 'Call' THEN 1 ELSE 0 END) AS calls,
               SUM(CASE WHEN a.activity_type = 'Email' THEN 1 ELSE 0 END) AS emails,
@@ -768,13 +780,15 @@ export async function readLeadAuditWorkSection(
               COUNT(DISTINCT a.lead_id) AS distinct_leads
        ${ACTIVITY_FROM}
        WHERE ${counted.sql}
-       GROUP BY a.created_by, u.full_name, u.username, u.is_active`,
+       GROUP BY a.created_by, u.full_name, u.username, u.is_active, u.status, u.isDelete`,
 			counted.params
 		),
 		db.execute(
 			`SELECT DISTINCT u.id,
               COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS name,
-              u.is_active
+              u.is_active,
+              u.status,
+              u.isDelete
        FROM lead_activities a
        JOIN leads l ON l.id = a.lead_id
        JOIN users u ON u.id = a.created_by
@@ -819,7 +833,10 @@ export async function readLeadAuditWorkSection(
 				evidence,
 				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
-				{ sql: 'u.is_active = 0', params: [] }
+				{
+					sql: "(u.is_active = 0 OR u.status = 'inactive' OR u.isDelete = 1)",
+					params: [],
+				}
 			)
 		),
 		countWork(
@@ -829,7 +846,10 @@ export async function readLeadAuditWorkSection(
 				evidence,
 				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
-				{ sql: "a.activity_type = 'Call' AND a.call_outcome IS NULL", params: [] }
+				{
+					sql: "a.activity_type = 'Call' AND a.call_outcome IS NULL",
+					params: [],
+				}
 			)
 		),
 		countWork(
@@ -930,7 +950,13 @@ export async function readLeadAuditWorkSection(
 		});
 
 	const [actorRows] = actorOptionResult as unknown as [
-		Array<{ id: number | string; name: string | null; is_active: unknown }>,
+		Array<{
+			id: number | string;
+			name: string | null;
+			is_active: unknown;
+			status: unknown;
+			isDelete: unknown;
+		}>,
 		unknown,
 	];
 	const filterOptions: LeadAuditWorkFilterOptions = {
@@ -938,10 +964,15 @@ export async function readLeadAuditWorkSection(
 			id: Number(row.id),
 			name:
 				row.name === null || row.name === undefined ? null : String(row.name),
-			is_active:
-				row.is_active === null || row.is_active === undefined
-					? true
-					: Number(row.is_active) !== 0,
+			is_active: !(
+				(row.is_active !== null &&
+					row.is_active !== undefined &&
+					Number(row.is_active) === 0) ||
+				String(row.status ?? '').toLowerCase() === 'inactive' ||
+				(row.isDelete !== null &&
+					row.isDelete !== undefined &&
+					Number(row.isDelete) === 1)
+			),
 		})),
 		activity_types: TYPE_OPTIONS,
 		outcomes: OUTCOME_OPTIONS,
@@ -967,7 +998,12 @@ export async function readLeadAuditWorkSection(
 		summary,
 		coverage,
 		authors,
-		work_filters: buildFilterScope(filters, evidence, effective, evidenceEffective),
+		work_filters: buildFilterScope(
+			filters,
+			evidence,
+			effective,
+			evidenceEffective
+		),
 		filter_options: filterOptions,
 		disclosures: buildDisclosures(summary, coverage),
 	};

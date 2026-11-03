@@ -60,13 +60,7 @@ const AuthorSchema = z.object({
 });
 
 const AppliedFilterSchema = z.object({
-	key: z.enum([
-		'actor',
-		'activity_type',
-		'outcome',
-		'event_type',
-		'undated',
-	]),
+	key: z.enum(['actor', 'activity_type', 'outcome', 'event_type', 'undated']),
 	label: z.string(),
 	value: z.string().nullable(),
 	display: z.string(),
@@ -84,13 +78,19 @@ const WorkSectionSchema = z
 				date_basis: z.string(),
 				effective_filters: z
 					.object({
-						owner: z.object({ value: z.string().nullable(), label: z.string() }),
+						owner: z.object({
+							value: z.string().nullable(),
+							label: z.string(),
+						}),
 						source: z.object({
 							value: z.string().nullable(),
 							label: z.string(),
 							is_unknown: z.boolean(),
 						}),
-						stage: z.object({ value: z.string().nullable(), label: z.string() }),
+						stage: z.object({
+							value: z.string().nullable(),
+							label: z.string(),
+						}),
 						priority: z.string().nullable(),
 						search: z.string(),
 					})
@@ -441,6 +441,24 @@ export async function leadAuditWorkScenario(
 		)
 	).insertId;
 
+	// A soft-deleted account keeps is_active = 1; only isDelete marks it gone.
+	// Its recorded work must still be attributed and labelled inactive.
+	const deletedUsername = `${context.runTag}-${PREFIX}-deleted`
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, '-');
+	const deletedAuthorId = (
+		await context.reader.fixtureWrite(
+			`INSERT INTO users (username, password_hash, email, full_name, status, is_active, isDelete, permissions, field_permissions, is_super_admin)
+       VALUES (?, ?, ?, ?, 'active', 1, 1, '[]', NULL, 0)`,
+			[
+				deletedUsername,
+				await hashFixturePassword('report-work-deleted'),
+				`${deletedUsername}@example.com`,
+				`${context.runTag} ${PREFIX} Deleted Author`,
+			]
+		)
+	).insertId;
+
 	// ── Known fixture evidence (occurrence times are the work dates) ───────
 	const a = await seedLead(context, 'A Older Lead', {
 		recordedAt: '2026-03-01 09:00:00',
@@ -504,7 +522,11 @@ export async function leadAuditWorkScenario(
 		stage: 'Attempting Contact',
 		ownerUserId: context.assignee.id,
 	});
-	for (const [index, callOutcome] of ['Busy', 'No Answer', 'Wrong Number'].entries()) {
+	for (const [index, callOutcome] of [
+		'Busy',
+		'No Answer',
+		'Wrong Number',
+	].entries()) {
 		await seedActivity(context, {
 			leadId: c.id,
 			activityType: 'Call',
@@ -642,6 +664,13 @@ export async function leadAuditWorkScenario(
 		callOutcome: 'Connected',
 		createdBy: inactiveUserId,
 	});
+	await seedActivity(context, {
+		leadId: j.id,
+		activityType: 'Note',
+		status: 'Completed',
+		occurredAt: '2026-05-29 09:00:00',
+		createdBy: deletedAuthorId,
+	});
 
 	const k = await seedLead(context, 'K Boundary Occurrence', {
 		recordedAt: '2026-05-29 09:00:00',
@@ -700,7 +729,12 @@ export async function leadAuditWorkScenario(
 		search,
 	})}`;
 	await expectRefused(context, evidencePath, undefined, 401);
-	await expectRefused(context, evidencePath, context.reportOnly.sessionToken, 403);
+	await expectRefused(
+		context,
+		evidencePath,
+		context.reportOnly.sessionToken,
+		403
+	);
 	await expectRefused(
 		context,
 		evidencePath,
@@ -742,10 +776,7 @@ export async function leadAuditWorkScenario(
 		'the intake figure counts only Leads recorded in May'
 	);
 	assert.equal(
-		Object.prototype.hasOwnProperty.call(
-			may.scope.effective_filters,
-			'actor'
-		),
+		Object.prototype.hasOwnProperty.call(may.scope.effective_filters, 'actor'),
 		false,
 		'an evidence filter never leaks into the intake scope'
 	);
@@ -754,7 +785,7 @@ export async function leadAuditWorkScenario(
 		call: 8,
 		email: 3,
 		meeting: 1,
-		note: 2,
+		note: 3,
 		unknown: 1,
 	});
 	const byType = work.summary.by_type;
@@ -763,7 +794,7 @@ export async function leadAuditWorkScenario(
 		work.summary.completed_total,
 		'the type breakdown sums to the completed total'
 	);
-	assert.equal(work.summary.completed_total, 15);
+	assert.equal(work.summary.completed_total, 16);
 	assert.equal(work.summary.outreach_total, 12, 'notes are not outreach');
 	assert.equal(work.summary.distinct_leads_worked, 7);
 	assert.equal(
@@ -778,7 +809,11 @@ export async function leadAuditWorkScenario(
 	);
 	assert.equal(work.summary.distinct_leads_with_successful_contact, 2);
 	assert.equal(work.summary.calls_connected, 2);
-	assert.equal(work.summary.calls_failed, 4, 'No Answer, Busy, and Wrong Number');
+	assert.equal(
+		work.summary.calls_failed,
+		4,
+		'No Answer, Busy, and Wrong Number'
+	);
 	assert.equal(work.summary.calls_outcome_unknown, 2);
 	assert.equal(work.summary.emails_confirmed_reply, 1);
 	assert.equal(work.summary.emails_unconfirmed, 2);
@@ -800,7 +835,7 @@ export async function leadAuditWorkScenario(
 		unknown_occurrence_date: 1,
 		unknown_activity_type: 1,
 		unknown_author: 1,
-		inactive_author: 2,
+		inactive_author: 3,
 		missing_call_outcome: 1,
 		unrecognized_call_outcome: 1,
 		missing_email_reply_evidence: 1,
@@ -827,9 +862,15 @@ export async function leadAuditWorkScenario(
 	assert.equal(inactiveAuthor.successful_contact, 1);
 	assert.equal(inactiveAuthor.author.is_inactive, true);
 	assert.equal(inactiveAuthor.author.is_unknown, false);
+	const deletedAuthor = authorOf(deletedAuthorId);
+	assert.ok(deletedAuthor, 'a soft-deleted author keeps its work');
+	assert.equal(deletedAuthor.author.is_inactive, true);
+	assert.equal(deletedAuthor.completed_total, 1);
+	assert.equal(deletedAuthor.by_type.note, 1);
+	assert.equal(deletedAuthor.outreach_total, 0);
 	assert.equal(
 		work.authors.reduce((sum, row) => sum + row.completed_total, 0),
-		15,
+		16,
 		'author groups reconcile with the completed total'
 	);
 	const optionForInactive = work.filter_options.actors.find(
@@ -837,6 +878,11 @@ export async function leadAuditWorkScenario(
 	);
 	assert.ok(optionForInactive, 'an inactive author stays selectable');
 	assert.equal(optionForInactive.is_active, false);
+	const optionForDeleted = work.filter_options.actors.find(
+		(option) => option.id === deletedAuthorId
+	);
+	assert.ok(optionForDeleted, 'a soft-deleted author stays selectable');
+	assert.equal(optionForDeleted.is_active, false);
 	assert.ok(
 		work.filter_options.outcomes.some(
 			(option) => option.value === 'email_replied'
@@ -948,10 +994,7 @@ export async function leadAuditWorkScenario(
 	assert.equal(unknownActor.work.summary.completed_total, 1);
 	assert.equal(unknownActor.work.summary.outreach_total, 0);
 	assert.equal(unknownActor.work.coverage.unknown_author, 1);
-	assert.equal(
-		unknownActor.work.work_filters.effective.actor.is_unknown,
-		true
-	);
+	assert.equal(unknownActor.work.work_filters.effective.actor.is_unknown, true);
 
 	const inactiveFiltered = await readReport(
 		context,
@@ -968,10 +1011,15 @@ export async function leadAuditWorkScenario(
 
 	const notesOnly = await readReport(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, activity_type: 'Note' },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			activity_type: 'Note',
+		},
 		token
 	);
-	assert.equal(notesOnly.work.summary.completed_total, 2);
+	assert.equal(notesOnly.work.summary.completed_total, 3);
 	assert.equal(notesOnly.work.summary.outreach_total, 0);
 
 	const unknownType = await readReport(
@@ -989,19 +1037,26 @@ export async function leadAuditWorkScenario(
 
 	const connected = await readReport(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, outcome: 'Connected' },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			outcome: 'Connected',
+		},
 		token
 	);
 	assert.equal(connected.work.summary.completed_total, 2);
 	assert.equal(connected.work.summary.successful_contact, 2);
-	assert.equal(
-		appliedFilter(connected.work, 'outcome').display,
-		'Connected'
-	);
+	assert.equal(appliedFilter(connected.work, 'outcome').display, 'Connected');
 
 	const noAnswer = await readReport(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, outcome: 'No Answer' },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			outcome: 'No Answer',
+		},
 		token
 	);
 	assert.equal(noAnswer.work.summary.completed_total, 2);
@@ -1022,7 +1077,12 @@ export async function leadAuditWorkScenario(
 
 	const sent = await readReport(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, outcome: 'email_sent' },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			outcome: 'email_sent',
+		},
 		token
 	);
 	assert.equal(sent.work.summary.completed_total, 2);
@@ -1136,12 +1196,12 @@ export async function leadAuditWorkScenario(
 		{ ...baseEvidence, metric: 'completed', page: 1, limit: 5 },
 		token
 	);
-	assert.equal(firstPage.pagination.total, 15);
+	assert.equal(firstPage.pagination.total, 16);
 	assert.equal(firstPage.pagination.limit, 5);
-	assert.equal(firstPage.pagination.total_pages, 3);
+	assert.equal(firstPage.pagination.total_pages, 4);
 	assert.equal(firstPage.activities.length, 5);
 	const collected: number[] = [];
-	for (let page = 1; page <= 3; page += 1) {
+	for (let page = 1; page <= 4; page += 1) {
 		const evidence = await readWorkEvidence(
 			context,
 			{ ...baseEvidence, metric: 'completed', page, limit: 5 },
@@ -1149,8 +1209,8 @@ export async function leadAuditWorkScenario(
 		);
 		collected.push(...evidence.activities.map((row) => row.id));
 	}
-	assert.equal(collected.length, 15, 'every page is reachable');
-	assert.equal(new Set(collected).size, 15, 'no activity appears twice');
+	assert.equal(collected.length, 16, 'every page is reachable');
+	assert.equal(new Set(collected).size, 16, 'no activity appears twice');
 	for (let index = 1; index < firstPage.activities.length; index += 1) {
 		const previous = firstPage.activities[index - 1];
 		const current = firstPage.activities[index];
@@ -1167,7 +1227,7 @@ export async function leadAuditWorkScenario(
 		['call', 8],
 		['email', 3],
 		['meeting', 1],
-		['note', 2],
+		['note', 3],
 		['unknown_type', 1],
 		['undated', 1],
 		['cancelled', 1],
@@ -1204,7 +1264,10 @@ export async function leadAuditWorkScenario(
 		token
 	);
 	assert.equal(unknownTypeEvidence.activities[0]?.lead.id, f.id);
-	assert.equal(unknownTypeEvidence.activities[0]?.activity_type.is_unknown, true);
+	assert.equal(
+		unknownTypeEvidence.activities[0]?.activity_type.is_unknown,
+		true
+	);
 
 	const meetingEvidence = await readWorkEvidence(
 		context,
@@ -1235,8 +1298,7 @@ export async function leadAuditWorkScenario(
 	);
 	assert.ok(
 		callsEvidence.activities.some(
-			(row) =>
-				row.id === aNoAnswer && row.occurred_at === '2026-05-01 00:00:00'
+			(row) => row.id === aNoAnswer && row.occurred_at === '2026-05-01 00:00:00'
 		),
 		'the inclusive start day includes midnight'
 	);
@@ -1310,8 +1372,9 @@ export async function leadAuditWorkScenario(
 		1
 	);
 	assert.equal(
-		inactiveEvidence.activities.find((row) => row.activity_type.value === 'Email')
-			?.reply_confirmed,
+		inactiveEvidence.activities.find(
+			(row) => row.activity_type.value === 'Email'
+		)?.reply_confirmed,
 		false
 	);
 
@@ -1329,7 +1392,7 @@ export async function leadAuditWorkScenario(
 		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search },
 		token
 	);
-	assert.equal(beforeCorrection.work.summary.completed_total, 16);
+	assert.equal(beforeCorrection.work.summary.completed_total, 17);
 	assert.equal(beforeCorrection.work.summary.calls_failed, 5);
 	assert.equal(beforeCorrection.work.summary.successful_contact, 3);
 
@@ -1364,7 +1427,7 @@ export async function leadAuditWorkScenario(
 	);
 	assert.equal(
 		afterCorrection.work.summary.completed_total,
-		16,
+		17,
 		'a correction never adds another completed activity'
 	);
 	assert.equal(afterCorrection.work.summary.calls_failed, 4);
@@ -1428,7 +1491,9 @@ export async function leadAuditWorkScenario(
 	assert.equal(movedRows.length, 3);
 	assert.ok(
 		movedRows.every(
-			(row) => row.author.id === context.creator.id && row.lead.current_owner?.id === context.assignee.id
+			(row) =>
+				row.author.id === context.creator.id &&
+				row.lead.current_owner?.id === context.assignee.id
 		),
 		'the evidence keeps the author and shows the current owner separately'
 	);
@@ -1441,5 +1506,8 @@ export async function leadAuditWorkScenario(
 	);
 	assert.equal((await context.reader.leadRow(i.id))?.isDelete, 1);
 	assert.equal((await context.reader.leadRow(h.id))?.isDelete ?? 0, 0);
-	assert.equal((await context.reader.leadRow(c.id))?.owner_user_id, context.assignee.id);
+	assert.equal(
+		(await context.reader.leadRow(c.id))?.owner_user_id,
+		context.assignee.id
+	);
 }

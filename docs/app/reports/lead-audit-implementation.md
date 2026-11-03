@@ -275,3 +275,18 @@ Verification record:
   remained 320 pixels; at 200% zoom the header title wrapped instead of
   clipping. The header's decorative icon is hidden below the `sm`
   breakpoint, where it previously competed with the title.
+- **2026-11-03 — review corrections:** independent review found and the branch
+  now fixes five defects, each with a regression assertion: the audit-only
+  incompatible filters were already rejected on the section route but the
+  combined report read also refused valid other views (view scoping); a
+  `proposal_link` legacy-review narrative returned stored Proposal ids and
+  titles without `proposals:read` (now `Restricted`, proved for both grant
+  states); audit coverage counted scheduled calls and emails as missing
+  outcomes (now completed-only); a soft-deleted author stayed labelled active
+  and escaped the inactive disclosure (now the same disabled, inactive-status,
+  or soft-deleted test the current-owner section uses, also applied to owner
+  and author filter options); and the shared client transport dropped the
+  literal value `all`, hiding a stored `all` source label and, with the
+  undated toggle, switching conversion evidence to a different population
+  (the report now builds its own query). Re-run audit and work scenarios
+  passed with the new fixtures; the transport has a unit test.

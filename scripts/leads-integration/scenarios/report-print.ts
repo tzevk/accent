@@ -258,7 +258,12 @@ const EvidenceRowSchema = z
 		company_name: z.string(),
 		downstream: z
 			.object({
-				proposal_state: z.enum(['none', 'unresolved', 'restricted', 'available']),
+				proposal_state: z.enum([
+					'none',
+					'unresolved',
+					'restricted',
+					'available',
+				]),
 				proposal: z
 					.object({
 						id: z.number(),
@@ -394,10 +399,8 @@ async function seedActivity(
 		recordedAt?: string;
 	}
 ): Promise<number> {
-	const occurredAt =
-		input.occurredAt === undefined ? null : input.occurredAt;
-	const recordedAt =
-		input.recordedAt ?? occurredAt ?? '2026-05-01 00:00:00';
+	const occurredAt = input.occurredAt === undefined ? null : input.occurredAt;
+	const recordedAt = input.recordedAt ?? occurredAt ?? '2026-05-01 00:00:00';
 	const result = await context.reader.fixtureWrite(
 		`INSERT INTO lead_activities (
        lead_id, activity_type, status, call_outcome, reply_confirmed,
@@ -1047,9 +1050,8 @@ export async function leadAuditPrintScenario(
 	// The report reader has no reports:export grant: printing (and reading the
 	// summary) must still work.
 	assert.equal(
-		(
-			await context.http.get(reportPath, context.reportReader.sessionToken)
-		).status,
+		(await context.http.get(reportPath, context.reportReader.sessionToken))
+			.status,
 		200
 	);
 
@@ -1145,8 +1147,14 @@ export async function leadAuditPrintScenario(
 		token
 	);
 	assert.equal(restrictedEvidence.body.pagination.total, 2);
-	assert.equal(restrictedEvidence.body.downstream_options.include_proposals, false);
-	assert.equal(restrictedEvidence.body.downstream_options.include_projects, false);
+	assert.equal(
+		restrictedEvidence.body.downstream_options.include_proposals,
+		false
+	);
+	assert.equal(
+		restrictedEvidence.body.downstream_options.include_projects,
+		false
+	);
 	assert.ok(
 		restrictedEvidence.body.rows.every(
 			(row) =>
@@ -1168,15 +1176,18 @@ export async function leadAuditPrintScenario(
 		},
 		proposalsOnly.sessionToken
 	);
-	const proposalDRow = proposalEvidence.body.rows.find((row) => row.id === d.id);
+	const proposalDRow = proposalEvidence.body.rows.find(
+		(row) => row.id === d.id
+	);
 	assert.ok(proposalDRow, 'the undated canonical Lead is in handoff evidence');
 	assert.equal(proposalDRow.downstream.proposal_state, 'available');
-	assert.equal(
-		proposalDRow.downstream.proposal?.title,
-		`${proposalPrefix} D`
+	assert.equal(proposalDRow.downstream.proposal?.title, `${proposalPrefix} D`);
+	// Proposal D was never linked to a Project: the state is none, not a
+	// permission denial. Proposal B is the one whose Project stays restricted.
+	assert.equal(proposalDRow.downstream.proposal?.project_state, 'none');
+	const proposalBRow = proposalEvidence.body.rows.find(
+		(row) => row.id === b.id
 	);
-	assert.equal(proposalDRow.downstream.proposal?.project_state, 'restricted');
-	const proposalBRow = proposalEvidence.body.rows.find((row) => row.id === b.id);
 	assert.ok(proposalBRow, 'the dated handoff Lead is in handoff evidence');
 	assert.equal(proposalBRow.downstream.proposal?.project_state, 'restricted');
 	assert.equal(proposalEvidence.text.includes(projectPrefix), false);

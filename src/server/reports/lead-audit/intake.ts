@@ -47,6 +47,8 @@ interface OwnerOptionRow {
 	full_name: string | null;
 	username: string | null;
 	is_active: number | boolean | null;
+	status: string | null;
+	isDelete: number | boolean | null;
 }
 
 function toCount(value: unknown): number {
@@ -79,10 +81,10 @@ export async function readLeadAuditIntakeSection(
 	const common = buildLeadAuditFilterCondition(filters);
 	const recorded = joinConditions(common, recordedInPeriod(filters));
 	const enquiry = joinConditions(common, enquiryInPeriod(filters));
-	const recordedWithoutEnquiry = joinConditions(
-		recorded,
-		{ sql: 'l.enquiry_date IS NULL', params: [] }
-	);
+	const recordedWithoutEnquiry = joinConditions(recorded, {
+		sql: 'l.enquiry_date IS NULL',
+		params: [],
+	});
 	const searchOnly = buildLeadAuditSearchCondition(filters);
 
 	const [
@@ -122,11 +124,11 @@ export async function readLeadAuditIntakeSection(
 		db.execute(
 			`SELECT u.id,
               COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS full_name,
-              u.username, u.is_active
+              u.username, u.is_active, u.status, u.isDelete
          FROM leads l
          JOIN users u ON u.id = l.owner_user_id
          WHERE ${searchOnly.sql}
-         GROUP BY u.id, u.full_name, u.username, u.is_active
+         GROUP BY u.id, u.full_name, u.username, u.is_active, u.status, u.isDelete
          ORDER BY full_name ASC, u.id ASC`,
 			searchOnly.params
 		),
@@ -151,8 +153,14 @@ export async function readLeadAuditIntakeSection(
 	const [intakeRows] = intakeTrendResult as unknown as [BucketRow[], unknown];
 	const [enquiryRows] = enquiryTrendResult as unknown as [BucketRow[], unknown];
 	const [sourceRows] = sourceResult as unknown as [SourceRow[], unknown];
-	const [ownerRows] = ownerOptionResult as unknown as [OwnerOptionRow[], unknown];
-	const [sourceOptionRows] = sourceOptionResult as unknown as [SourceRow[], unknown];
+	const [ownerRows] = ownerOptionResult as unknown as [
+		OwnerOptionRow[],
+		unknown,
+	];
+	const [sourceOptionRows] = sourceOptionResult as unknown as [
+		SourceRow[],
+		unknown,
+	];
 
 	const sources = toSourceGroups(sourceRows);
 	summary.distinct_sources = sources.length;
@@ -177,10 +185,15 @@ export async function readLeadAuditIntakeSection(
 			owners: ownerRows.map((row) => ({
 				id: Number(row.id),
 				full_name: String(row.full_name ?? row.username ?? ''),
-				is_active:
-					row.is_active === null || row.is_active === undefined
-						? true
-						: Boolean(Number(row.is_active)),
+				is_active: !(
+					(row.is_active !== null &&
+						row.is_active !== undefined &&
+						Number(row.is_active) === 0) ||
+					String(row.status ?? '').toLowerCase() === 'inactive' ||
+					(row.isDelete !== null &&
+						row.isDelete !== undefined &&
+						Number(row.isDelete) === 1)
+				),
 			})),
 			sources: toSourceGroups(sourceOptionRows),
 			stages: [
@@ -189,8 +202,6 @@ export async function readLeadAuditIntakeSection(
 			],
 			priorities: [...LEAD_AUDIT_PRIORITIES],
 		},
-		disclosures: buildLeadAuditDisclosures(
-			summary.missing_enquiry_date
-		),
+		disclosures: buildLeadAuditDisclosures(summary.missing_enquiry_date),
 	};
 }

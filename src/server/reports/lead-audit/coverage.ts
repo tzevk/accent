@@ -124,9 +124,11 @@ export async function readLeadAuditCoverageSection(
             AND (e.activity_type IS NULL OR e.activity_type NOT IN ('Call', 'Email', 'Meeting', 'Note'))
             THEN 1 ELSE 0 END) AS unknown_activity_type,
           SUM(CASE WHEN e.evidence_type = 'activity'
+            AND e.status = 'Completed'
             AND e.activity_type = 'Call' AND e.call_outcome IS NULL
             THEN 1 ELSE 0 END) AS unknown_call_outcome,
           SUM(CASE WHEN e.evidence_type = 'activity'
+            AND e.status = 'Completed'
             AND e.activity_type = 'Email' AND e.reply_confirmed IS NULL
             THEN 1 ELSE 0 END) AS unknown_email_reply,
           SUM(CASE WHEN e.evidence_type = 'legacy_review' AND e.actor_id IS NULL THEN 1 ELSE 0 END) AS automatic_legacy_reviews

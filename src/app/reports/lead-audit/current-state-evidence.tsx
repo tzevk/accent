@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { apiGet } from '@/lib/api-client';
+import { leadAuditGet } from './api';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
 import type {
 	CurrentStateEvidenceSelection,
@@ -49,7 +49,7 @@ export default function CurrentStateEvidence({
 	const query = useQuery<Envelope>({
 		queryKey: ['reports', 'lead-audit', 'current-state-evidence', params],
 		queryFn: () =>
-			apiGet('/api/reports/lead-audit/current-state/evidence', params),
+			leadAuditGet('/api/reports/lead-audit/current-state/evidence', params),
 	});
 	const data = query.data?.data;
 	const error =

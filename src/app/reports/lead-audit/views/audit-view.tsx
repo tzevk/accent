@@ -9,7 +9,7 @@ import {
 	ShieldCheckIcon,
 	XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { apiGet } from '@/lib/api-client';
+import { leadAuditGet } from '../api';
 import { formatDateTime } from '@/lib/format';
 import type {
 	LeadAuditDeletedEvidenceRow,
@@ -547,7 +547,7 @@ export default function AuditView({
 	const evidenceQuery = useQuery<AuditEnvelope>({
 		queryKey: ['reports', 'lead-audit', 'audit', appliedQuery, page],
 		queryFn: () =>
-			apiGet('/api/reports/lead-audit/audit', { ...appliedQuery, page }),
+			leadAuditGet('/api/reports/lead-audit/audit', { ...appliedQuery, page }),
 		enabled: page > 1,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
@@ -564,7 +564,7 @@ export default function AuditView({
 			deletedPage,
 		],
 		queryFn: () =>
-			apiGet('/api/reports/lead-audit/audit/deleted', {
+			leadAuditGet('/api/reports/lead-audit/audit/deleted', {
 				...appliedQuery,
 				page: deletedPage,
 			}),
@@ -580,7 +580,7 @@ export default function AuditView({
 		setNarrativeError('');
 		setNarrativeLoading(true);
 		try {
-			const response = await apiGet<NarrativeEnvelope>(
+			const response = await leadAuditGet<NarrativeEnvelope>(
 				'/api/reports/lead-audit/audit/narrative',
 				{ type: row.evidence_type, id: row.evidence_id }
 			);

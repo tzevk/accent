@@ -1486,9 +1486,19 @@ export async function readLeadAuditEvidenceNarrative(
 									[
 										'original_value',
 										'Original stored value',
-										row.original_value,
+										row.review_type === 'proposal_link' &&
+										!(options.includeProposals ?? false)
+											? 'Restricted'
+											: row.original_value,
 									],
-									['resolved_value', 'Resolved value', row.resolved_value],
+									[
+										'resolved_value',
+										'Resolved value',
+										row.review_type === 'proposal_link' &&
+										!(options.includeProposals ?? false)
+											? 'Restricted'
+											: row.resolved_value,
+									],
 									[
 										'resolved_reference',
 										'Resolved reference',

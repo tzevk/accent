@@ -195,7 +195,12 @@ function assertContains(
 	text: string,
 	message: string
 ): void {
-	assert.ok(workbookStrings(workbook).includes(text), message);
+	// A narrative cell may carry more than the fragment (for example
+	// `Alpha confidential note =2+2`); the fragment only has to appear.
+	assert.ok(
+		workbookStrings(workbook).some((value) => value.includes(text)),
+		message
+	);
 }
 
 function assertAbsentFragment(
@@ -823,14 +828,17 @@ export async function leadAuditExportScenario(
 	assert.equal(cellText(registerB.getCell(5)), 'Unknown source');
 	assert.equal(cellText(registerB.getCell(9)), 'Unknown');
 
-	const workB = defaultWorkRows.find((row) =>
-		cellText(row.getCell(3)) === `=1+1 ${marker} Beta`
+	const workB = defaultWorkRows.find(
+		(row) => cellText(row.getCell(3)) === `=1+1 ${marker} Beta`
 	);
 	assert.ok(workB, 'the unknown-author activity is exported');
 	assert.equal(cellText(workB.getCell(11)), 'Unknown author');
 	assert.equal(cellText(workB.getCell(12)), 'Unknown author');
 
-	const coverageSheet = workbookSheet(defaultWorkbook, 'Coverage and exclusions');
+	const coverageSheet = workbookSheet(
+		defaultWorkbook,
+		'Coverage and exclusions'
+	);
 	const missingSource = rowByFirstCell(coverageSheet, 'missing_source');
 	assert.ok(missingSource, 'coverage reports the missing source fact');
 	assert.equal(cellText(missingSource.getCell(3)), '1');

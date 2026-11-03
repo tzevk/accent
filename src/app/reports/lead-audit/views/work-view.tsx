@@ -9,7 +9,7 @@ import {
 	FunnelIcon,
 	UserGroupIcon,
 } from '@heroicons/react/24/outline';
-import { apiGet } from '@/lib/api-client';
+import { leadAuditGet } from '../api';
 import type {
 	LeadAuditWorkCoverage,
 	LeadAuditWorkEvidenceSection,
@@ -198,7 +198,7 @@ export default function WorkView({
 	const evidenceQuery = useQuery<EvidenceEnvelope>({
 		queryKey: ['reports', 'lead-audit', 'work-evidence', evidenceParams],
 		queryFn: () =>
-			apiGet<EvidenceEnvelope>(
+			leadAuditGet<EvidenceEnvelope>(
 				'/api/reports/lead-audit/work/evidence',
 				evidenceParams
 			),

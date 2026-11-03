@@ -9,12 +9,8 @@ import {
 	ClockIcon,
 	ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
-import { apiGet } from '@/lib/api-client';
-import {
-	formatCount,
-	formatDuration,
-	formatShare,
-} from '../figures';
+import { leadAuditGet } from '../api';
+import { formatCount, formatDuration, formatShare } from '../figures';
 import type {
 	LeadAuditTimingEvidenceSection,
 	LeadAuditTimingPopulation,
@@ -92,9 +88,7 @@ function MetricCard({
 			onClick={onClick}
 			disabled={disabled}
 			className={`group rounded-xl border p-4 text-left shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 ${colour} ${
-				disabled
-					? 'cursor-default opacity-80'
-					: 'hover:border-[#64126D]'
+				disabled ? 'cursor-default opacity-80' : 'hover:border-[#64126D]'
 			}`}
 		>
 			<div className="flex items-center justify-between gap-2">
@@ -113,9 +107,8 @@ function MetricCard({
 }
 
 export default function TimingView({ section, appliedQuery }: TimingViewProps) {
-	const [population, setPopulation] = useState<LeadAuditTimingPopulation | null>(
-		null
-	);
+	const [population, setPopulation] =
+		useState<LeadAuditTimingPopulation | null>(null);
 	const [page, setPage] = useState(1);
 
 	const evidenceQuery = useQuery<EvidenceEnvelope>({
@@ -128,7 +121,7 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 			appliedQuery,
 		],
 		queryFn: () =>
-			apiGet('/api/reports/lead-audit/timing/evidence', {
+			leadAuditGet('/api/reports/lead-audit/timing/evidence', {
 				...appliedQuery,
 				metric: population ?? 'all',
 				page,
@@ -168,14 +161,14 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 					</h2>
 					<p className="text-sm text-gray-600">
 						Elapsed database time from system entry to the earliest evidenced
-						completed Call, Email, or Meeting for each Lead in the selected
-						Lead Intake Cohort. Notes and scheduled work are not outreach. This
-						is evidenced outreach, not client response time.
+						completed Call, Email, or Meeting for each Lead in the selected Lead
+						Intake Cohort. Notes and scheduled work are not outreach. This is
+						evidenced outreach, not client response time.
 					</p>
 					<p className="mt-1 text-xs text-gray-600">
 						Clock: {section.metric.clock} Observation:{' '}
-						{section.metric.observation} Generated{' '}
-						{section.meta.generated_at} ({section.meta.time_zone.label}).
+						{section.metric.observation} Generated {section.meta.generated_at} (
+						{section.meta.time_zone.label}).
 					</p>
 				</div>
 
@@ -195,10 +188,11 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 								</h3>
 								<p className="mt-0.5 text-sm text-amber-900">
 									No valid timing sample exists for this cohort, so the metric
-									is unavailable rather than zero. Coverage: {formatCount(section.cohort_leads)}{' '}
-									cohort Lead(s), {formatCount(section.without_outreach)} without
-									evidenced outreach, and {formatCount(exclusions.total)}{' '}
-									excluded for unknown or negative timing evidence.
+									is unavailable rather than zero. Coverage:{' '}
+									{formatCount(section.cohort_leads)} cohort Lead(s),{' '}
+									{formatCount(section.without_outreach)} without evidenced
+									outreach, and {formatCount(exclusions.total)} excluded for
+									unknown or negative timing evidence.
 								</p>
 							</div>
 						</div>
@@ -334,9 +328,7 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 							<dt className="text-xs font-bold uppercase tracking-wide text-gray-700">
 								{DISCLOSURE_LABELS[disclosure.code] ?? disclosure.code}
 							</dt>
-							<dd className="mt-1 text-sm text-gray-700">
-								{disclosure.text}
-							</dd>
+							<dd className="mt-1 text-sm text-gray-700">{disclosure.text}</dd>
 						</div>
 					))}
 				</dl>
@@ -348,8 +340,8 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 						<ul className="mt-1 space-y-1 text-sm text-amber-900">
 							{section.filter_scope.ignored.map((entry) => (
 								<li key={entry.filter}>
-									<span className="font-semibold">{entry.label}</span>{' '}
-									({entry.value}): {entry.reason}
+									<span className="font-semibold">{entry.label}</span> (
+									{entry.value}): {entry.reason}
 								</li>
 							))}
 						</ul>
@@ -417,8 +409,7 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 						</div>
 					) : evidence === null || evidence.rows.length === 0 ? (
 						<p className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-							No cohort Lead matches this population under the applied
-							filters.
+							No cohort Lead matches this population under the applied filters.
 						</p>
 					) : (
 						<>
@@ -519,7 +510,9 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 									<div className="flex gap-2">
 										<button
 											type="button"
-											onClick={() => setPage((current) => Math.max(1, current - 1))}
+											onClick={() =>
+												setPage((current) => Math.max(1, current - 1))
+											}
 											disabled={evidence.pagination.page <= 1}
 											className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 										>

@@ -9,10 +9,13 @@ import {
 } from '@heroicons/react/24/outline';
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
-import { apiGet } from '@/lib/api-client';
+import { leadAuditGet } from './api';
 import { LEAD_AUDIT_VIEWS } from '@/server/reports/lead-audit/types';
 import FilterToolbar from './filter-toolbar';
 import ReportHeader from './report-header';
+import PrintAction from './print-action';
+import PrintSummary from './print-summary';
+import { LeadAuditExportAction } from './export-action';
 import IntakeView from './views/intake-view';
 import OverviewView from './views/overview-view';
 import WorkView from './views/work-view';
@@ -104,7 +107,7 @@ export default function LeadAuditPage() {
 
 	const reportQuery = useQuery<ReportEnvelope>({
 		queryKey: ['reports', 'lead-audit', 'report', reportParams],
-		queryFn: () => apiGet('/api/reports/lead-audit', reportParams),
+		queryFn: () => leadAuditGet('/api/reports/lead-audit', reportParams),
 		enabled: !authLoading && hasAccess,
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
@@ -135,7 +138,8 @@ export default function LeadAuditPage() {
 
 	const registerQuery = useQuery<RegisterEnvelope>({
 		queryKey: ['reports', 'lead-audit', 'register', registerParams],
-		queryFn: () => apiGet('/api/reports/lead-audit/register', registerParams),
+		queryFn: () =>
+			leadAuditGet('/api/reports/lead-audit/register', registerParams),
 		enabled:
 			!authLoading && hasAccess && activeView === 'intake' && report !== null,
 		refetchOnWindowFocus: false,
@@ -157,7 +161,10 @@ export default function LeadAuditPage() {
 			conversionParams,
 		],
 		queryFn: () =>
-			apiGet('/api/reports/lead-audit/conversion/evidence', conversionParams),
+			leadAuditGet(
+				'/api/reports/lead-audit/conversion/evidence',
+				conversionParams
+			),
 		enabled:
 			!authLoading && hasAccess && activeView === 'intake' && report !== null,
 	});
@@ -349,6 +356,19 @@ export default function LeadAuditPage() {
 						onReset={resetFilters}
 						busy={reportQuery.isFetching}
 						invalidMessage={validationMessage}
+						actions={
+							<>
+								<LeadAuditExportAction
+									query={appliedQuery}
+									canExport={canExport}
+								/>
+								<PrintAction
+									disabled={
+										reportLoading || reportError !== '' || report === null
+									}
+								/>
+							</>
+						}
 					/>
 
 					{reportLoading ? (
@@ -478,6 +498,7 @@ export default function LeadAuditPage() {
 							/>
 						</div>
 					)}
+					{report ? <PrintSummary report={report} applied={applied} /> : null}
 				</div>
 			</main>
 		</div>

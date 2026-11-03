@@ -13,6 +13,11 @@
  * zoom, and the head of every table repeats when the table spans pages.
  */
 export const leadAuditPrintStyles = `
+/* The summary exists only for printing; the screen shows the live report. */
+.lead-audit-print-root {
+	display: none;
+}
+
 @media print {
 	@page {
 		size: A4 portrait;

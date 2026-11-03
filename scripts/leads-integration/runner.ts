@@ -153,6 +153,8 @@ import { leadAuditConversionScenario } from './scenarios/report-conversion.ts';
 import { leadAuditTimingScenario } from './scenarios/report-timing.ts';
 import { leadAuditWorkScenario } from './scenarios/report-work.ts';
 import { reportAuditScenario } from './scenarios/report-audit.ts';
+import { leadAuditPrintScenario } from './scenarios/report-print.ts';
+import { leadAuditExportScenario } from './scenarios/report-export.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -2468,6 +2470,8 @@ export async function runLeadsIntegration(
 		await runScenario('lead-audit-timing', leadAuditTimingScenario, context);
 		await runScenario('lead-audit-work', leadAuditWorkScenario, context);
 		await runScenario('lead-audit-audit', reportAuditScenario, context);
+		await runScenario('lead-audit-print', leadAuditPrintScenario, context);
+		await runScenario('lead-audit-export', leadAuditExportScenario, context);
 		log(IBAND);
 		if (passedScenarios === 0) {
 			fail(`no scenario matched ${JSON.stringify(selectedScenario)}`);

@@ -19,12 +19,12 @@ the rest of the report. They never write.
 
 ## Routes
 
-| Route | Purpose |
-| --- | --- |
-| `GET /api/reports/lead-audit/audit` | One page of audit evidence, full-result totals, the first page of retained deleted evidence, and evidence filter options. |
-| `GET /api/reports/lead-audit/audit/deleted` | Separately paginated retained deleted-record evidence. |
-| `GET /api/reports/lead-audit/audit/narrative?type=<type>&id=<id>` | On-demand narrative evidence for one row. |
-| `GET /api/reports/lead-audit/coverage` | Data coverage, exclusions, and history limits. |
+| Route                                                             | Purpose                                                                                                                   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/reports/lead-audit/audit`                               | One page of audit evidence, full-result totals, the first page of retained deleted evidence, and evidence filter options. |
+| `GET /api/reports/lead-audit/audit/deleted`                       | Separately paginated retained deleted-record evidence.                                                                    |
+| `GET /api/reports/lead-audit/audit/narrative?type=<type>&id=<id>` | On-demand narrative evidence for one row.                                                                                 |
+| `GET /api/reports/lead-audit/coverage`                            | Data coverage, exclusions, and history limits.                                                                            |
 
 Access requires `reports:read` and `leads:read`, or the established
 super-admin bypass. An unrelated Project Activities report field grant is
@@ -37,14 +37,14 @@ fields. A Project is only read through a readable Proposal.
 
 The selected period filters audit evidence by the moment it was recorded:
 
-| Evidence | Recording time | Occurrence time |
-| --- | --- | --- |
-| Activity | `COALESCE(recorded_at, created_at)` | `occurred_at` (may be unknown) |
-| Stage or lifecycle decision | `COALESCE(recorded_at, created_at)` | Same recorded decision moment |
-| Owner change | `created_at` | Same recorded change moment |
-| Activity correction | `corrected_at` | Same correction moment |
-| Legacy review | `resolved_at` | Same review moment |
-| Conversion | `COALESCE(created_at, converted_at)` | `converted_at` |
+| Evidence                    | Recording time                       | Occurrence time                |
+| --------------------------- | ------------------------------------ | ------------------------------ |
+| Activity                    | `COALESCE(recorded_at, created_at)`  | `occurred_at` (may be unknown) |
+| Stage or lifecycle decision | `COALESCE(recorded_at, created_at)`  | Same recorded decision moment  |
+| Owner change                | `created_at`                         | Same recorded change moment    |
+| Activity correction         | `corrected_at`                       | Same correction moment         |
+| Legacy review               | `resolved_at`                        | Same review moment             |
+| Conversion                  | `COALESCE(created_at, converted_at)` | `converted_at`                 |
 
 Occurrence time is shown beside recording time and never selects the audit
 row. A late-recorded activity whose occurrence falls inside the period is
@@ -141,7 +141,10 @@ actor, evidence type, activity type, outcome, and undated still apply.
 ## Narration and exports
 
 Narrative is read on demand and rendered as plain text. It is never
-interpreted as HTML.
+interpreted as HTML. A `proposal_link` legacy review stores Proposal ids and
+titles in its free-text columns, so without `proposals:read` its original
+value, resolved value, and resolved reference are returned as `Restricted`,
+exactly like the structured conversion fields.
 
 Exports use `evidence-privacy.ts`, shared by this section and the workbook
 export:
