@@ -15,10 +15,12 @@ import {
 import { leadAuditSourceValue } from './source';
 import type {
 	LeadAuditClock,
+	LeadAuditEffectiveFilters,
 	LeadAuditFilters,
 	LeadAuditMetric,
 	LeadAuditPagination,
 	LeadAuditRegisterMetric,
+	LeadAuditRegisterResult,
 	LeadAuditRegisterRow,
 	LeadAuditRegisterSection,
 } from './types';
@@ -77,19 +79,34 @@ function metricCondition(filters: LeadAuditFilters, metric: LeadAuditMetric) {
 	}
 }
 
-export async function readLeadAuditRegisterSection(
+interface RegisterRead {
+	total: number;
+	missingEnquiryDate: number;
+	leads: LeadAuditRegisterRow[];
+	effective: LeadAuditEffectiveFilters;
+}
+
+/**
+ * The register rows and their full-result total. The workbook passes no
+ * pagination so it receives the complete applied population under exactly
+ * the same condition, projection, and ordering as one HTTP page.
+ */
+async function readRegisterRows(
 	db: DbConnection,
 	filters: LeadAuditFilters,
 	metric: LeadAuditMetric,
-	pagination: LeadAuditPagination,
-	clock: LeadAuditClock
-): Promise<LeadAuditRegisterSection> {
+	pagination: LeadAuditPagination | null
+): Promise<RegisterRead> {
 	const condition = metricCondition(filters, metric);
 	const order =
 		metric === 'enquired'
 			? 'l.enquiry_date DESC, l.created_at DESC, l.id DESC'
 			: 'l.created_at DESC, l.id DESC';
-	const offset = (pagination.page - 1) * pagination.limit;
+	const pageClause = pagination === null ? '' : 'LIMIT ? OFFSET ?';
+	const pageParams =
+		pagination === null
+			? []
+			: [pagination.limit, (pagination.page - 1) * pagination.limit];
 	const missingCondition = joinConditions(
 		joinConditions(
 			buildLeadAuditFilterCondition(filters),
@@ -110,8 +127,8 @@ export async function readLeadAuditRegisterSection(
          FROM leads l
          WHERE ${condition.sql}
          ORDER BY ${order}
-         LIMIT ? OFFSET ?`,
-			[...condition.params, pagination.limit, offset]
+         ${pageClause}`,
+			[...condition.params, ...pageParams]
 		),
 		db.execute(
 			`SELECT COUNT(*) AS total FROM leads l WHERE ${missingCondition.sql}`,
@@ -173,17 +190,54 @@ export async function readLeadAuditRegisterSection(
 		};
 	});
 
+	return { total, missingEnquiryDate, leads, effective };
+}
+
+/** One page of the intake evidence, retaining every applied filter. */
+export async function readLeadAuditRegisterSection(
+	db: DbConnection,
+	filters: LeadAuditFilters,
+	metric: LeadAuditMetric,
+	pagination: LeadAuditPagination,
+	clock: LeadAuditClock
+): Promise<LeadAuditRegisterSection> {
+	const read = await readRegisterRows(db, filters, metric, pagination);
 	return {
-		scope: buildLeadAuditScope(filters, effective),
+		scope: buildLeadAuditScope(filters, read.effective),
 		meta: buildLeadAuditMeta(clock),
 		metric: METRICS[metric],
-		leads,
+		leads: read.leads,
 		pagination: {
 			page: pagination.page,
 			limit: pagination.limit,
-			total,
-			total_pages: total === 0 ? 0 : Math.ceil(total / pagination.limit),
+			total: read.total,
+			total_pages:
+				read.total === 0 ? 0 : Math.ceil(read.total / pagination.limit),
 		},
-		disclosures: buildLeadAuditDisclosures(missingEnquiryDate),
+		disclosures: buildLeadAuditDisclosures(read.missingEnquiryDate),
+	};
+}
+
+/**
+ * The complete applied intake population, for the workbook export.
+ *
+ * It uses the same condition, row projection, and ordering as the paginated
+ * reader but no page or limit, so the export never truncates the register and
+ * never invents a maximum page size.
+ */
+export async function readLeadAuditRegisterResult(
+	db: DbConnection,
+	filters: LeadAuditFilters,
+	metric: LeadAuditMetric,
+	clock: LeadAuditClock
+): Promise<LeadAuditRegisterResult> {
+	const read = await readRegisterRows(db, filters, metric, null);
+	return {
+		scope: buildLeadAuditScope(filters, read.effective),
+		meta: buildLeadAuditMeta(clock),
+		metric: METRICS[metric],
+		leads: read.leads,
+		total: read.total,
+		disclosures: buildLeadAuditDisclosures(read.missingEnquiryDate),
 	};
 }

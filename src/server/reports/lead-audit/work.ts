@@ -164,6 +164,9 @@ const METRICS: Record<LeadAuditWorkMetric, LeadAuditWorkEvidenceMetric> = {
 	},
 };
 
+/** The one set of work metric definitions, shared with the workbook export. */
+export const LEAD_AUDIT_WORK_METRICS = METRICS;
+
 const TYPE_OPTIONS = LEAD_AUDIT_ACTIVITY_FILTER_TYPES.map((value) => ({
 	value,
 	label: value === 'unknown' ? 'Unknown activity type' : value,

@@ -1,0 +1,142 @@
+'use client';
+
+import { useState } from 'react';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+
+interface LeadAuditExportActionProps {
+	/** The applied report query, exactly as the page sent it. */
+	query: Record<string, string | undefined>;
+	/** True when the reader holds the Reports export grant. */
+	canExport: boolean;
+}
+
+const EXPORT_PATH = '/api/reports/lead-audit/download';
+
+function downloadUrl(
+	query: Record<string, string | undefined>,
+	includeNarrative: boolean
+): string {
+	const params = new URLSearchParams();
+	for (const [key, value] of Object.entries(query)) {
+		if (typeof value === 'string' && value !== '') params.set(key, value);
+	}
+	if (includeNarrative) params.set('include_narrative', '1');
+	const search = params.toString();
+	return search === '' ? EXPORT_PATH : `${EXPORT_PATH}?${search}`;
+}
+
+async function responseMessage(response: Response): Promise<string> {
+	try {
+		const parsed = (await response.json()) as { error?: unknown };
+		if (typeof parsed.error === 'string' && parsed.error !== '') {
+			return parsed.error;
+		}
+	} catch {
+		// A non-JSON error body still gets a status-based message below.
+	}
+	return `The workbook download failed (${response.status}).`;
+}
+
+/**
+ * Export Excel with an explicit detailed-evidence choice.
+ *
+ * The button downloads the complete applied workbook for the report's
+ * current query. Detailed evidence is off by default, so routine sharing
+ * carries structured evidence only; notes and reasons appear only after the
+ * reader selects the choice, and the server re-checks both the read and
+ * export grants before including them.
+ */
+export function LeadAuditExportAction({
+	query,
+	canExport,
+}: LeadAuditExportActionProps) {
+	const [includeNarrative, setIncludeNarrative] = useState(false);
+	const [pending, setPending] = useState(false);
+	const [message, setMessage] = useState('');
+
+	async function handleExport(): Promise<void> {
+		if (!canExport || pending) return;
+		setPending(true);
+		setMessage('');
+		try {
+			const response = await fetch(downloadUrl(query, includeNarrative), {
+				credentials: 'include',
+			});
+			if (!response.ok) {
+				setMessage(await responseMessage(response));
+				return;
+			}
+			const blob = await response.blob();
+			const objectUrl = URL.createObjectURL(blob);
+			const disposition = response.headers.get('Content-Disposition') || '';
+			const match = disposition.match(/filename="?([^";]+)"?/i);
+			const filename =
+				match?.[1] || `lead-audit-export-${Date.now()}.xlsx`;
+			const anchor = document.createElement('a');
+			anchor.href = objectUrl;
+			anchor.download = filename;
+			anchor.style.display = 'none';
+			document.body.appendChild(anchor);
+			anchor.click();
+			anchor.remove();
+			setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+			setMessage('Workbook downloaded.');
+		} catch (error) {
+			setMessage(
+				error instanceof Error
+					? error.message
+					: 'The workbook download failed.'
+			);
+		} finally {
+			setPending(false);
+		}
+	}
+
+	const checkboxId = 'lead-audit-include-detailed-evidence';
+	const statusId = 'lead-audit-export-status';
+
+	return (
+		<div className="flex flex-wrap items-center gap-2">
+			<button
+				type="button"
+				onClick={handleExport}
+				disabled={!canExport || pending}
+				aria-describedby={statusId}
+				className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white/10 px-3 text-xs font-medium text-white ring-1 ring-white/25 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-60"
+			>
+				<ArrowDownTrayIcon className="h-3.5 w-3.5" aria-hidden="true" />
+				{pending ? 'Preparing workbook…' : 'Export Excel'}
+			</button>
+			<span className="inline-flex items-center gap-1.5 text-xs text-white">
+				<input
+					id={checkboxId}
+					type="checkbox"
+					checked={includeNarrative}
+					onChange={(event) => setIncludeNarrative(event.target.checked)}
+					disabled={!canExport || pending}
+					aria-describedby={`${checkboxId}-hint`}
+					className="h-3.5 w-3.5 rounded border-white/50 bg-white/10 text-[#64126D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-60"
+				/>
+				<label htmlFor={checkboxId}>Include detailed evidence</label>
+			</span>
+			<span
+				id={`${checkboxId}-hint`}
+				className="text-[11px] text-white/75"
+			>
+				Off by default. Notes and reasons appear only when selected.
+			</span>
+			<span
+				id={statusId}
+				role="status"
+				aria-live="polite"
+				className="text-[11px] text-white/85"
+			>
+				{message !== ''
+					? message
+					: canExport
+						? ''
+						: 'The workbook download requires the Reports export grant (reports:export).'}
+			</span>
+		</div>
+	);
+}

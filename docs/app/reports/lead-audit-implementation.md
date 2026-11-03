@@ -20,6 +20,14 @@ basis, applied filters, and the coverage limits of this slice.
   `audit: null`, not fabricated empty audit counts.
 - `GET /api/reports/lead-audit/register` — one page of Lead evidence for the
   selected metric, retaining every applied filter.
+- `GET /api/reports/lead-audit/download` — the complete Excel evidence copy
+  for the applied scope. It requires `reports:export` in addition to both read
+  grants (super-admin bypass excepted), always covers the whole applied result
+  rather than the visible page, and reads every section on one observation.
+  Detailed narrative is opt-in with `include_narrative=1`; the default
+  workbook carries structured evidence only. See
+  [Lead Audit Excel export](lead-audit-export.md) for the sheet inventory,
+  reconciliation and privacy rules, and the live-copy limitation.
 
 **Navigation:** a Reports menu item that requires both `reports:read` and
 `leads:read`. `src/app/reports/page.jsx` (payroll slips) is unchanged.

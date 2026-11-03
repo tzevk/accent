@@ -30,6 +30,12 @@ import {
 import { readLeadAuditEvidenceSection } from './audit';
 import { readLeadAuditCoverageSection } from './coverage';
 import {
+	buildLeadAuditWorkbook,
+	leadAuditExportFilename,
+	readLeadAuditExportSnapshot,
+} from './export';
+import type { LeadAuditExportOptions } from './evidence-privacy';
+import {
 	LEAD_AUDIT_VIEWS,
 	LeadAuditValidationError,
 	type LeadAuditReport,
@@ -45,8 +51,14 @@ export {
 	parseLeadAuditPagination,
 } from './filters';
 export { readLeadAuditIntakeSection } from './intake';
-export { readLeadAuditRegisterSection } from './register';
+export {
+	readLeadAuditRegisterResult,
+	readLeadAuditRegisterSection,
+} from './register';
 export { resolveLeadAuditConversionOptions } from './conversion';
+export { LEAD_AUDIT_EXPORT_CONTENT_TYPE } from './export';
+export type { LeadAuditExportSnapshot } from './export';
+export type { LeadAuditExportOptions } from './evidence-privacy';
 export {
 	LEAD_AUDIT_METRICS,
 	LEAD_AUDIT_PRESETS,
@@ -68,6 +80,7 @@ export type {
 	LeadAuditPreset,
 	LeadAuditPriority,
 	LeadAuditRegisterMetric,
+	LeadAuditRegisterResult,
 	LeadAuditRegisterRow,
 	LeadAuditRegisterSection,
 	LeadAuditScope,
@@ -169,4 +182,23 @@ export async function readLeadAuditRegister(source: QuerySource) {
 		const pagination = parseLeadAuditPagination(source);
 		return readLeadAuditRegisterSection(db, filters, metric, pagination, clock);
 	});
+}
+
+/**
+ * The complete Excel evidence copy for the applied scope. One connection and
+ * one database clock cover every section and its detail rows, so the workbook
+ * reconciles under a single observation.
+ */
+export async function readLeadAuditExportWorkbook(
+	source: QuerySource,
+	downstream: LeadAuditConversionReadOptions,
+	options: LeadAuditExportOptions
+): Promise<{ buffer: Buffer; filename: string }> {
+	const snapshot = await readLeadAuditExportSnapshot(
+		source,
+		downstream,
+		options
+	);
+	const buffer = await buildLeadAuditWorkbook(snapshot);
+	return { buffer, filename: leadAuditExportFilename(snapshot) };
 }

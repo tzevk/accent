@@ -207,6 +207,19 @@ export interface LeadAuditRegisterSection {
 	disclosures: LeadAuditDisclosure[];
 }
 
+/**
+ * The complete applied intake population. The workbook reads this instead
+ * of a page, so the export never truncates at an HTTP page size.
+ */
+export interface LeadAuditRegisterResult {
+	scope: LeadAuditScope;
+	meta: LeadAuditMeta;
+	metric: LeadAuditRegisterMetric;
+	leads: LeadAuditRegisterRow[];
+	total: number;
+	disclosures: LeadAuditDisclosure[];
+}
+
 export class LeadAuditValidationError extends Error {
 	readonly code: string;
 
