@@ -922,6 +922,9 @@ export async function leadAuditPrintScenario(
 	assert.equal(work.emails_unconfirmed, 0);
 	assert.equal(work.corrected_activities, 0);
 	assert.equal(intakeBody.work.coverage.unknown_occurrence_date, 1);
+	assert.equal(intakeBody.work.coverage.unknown_activity_type, 0);
+	assert.equal(intakeBody.work.coverage.unknown_author, 0);
+	assert.equal(intakeBody.work.coverage.inactive_author, 0);
 	assert.equal(intakeBody.work.coverage.cancelled_in_period, 0);
 	assert.equal(intakeBody.work.coverage.deleted_activity_rows, 0);
 
