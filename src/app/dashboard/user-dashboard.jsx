@@ -595,12 +595,22 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	// admin peeking at someone else's dashboard (backTo) never gets nagged,
 	// and a failed assignments read stays silent. The baseline above is
 	// scoped to the user that read produced; a stale response for a previous
-	// user never enables the new user's reminder.
+	// user never enables the new user's reminder. With no accessible project
+	// to log to, the warning would be unsatisfiable, so at least one entry
+	// across the panel's own sources (assignments, accessible or empty
+	// projects) is required — matching hasAnyData/projectOrder, where one
+	// nonempty source already allows logging.
 	const isOwnDashboard = !backTo && !!currentUserId;
+	const activitySources = moduleAssignments.activityAssignments;
+	const hasLoggableProject =
+		(activitySources.assignments?.length ?? 0) > 0 ||
+		(activitySources.accessibleProjects?.length ?? 0) > 0 ||
+		(activitySources.emptyProjects?.length ?? 0) > 0;
 	const reminderEnabled =
 		isOwnDashboard &&
 		assignmentsLoad === LOAD_OK &&
-		assignmentsUserId === currentUserId;
+		assignmentsUserId === currentUserId &&
+		hasLoggableProject;
 	const activityLogReminder = useActivityLogReminder({
 		userId: currentUserId,
 		enabled: reminderEnabled,

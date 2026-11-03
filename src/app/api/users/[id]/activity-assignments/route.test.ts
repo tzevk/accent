@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	mockExecute: vi.fn(),
 	mockRelease: vi.fn(),
+	mockBeginTransaction: vi.fn().mockResolvedValue(undefined),
+	mockCommit: vi.fn().mockResolvedValue(undefined),
+	mockRollback: vi.fn().mockResolvedValue(undefined),
 	mockDbConnect: vi.fn(),
 	mockGetCurrentUser: vi.fn(),
 }));
@@ -18,6 +21,9 @@ const { GET, PUT, PATCH, DELETE } =
 const db = {
 	execute: mocks.mockExecute,
 	release: mocks.mockRelease,
+	beginTransaction: mocks.mockBeginTransaction,
+	commit: mocks.mockCommit,
+	rollback: mocks.mockRollback,
 };
 
 function request() {
@@ -40,19 +46,22 @@ describe('user activity assignments project discovery', () => {
 	});
 
 	it('returns an email-matched team project without activity rows', async () => {
-		mocks.mockExecute.mockResolvedValueOnce([[]]).mockResolvedValueOnce([
-			[
-				{
-					project_id: 10,
-					project_name: 'Email Team Project',
-					project_code: 'P-010',
-					project_status: 'Active',
-					start_date: '2026-08-01',
-					end_date: '2026-09-01',
-					project_team: JSON.stringify([{ email: 'member@example.com' }]),
-				},
-			],
-		]);
+		mocks.mockExecute
+			.mockResolvedValueOnce([[]])
+			.mockResolvedValueOnce([[{ last_activity_logged_at: null }]])
+			.mockResolvedValueOnce([
+				[
+					{
+						project_id: 10,
+						project_name: 'Email Team Project',
+						project_code: 'P-010',
+						project_status: 'Active',
+						start_date: '2026-08-01',
+						end_date: '2026-09-01',
+						project_team: JSON.stringify([{ email: 'member@example.com' }]),
+					},
+				],
+			]);
 
 		const response = await GET(request(), params());
 		const body = await response.json();
@@ -90,6 +99,7 @@ describe('user activity assignments project discovery', () => {
 					},
 				],
 			])
+			.mockResolvedValueOnce([[{ last_activity_logged_at: null }]])
 			.mockResolvedValueOnce([[]]);
 
 		const response = await GET(request(), params());
@@ -137,23 +147,14 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 		};
 	}
 
-	it('returns the latest save across assignments as epoch milliseconds', async () => {
+	function evidenceRows(lastActivityLoggedAt: unknown) {
+		return [[{ last_activity_logged_at: lastActivityLoggedAt }]];
+	}
+
+	it('reads the latest self save from activity-log evidence', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[
-					// Older save: numeric epoch seconds (2026-10-13 18:45 UTC).
-					assignmentRow({
-						activity_id: 'activity-11',
-						updated_at_epoch: 1791917100,
-					}),
-					// Newer save: string epoch seconds (2026-10-14 09:30 UTC),
-					// the form some drivers return.
-					assignmentRow({
-						activity_id: 'activity-12',
-						updated_at_epoch: '1791970200',
-					}),
-				],
-			])
+			.mockResolvedValueOnce([[assignmentRow({})]])
+			.mockResolvedValueOnce(evidenceRows(1791970200000))
 			.mockResolvedValueOnce([[]]);
 
 		const response = await GET(request(), params());
@@ -161,22 +162,19 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 
 		expect(response.status).toBe(200);
 		expect(body.data.lastActivityLoggedAt).toBe(1791970200000);
+
+		const evidenceCall = mocks.mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('FROM user_activity_logs')
+		);
+		expect(evidenceCall).toBeDefined();
+		expect(evidenceCall[1][0]).toBe(42);
+		expect(evidenceCall[1][1]).toBe('project_activity_save');
 	});
 
-	it('ignores assignments without a saved timestamp', async () => {
+	it('accepts a string epoch from the evidence read', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[
-					assignmentRow({
-						activity_id: 'activity-11',
-						updated_at_epoch: null,
-					}),
-					assignmentRow({
-						activity_id: 'activity-12',
-						updated_at_epoch: 1791917100,
-					}),
-				],
-			])
+			.mockResolvedValueOnce([[assignmentRow({})]])
+			.mockResolvedValueOnce(evidenceRows('1791917100000'))
 			.mockResolvedValueOnce([[]]);
 
 		const response = await GET(request(), params());
@@ -186,8 +184,29 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 		expect(body.data.lastActivityLoggedAt).toBe(1791917100000);
 	});
 
-	it('returns null when the user has no assignments', async () => {
-		mocks.mockExecute.mockResolvedValueOnce([[]]).mockResolvedValueOnce([[]]);
+	it('ignores a manager-touched assignment without matching evidence', async () => {
+		// The assignment row carries a fresh updated_at (manager edit) but
+		// the user has no self-save evidence: the timer stays unknown.
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[assignmentRow({ updated_at: '2026-10-14 09:30:00' })],
+			])
+			.mockResolvedValueOnce(evidenceRows(null))
+			.mockResolvedValueOnce([[]]);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.assignments).toHaveLength(1);
+		expect(body.data.lastActivityLoggedAt).toBeNull();
+	});
+
+	it('returns null when the user has no assignments and no evidence', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[]])
+			.mockResolvedValueOnce(evidenceRows(null))
+			.mockResolvedValueOnce([[]]);
 
 		const response = await GET(request(), params());
 		const body = await response.json();
@@ -195,6 +214,32 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 		expect(response.status).toBe(200);
 		expect(body.data.assignments).toEqual([]);
 		expect(body.data.lastActivityLoggedAt).toBeNull();
+	});
+
+	it('returns null when the evidence value is not a usable epoch', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[assignmentRow({})]])
+			.mockResolvedValueOnce(evidenceRows('not-an-epoch'))
+			.mockResolvedValueOnce([[]]);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.lastActivityLoggedAt).toBeNull();
+	});
+
+	it('fails the request when the evidence read fails', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[assignmentRow({})]])
+			.mockRejectedValueOnce(new Error('evidence read down'));
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(500);
+		expect(body.success).toBe(false);
+		expect(mocks.mockRelease).toHaveBeenCalled();
 	});
 });
 
@@ -217,10 +262,17 @@ describe('user activity assignments PUT', () => {
 		});
 	}
 
+	function markerInsert() {
+		return mocks.mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_activity_logs')
+		);
+	}
+
 	it('preserves extra daily_entries fields (isLocked) when updating', async () => {
 		mocks.mockExecute
 			.mockResolvedValueOnce([[{ id: 'row-1' }]]) // existing assignment
-			.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE
+			.mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE
+			.mockResolvedValueOnce([{ insertId: 7 }]); // save marker
 
 		const response = await PUT(
 			putRequest({
@@ -251,6 +303,136 @@ describe('user activity assignments PUT', () => {
 				remarks: '',
 			},
 		]);
+
+		// Self save commits assignment + evidence atomically.
+		expect(mocks.mockBeginTransaction).toHaveBeenCalledTimes(1);
+		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
+		expect(mocks.mockRollback).not.toHaveBeenCalled();
+	});
+
+	it('records a self-save marker when the user updates their own assignment', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[{ id: 'row-1' }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockResolvedValueOnce([{ insertId: 9 }]);
+
+		const response = await PUT(
+			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.success).toBe(true);
+
+		const marker = markerInsert();
+		expect(marker).toBeDefined();
+		const markerParams = marker[1];
+		expect(markerParams[0]).toBe(42); // actor, not the row owner
+		expect(markerParams[1]).toBe('update');
+		expect(markerParams[2]).toBe('project_activity_save');
+		expect(markerParams[5]).toBe('success');
+		expect(JSON.parse(markerParams[4])).toEqual({
+			projectId: '1',
+			activityId: 'a1',
+		});
+		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
+		expect(mocks.mockRollback).not.toHaveBeenCalled();
+	});
+
+	it('records no marker when a super-admin edits another user', async () => {
+		mocks.mockGetCurrentUser.mockResolvedValue({
+			id: 1,
+			email: 'admin@example.com',
+			is_super_admin: 1,
+		});
+		mocks.mockExecute
+			.mockResolvedValueOnce([[{ id: 'row-1' }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+		const response = await PUT(
+			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.success).toBe(true);
+		expect(body.affected_rows).toBe(1);
+		expect(markerInsert()).toBeUndefined();
+		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
+		expect(mocks.mockRollback).not.toHaveBeenCalled();
+	});
+
+	it('writes no marker on a no-op update', async () => {
+		mocks.mockExecute.mockResolvedValueOnce([[{ id: 'row-1' }]]);
+
+		const response = await PUT(
+			putRequest({ project_id: '1', activity_id: 'a1' }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.affected_rows).toBe(0);
+		expect(markerInsert()).toBeUndefined();
+		expect(mocks.mockBeginTransaction).not.toHaveBeenCalled();
+		expect(mocks.mockRollback).not.toHaveBeenCalled();
+	});
+
+	it('writes no marker when the update touches no rows', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[{ id: 'row-1' }]])
+			.mockResolvedValueOnce([{ affectedRows: 0 }]);
+
+		const response = await PUT(
+			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.affected_rows).toBe(0);
+		expect(markerInsert()).toBeUndefined();
+		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
+	});
+
+	it('rolls back the assignment write when the marker insert fails', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[{ id: 'row-1' }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockRejectedValueOnce(new Error('marker insert down'));
+
+		const response = await PUT(
+			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(500);
+		expect(body.success).toBe(false);
+		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
+		expect(mocks.mockCommit).not.toHaveBeenCalled();
+		expect(mocks.mockRelease).toHaveBeenCalled();
+	});
+
+	it('rolls back when the commit fails', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([[{ id: 'row-1' }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockResolvedValueOnce([{ insertId: 9 }]);
+		mocks.mockCommit.mockRejectedValueOnce(new Error('commit down'));
+
+		const response = await PUT(
+			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(500);
+		expect(body.success).toBe(false);
+		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
+		expect(mocks.mockRelease).toHaveBeenCalled();
 	});
 });
 
@@ -273,6 +455,24 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		});
 	}
 
+	function patchBody() {
+		return {
+			project_id: '1',
+			discipline_name: 'Structural',
+			activity_name: 'RCC Check',
+			manhours_assigned: '8',
+			qty_completed: '1',
+			due_date: '2026-08-20',
+			status: 'Not Started',
+		};
+	}
+
+	function markerInsert() {
+		return mocks.mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('INSERT INTO user_activity_logs')
+		);
+	}
+
 	it('logs the entered manhours as the day entry and links employee_id', async () => {
 		mocks.mockExecute
 			.mockResolvedValueOnce([
@@ -280,20 +480,10 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			]) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: 87 }]]) // login link
-			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
+			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
+			.mockResolvedValueOnce([{ insertId: 11 }]); // save marker
 
-		const response = await PATCH(
-			patchRequest({
-				project_id: '1',
-				discipline_name: 'Structural',
-				activity_name: 'RCC Check',
-				manhours_assigned: '8',
-				qty_completed: '1',
-				due_date: '2026-08-20',
-				status: 'Not Started',
-			}),
-			params()
-		);
+		const response = await PATCH(patchRequest(patchBody()), params());
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
@@ -322,6 +512,17 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		expect(JSON.parse(insertParams[20])).toEqual([
 			{ date: '2026-08-20', qty_done: 1, hours: 8, remarks: '' },
 		]);
+
+		// Self-service add records a create marker and commits atomically.
+		const marker = markerInsert();
+		expect(marker).toBeDefined();
+		expect(marker[1][0]).toBe(42);
+		expect(marker[1][1]).toBe('create');
+		expect(marker[1][2]).toBe('project_activity_save');
+		expect(JSON.parse(marker[1][4])).toMatchObject({ projectId: '1' });
+		expect(mocks.mockBeginTransaction).toHaveBeenCalledTimes(1);
+		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
+		expect(mocks.mockRollback).not.toHaveBeenCalled();
 	});
 
 	it('keeps the daily entry date when no due date is given', async () => {
@@ -331,7 +532,8 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			]) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: null }]]) // no login link
-			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
+			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
+			.mockResolvedValueOnce([{ insertId: 12 }]); // save marker
 
 		const response = await PATCH(
 			patchRequest({
@@ -368,7 +570,8 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			]) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: null }]]) // login link
-			.mockResolvedValueOnce([{ affectedRows: 1 }]); // normalized INSERT
+			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
+			.mockResolvedValueOnce([{ insertId: 13 }]); // save marker
 
 		const response = await PATCH(
 			patchRequest({
@@ -400,6 +603,70 @@ describe('user activity assignments PATCH (self-service add)', () => {
 				String(sql).includes('FROM user_activity_assignments')
 			)
 		).toBe(false);
+	});
+
+	it('records no marker when a super-admin adds for another user', async () => {
+		mocks.mockGetCurrentUser.mockResolvedValue({
+			id: 1,
+			email: 'admin@example.com',
+			is_super_admin: 1,
+		});
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[{ project_id: 1, project_activities_list: '[]' }],
+			])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockResolvedValueOnce([[{ employee_id: 87 }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+		const response = await PATCH(patchRequest(patchBody()), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.success).toBe(true);
+		expect(markerInsert()).toBeUndefined();
+		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
+		expect(mocks.mockRollback).not.toHaveBeenCalled();
+	});
+
+	it('rolls back the save when the marker insert fails', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[{ project_id: 1, project_activities_list: '[]' }],
+			])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockResolvedValueOnce([[{ employee_id: 87 }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockRejectedValueOnce(new Error('marker insert down'));
+
+		const response = await PATCH(patchRequest(patchBody()), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(500);
+		expect(body.success).toBe(false);
+		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
+		expect(mocks.mockCommit).not.toHaveBeenCalled();
+		expect(mocks.mockRelease).toHaveBeenCalled();
+	});
+
+	it('rolls back when the commit fails after a save', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[{ project_id: 1, project_activities_list: '[]' }],
+			])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockResolvedValueOnce([[{ employee_id: 87 }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockResolvedValueOnce([{ insertId: 14 }]);
+		mocks.mockCommit.mockRejectedValueOnce(new Error('commit down'));
+
+		const response = await PATCH(patchRequest(patchBody()), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(500);
+		expect(body.success).toBe(false);
+		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
+		expect(mocks.mockRelease).toHaveBeenCalled();
 	});
 });
 

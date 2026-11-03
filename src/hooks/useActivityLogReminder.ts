@@ -14,7 +14,6 @@ export interface UseActivityLogReminderResult {
 	showReminder: boolean;
 	secondsSinceLastLog: number;
 	dismiss: () => void;
-	recordActivity: (savedAt?: number) => void;
 }
 
 interface ReminderRecord {
@@ -139,31 +138,6 @@ export function useActivityLogReminder({
 	const userStr = missing ? null : String(userId);
 	const currentKey =
 		enabled && userStr ? buildKey(userStr, toLocalDay(Date.now())) : null;
-
-	const recordActivity = useCallback(
-		(savedAt?: number) => {
-			if (!enabled || userStr === null) return;
-			const now = Date.now();
-			const t = savedAt === undefined ? now : savedAt;
-			if (!isValidToday(t, now)) return;
-			const key = buildKey(userStr, toLocalDay(now));
-			const rec: ReminderRecord = {
-				baseline: t,
-				lastSavedAt: t,
-				snoozedUntil: 0,
-			};
-			keyRef.current = key;
-			recordRef.current = rec;
-			writeRecord(key, rec);
-			const elapsed = now - t;
-			setSnapshot({
-				key,
-				showReminder: elapsed >= WARNING_THRESHOLD_MS,
-				secondsSinceLastLog: Math.floor((elapsed >= 0 ? elapsed : 0) / 1000),
-			});
-		},
-		[enabled, userStr]
-	);
 
 	const dismiss = useCallback(() => {
 		if (!enabled || userStr === null) return;
@@ -294,6 +268,5 @@ export function useActivityLogReminder({
 		showReminder: isolated ? snapshot.showReminder : false,
 		secondsSinceLastLog: isolated ? snapshot.secondsSinceLastLog : 0,
 		dismiss,
-		recordActivity,
 	};
 }
