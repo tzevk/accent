@@ -919,9 +919,6 @@ export async function readLeadAuditWorkSection(
 			distinct_leads: toCount(row.distinct_leads),
 		}))
 		.sort((left, right) => {
-			if (left.completed_total !== right.completed_total) {
-				return right.completed_total - left.completed_total;
-			}
 			if (left.author.is_unknown !== right.author.is_unknown) {
 				return left.author.is_unknown ? 1 : -1;
 			}
