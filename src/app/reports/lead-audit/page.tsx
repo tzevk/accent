@@ -69,14 +69,8 @@ export default function LeadAuditPage() {
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
-	const hasReportsRead =
-		can && RESOURCES && PERMISSIONS
-			? can(RESOURCES.REPORTS, PERMISSIONS.READ)
-			: false;
-	const hasLeadsRead =
-		can && RESOURCES && PERMISSIONS
-			? can(RESOURCES.LEADS, PERMISSIONS.READ)
-			: false;
+	const hasReportsRead = can(RESOURCES.REPORTS, PERMISSIONS.READ);
+	const hasLeadsRead = can(RESOURCES.LEADS, PERMISSIONS.READ);
 	const hasAccess =
 		!!user && (isSuperAdmin || (hasReportsRead && hasLeadsRead));
 
