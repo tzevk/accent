@@ -182,7 +182,10 @@ async function readTiming(
 		200,
 		`timing status (body: ${response.text})`
 	);
-	return TimingSectionSchema.parse(response.json());
+	return z
+		.object({ success: z.literal(true), data: TimingSectionSchema })
+		.passthrough()
+		.parse(response.json()).data;
 }
 
 async function readEvidence(
@@ -199,7 +202,10 @@ async function readEvidence(
 		200,
 		`timing evidence status (body: ${response.text})`
 	);
-	return TimingEvidenceSchema.parse(response.json());
+	return z
+		.object({ success: z.literal(true), data: TimingEvidenceSchema })
+		.passthrough()
+		.parse(response.json()).data;
 }
 
 async function expectRefused(
@@ -300,7 +306,9 @@ function hours(value: number): number {
 
 function durationByLead(evidence: TimingEvidence): Map<number, number | null> {
 	return new Map(
-		evidence.rows.map((row) => [row.lead_id, row.duration_seconds])
+		evidence.rows.map(
+			(row) => [row.lead_id, row.duration_seconds] as const
+		)
 	);
 }
 
@@ -812,7 +820,7 @@ export async function leadAuditTimingScenario(
 	assert.equal(durations.has(deletedLead.id), false, 'a deleted Lead is outside the cohort');
 
 	const statuses = new Map(
-		mixedEvidence.rows.map((row) => [row.lead_id, row.status])
+		mixedEvidence.rows.map((row) => [row.lead_id, row.status] as const)
 	);
 	assert.equal(statuses.get(unknownTime.id), 'missing_timestamp');
 	assert.equal(statuses.get(prehistory.id), 'negative');

@@ -192,14 +192,14 @@ function buildTimingBaseSelect(cohortSql: string): string {
         SELECT lead_id, id, occurred_at, activity_type,
           ROW_NUMBER() OVER (
             PARTITION BY lead_id ORDER BY occurred_at ASC, id ASC
-          ) AS position
+          ) AS outreach_rank
         FROM lead_activities
         WHERE status = 'Completed'
           AND (isDelete = 0 OR isDelete IS NULL)
           AND activity_type IN ${OUTREACH_TYPE_SQL}
           AND occurred_at IS NOT NULL
       ) ranked
-      WHERE ranked.position = 1
+      WHERE ranked.outreach_rank = 1
     ) outreach ON outreach.lead_id = l.id
     LEFT JOIN (
       SELECT lead_id,
@@ -287,8 +287,7 @@ async function readTimingRows(
  */
 export async function readLeadAuditTimingDetail(
 	db: DbConnection,
-	filters: LeadAuditTimingFilters,
-	_clock: LeadAuditClock
+	filters: LeadAuditTimingFilters
 ): Promise<LeadAuditTimingRow[]> {
 	return readTimingRows(db, filters);
 }

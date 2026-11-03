@@ -10,7 +10,6 @@ import type {
 	LeadAuditDisclosure,
 	LeadAuditFilters,
 	LeadAuditMeta,
-	LeadAuditPagination,
 	LeadAuditScope,
 } from './types';
 
@@ -152,5 +151,3 @@ export interface LeadAuditTimingIncomingFilters {
 
 export type LeadAuditTimingFilters = LeadAuditFilters &
 	LeadAuditTimingIncomingFilters;
-
-export type LeadAuditTimingPagination = LeadAuditPagination;
