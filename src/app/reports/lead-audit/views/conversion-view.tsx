@@ -6,10 +6,10 @@ import {
 	CheckBadgeIcon,
 	ExclamationTriangleIcon,
 	LinkSlashIcon,
-	QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { formatCount, formatRate } from '../figures';
+import { MethodNote } from '../method-note';
 import type {
 	LeadAuditConversionDownstream,
 	LeadAuditConversionEvidenceFilter,
@@ -81,11 +81,16 @@ function DownstreamCell({
 	return (
 		<div className="space-y-0.5">
 			<div>
-				<span className="font-semibold">{proposal.status ?? 'Unknown status'}</span>
+				<span className="font-semibold">
+					{proposal.status ?? 'Unknown status'}
+				</span>
 				{proposal.progress === null ? (
 					<span className="text-gray-600"> · progress unknown</span>
 				) : (
-					<span className="text-gray-600"> · {formatRate(proposal.progress)}</span>
+					<span className="text-gray-600">
+						{' '}
+						· {formatRate(proposal.progress)}
+					</span>
 				)}
 			</div>
 			{proposal.project_state === 'restricted' ? (
@@ -178,7 +183,11 @@ function CohortCard({
 	);
 }
 
-function EvidenceTable({ evidence }: { evidence: LeadAuditConversionEvidenceSection }) {
+function EvidenceTable({
+	evidence,
+}: {
+	evidence: LeadAuditConversionEvidenceSection;
+}) {
 	if (evidence.rows.length === 0) {
 		return (
 			<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
@@ -226,11 +235,16 @@ function EvidenceTable({ evidence }: { evidence: LeadAuditConversionEvidenceSect
 				<tbody>
 					{evidence.rows.map((row) => (
 						<tr key={row.id} className="border-b border-gray-50 align-top">
-							<th scope="row" className="py-2 pr-3 text-left font-medium text-gray-900">
+							<th
+								scope="row"
+								className="py-2 pr-3 text-left font-medium text-gray-900"
+							>
 								<span className="block">{row.company_name}</span>
 								<span className="block text-xs font-normal text-gray-600">
 									{row.lead_id ? `Lead ${row.lead_id}` : `Lead #${row.id}`}
-									{row.owner ? ` · ${row.owner.name ?? 'Unknown owner'}` : ' · Unassigned'}
+									{row.owner
+										? ` · ${row.owner.name ?? 'Unknown owner'}`
+										: ' · Unassigned'}
 								</span>
 							</th>
 							<td className="whitespace-pre-wrap py-2 pr-3 text-gray-700">
@@ -296,8 +310,8 @@ export default function ConversionView({
 							Cohort progress and handoffs
 						</h2>
 						<p className="text-sm text-gray-600">
-							Lead Cohort Conversion Rate uses the whole intake cohort observed at
-							the generation time. Handoffs after the intake period count; a
+							Lead Cohort Conversion Rate uses the whole intake cohort observed
+							at the generation time. Handoffs after the intake period count; a
 							Converted label alone does not. Period handoffs are a separate
 							population and are never divided by period intake.
 						</p>
@@ -372,9 +386,9 @@ export default function ConversionView({
 					/>
 				</div>
 				<p className="mt-2 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600">
-					Recent cohorts have had less time to progress. Compare the rate with the
-					observation time ({time(cohort.observed_through, true)}) and the selected
-					period before drawing conclusions.
+					Recent cohorts have had less time to progress. Compare the rate with
+					the observation time ({time(cohort.observed_through, true)}) and the
+					selected period before drawing conclusions.
 				</p>
 			</section>
 
@@ -396,8 +410,8 @@ export default function ConversionView({
 					</p>
 					{section.source_conversion.length === 0 ? (
 						<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
-							No cohort Leads were recorded for the applied filters, so no source
-							conversion is shown.
+							No cohort Leads were recorded for the applied filters, so no
+							source conversion is shown.
 						</p>
 					) : (
 						<div
@@ -415,10 +429,16 @@ export default function ConversionView({
 										<th scope="col" className="py-1.5 pr-3 font-semibold">
 											Source label
 										</th>
-										<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+										<th
+											scope="col"
+											className="py-1.5 pr-3 text-right font-semibold"
+										>
 											Cohort
 										</th>
-										<th scope="col" className="py-1.5 pr-3 text-right font-semibold">
+										<th
+											scope="col"
+											className="py-1.5 pr-3 text-right font-semibold"
+										>
 											Handoffs
 										</th>
 										<th scope="col" className="py-1.5 text-right font-semibold">
@@ -429,7 +449,9 @@ export default function ConversionView({
 								<tbody>
 									{section.source_conversion.map((source) => (
 										<tr
-											key={source.is_unknown ? '__unknown__' : source.label ?? ''}
+											key={
+												source.is_unknown ? '__unknown__' : (source.label ?? '')
+											}
 											className="border-b border-gray-50"
 										>
 											<th
@@ -437,7 +459,9 @@ export default function ConversionView({
 												className="whitespace-pre-wrap py-1.5 pr-3 text-left font-medium text-gray-800"
 											>
 												{source.is_unknown ? (
-													<span className="italic text-gray-600">Unknown source</span>
+													<span className="italic text-gray-600">
+														Unknown source
+													</span>
 												) : (
 													source.label
 												)}
@@ -458,9 +482,9 @@ export default function ConversionView({
 						</div>
 					)}
 					<p className="mt-2 text-xs text-gray-600">
-						The rate is cohort handoffs divided by that label&apos;s cohort size. A
-						label with no handoffs can be a measured zero; an empty cohort is Not
-						applicable.
+						The rate is cohort handoffs divided by that label&apos;s cohort
+						size. A label with no handoffs can be a measured zero; an empty
+						cohort is Not applicable.
 					</p>
 				</section>
 
@@ -480,8 +504,8 @@ export default function ConversionView({
 					</p>
 					{section.stage_distribution.length === 0 ? (
 						<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
-							The cohort is empty for the applied filters, so there is no current
-							stage distribution.
+							The cohort is empty for the applied filters, so there is no
+							current stage distribution.
 						</p>
 					) : (
 						<table className="mt-3 w-full border-collapse text-sm">
@@ -532,10 +556,10 @@ export default function ConversionView({
 					Downstream context of evidenced handoffs
 				</h2>
 				<p className="text-sm text-gray-600">
-					Canonical Proposal status and progress need the proposal read permission;
-					Project details need the project read permission. Restricted is not the
-					same as no downstream record, and denied fields are removed on the
-					server.
+					Canonical Proposal status and progress need the proposal read
+					permission; Project details need the project read permission.
+					Restricted is not the same as no downstream record, and denied fields
+					are removed on the server.
 				</p>
 				<div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
 					<div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
@@ -645,7 +669,10 @@ export default function ConversionView({
 							className="mt-3 flex items-center gap-2 rounded-lg bg-gray-50 p-4 text-sm text-gray-700"
 							role="status"
 						>
-							<ArrowPathIcon className="h-4 w-4 animate-spin" aria-hidden="true" />
+							<ArrowPathIcon
+								className="h-4 w-4 animate-spin"
+								aria-hidden="true"
+							/>
 							Loading conversion evidence…
 						</div>
 					) : evidence ? (
@@ -688,30 +715,18 @@ export default function ConversionView({
 						</>
 					) : (
 						<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
-							No evidence population is selected. Choose a cohort figure above to
-							load its matching Leads.
+							No evidence population is selected. Choose a cohort figure above
+							to load its matching Leads.
 						</p>
 					)}
 				</section>
 			) : null}
 
-			<section
-				aria-labelledby="lead-audit-conversion-disclosures-heading"
-				className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+			<MethodNote
+				title="How to read these figures"
+				summary="Definitions, cohort limits, and filters not applied"
 			>
-				<div className="flex items-start gap-2">
-					<QuestionMarkCircleIcon
-						className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
-						aria-hidden="true"
-					/>
-					<h2
-						id="lead-audit-conversion-disclosures-heading"
-						className="text-base font-bold text-gray-900"
-					>
-						What these conversion figures can establish
-					</h2>
-				</div>
-				<dl className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+				<dl className="grid grid-cols-1 gap-2 md:grid-cols-2">
 					{section.disclosures.map((disclosure) => (
 						<div
 							key={disclosure.code}
@@ -733,13 +748,14 @@ export default function ConversionView({
 						<ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
 							{section.evidence_filters.ignored.map((filter) => (
 								<li key={filter.key}>
-									<span className="font-semibold">{filter.key}</span>: {filter.reason}
+									<span className="font-semibold">{filter.key}</span>:{' '}
+									{filter.reason}
 								</li>
 							))}
 						</ul>
 					</div>
 				) : null}
-			</section>
+			</MethodNote>
 		</div>
 	);
 }

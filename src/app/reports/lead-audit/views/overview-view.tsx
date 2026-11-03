@@ -1,17 +1,14 @@
 'use client';
 
 import {
-	ArrowPathRoundedSquareIcon,
 	CalendarDaysIcon,
 	ExclamationTriangleIcon,
 	FunnelIcon,
 	InboxArrowDownIcon,
 	TagIcon,
 } from '@heroicons/react/24/outline';
-import type {
-	LeadAuditIntakeSection,
-	LeadAuditMetric,
-} from '../types';
+import { MethodNote } from '../method-note';
+import type { LeadAuditIntakeSection, LeadAuditMetric } from '../types';
 
 interface OverviewViewProps {
 	report: LeadAuditIntakeSection;
@@ -49,9 +46,7 @@ export default function OverviewView({
 						Selected-period intake
 					</h2>
 					<p className="text-sm text-gray-600">
-						Review what entered the system, separately from the Enquiry Dates
-						recorded on those Leads. Select any intake figure to open its
-						matching Lead evidence with the same filters.
+						What entered the system. Select a figure to see its Leads.
 					</p>
 				</div>
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -73,8 +68,7 @@ export default function OverviewView({
 							{count(summary.leads_recorded)}
 						</p>
 						<p className="mt-2 text-xs text-gray-600">
-							System entry by creation time, including imports. This is not
-							verified enquiry arrival.
+							Creation time, including imports — not verified arrival.
 						</p>
 						<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
 							View Leads recorded evidence
@@ -99,8 +93,7 @@ export default function OverviewView({
 							{count(summary.enquiries_dated)}
 						</p>
 						<p className="mt-2 text-xs text-gray-600">
-							Leads whose stated, editable Enquiry Date falls inside the period.
-							A separate population from system entry.
+							Stated Enquiry Date inside the period.
 						</p>
 						<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
 							View Enquiry Date evidence
@@ -125,8 +118,7 @@ export default function OverviewView({
 							{count(summary.missing_enquiry_date)}
 						</p>
 						<p className="mt-2 text-xs text-amber-900">
-							Recorded Leads in this period with no Enquiry Date. They stay in
-							system entry and are excluded from Enquiry Date figures.
+							Recorded Leads with no Enquiry Date.
 						</p>
 						<span className="mt-2 inline-block text-xs font-semibold text-amber-900 group-hover:underline">
 							View missing-date evidence
@@ -144,9 +136,7 @@ export default function OverviewView({
 							{count(summary.distinct_sources)}
 						</p>
 						<p className="mt-2 text-xs text-gray-600">
-							Distinct stored labels among Leads recorded in this period.
-							Missing labels are grouped as Unknown source, never merged into
-							another label.
+							Distinct stored labels; missing labels stay Unknown source.
 						</p>
 						<span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-gray-600">
 							<FunnelIcon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -156,29 +146,15 @@ export default function OverviewView({
 				</div>
 			</section>
 
-			<section
-				aria-labelledby="lead-audit-coverage-heading"
-				className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+			<MethodNote
+				title="How to read these figures"
+				summary="Definitions, live-data limits, and source labels"
 			>
-				<div className="flex items-start gap-2">
-					<ArrowPathRoundedSquareIcon
-						className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
-						aria-hidden="true"
-					/>
-					<div>
-						<h2
-							id="lead-audit-coverage-heading"
-							className="text-lg font-bold text-gray-900"
-						>
-							What these figures can establish
-						</h2>
-						<p className="text-sm text-gray-600">
-							The report uses live corrected facts. Read each disclosure before
-							comparing system entry with enquiry arrival.
-						</p>
-					</div>
-				</div>
-				<dl className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+				<p className="text-xs text-gray-600">
+					Live corrected facts. System entry and enquiry arrival are separate
+					populations.
+				</p>
+				<dl className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
 					{report.disclosures.map((disclosure) => (
 						<div
 							key={disclosure.code}
@@ -187,13 +163,11 @@ export default function OverviewView({
 							<dt className="text-xs font-bold uppercase tracking-wide text-gray-700">
 								{DISCLOSURE_LABELS[disclosure.code] ?? disclosure.code}
 							</dt>
-							<dd className="mt-1 text-sm text-gray-700">
-								{disclosure.text}
-							</dd>
+							<dd className="mt-1 text-sm text-gray-700">{disclosure.text}</dd>
 						</div>
 					))}
 				</dl>
-			</section>
+			</MethodNote>
 		</div>
 	);
 }

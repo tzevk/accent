@@ -47,8 +47,8 @@ export function WorkSummary({ work, onSelectMetric }: WorkSummaryProps) {
 						Period work
 					</h2>
 					<p className="text-sm text-gray-600">
-						Completed work dated by when it happened, including work on
-						Leads recorded before the period.
+						Completed work dated by when it happened, including work on Leads
+						recorded before the period.
 					</p>
 				</div>
 			</div>
@@ -67,9 +67,8 @@ export function WorkSummary({ work, onSelectMetric }: WorkSummaryProps) {
 						{count(summary.completed_total)}
 					</span>
 					<span className="mt-1 block text-xs text-gray-600">
-						{count(summary.by_type.call)} calls ·{' '}
-						{count(summary.by_type.email)} emails ·{' '}
-						{count(summary.by_type.meeting)} meetings ·{' '}
+						{count(summary.by_type.call)} calls · {count(summary.by_type.email)}{' '}
+						emails · {count(summary.by_type.meeting)} meetings ·{' '}
 						{count(summary.by_type.note)} notes
 					</span>
 				</button>
@@ -87,10 +86,9 @@ export function WorkSummary({ work, onSelectMetric }: WorkSummaryProps) {
 						{count(summary.outreach_total)}
 					</span>
 					<span className="mt-1 block text-xs text-gray-600">
-						Calls, emails, and meetings on{' '}
-						{count(summary.distinct_leads_with_outreach)} distinct Lead
-						{summary.distinct_leads_with_outreach === 1 ? '' : 's'}. Notes are not
-						outreach.
+						On {count(summary.distinct_leads_with_outreach)} distinct Lead
+						{summary.distinct_leads_with_outreach === 1 ? '' : 's'}. Notes are
+						not outreach.
 					</span>
 				</button>
 
@@ -108,19 +106,17 @@ export function WorkSummary({ work, onSelectMetric }: WorkSummaryProps) {
 					</span>
 					<span className="mt-1 block text-xs text-gray-600">
 						Connected calls and confirmed replies on{' '}
-						{count(summary.distinct_leads_with_successful_contact)} distinct Lead
+						{count(summary.distinct_leads_with_successful_contact)} distinct
+						Lead
 						{summary.distinct_leads_with_successful_contact === 1 ? '' : 's'}.
 					</span>
 				</button>
 			</div>
 
 			<p className="mt-3 text-xs text-gray-600" role="note">
-				{count(summary.by_type.unknown)} completed activit
-				{summary.by_type.unknown === 1 ? 'y has' : 'ies have'} an unknown stored
-				type, and {count(work.coverage.unknown_occurrence_date)} completed
-				activit{work.coverage.unknown_occurrence_date === 1 ? 'y has' : 'ies have'}{' '}
-				no occurrence time. Authorship is reported by recorded author, never by
-				the Lead&apos;s current owner.
+				{count(summary.by_type.unknown)} unknown type ·{' '}
+				{count(work.coverage.unknown_occurrence_date)} undated · authorship by
+				recorded author
 			</p>
 		</section>
 	);

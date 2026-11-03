@@ -10,6 +10,7 @@ import {
 	ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { leadAuditGet } from '../api';
+import { MethodNote } from '../method-note';
 import { formatCount, formatDuration, formatShare } from '../figures';
 import type {
 	LeadAuditTimingEvidenceSection,
@@ -160,10 +161,8 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 						Time to first outreach
 					</h2>
 					<p className="text-sm text-gray-600">
-						Elapsed database time from system entry to the earliest evidenced
-						completed Call, Email, or Meeting for each Lead in the selected Lead
-						Intake Cohort. Notes and scheduled work are not outreach. This is
-						evidenced outreach, not client response time.
+						System entry to earliest evidenced outreach for cohort Leads. Not
+						client response time.
 					</p>
 					<p className="mt-1 text-xs text-gray-600">
 						Clock: {section.metric.clock} Observation:{' '}
@@ -309,17 +308,11 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 				</div>
 			</section>
 
-			<section
-				aria-labelledby="lead-audit-timing-disclosures-heading"
-				className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+			<MethodNote
+				title="How to read this figure"
+				summary="Definitions, sample coverage, and filters it ignores"
 			>
-				<h2
-					id="lead-audit-timing-disclosures-heading"
-					className="text-lg font-bold text-gray-900"
-				>
-					What this timing figure can establish
-				</h2>
-				<dl className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+				<dl className="grid grid-cols-1 gap-2 md:grid-cols-2">
 					{section.disclosures.map((disclosure) => (
 						<div
 							key={disclosure.code}
@@ -347,7 +340,7 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 						</ul>
 					</div>
 				) : null}
-			</section>
+			</MethodNote>
 
 			{population !== null ? (
 				<section

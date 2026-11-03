@@ -5,11 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowPathIcon,
 	ClipboardDocumentCheckIcon,
-	ExclamationTriangleIcon,
-	FunnelIcon,
 	UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { leadAuditGet } from '../api';
+import { MethodNote } from '../method-note';
 import type {
 	LeadAuditWorkCoverage,
 	LeadAuditWorkEvidenceSection,
@@ -402,29 +401,12 @@ export default function WorkView({
 					</p>
 				</section>
 
-				<section
-					aria-labelledby="lead-audit-work-coverage-heading"
-					className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+				<MethodNote
+					title="Coverage and exclusions"
+					summary="What these figures cannot establish"
+					className="self-start"
 				>
-					<div className="flex items-start gap-2">
-						<ExclamationTriangleIcon
-							className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
-							aria-hidden="true"
-						/>
-						<div>
-							<h3
-								id="lead-audit-work-coverage-heading"
-								className="text-base font-bold text-gray-900"
-							>
-								Coverage and exclusions
-							</h3>
-							<p className="text-sm text-gray-600">
-								Facts these figures cannot establish. A zero is measured, not
-								missing.
-							</p>
-						</div>
-					</div>
-					<table className="mt-3 w-full border-collapse text-sm">
+					<table className="w-full border-collapse text-sm">
 						<caption className="sr-only">
 							Work coverage and excluded records for the applied filters
 						</caption>
@@ -458,7 +440,7 @@ export default function WorkView({
 							))}
 						</tbody>
 					</table>
-				</section>
+				</MethodNote>
 			</div>
 
 			<section
@@ -607,29 +589,11 @@ export default function WorkView({
 				)}
 			</section>
 
-			<section
-				aria-labelledby="lead-audit-work-filters-heading"
-				className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+			<MethodNote
+				title="Which filters apply"
+				summary="Scope of this section and filters it ignores"
 			>
-				<div className="flex items-start gap-2">
-					<FunnelIcon
-						className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
-						aria-hidden="true"
-					/>
-					<div>
-						<h3
-							id="lead-audit-work-filters-heading"
-							className="text-base font-bold text-gray-900"
-						>
-							Applied filters and scope
-						</h3>
-						<p className="text-sm text-gray-600">
-							Which filters narrow this section, and which do not. Work filters
-							never change the intake population.
-						</p>
-					</div>
-				</div>
-				<ul className="mt-3 space-y-2">
+				<ul className="space-y-2">
 					{work.work_filters.applied.map((filter) => (
 						<li
 							key={filter.key}
@@ -665,7 +629,7 @@ export default function WorkView({
 						<li key={disclosure.code}>{disclosure.text}</li>
 					))}
 				</ul>
-			</section>
+			</MethodNote>
 
 			<div
 				className="flex flex-wrap gap-2"

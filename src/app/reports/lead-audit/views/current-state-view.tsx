@@ -5,6 +5,7 @@ import {
 	ExclamationTriangleIcon,
 	UserGroupIcon,
 } from '@heroicons/react/24/outline';
+import { MethodNote } from '../method-note';
 import type {
 	CurrentStateEvidenceSelection,
 	CurrentStateOwner,
@@ -214,11 +215,7 @@ function WorkloadTable({
 	);
 }
 
-function Observation({
-	section,
-}: {
-	section: LeadAuditCurrentStateSection;
-}) {
+function Observation({ section }: { section: LeadAuditCurrentStateSection }) {
 	const filters = section.scope.effective_filters;
 	const chips = [
 		`Current owner: ${filters.owner.label}`,
@@ -230,7 +227,10 @@ function Observation({
 	return (
 		<div className="space-y-2">
 			<div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-				<ClockIcon className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]" aria-hidden="true" />
+				<ClockIcon
+					className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
+					aria-hidden="true"
+				/>
 				<div>
 					<p className="text-sm font-semibold text-gray-900">
 						As of generation time: {section.as_of.generated_at}
@@ -259,10 +259,10 @@ function Observation({
 				))}
 			</ul>
 			{section.scope.ignored_filters.length > 0 ? (
-				<div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-					<h3 className="text-xs font-bold uppercase tracking-wide text-amber-900">
+				<details className="group rounded-lg border border-amber-200 bg-amber-50 p-3">
+					<summary className="cursor-pointer list-none text-xs font-bold uppercase tracking-wide text-amber-900 [&::-webkit-details-marker]:hidden">
 						Filters not applied to current state
-					</h3>
+					</summary>
 					<ul className="mt-1 space-y-1 text-xs text-amber-950">
 						{section.scope.ignored_filters.map((filter) => (
 							<li key={filter.key}>
@@ -271,7 +271,7 @@ function Observation({
 							</li>
 						))}
 					</ul>
-				</div>
+				</details>
 			) : null}
 		</div>
 	);
@@ -292,18 +292,12 @@ export default function CurrentStateView({
 					Current operational risks
 				</h2>
 				<p className="text-sm text-gray-600">
-					The five existing Lead queues at the observation time. Each counter
-					counts distinct Leads; the Overdue and Due today registers identify
-					individual scheduled work items.
+					Five Lead queues at the observation time; counters are distinct Leads.
 				</p>
 			</div>
 			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
 				{section.risks.map((risk) => (
-					<RiskCard
-						key={risk.key}
-						risk={risk}
-						onSelectGroup={onSelectGroup}
-					/>
+					<RiskCard key={risk.key} risk={risk} onSelectGroup={onSelectGroup} />
 				))}
 			</div>
 		</section>
@@ -327,9 +321,8 @@ export default function CurrentStateView({
 						Current-owner workload
 					</h2>
 					<p className="text-sm text-gray-600">
-						Present responsibility, independent of who recorded each activity.
-						Unassigned Leads and retained inactive or unknown user references
-						stay visible.
+						Present responsibility by owner; unassigned and inactive owners stay
+						visible.
 					</p>
 				</div>
 			</div>
@@ -338,17 +331,11 @@ export default function CurrentStateView({
 	);
 
 	const disclosures = (
-		<section
-			aria-labelledby={`lead-audit-current-disclosures-${variant}`}
-			className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+		<MethodNote
+			title="How to read these figures"
+			summary="Current-state limits and definitions"
 		>
-			<h2
-				id={`lead-audit-current-disclosures-${variant}`}
-				className="text-lg font-bold text-gray-900"
-			>
-				What the current-state figures can establish
-			</h2>
-			<dl className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+			<dl className="grid grid-cols-1 gap-2 md:grid-cols-2">
 				{section.disclosures.map((disclosure) => (
 					<div
 						key={disclosure.code}
@@ -361,7 +348,7 @@ export default function CurrentStateView({
 					</div>
 				))}
 			</dl>
-		</section>
+		</MethodNote>
 	);
 
 	return (

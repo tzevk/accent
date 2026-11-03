@@ -237,9 +237,8 @@ export default function FilterToolbar({
 					Work and audit filters
 				</legend>
 				<p className="mb-3 max-w-prose text-xs text-gray-600">
-					Actor, activity type, and outcome apply to work and matching audit
-					evidence. Event type and undated evidence apply only to audit. Intake,
-					cohorts, timing, and current risks keep their own scope.
+					Actor, activity type, and outcome narrow work and audit evidence; the
+					other filters narrow Lead figures.
 				</p>
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 					<Field label="Recorded actor" htmlFor="lead-audit-actor">
