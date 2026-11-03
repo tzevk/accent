@@ -177,12 +177,15 @@ const OUTCOME_OPTIONS = LEAD_AUDIT_OUTCOME_FILTERS.map((value) => ({
 					: value,
 }));
 
-const EVENT_TYPE_OPTIONS = LEAD_AUDIT_EVENT_TYPES.map((value) => ({
-	value,
-	label: value
-		.replace(/_/g, ' ')
-		.replace(/^./, (letter) => letter.toUpperCase()),
-}));
+const EVENT_TYPE_OPTIONS = [
+	...LEAD_AUDIT_EVENT_TYPES.map((value) => ({
+		value,
+		label: value
+			.replace(/_/g, ' ')
+			.replace(/^./, (letter) => letter.toUpperCase()),
+	})),
+	{ value: 'unknown', label: 'Unknown event type' },
+];
 
 function toCount(value: unknown): number {
 	const parsed = Number(value);
