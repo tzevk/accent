@@ -29,14 +29,14 @@ of implemented views, so an unimplemented view cannot appear as an empty tab.
 
 ## Authorization
 
-| Reader                                                    | Result                           |
-| --------------------------------------------------------- | -------------------------------- |
-| Anonymous                                                 | `401 Unauthorized`               |
-| `reports:read` only                                       | `403`                            |
-| `leads:read` only                                         | `403`                            |
-| `reports:read` + `leads:read`                             | `200`                            |
-| Unrelated project-activities report field grant only      | `403`                            |
-| Super admin, regardless of individual grants              | `200` (existing bypass)          |
+| Reader                                               | Result                  |
+| ---------------------------------------------------- | ----------------------- |
+| Anonymous                                            | `401 Unauthorized`      |
+| `reports:read` only                                  | `403`                   |
+| `leads:read` only                                    | `403`                   |
+| `reports:read` + `leads:read`                        | `200`                   |
+| Unrelated project-activities report field grant only | `403`                   |
+| Super admin, regardless of individual grants         | `200` (existing bypass) |
 
 The page applies the same conjunction in the client before loading data. The
 server is authoritative: the page gate is not an access control. Both API
@@ -77,12 +77,12 @@ scope. Draft filters do not affect the report until Apply.
 
 ## Metric contract in this slice
 
-| Figure                    | Population                                                                 | Date basis                        | Disclosure                                                       |
-| ------------------------- | -------------------------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------- |
-| Leads recorded            | Distinct non-deleted Leads                                                 | `created_at` inside the period    | System entry, including imports; not verified enquiry arrival      |
-| Enquiries dated in period | Distinct non-deleted Leads                                                 | stated `enquiry_date` in period   | Editable stated date; a separate population from system entry      |
-| Missing Enquiry Dates     | Distinct non-deleted Leads recorded in the period with `enquiry_date` null | `created_at` inside the period    | Excluded from Enquiry Date figures; creation time is not substituted |
-| Source volume             | Distinct non-deleted Leads recorded in the period, grouped by stored label | `created_at` inside the period    | Labels preserved exactly; missing labels grouped as Unknown source |
+| Figure                    | Population                                                                 | Date basis                      | Disclosure                                                           |
+| ------------------------- | -------------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------- |
+| Leads recorded            | Distinct non-deleted Leads                                                 | `created_at` inside the period  | System entry, including imports; not verified enquiry arrival        |
+| Enquiries dated in period | Distinct non-deleted Leads                                                 | stated `enquiry_date` in period | Editable stated date; a separate population from system entry        |
+| Missing Enquiry Dates     | Distinct non-deleted Leads recorded in the period with `enquiry_date` null | `created_at` inside the period  | Excluded from Enquiry Date figures; creation time is not substituted |
+| Source volume             | Distinct non-deleted Leads recorded in the period, grouped by stored label | `created_at` inside the period  | Labels preserved exactly; missing labels grouped as Unknown source   |
 
 All totals are distinct Lead counts. The intake reads never join child tables,
 so activities or Proposals cannot multiply a Lead. Soft-deleted Leads are
@@ -129,20 +129,20 @@ register metric and the same applied filters. The register:
 
 `src/server/reports/lead-audit/`
 
-| File            | Responsibility                                                              |
-| --------------- | --------------------------------------------------------------------------- |
-| `index.ts`      | Public read interface: `readLeadAuditReport`, `readLeadAuditRegister`, shared section readers and types |
-| `access.ts`     | `canReadLeadAudit` — the two-grant conjunction and super-admin bypass        |
-| `filters.ts`    | One parser for periods, filters, pagination, and the evidence metric         |
-| `period.ts`     | Calendar-only date arithmetic and preset resolution                          |
-| `clock.ts`      | Database observation time and actual reporting time zone                     |
-| `sql.ts`        | Shared Lead predicates and the inclusive/exclusive date bounds               |
-| `scope.ts`      | Effective-filter labels, scope, and metadata                                 |
-| `source.ts`     | The single missing-label boundary for stored source values                   |
-| `disclosures.ts`| Coverage disclosures shared by the view and the evidence                     |
-| `intake.ts`     | Overview/intake section: summary, trends, sources, filter options            |
-| `register.ts`   | Paginated Lead evidence for one metric                                       |
-| `connection.ts` | One shared-pool connection per observation                                   |
+| File             | Responsibility                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| `index.ts`       | Public read interface: `readLeadAuditReport`, `readLeadAuditRegister`, shared section readers and types |
+| `access.ts`      | `canReadLeadAudit` — the two-grant conjunction and super-admin bypass                                   |
+| `filters.ts`     | One parser for periods, filters, pagination, and the evidence metric                                    |
+| `period.ts`      | Calendar-only date arithmetic and preset resolution                                                     |
+| `clock.ts`       | Database observation time and actual reporting time zone                                                |
+| `sql.ts`         | Shared Lead predicates and the inclusive/exclusive date bounds                                          |
+| `scope.ts`       | Effective-filter labels, scope, and metadata                                                            |
+| `source.ts`      | The single missing-label boundary for stored source values                                              |
+| `disclosures.ts` | Coverage disclosures shared by the view and the evidence                                                |
+| `intake.ts`      | Overview/intake section: summary, trends, sources, filter options                                       |
+| `register.ts`    | Paginated Lead evidence for one metric                                                                  |
+| `connection.ts`  | One shared-pool connection per observation                                                              |
 
 Section readers accept `(db, filters, clock)`. A later workbook export can
 open one `withLeadAuditConnection` observation, read every section on that
@@ -213,6 +213,12 @@ Verification record:
   `lead-audit-intake` failed at the first report read with `404 !== 200`,
   proving the endpoint was absent before implementation. Disposable database
   `accent_integration_399_red` was dropped after the run.
-- **2026-11-03 — green:** pending the orchestrator's integrated run after the
-  implementation merge. This document records the actual result when that run
-  completes; no pass is claimed here.
+- **2026-11-03 — green:** all 84 authenticated HTTP scenarios passed against
+  disposable MariaDB 10.11.15, including `lead-audit-intake`.
+  `npm run verify` passed: production build, 122 test files, and 1,421 tests.
+- **2026-11-03 — browser:** exercised Apply/Reset, filtered metric drill-downs,
+  source labels, loading, empty and failed-request states, and denied page access.
+  The May fixture showed eight recorded Leads, seven dated enquiries, and one
+  missing Enquiry Date. At 320 pixels, document width remained 320 pixels;
+  wide evidence tables used labelled scroll regions. At 200% CSS zoom, controls
+  remained reachable without document overflow.
