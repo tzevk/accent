@@ -1,6 +1,7 @@
 import { LEAD_STAGES } from '@/lib/lead-stages';
 import type { DbConnection } from '@/server/leads/shared';
 import {
+	LEAD_AUDIT_SOURCE_GROUP_SQL,
 	buildLeadAuditFilterCondition,
 	buildLeadAuditSearchCondition,
 	enquiryInPeriod,
@@ -113,9 +114,9 @@ export async function readLeadAuditIntakeSection(
 			enquiry.params
 		),
 		db.execute(
-			`SELECT l.lead_source AS source, COUNT(*) AS count
+			`SELECT ${LEAD_AUDIT_SOURCE_GROUP_SQL} AS source, COUNT(*) AS count
          FROM leads l WHERE ${recorded.sql}
-         GROUP BY l.lead_source`,
+         GROUP BY ${LEAD_AUDIT_SOURCE_GROUP_SQL}`,
 			recorded.params
 		),
 		db.execute(
@@ -130,9 +131,9 @@ export async function readLeadAuditIntakeSection(
 			searchOnly.params
 		),
 		db.execute(
-			`SELECT l.lead_source AS source, COUNT(*) AS count
+			`SELECT ${LEAD_AUDIT_SOURCE_GROUP_SQL} AS source, COUNT(*) AS count
          FROM leads l WHERE ${searchOnly.sql}
-         GROUP BY l.lead_source`,
+         GROUP BY ${LEAD_AUDIT_SOURCE_GROUP_SQL}`,
 			searchOnly.params
 		),
 		resolveLeadAuditEffectiveFilters(db, filters),

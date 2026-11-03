@@ -8,6 +8,22 @@ export interface SqlCondition {
 
 const ACTIVE_LEAD = '(l.isDelete = 0 OR l.isDelete IS NULL)';
 
+/**
+ * Stored source labels must group and compare byte for byte. The table's
+ * default collation is case-insensitive and space-padding, so a plain
+ * comparison would merge `Website` and `website` and ignore trailing spaces.
+ * The BINARY cast keeps every stored byte distinct.
+ */
+export const LEAD_AUDIT_SOURCE_LABEL_SQL = 'BINARY l.lead_source';
+
+/**
+ * The grouping key: byte-exact labels, with NULL and the empty string folded
+ * into one missing group. The BINARY result is decoded back to text before
+ * grouping in JavaScript; the missing group is shown as Unknown source.
+ */
+export const LEAD_AUDIT_SOURCE_GROUP_SQL =
+	"COALESCE(BINARY l.lead_source, BINARY '')";
+
 function searchCondition(filters: LeadAuditFilters): SqlCondition {
 	if (filters.search === '') return { sql: '', params: [] };
 	const term = `%${filters.search.toLowerCase()}%`;
@@ -35,9 +51,9 @@ export function buildLeadAuditFilterCondition(
 		params.push(filters.ownerUserId);
 	}
 	if (filters.sourceMissing) {
-		clauses.push("(l.lead_source IS NULL OR l.lead_source = '')");
+		clauses.push("(l.lead_source IS NULL OR BINARY l.lead_source = BINARY '')");
 	} else if (filters.source !== null) {
-		clauses.push('l.lead_source = ?');
+		clauses.push(`${LEAD_AUDIT_SOURCE_LABEL_SQL} = CAST(? AS BINARY)`);
 		params.push(filters.source);
 	}
 	if (filters.stage === 'unresolved') {

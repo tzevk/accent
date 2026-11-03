@@ -11,7 +11,7 @@ import {
 import type {
 	LeadAuditIntakeSection,
 	LeadAuditMetric,
-} from './types';
+} from '../types';
 
 interface OverviewViewProps {
 	report: LeadAuditIntakeSection;

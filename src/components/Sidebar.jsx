@@ -579,6 +579,12 @@ export default function Sidebar() {
 								href="/reports/attendance-report"
 								active={pathname.startsWith('/reports/attendance-report')}
 							/>
+							<NavRow
+								icon={ChartBarSquareIcon}
+								label="Lead Audit and Performance"
+								href="/reports/lead-audit"
+								active={pathname.startsWith('/reports/lead-audit')}
+							/>
 						</div>
 					</div>
 				)}

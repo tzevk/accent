@@ -104,6 +104,9 @@ Unknown, Unassigned, or Unresolved, never as a fabricated value.
 - groups by the exact stored value, preserving case and whitespace;
 - groups `NULL` and the empty string as **Unknown source**;
 - never trims, normalizes, merges, or rewrites a label;
+- compares and groups under a byte-exact `BINARY` expression, because the
+  column's default collation is case-insensitive and space-padding and would
+  otherwise merge labels;
 - offers the search-matching stored labels in the filter options;
 - does not claim advertising efficiency or return.
 
