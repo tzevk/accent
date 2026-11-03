@@ -10,6 +10,11 @@ import {
 	ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { apiGet } from '@/lib/api-client';
+import {
+	formatCount,
+	formatDuration,
+	formatShare,
+} from '../figures';
 import type {
 	LeadAuditTimingEvidenceSection,
 	LeadAuditTimingPopulation,
@@ -59,36 +64,6 @@ const STATUS_STYLES: Record<LeadAuditTimingRow['status'], string> = {
 	incomplete_earlier: 'bg-amber-50 text-amber-900 ring-amber-200',
 	negative: 'bg-red-50 text-red-800 ring-red-200',
 };
-
-function formatCount(value: number): string {
-	return value.toLocaleString('en-IN');
-}
-
-function formatShare(share: number | null): string {
-	if (share === null) return 'Not applicable';
-	const percent = share * 100;
-	return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`;
-}
-
-function formatDuration(seconds: number | null): string {
-	if (seconds === null) return 'Not available';
-	const negative = seconds < 0;
-	const absolute = Math.abs(seconds);
-	const days = Math.floor(absolute / 86400);
-	const hours = Math.floor((absolute % 86400) / 3600);
-	const minutes = Math.floor((absolute % 3600) / 60);
-	const remainder = absolute % 60;
-	const parts: string[] = [];
-	if (days > 0) parts.push(`${days} d`);
-	if (hours > 0) parts.push(`${hours} h`);
-	if (days === 0 && minutes > 0) parts.push(`${minutes} m`);
-	if (parts.length === 0 || (days === 0 && minutes === 0 && remainder > 0)) {
-		parts.push(
-			`${Number.isInteger(remainder) ? remainder : remainder.toFixed(1)} s`
-		);
-	}
-	return `${negative ? '−' : ''}${parts.slice(0, 2).join(' ')}`;
-}
 
 function MetricCard({
 	label,

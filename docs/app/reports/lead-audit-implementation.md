@@ -31,6 +31,7 @@ Section definitions and evidence contracts:
 - [Cohort conversion and downstream context](lead-audit-conversion.md)
 - [Time to first outreach](lead-audit-timing.md)
 - [Audit, deleted evidence, and coverage](lead-audit-audit-and-coverage.md)
+- [Printing the management summary](lead-audit-print.md)
 
 ## Authorization
 
@@ -182,6 +183,14 @@ UI sections are separate files:
   200-percent zoom do not clip controls or Lead identities.
 - Counts remain readable as text; trend bars are decorative and the table
   carries the value.
+- The [printable management summary](lead-audit-print.md) prints only its own
+  document-shaped figures: intake, work and contact, cohort outcomes, timing,
+  current-owner workload, and current risks, with the generation time, time
+  zone, applied filters, definitions, coverage, and exclusions. Printing uses
+  the browser dialog and needs no `reports:export`; navigation, controls,
+  evidence tables, narratives, and Proposal or Project values never reach the
+  printed page. Table headings repeat across pages, and print styles remove
+  every element outside the summary wrapper.
 
 ## Shared section scopes
 
