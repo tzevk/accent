@@ -76,6 +76,7 @@ import {
 const ACTIVE_ACTIVITY = '(a.isDelete = 0 OR a.isDelete IS NULL)';
 const COMPLETED_ACTIVITY =
 	"(a.status = 'Completed' AND a.source_activity_id IS NULL)";
+const COMPLETED_OPERATIONAL = `${ACTIVE_ACTIVITY} AND ${COMPLETED_ACTIVITY}`;
 const OUTREACH_SQL = "a.activity_type IN ('Call', 'Email', 'Meeting')";
 const SUCCESSFUL_CONTACT_SQL =
 	"((a.activity_type = 'Call' AND a.call_outcome = 'Connected') OR (a.activity_type = 'Email' AND a.reply_confirmed = 1))";
@@ -707,7 +708,7 @@ export async function readLeadAuditWorkSection(
 	const counted = workCondition(
 		filters,
 		evidence,
-		{ sql: COMPLETED_ACTIVITY, params: [] },
+		{ sql: COMPLETED_OPERATIONAL, params: [] },
 		occurrenceInPeriod(filters)
 	);
 	const searchOnly = buildLeadAuditSearchCondition(filters);
@@ -784,7 +785,7 @@ export async function readLeadAuditWorkSection(
 			workCondition(
 				filters,
 				evidence,
-				{ sql: COMPLETED_ACTIVITY, params: [] },
+				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				{ sql: 'a.occurred_at IS NULL', params: [] }
 			)
 		),
@@ -793,7 +794,7 @@ export async function readLeadAuditWorkSection(
 			workCondition(
 				filters,
 				evidence,
-				{ sql: COMPLETED_ACTIVITY, params: [] },
+				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
 				{ sql: UNKNOWN_TYPE_SQL, params: [] }
 			)
@@ -803,7 +804,7 @@ export async function readLeadAuditWorkSection(
 			workCondition(
 				filters,
 				evidence,
-				{ sql: COMPLETED_ACTIVITY, params: [] },
+				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
 				{ sql: 'a.created_by IS NULL', params: [] }
 			)
@@ -813,7 +814,7 @@ export async function readLeadAuditWorkSection(
 			workCondition(
 				filters,
 				evidence,
-				{ sql: COMPLETED_ACTIVITY, params: [] },
+				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
 				{ sql: 'u.is_active = 0', params: [] }
 			)
@@ -823,7 +824,7 @@ export async function readLeadAuditWorkSection(
 			workCondition(
 				filters,
 				evidence,
-				{ sql: COMPLETED_ACTIVITY, params: [] },
+				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
 				{ sql: "a.activity_type = 'Call' AND a.call_outcome IS NULL", params: [] }
 			)
@@ -833,7 +834,7 @@ export async function readLeadAuditWorkSection(
 			workCondition(
 				filters,
 				evidence,
-				{ sql: COMPLETED_ACTIVITY, params: [] },
+				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
 				{
 					sql: `a.activity_type = 'Call' AND a.call_outcome IS NOT NULL AND a.call_outcome NOT IN ${CANONICAL_CALL_OUTCOMES_SQL}`,
@@ -846,7 +847,7 @@ export async function readLeadAuditWorkSection(
 			workCondition(
 				filters,
 				evidence,
-				{ sql: COMPLETED_ACTIVITY, params: [] },
+				{ sql: COMPLETED_OPERATIONAL, params: [] },
 				occurrenceInPeriod(filters),
 				{
 					sql: "a.activity_type = 'Email' AND a.reply_confirmed IS NULL",
