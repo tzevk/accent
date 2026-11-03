@@ -609,3 +609,155 @@ describe('user dashboard attendance sources', () => {
 		).not.toBeInTheDocument();
 	});
 });
+
+describe('activity log reminder project gating', () => {
+	const REMINDER_NOW = new Date(2026, 9, 26, 12, 0, 0).getTime();
+	const REMINDER_TWO_HOURS_MS = 7_200_000;
+
+	let dateNowSpy: { mockRestore: () => void } | null = null;
+	let originalShowModal:
+		| typeof HTMLDialogElement.prototype.showModal
+		| undefined;
+	let originalClose: typeof HTMLDialogElement.prototype.close | undefined;
+
+	function createIsolatedStorage(): Storage {
+		const store = new Map<string, string>();
+		return {
+			get length(): number {
+				return store.size;
+			},
+			clear(): void {
+				store.clear();
+			},
+			getItem(key: string): string | null {
+				const k = String(key);
+				return store.has(k) ? (store.get(k) as string) : null;
+			},
+			setItem(key: string, value: string): void {
+				store.set(String(key), String(value));
+			},
+			removeItem(key: string): void {
+				store.delete(String(key));
+			},
+			key(index: number): string | null {
+				const keys = Array.from(store.keys());
+				return keys[index] ?? null;
+			},
+		};
+	}
+
+	/** Simulates a first dashboard visit already two hours past: an expired per-user/day baseline. */
+	function seedExpiredBaseline(userId: number, now: number): void {
+		const d = new Date(now);
+		const key = `activity-log-reminder:${userId}:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+		localStorage.setItem(
+			key,
+			JSON.stringify({
+				baseline: now - REMINDER_TWO_HOURS_MS - 60_000,
+				lastSavedAt: null,
+				snoozedUntil: 0,
+			})
+		);
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+		mockTierFetches();
+		const storage = createIsolatedStorage();
+		vi.stubGlobal('localStorage', storage);
+		try {
+			Object.defineProperty(window, 'localStorage', {
+				configurable: true,
+				enumerable: true,
+				writable: true,
+				value: storage,
+			});
+		} catch {
+			// window.localStorage not configurable; global stub is sufficient.
+		}
+		// Pin the hook's clock without touching timer behavior, so async
+		// queries and findBy polling keep working on real timers.
+		dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(REMINDER_NOW);
+		originalShowModal = HTMLDialogElement.prototype.showModal;
+		originalClose = HTMLDialogElement.prototype.close;
+		HTMLDialogElement.prototype.showModal = function (
+			this: HTMLDialogElement
+		): void {
+			this.open = true;
+		};
+		HTMLDialogElement.prototype.close = function (
+			this: HTMLDialogElement
+		): void {
+			this.open = false;
+		};
+	});
+
+	afterEach(() => {
+		dateNowSpy?.mockRestore();
+		dateNowSpy = null;
+		if (originalShowModal !== undefined) {
+			HTMLDialogElement.prototype.showModal = originalShowModal;
+		}
+		if (originalClose !== undefined) {
+			HTMLDialogElement.prototype.close = originalClose;
+		}
+		vi.unstubAllGlobals();
+	});
+
+	it('stays silent after two hours when the user has no accessible project', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		// Default tier fetch leaves assignments, accessibleProjects, and
+		// emptyProjects all empty: nothing the user could log to.
+		seedExpiredBaseline(7, REMINDER_NOW);
+		renderDashboard();
+
+		await screen.findByTestId('attendance-card');
+		await act(async () => {
+			window.dispatchEvent(new Event('focus'));
+		});
+		expect(screen.queryByText('Activity Log Reminder')).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/haven't logged any activity/)
+		).not.toBeInTheDocument();
+	});
+
+	it('prompts after two hours when an accessible empty project can receive the log', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		const baseFetch = fetchMock.getMockImplementation() as (
+			url: string
+		) => Promise<unknown>;
+		fetchMock.mockImplementation((url: string) => {
+			if (url.includes('/activity-assignments')) {
+				return Promise.resolve({
+					json: async () => ({
+						success: true,
+						data: {
+							assignments: [],
+							accessibleProjects: [],
+							emptyProjects: [
+								{
+									project_id: 11,
+									project_code: 'EMPTY-1',
+									project_name: 'Empty Project',
+								},
+							],
+							documentCounts: {},
+							stats: {},
+						},
+					}),
+				});
+			}
+			return baseFetch(url);
+		});
+		seedExpiredBaseline(7, REMINDER_NOW);
+		renderDashboard();
+
+		// The real hook sees the expired baseline and an empty-but-loggable
+		// project, so the consumer-visible warning appears.
+		expect(
+			await screen.findByText('Activity Log Reminder')
+		).toBeInTheDocument();
+		expect(screen.getByText(/haven't logged any activity/)).toBeInTheDocument();
+	});
+});

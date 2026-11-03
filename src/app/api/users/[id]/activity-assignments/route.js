@@ -159,6 +159,59 @@ async function fetchProjectDocumentCounts(db, projectIds) {
 	return counts;
 }
 
+const PROJECT_ACTIVITY_SAVE_RESOURCE = 'project_activity_save';
+
+/**
+ * Latest self-service activity-save evidence for a user: the newest
+ * `user_activity_logs` row the user recorded by saving their own activity
+ * data (PUT progress update or PATCH self-service add). Manager edits to
+ * another user's assignments move assignment `updated_at` but never write
+ * this marker, so rows without dedicated evidence read as unknown (null)
+ * rather than inferring a save time. Numeric epoch ms or null. Throws on
+ * read failure — a logging outage must fail the request, never be
+ * misreported as "no saves".
+ */
+async function readLastActivitySaveMs(connection, userId) {
+	const [rows] = await connection.execute(
+		`SELECT UNIX_TIMESTAMP(MAX(created_at)) * 1000 AS last_activity_logged_at
+       FROM user_activity_logs
+       WHERE user_id = ?
+         AND resource_type = ?
+         AND action_type IN ('create', 'update')
+         AND status = 'success'`,
+		[userId, PROJECT_ACTIVITY_SAVE_RESOURCE]
+	);
+	const raw = rows?.[0]?.last_activity_logged_at;
+	if (raw === null || raw === undefined || raw === '') return null;
+	const savedAtMs = Number(raw);
+	return Number.isFinite(savedAtMs) && savedAtMs > 0 ? savedAtMs : null;
+}
+
+/**
+ * Record a self-service activity save for the acting user on the SAME
+ * connection (call inside the save transaction so content and evidence
+ * commit atomically). `resource_id` is omitted: activity ids are UUIDs
+ * and the column is INT. Throws on failure so the caller rolls back.
+ */
+async function insertActivitySaveMarker(
+	connection,
+	{ userId, actionType, projectId, activityId }
+) {
+	await connection.execute(
+		`INSERT INTO user_activity_logs
+       (user_id, action_type, resource_type, description, details, status)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+		[
+			userId,
+			actionType,
+			PROJECT_ACTIVITY_SAVE_RESOURCE,
+			`Activity progress saved for project ${projectId}`,
+			JSON.stringify({ projectId, activityId }),
+			'success',
+		]
+	);
+}
+
 /**
  * GET /api/users/[id]/activity-assignments
  * Fetch all activity assignments for a user from project_activities_list
@@ -213,6 +266,15 @@ export async function GET(request, { params }) {
       ORDER BY p.start_date DESC, uaa.created_at ASC
     `,
 			[requestedUserId]
+		);
+
+		// Latest self-service save evidence. The epoch comes from the database
+		// so the app never interprets the SQL wallclock in local time. Only
+		// self-recorded saves in user_activity_logs count — assignment
+		// updated_at also moves on manager edits, so it must never seed this.
+		const lastActivityLoggedAt = await readLastActivitySaveMs(
+			db,
+			requestedUserId
 		);
 
 		const assignments = [];
@@ -402,6 +464,7 @@ export async function GET(request, { params }) {
 				accessibleProjects,
 				documentCounts,
 				stats,
+				lastActivityLoggedAt,
 			},
 		});
 
@@ -436,6 +499,7 @@ export async function GET(request, { params }) {
  */
 export async function PUT(request, { params }) {
 	let db;
+	let inTransaction = false;
 	try {
 		const { id } = await params;
 		const requestedUserId = parseInt(id);
@@ -613,11 +677,30 @@ export async function PUT(request, { params }) {
 		setClauses.push('updated_at = NOW()');
 		updateParams.push(requestedUserId, project_id, activity_id);
 
+		// The assignment write and its save evidence commit atomically: a
+		// manager edit to another user's row moves updated_at but never
+		// records evidence for that user, and a failed marker insert rolls
+		// the content write back so a save is never half-recorded.
+		await db.beginTransaction();
+		inTransaction = true;
+
 		const [updateResult] = await db.execute(
 			`UPDATE user_activity_assignments SET ${setClauses.join(', ')}
-       WHERE user_id = ? AND project_id = ? AND activity_id = ?`,
+	       WHERE user_id = ? AND project_id = ? AND activity_id = ?`,
 			updateParams
 		);
+
+		if (updateResult.affectedRows > 0 && isOwnData) {
+			await insertActivitySaveMarker(db, {
+				userId: currentUser.id,
+				actionType: 'update',
+				projectId: project_id,
+				activityId: activity_id,
+			});
+		}
+
+		await db.commit();
+		inTransaction = false;
 
 		db.release();
 
@@ -629,6 +712,11 @@ export async function PUT(request, { params }) {
 	} catch (error) {
 		console.error('[Activity Assignment Update] Error:', error);
 		if (db) {
+			if (inTransaction) {
+				try {
+					await db.rollback();
+				} catch {}
+			}
 			try {
 				db.release();
 			} catch {}
@@ -815,6 +903,7 @@ export async function POST(request, { params }) {
  */
 export async function PATCH(request, { params }) {
 	let db;
+	let inTransaction = false;
 	try {
 		const { id } = await params;
 		const requestedUserId = parseInt(id);
@@ -922,6 +1011,12 @@ export async function PATCH(request, { params }) {
 
 		activitiesList.push(newActivity);
 
+		// Blob update, normalized insert and save evidence commit atomically
+		// on the same connection. A failed evidence insert or commit rolls
+		// everything back.
+		await db.beginTransaction();
+		inTransaction = true;
+
 		await db.execute(
 			'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
 			[JSON.stringify(activitiesList), project.project_id]
@@ -976,6 +1071,21 @@ export async function PATCH(request, { params }) {
 			// Non-fatal — the JSON blob update already succeeded
 		}
 
+		// Evidence only for self-service saves, recorded after the save
+		// writes on the same transaction: a super-admin adding for another
+		// user never resets that user's timer.
+		if (isOwnData) {
+			await insertActivitySaveMarker(db, {
+				userId: currentUser.id,
+				actionType: 'create',
+				projectId: project_id,
+				activityId: newActivity.id,
+			});
+		}
+
+		await db.commit();
+		inTransaction = false;
+
 		db.release();
 
 		return NextResponse.json({
@@ -986,6 +1096,11 @@ export async function PATCH(request, { params }) {
 	} catch (error) {
 		console.error('Error adding self-service activity:', error);
 		if (db) {
+			if (inTransaction) {
+				try {
+					await db.rollback();
+				} catch {}
+			}
 			try {
 				db.release();
 			} catch {}

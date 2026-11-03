@@ -34,6 +34,7 @@ import {
 } from '@heroicons/react/24/outline';
 import LeaveLoginToast from '@/components/LeaveLoginToast';
 import { useIdleMonitor } from '@/hooks/useIdleMonitor';
+import { useActivityLogReminder } from '@/hooks/useActivityLogReminder';
 
 // ── Lazy-load heavy components (code-split, only fetched when needed) ──
 const TodoList = lazy(() => import('@/components/TodoList'));
@@ -240,6 +241,11 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	const [statsReady, setStatsReady] = useState(false);
 	const [todoPanelOpen, setTodoPanelOpen] = useState(false);
 	const [showActivityReminder, setShowActivityReminder] = useState(false);
+	// Latest saved project-activity time for the viewed user, from the
+	// successful assignments payload. The reminder hook reads this baseline;
+	// every assignment save repaints it via the save event, never browsing.
+	const [lastActivityLoggedAt, setLastActivityLoggedAt] = useState(null);
+	const [assignmentsUserId, setAssignmentsUserId] = useState(null);
 	const [pendingActivities, setPendingActivities] = useState([]);
 
 	// Sync todoPanelOpen from localStorage on mount & listen for sidebar toggle
@@ -257,14 +263,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	// which mounts on every page, so this dashboard no longer owns it.
 
 	// Idle monitoring
-	const {
-		idleSeconds,
-		cumulativeIdleSeconds,
-		isIdle,
-		dismiss,
-		dismissed,
-		handleActivity,
-	} = useIdleMonitor();
+	// Only the two metrics still feed the tiles: live idle and cumulative
+	// idle. The saved-activity warning below replaced the old mouse/keyboard
+	// idle modal, so it deliberately never resets on browsing.
+	const { idleSeconds, cumulativeIdleSeconds } = useIdleMonitor();
 
 	// Static greeting & date — computed once on mount, not every second
 	const [greeting] = useState(() => {
@@ -416,6 +418,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		const loadData = async () => {
 			setLoading(true);
 			setAssignmentsLoad(LOAD_PENDING);
+			setLastActivityLoggedAt(null);
+			setAssignmentsUserId(null);
 			const today = new Date().toISOString().split('T')[0];
 
 			try {
@@ -450,7 +454,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 						},
 					}));
 					setStatsReady(true);
-
+					// Saved-activity reminder baseline: the payload's latest save
+					// time (epoch ms) for this viewed user. A failed read leaves the
+					// baseline unset so the hook stays silent.
+					setLastActivityLoggedAt(
+						activityRes.value.data.lastActivityLoggedAt ?? null
+					);
+					setAssignmentsUserId(userId);
 					// Check for pending daily entries. Today counts as updated
 					// when an entry for today exists — entries are created
 					// unlocked, so requiring isLocked made the reminder fire
@@ -579,6 +589,39 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 	// Polling replaces the day's payload, including null clears.
 	// The per-user query key isolates reads across viewer changes.
+
+	// Saved-activity reminder: two quiet hours without a logged save, even
+	// while browsing. Only the viewed user's own dashboard enables it — an
+	// admin peeking at someone else's dashboard (backTo) never gets nagged,
+	// and a failed assignments read stays silent. The baseline above is
+	// scoped to the user that read produced; a stale response for a previous
+	// user never enables the new user's reminder. With no accessible project
+	// to log to, the warning would be unsatisfiable, so at least one entry
+	// across the panel's own sources (assignments, accessible or empty
+	// projects) is required — matching hasAnyData/projectOrder, where one
+	// nonempty source already allows logging.
+	const isOwnDashboard = !backTo && !!currentUserId;
+	const activitySources = moduleAssignments.activityAssignments;
+	const hasLoggableProject =
+		(activitySources.assignments?.length ?? 0) > 0 ||
+		(activitySources.accessibleProjects?.length ?? 0) > 0 ||
+		(activitySources.emptyProjects?.length ?? 0) > 0;
+	const reminderEnabled =
+		isOwnDashboard &&
+		assignmentsLoad === LOAD_OK &&
+		assignmentsUserId === currentUserId &&
+		hasLoggableProject;
+	const activityLogReminder = useActivityLogReminder({
+		userId: currentUserId,
+		enabled: reminderEnabled,
+		lastActivityLoggedAt: reminderEnabled ? lastActivityLoggedAt : null,
+	});
+	// The pending-entries modal owns the screen while open; the two-hour
+	// reminder waits its turn rather than stacking a second dialog.
+	const pendingReminderOpen =
+		showActivityReminder && pendingActivities.length > 0;
+	const showLogReminder =
+		activityLogReminder.showReminder && !pendingReminderOpen;
 
 	// ── Memoized helpers ──
 	const formatTime = useCallback((time) => {
@@ -721,9 +764,12 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 				</WarningDialog>
 			)}
 
-			{/* Idle Warning Modal */}
-			{isIdle && !dismissed && (
-				<WarningDialog labelledBy="idle-warning-title" onClose={dismiss}>
+			{/* Activity Log Reminder — two hours without a saved activity */}
+			{showLogReminder && (
+				<WarningDialog
+					labelledBy="activity-log-reminder-title"
+					onClose={activityLogReminder.dismiss}
+				>
 					<div
 						data-motion="scale-in"
 						className="mx-4 max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden animate-[scaleIn_0.25s_ease-out]"
@@ -733,20 +779,19 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								<ExclamationTriangleIcon className="h-7 w-7 text-white" />
 							</div>
 							<h2
-								id="idle-warning-title"
+								id="activity-log-reminder-title"
 								className="text-lg font-bold text-white"
 							>
-								Idle Warning
+								Activity Log Reminder
 							</h2>
 						</div>
 						<div className="px-5 py-4">
 							<p className="text-base font-semibold text-gray-800">
-								You&apos;ve been idle for {fmtIdle(idleSeconds)}
+								You haven&apos;t logged any activity in the past 2 hours.
 							</p>
 							<p className="text-sm text-gray-500 mt-2 leading-relaxed">
-								No mouse movement or keyboard activity has been detected. Your
-								idle time is being logged and may affect your productivity
-								report.
+								Please save your project activity and progress so your work
+								stays up to date.
 							</p>
 							<div className="mt-4 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
 								<ClockIcon
@@ -755,29 +800,31 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 								/>
 								<div>
 									<p className="text-xs font-medium text-amber-700">
-										Current idle duration
+										Time without a saved activity
 									</p>
 									<p className="text-lg font-bold text-amber-800 tabular-nums">
-										{fmtIdle(idleSeconds)}
+										{fmtIdle(activityLogReminder.secondsSinceLastLog)}
 									</p>
 								</div>
 							</div>
 						</div>
 						<div className="px-6 pb-5 flex gap-3">
 							<button
-								onClick={dismiss}
+								onClick={activityLogReminder.dismiss}
 								className="flex-1 px-4 py-2.5 text-sm font-semibold text-amber-700 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
 							>
 								Dismiss
 							</button>
 							<button
 								onClick={() => {
-									dismiss();
-									handleActivity?.();
+									activityLogReminder.dismiss();
+									document
+										.querySelector('[data-section="project-activities"]')
+										?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 								}}
 								className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
 							>
-								I&apos;m Back
+								Log Activity
 							</button>
 						</div>
 					</div>

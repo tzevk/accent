@@ -92,6 +92,17 @@ Copies `daily_entries` from the `project_activities_list` form payload into `use
 
 Most server-side report readers decode the blob through one canonical module, `src/lib/logged-hours.ts` (ADR-0010): `parseDailyEntries` for logged hours, `parseDailyEntryRecords` where the reader also needs `qty_done` / `remarks`, and `sumLoggedHoursForMonth` / `hoursByDateForMonth` for the aggregates. Add a new reader there rather than parsing the JSON again. The activity-assignments API route (GET/PUT) still parses/normalizes inline.
 
+### Two-hour activity log reminder
+
+The dashboard separately warns after two hours without a saved project activity update.
+The assignments API returns `data.lastActivityLoggedAt` from authenticated self-service save markers in the existing `user_activity_logs` table (`resource_type='project_activity_save'`, `action_type` create/update, `status='success'`, actor matching the requested user) — never assignment `updated_at`, so a manager saving another user's rows never resets that user's timer. No migration.
+Successful self-service activity additions, edits, and remark saves reset the reminder; browsing, typing, failed saves, and deletions do not.
+Old history without a dedicated marker is unknown and gets first-visit grace rather than an inferred or backfilled save; without a saved update today, monitoring starts at the first dashboard visit of the local calendar day.
+The per-user/day baseline and two-hour dismissal snooze survive refreshes and synchronize across tabs through local storage.
+If storage is unavailable, tracking continues in memory while mounted.
+The reminder stays silent when assignments fail to load, the user has no accessible project to log to, or an administrator views another user's dashboard.
+The existing missing-daily-entry reminder takes priority. Attendance, mouse-idle metrics, and payroll rules remain unchanged.
+
 ---
 
 ## Lock semantics
