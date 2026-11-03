@@ -9,6 +9,7 @@ import {
 	QuestionMarkCircleIcon,
 } from '@heroicons/react/24/outline';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { formatCount, formatRate } from '../figures';
 import type {
 	LeadAuditConversionDownstream,
 	LeadAuditConversionEvidenceFilter,
@@ -45,15 +46,6 @@ const EVIDENCE_LABELS: Record<string, string> = {
 	stage_only: 'Converted label only',
 	none: 'No handoff evidence',
 };
-
-function count(value: number): string {
-	return value.toLocaleString('en-IN');
-}
-
-function rate(value: number | null): string {
-	if (value === null) return 'Not applicable';
-	return `${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}%`;
-}
 
 function time(value: string | null, withTime: boolean): string {
 	if (!value) return 'Unknown';
@@ -93,7 +85,7 @@ function DownstreamCell({
 				{proposal.progress === null ? (
 					<span className="text-gray-600"> · progress unknown</span>
 				) : (
-					<span className="text-gray-600"> · {rate(proposal.progress)}</span>
+					<span className="text-gray-600"> · {formatRate(proposal.progress)}</span>
 				)}
 			</div>
 			{proposal.project_state === 'restricted' ? (
@@ -314,12 +306,12 @@ export default function ConversionView({
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 					<CohortCard
 						label="Cohort Leads"
-						value={count(cohort.cohort_size)}
+						value={formatCount(cohort.cohort_size)}
 						hint="Distinct non-deleted Leads first recorded in the selected period, under the applied filters."
 					/>
 					<CohortCard
 						label="Evidenced handoffs"
-						value={count(cohort.handoffs_evidenced)}
+						value={formatCount(cohort.handoffs_evidenced)}
 						hint="Cohort Leads with a recorded conversion event or a resolved canonical Proposal link."
 					>
 						<SelectButton onSelect={onSelectEvidence} evidence="handoff">
@@ -328,16 +320,16 @@ export default function ConversionView({
 					</CohortCard>
 					<CohortCard
 						label="Lead Cohort Conversion Rate"
-						value={rate(cohort.conversion_rate)}
+						value={formatRate(cohort.conversion_rate)}
 						hint={
 							cohort.conversion_rate === null
 								? 'The cohort is empty, so the rate is Not applicable rather than zero percent.'
-								: `${count(cohort.handoffs_evidenced)} of ${count(cohort.cohort_size)} cohort Leads. Observed through ${time(cohort.observed_through, true)}.`
+								: `${formatCount(cohort.handoffs_evidenced)} of ${formatCount(cohort.cohort_size)} cohort Leads. Observed through ${time(cohort.observed_through, true)}.`
 						}
 					/>
 					<CohortCard
 						label="Dated period handoffs"
-						value={count(period.handoffs)}
+						value={formatCount(period.handoffs)}
 						hint="Distinct Leads with an authoritative recorded conversion time inside the period, including Leads recorded earlier."
 					>
 						<SelectButton onSelect={onSelectEvidence} evidence="period">
@@ -346,7 +338,7 @@ export default function ConversionView({
 					</CohortCard>
 					<CohortCard
 						label="Unresolved links"
-						value={count(cohort.unresolved_evidence)}
+						value={formatCount(cohort.unresolved_evidence)}
 						hint="Linked Proposals without one canonical choice. An evidence gap, not a confirmed failure."
 						tone={cohort.unresolved_evidence > 0 ? 'warn' : 'plain'}
 					>
@@ -356,8 +348,8 @@ export default function ConversionView({
 					</CohortCard>
 					<CohortCard
 						label="Undated canonical links"
-						value={count(cohort.undated_links)}
-						hint={`A resolved canonical link supports cohort evidence but never a dated period handoff. ${count(period.undated_canonical_links)} undated link(s) in the filtered Lead population stay out of the period count.`}
+						value={formatCount(cohort.undated_links)}
+						hint={`A resolved canonical link supports cohort evidence but never a dated period handoff. ${formatCount(period.undated_canonical_links)} undated link(s) in the filtered Lead population stay out of the period count.`}
 					>
 						<SelectButton onSelect={onSelectEvidence} evidence="undated">
 							View undated links
@@ -365,7 +357,7 @@ export default function ConversionView({
 					</CohortCard>
 					<CohortCard
 						label="Converted labels without evidence"
-						value={count(cohort.stage_only_claims)}
+						value={formatCount(cohort.stage_only_claims)}
 						hint="Stage labels that claim Converted with no conversion event and no resolved canonical link."
 						tone={cohort.stage_only_claims > 0 ? 'warn' : 'plain'}
 					>
@@ -375,7 +367,7 @@ export default function ConversionView({
 					</CohortCard>
 					<CohortCard
 						label="No handoff evidence"
-						value={count(cohort.no_handoff_evidence)}
+						value={formatCount(cohort.no_handoff_evidence)}
 						hint="Remaining cohort Leads with no recorded handoff evidence. This is not presented as failure."
 					/>
 				</div>
@@ -451,13 +443,13 @@ export default function ConversionView({
 												)}
 											</th>
 											<td className="py-1.5 pr-3 text-right tabular-nums text-gray-900">
-												{count(source.cohort_size)}
+												{formatCount(source.cohort_size)}
 											</td>
 											<td className="py-1.5 pr-3 text-right tabular-nums text-gray-900">
-												{count(source.handoffs_evidenced)}
+												{formatCount(source.handoffs_evidenced)}
 											</td>
 											<td className="py-1.5 text-right tabular-nums text-gray-900">
-												{rate(source.conversion_rate)}
+												{formatRate(source.conversion_rate)}
 											</td>
 										</tr>
 									))}
@@ -519,7 +511,7 @@ export default function ConversionView({
 											{row.stage.label}
 										</th>
 										<td className="py-1.5 text-right tabular-nums text-gray-900">
-											{count(row.count)}
+											{formatCount(row.count)}
 										</td>
 									</tr>
 								))}
@@ -553,19 +545,19 @@ export default function ConversionView({
 						<dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
 							<dt className="text-gray-600">Available</dt>
 							<dd className="text-right tabular-nums text-gray-900">
-								{count(downstream.proposal_states.available)}
+								{formatCount(downstream.proposal_states.available)}
 							</dd>
 							<dt className="text-gray-600">Restricted</dt>
 							<dd className="text-right tabular-nums text-gray-900">
-								{count(downstream.proposal_states.restricted)}
+								{formatCount(downstream.proposal_states.restricted)}
 							</dd>
 							<dt className="text-gray-600">Unresolved</dt>
 							<dd className="text-right tabular-nums text-gray-900">
-								{count(downstream.proposal_states.unresolved)}
+								{formatCount(downstream.proposal_states.unresolved)}
 							</dd>
 							<dt className="text-gray-600">No Proposal</dt>
 							<dd className="text-right tabular-nums text-gray-900">
-								{count(downstream.proposal_states.none)}
+								{formatCount(downstream.proposal_states.none)}
 							</dd>
 						</dl>
 					</div>
@@ -576,15 +568,15 @@ export default function ConversionView({
 						<dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
 							<dt className="text-gray-600">Available</dt>
 							<dd className="text-right tabular-nums text-gray-900">
-								{count(downstream.project_states.available)}
+								{formatCount(downstream.project_states.available)}
 							</dd>
 							<dt className="text-gray-600">Restricted</dt>
 							<dd className="text-right tabular-nums text-gray-900">
-								{count(downstream.project_states.restricted)}
+								{formatCount(downstream.project_states.restricted)}
 							</dd>
 							<dt className="text-gray-600">No Project</dt>
 							<dd className="text-right tabular-nums text-gray-900">
-								{count(downstream.project_states.none)}
+								{formatCount(downstream.project_states.none)}
 							</dd>
 						</dl>
 						<p className="mt-2 text-xs text-gray-600">
@@ -664,7 +656,7 @@ export default function ConversionView({
 									<p className="text-gray-600">
 										Page {evidence.pagination.page} of{' '}
 										{evidence.pagination.total_pages} ·{' '}
-										{count(evidence.pagination.total)} Lead(s)
+										{formatCount(evidence.pagination.total)} Lead(s)
 									</p>
 									<div className="flex gap-2">
 										<button

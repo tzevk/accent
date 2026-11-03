@@ -39,6 +39,7 @@ Section definitions and evidence contracts:
 - [Cohort conversion and downstream context](lead-audit-conversion.md)
 - [Time to first outreach](lead-audit-timing.md)
 - [Audit, deleted evidence, and coverage](lead-audit-audit-and-coverage.md)
+- [Printing the management summary](lead-audit-print.md)
 
 ## Authorization
 
@@ -190,6 +191,14 @@ UI sections are separate files:
   200-percent zoom do not clip controls or Lead identities.
 - Counts remain readable as text; trend bars are decorative and the table
   carries the value.
+- The [printable management summary](lead-audit-print.md) prints only its own
+  document-shaped figures: intake, work and contact, cohort outcomes, timing,
+  current-owner workload, and current risks, with the generation time, time
+  zone, applied filters, definitions, coverage, and exclusions. Printing uses
+  the browser dialog and needs no `reports:export`; navigation, controls,
+  evidence tables, narratives, and Proposal or Project values never reach the
+  printed page. Table headings repeat across pages, and print styles remove
+  every element outside the summary wrapper.
 
 ## Shared section scopes
 
@@ -253,3 +262,16 @@ Verification record:
   validation, timing boundaries, audit narratives, and source non-mutation.
   Each scenario uses its own loopback client address, keeping production
   rate limits active without sharing one unrelated scenario's IP bucket.
+- **2026-11-03 — browser, all views:** with real fixture data, the view
+  buttons switched populations without discarding applied filters, work
+  evidence paged under a selected metric, current-risk cards opened their
+  matching Lead evidence, cohort handoff evidence loaded, and timing
+  figures opened their sample evidence. An audit-only incompatible filter
+  combination produced a named error while the view buttons stayed usable
+  and returning to Overview kept the corrected figures. Audit narratives
+  rendered live and retained deleted evidence, a correction detail showed
+  its before/after values, and all wide audit and coverage tables became
+  labelled focusable scroll regions. At 320 pixels the document width
+  remained 320 pixels; at 200% zoom the header title wrapped instead of
+  clipping. The header's decorative icon is hidden below the `sm`
+  breakpoint, where it previously competed with the title.

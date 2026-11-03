@@ -19,6 +19,8 @@ interface FilterToolbarProps {
 	onReset: () => void;
 	busy: boolean;
 	invalidMessage: string;
+	/** Export and Print sit beside Reset without owning the filter form. */
+	actions?: ReactNode;
 }
 
 const controlClass =
@@ -54,6 +56,7 @@ export default function FilterToolbar({
 	onReset,
 	busy,
 	invalidMessage,
+	actions,
 }: FilterToolbarProps) {
 	const custom = draft.preset === 'custom';
 	const owners = options?.owners ?? [];
@@ -338,6 +341,7 @@ export default function FilterToolbar({
 					<ArrowPathIcon className="h-4 w-4" aria-hidden="true" />
 					Reset
 				</button>
+				{actions}
 				<span className="text-xs text-gray-600" role="status">
 					{busy
 						? 'Updating report…'
