@@ -473,6 +473,14 @@ function makeReader(connection: Connection): Reader {
 	}
 
 	return {
+		fixtureRows: async (sql, params) => {
+			const [rows] = await connection.execute(sql, params);
+			return rows;
+		},
+		fixtureWrite: async (sql, params) => {
+			const [result] = await connection.execute(sql, params);
+			return result as unknown as { insertId: number; affectedRows: number };
+		},
 		leadRow: async (id) => {
 			const row = await firstRow('SELECT * FROM leads WHERE id = ? LIMIT 1', [
 				id,
@@ -2416,11 +2424,7 @@ export async function runLeadsIntegration(
 				softDeletedLeadKeepsItsProposalStateScenario(ctx, softDeleteSeed),
 			context
 		);
-		await runScenario(
-			'lead-audit-intake',
-			leadAuditIntakeScenario,
-			context
-		);
+		await runScenario('lead-audit-intake', leadAuditIntakeScenario, context);
 		log(IBAND);
 		log(`PASS all 84 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;

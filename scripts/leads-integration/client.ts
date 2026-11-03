@@ -324,6 +324,15 @@ export interface Reader {
 	 * the oracle of a report figure.
 	 */
 	seedReportLead: (input: ReportFixtureLeadInput) => Promise<number>;
+	/** Direct fixture setup and source snapshots on the disposable database. */
+	fixtureRows: (
+		sql: string,
+		params?: Array<string | number | null>
+	) => Promise<Array<Record<string, unknown>>>;
+	fixtureWrite: (
+		sql: string,
+		params?: Array<string | number | null>
+	) => Promise<{ insertId: number; affectedRows: number }>;
 }
 
 /** One directly seeded Lead for the report scenarios. */
