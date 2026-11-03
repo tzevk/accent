@@ -215,6 +215,15 @@ const reportsMenuConfig = [
 		resource: 'reports',
 		reportField: 'project_activities', // reuse so existing grants cover the new report
 	},
+	{
+		name: 'Lead Audit and Performance',
+		href: '/reports/lead-audit',
+		icon: ChartBarIcon,
+		resource: 'reports',
+		// The report requires both the reporting privilege and the Lead read
+		// right; the unrelated Project Activities field grant is not enough.
+		alsoRequires: ['leads'],
+	},
 ];
 
 function hasReportFieldAccess(user, fieldKey) {
@@ -492,10 +501,13 @@ export default function Navbar() {
 
 		// Filter based on permissions
 		const filteredItems = reportsMenuConfig.filter((item) => {
-			return (
+			const opensReportSurface =
 				can(item.resource, PERMISSIONS.READ) ||
-				hasReportFieldAccess(user, item.reportField)
+				hasReportFieldAccess(user, item.reportField);
+			const hasAdditionalGrants = (item.alsoRequires ?? []).every(
+				(resource) => can(resource, PERMISSIONS.READ)
 			);
+			return opensReportSurface && hasAdditionalGrants;
 		});
 
 		return filteredItems;

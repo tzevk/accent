@@ -317,6 +317,30 @@ export interface Reader {
 	queueCounts: (search: string, viewerUserId: number) => Promise<DbQueueCounts>;
 	/** The active Leads matching the search term, counted by the reader. */
 	countActiveLeads: (search: string) => Promise<number>;
+	/**
+	 * Independent report fixture setup: one Lead inserted straight into the
+	 * table with explicit record times, so a report's calendar boundaries are
+	 * proved against known values rather than the wall clock. Never used as
+	 * the oracle of a report figure.
+	 */
+	seedReportLead: (input: ReportFixtureLeadInput) => Promise<number>;
+}
+
+/** One directly seeded Lead for the report scenarios. */
+export interface ReportFixtureLeadInput {
+	companyName: string;
+	contactName?: string | null;
+	projectDescription?: string | null;
+	/** `YYYY-MM-DD HH:MM:SS`, the stored `created_at` and `updated_at`. */
+	recordedAt: string;
+	enquiryDate?: string | null;
+	/** The raw stored label; never normalized by the fixture. */
+	source?: string | null;
+	priority?: 'Low' | 'Medium' | 'High' | null;
+	/** Canonical stage, or null for unresolved legacy evidence. */
+	stage?: string | null;
+	ownerUserId?: number | null;
+	isDeleted?: boolean;
 }
 
 export interface HttpClient {
@@ -345,7 +369,11 @@ export interface LoginResult {
 }
 
 export interface LoginHttpClient extends HttpClient {
-	login: (username: string, password: string) => Promise<LoginResult>;
+	login: (
+		username: string,
+		password: string,
+		clientIp?: string
+	) => Promise<LoginResult>;
 }
 
 export interface ScenarioContext {
@@ -363,6 +391,12 @@ export interface ScenarioContext {
 	convertOnly: FixtureIdentity;
 	/** The Lead update right and the Proposal create right, no Lead convert. */
 	updateOnly: FixtureIdentity;
+	/** `reports:read` and `leads:read`, the two grants the report requires. */
+	reportReader: FixtureIdentity;
+	/** `reports:read` only, so the missing Lead read grant must refuse it. */
+	reportOnly: FixtureIdentity;
+	/** Only the unrelated `project_activities` report field grant. */
+	projectReportOnly: FixtureIdentity;
 	trackLead: (id: number) => void;
 }
 
