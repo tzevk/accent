@@ -32,7 +32,10 @@ import {
 	type LeadAuditEvidenceEffectiveFilters,
 	type LeadAuditEvidenceFilters,
 } from './evidence-filters';
-import { parseLeadAuditPagination } from './filters';
+import {
+	parseLeadAuditFilters,
+	parseLeadAuditPagination,
+} from './filters';
 import { nextDay } from './period';
 import {
 	buildLeadAuditMeta,

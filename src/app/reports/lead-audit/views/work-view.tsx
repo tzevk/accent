@@ -198,7 +198,10 @@ export default function WorkView({
 	const evidenceQuery = useQuery<EvidenceEnvelope>({
 		queryKey: ['reports', 'lead-audit', 'work-evidence', evidenceParams],
 		queryFn: () =>
-			apiGet('/api/reports/lead-audit/work/evidence', evidenceParams),
+			apiGet<EvidenceEnvelope>(
+				'/api/reports/lead-audit/work/evidence',
+				evidenceParams
+			),
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
 		retry: false,
