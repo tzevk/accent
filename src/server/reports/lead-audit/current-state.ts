@@ -18,9 +18,14 @@ import {
 	type CurrentStateRiskKey,
 	type CurrentStateScope,
 	type LeadAuditCurrentStateEvidenceSection,
+	type LeadAuditCurrentStateExportSection,
 	type LeadAuditCurrentStateSection,
 } from './current-state-types';
-import { leadAuditStageLabel, buildLeadAuditMeta, resolveLeadAuditEffectiveFilters } from './scope';
+import {
+	leadAuditStageLabel,
+	buildLeadAuditMeta,
+	resolveLeadAuditEffectiveFilters,
+} from './scope';
 import {
 	buildLeadAuditFilterCondition,
 	joinConditions,
@@ -56,44 +61,43 @@ export interface CurrentStateReadOptions {
 const CURRENT_STATE_DATE_BASIS =
 	'Live current state at the database calendar day (CURDATE()); the selected reporting period is not applied.';
 
-const IGNORED_FILTERS: ReadonlyArray<Omit<CurrentStateIgnoredFilter, 'value'>> = [
-	{
-		key: 'actor',
-		label: 'Activity author',
-		reason:
-			'Activity authorship is not current ownership. Current-state workload uses the present Lead owner.',
-	},
-	{
-		key: 'activity_type',
-		label: 'Activity type',
-		reason:
-			'Activity-type filters select period work evidence, not the present Lead state.',
-	},
-	{
-		key: 'outcome',
-		label: 'Work outcome',
-		reason:
-			'Outcome filters select period work evidence, not the present Lead state.',
-	},
-	{
-		key: 'event_type',
-		label: 'Audit event type',
-		reason:
-			'Audit event filters select recorded evidence, not the present Lead state.',
-	},
-	{
-		key: 'undated',
-		label: 'Undated evidence',
-		reason:
-			'Undated-evidence filters select period work or audit evidence, not the present Lead state.',
-	},
-];
+const IGNORED_FILTERS: ReadonlyArray<Omit<CurrentStateIgnoredFilter, 'value'>> =
+	[
+		{
+			key: 'actor',
+			label: 'Activity author',
+			reason:
+				'Activity authorship is not current ownership. Current-state workload uses the present Lead owner.',
+		},
+		{
+			key: 'activity_type',
+			label: 'Activity type',
+			reason:
+				'Activity-type filters select period work evidence, not the present Lead state.',
+		},
+		{
+			key: 'outcome',
+			label: 'Work outcome',
+			reason:
+				'Outcome filters select period work evidence, not the present Lead state.',
+		},
+		{
+			key: 'event_type',
+			label: 'Audit event type',
+			reason:
+				'Audit event filters select recorded evidence, not the present Lead state.',
+		},
+		{
+			key: 'undated',
+			label: 'Undated evidence',
+			reason:
+				'Undated-evidence filters select period work or audit evidence, not the present Lead state.',
+		},
+	];
 
 function readQuery(source: CurrentStateQuerySource, key: string): string {
 	const raw =
-		source instanceof URLSearchParams
-			? source.get(key)
-			: (source[key] ?? null);
+		source instanceof URLSearchParams ? source.get(key) : (source[key] ?? null);
 	return typeof raw === 'string' ? raw.trim() : '';
 }
 
@@ -235,9 +239,10 @@ function leadColumns(row: Record<string, unknown>) {
 					: String(row.contact_name),
 		},
 		source: leadAuditSourceValue(row.lead_source),
-		priority: row.priority === null || row.priority === undefined
-			? null
-			: String(row.priority),
+		priority:
+			row.priority === null || row.priority === undefined
+				? null
+				: String(row.priority),
 		stage: {
 			value: enquiryStatus,
 			label: leadAuditStageLabel(enquiryStatus),
@@ -254,6 +259,61 @@ function leadColumns(row: Record<string, unknown>) {
 	};
 }
 
+const LEAD_ROW_SELECT = `l.id AS lead_row_id, l.lead_id AS lead_reference,
+      l.company_name, l.contact_name, l.lead_source, l.priority,
+      l.enquiry_status, l.owner_user_id, l.enquiry_date, l.created_at,
+      u.id AS owner_exists,
+      COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS owner_name,
+      u.is_active AS owner_is_active, u.status AS owner_status,
+      u.isDelete AS owner_is_deleted`;
+
+const WORK_ITEM_ROW_SELECT = `item.id AS activity_id, item.activity_type,
+      item.scheduled_for, item.next_action, ${LEAD_ROW_SELECT}`;
+
+const LEAD_EVIDENCE_ORDER = 'ORDER BY l.created_at DESC, l.id DESC';
+const WORKLOAD_ORDER =
+	'ORDER BY (l.owner_user_id IS NOT NULL) ASC, l.owner_user_id ASC, l.created_at DESC, l.id DESC';
+const WORK_ITEM_ORDER = 'ORDER BY item.scheduled_for ASC, item.id ASC';
+
+function leadEvidenceRow(
+	row: Record<string, unknown>
+): CurrentStateEvidenceRow {
+	return { kind: 'lead', ...leadColumns(row), work_item: null };
+}
+
+function workItemEvidenceRow(
+	row: Record<string, unknown>
+): CurrentStateEvidenceRow {
+	return {
+		kind: 'scheduled_work_item',
+		...leadColumns(row),
+		work_item: {
+			id: Number(row.activity_id),
+			activity_type:
+				row.activity_type === null || row.activity_type === undefined
+					? null
+					: String(row.activity_type),
+			scheduled_for:
+				row.scheduled_for === null || row.scheduled_for === undefined
+					? ''
+					: String(row.scheduled_for),
+			next_action:
+				row.next_action === null || row.next_action === undefined
+					? null
+					: String(row.next_action),
+		},
+	};
+}
+
+/**
+ * The queue module speaks `{ clause, params }`; the report SQL helpers speak
+ * `{ sql, params }`. Convert at this single boundary so a queue condition is
+ * never joined as an undefined fragment.
+ */
+function queueSqlCondition(risk: CurrentStateRiskKey): SqlCondition {
+	const condition = buildQueueCondition(risk, null);
+	return { sql: condition.clause, params: condition.params };
+}
 function evidenceGroup(
 	selection: CurrentStateEvidenceSelection
 ): CurrentStateEvidenceGroup {
@@ -369,7 +429,7 @@ export async function readLeadAuditCurrentStateSection(
 			count: counts[definition.key],
 			counter_unit: 'distinct_leads' as CurrentStateCounterUnit,
 			evidence_unit: definition.evidence_unit as CurrentStateEvidenceUnit,
-			as_of: clock.today,
+			as_of: clock.generatedAt,
 		})
 	);
 
@@ -412,17 +472,11 @@ async function readLeadEvidence(
 			condition.params
 		),
 		db.execute(
-			`SELECT l.id AS lead_row_id, l.lead_id AS lead_reference,
-              l.company_name, l.contact_name, l.lead_source, l.priority,
-              l.enquiry_status, l.owner_user_id, l.enquiry_date, l.created_at,
-              u.id AS owner_exists,
-              COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS owner_name,
-              u.is_active AS owner_is_active, u.status AS owner_status,
-              u.isDelete AS owner_is_deleted
+			`SELECT ${LEAD_ROW_SELECT}
          FROM leads l
          LEFT JOIN users u ON u.id = l.owner_user_id
          WHERE ${condition.sql}
-         ORDER BY l.created_at DESC, l.id DESC
+         ${LEAD_EVIDENCE_ORDER}
          LIMIT ? OFFSET ?`,
 			[...condition.params, pagination.limit, offset]
 		),
@@ -443,11 +497,7 @@ async function readLeadEvidence(
 		as_of: observation,
 		scope: { effective_filters: effective, ignored_filters: ignoredFilters },
 		group,
-		rows: rows.map((row) => ({
-			kind: 'lead' as const,
-			...leadColumns(row),
-			work_item: null,
-		})),
+		rows: rows.map(leadEvidenceRow),
 		pagination: {
 			page: pagination.page,
 			limit: pagination.limit,
@@ -457,6 +507,34 @@ async function readLeadEvidence(
 		distinct_leads_total: total,
 		disclosures: buildDisclosures(observation),
 	};
+}
+
+/**
+ * The item projection of the existing Overdue or Due today queue. The queue
+ * condition proves the Lead belongs to the queue; this condition names the
+ * individual items under the same outstanding-work rule (scheduled, not
+ * transferred, not deleted).
+ */
+function workItemCondition(
+	filters: LeadAuditFilters,
+	risk: CurrentStateRiskKey
+): SqlCondition {
+	const scheduledWindow =
+		risk === 'overdue'
+			? 'item.scheduled_for < CURDATE()'
+			: 'item.scheduled_for = CURDATE()';
+	return joinConditions(
+		buildLeadAuditFilterCondition(filters),
+		queueSqlCondition(risk),
+		{
+			sql: `item.status = 'Scheduled'
+        AND item.transferred_followup_id IS NULL
+        AND item.scheduled_for IS NOT NULL
+        AND (item.isDelete = 0 OR item.isDelete IS NULL)
+        AND ${scheduledWindow}`,
+			params: [],
+		}
+	);
 }
 
 async function readWorkItemEvidence(
@@ -470,22 +548,7 @@ async function readWorkItemEvidence(
 ): Promise<LeadAuditCurrentStateEvidenceSection> {
 	const offset = (pagination.page - 1) * pagination.limit;
 	const observation = buildObservation(clock);
-	const scheduledWindow =
-		risk === 'overdue'
-			? 'item.scheduled_for < CURDATE()'
-			: 'item.scheduled_for = CURDATE()';
-	const condition = joinConditions(
-		buildLeadAuditFilterCondition(filters),
-		buildQueueCondition(risk, null),
-		{
-			sql: `item.status = 'Scheduled'
-        AND item.transferred_followup_id IS NULL
-        AND item.scheduled_for IS NOT NULL
-        AND (item.isDelete = 0 OR item.isDelete IS NULL)
-        AND ${scheduledWindow}`,
-			params: [],
-		}
-	);
+	const condition = workItemCondition(filters, risk);
 
 	const [totalResult, rowResult, effective] = await Promise.all([
 		db.execute(
@@ -496,20 +559,12 @@ async function readWorkItemEvidence(
 			condition.params
 		),
 		db.execute(
-			`SELECT item.id AS activity_id, item.activity_type,
-              item.scheduled_for, item.next_action,
-              l.id AS lead_row_id, l.lead_id AS lead_reference,
-              l.company_name, l.contact_name, l.lead_source, l.priority,
-              l.enquiry_status, l.owner_user_id, l.enquiry_date, l.created_at,
-              u.id AS owner_exists,
-              COALESCE(NULLIF(TRIM(u.full_name), ''), u.username) AS owner_name,
-              u.is_active AS owner_is_active, u.status AS owner_status,
-              u.isDelete AS owner_is_deleted
+			`SELECT ${WORK_ITEM_ROW_SELECT}
          FROM lead_activities item
          JOIN leads l ON l.id = item.lead_id
          LEFT JOIN users u ON u.id = l.owner_user_id
          WHERE ${condition.sql}
-         ORDER BY item.scheduled_for ASC, item.id ASC
+         ${WORK_ITEM_ORDER}
          LIMIT ? OFFSET ?`,
 			[...condition.params, pagination.limit, offset]
 		),
@@ -532,25 +587,7 @@ async function readWorkItemEvidence(
 		as_of: observation,
 		scope: { effective_filters: effective, ignored_filters: ignoredFilters },
 		group,
-		rows: rows.map((row) => ({
-			kind: 'scheduled_work_item' as const,
-			...leadColumns(row),
-			work_item: {
-				id: Number(row.activity_id),
-				activity_type:
-					row.activity_type === null || row.activity_type === undefined
-						? null
-						: String(row.activity_type),
-				scheduled_for:
-					row.scheduled_for === null || row.scheduled_for === undefined
-						? ''
-						: String(row.scheduled_for),
-				next_action:
-					row.next_action === null || row.next_action === undefined
-						? null
-						: String(row.next_action),
-			},
-		})),
+		rows: rows.map(workItemEvidenceRow),
 		pagination: {
 			page: pagination.page,
 			limit: pagination.limit,
@@ -588,7 +625,7 @@ export async function readLeadAuditCurrentStateEvidence(
 		selection.group === 'risk'
 			? joinConditions(
 					buildLeadAuditFilterCondition(filters),
-					buildQueueCondition(selection.risk as CurrentStateRiskKey, null)
+					queueSqlCondition(selection.risk as CurrentStateRiskKey)
 				)
 			: buildLeadAuditFilterCondition(filters);
 	return readLeadEvidence(
@@ -600,4 +637,84 @@ export async function readLeadAuditCurrentStateEvidence(
 		pagination,
 		ignoredFilters
 	);
+}
+
+async function readAllLeadRows(
+	db: DbConnection,
+	condition: SqlCondition,
+	ordering: string
+): Promise<CurrentStateEvidenceRow[]> {
+	const [rows] = (await db.execute(
+		`SELECT ${LEAD_ROW_SELECT}
+     FROM leads l
+     LEFT JOIN users u ON u.id = l.owner_user_id
+     WHERE ${condition.sql}
+     ${ordering}`,
+		condition.params
+	)) as unknown as [Array<Record<string, unknown>>, unknown];
+	return rows.map(leadEvidenceRow);
+}
+
+async function readAllWorkItemRows(
+	db: DbConnection,
+	filters: LeadAuditFilters,
+	risk: CurrentStateRiskKey
+): Promise<CurrentStateEvidenceRow[]> {
+	const condition = workItemCondition(filters, risk);
+	const [rows] = (await db.execute(
+		`SELECT ${WORK_ITEM_ROW_SELECT}
+     FROM lead_activities item
+     JOIN leads l ON l.id = item.lead_id
+     LEFT JOIN users u ON u.id = l.owner_user_id
+     WHERE ${condition.sql}
+     ${WORK_ITEM_ORDER}`,
+		condition.params
+	)) as unknown as [Array<Record<string, unknown>>, unknown];
+	return rows.map(workItemEvidenceRow);
+}
+
+/**
+ * The complete current-state detail for a workbook export, read on the
+ * caller's observation connection. It includes every workload Lead and every
+ * full-result risk row, so export never truncates at the HTTP page limit.
+ */
+export async function readLeadAuditCurrentStateExportRows(
+	db: DbConnection,
+	filters: LeadAuditFilters,
+	clock: LeadAuditClock,
+	options: CurrentStateReadOptions = {}
+): Promise<LeadAuditCurrentStateExportSection> {
+	const section = await readLeadAuditCurrentStateSection(
+		db,
+		filters,
+		clock,
+		options
+	);
+	const filterCondition = buildLeadAuditFilterCondition(filters);
+	const workloadRows = await readAllLeadRows(
+		db,
+		filterCondition,
+		WORKLOAD_ORDER
+	);
+	const riskRows: Record<CurrentStateRiskKey, CurrentStateEvidenceRow[]> = {
+		unassigned: [],
+		untouched: [],
+		overdue: [],
+		due_today: [],
+		no_next_action: [],
+	};
+	for (const definition of CURRENT_STATE_RISK_DEFINITIONS) {
+		riskRows[definition.key] =
+			definition.evidence_unit === 'scheduled_work_item'
+				? await readAllWorkItemRows(db, filters, definition.key)
+				: await readAllLeadRows(
+						db,
+						joinConditions(
+							filterCondition,
+							queueSqlCondition(definition.key)
+						),
+						LEAD_EVIDENCE_ORDER
+					);
+	}
+	return { ...section, workload_rows: workloadRows, risk_rows: riskRows };
 }

@@ -297,7 +297,9 @@ async function seedLead(
 		projectDescription: `${context.runTag} ${PREFIX} need ${suffix}`,
 		recordedAt: input.recordedAt,
 		enquiryDate: null,
-		source: input.source ?? 'Website',
+		// Explicit null is the missing-label fixture; only an omitted source
+		// uses the ordinary Website label.
+		source: input.source === undefined ? 'Website' : input.source,
 		stage: input.stage,
 		priority: input.priority ?? null,
 		ownerUserId: input.ownerUserId ?? null,
@@ -439,15 +441,11 @@ export async function leadAuditCurrentStateScenario(
 			ownerUserId: context.assignee.id,
 		}
 	);
-	const inactiveNurtureToday = await seedLead(
-		context,
-		'E Nurture Due Today',
-		{
-			recordedAt: '2026-01-05 09:00:00',
-			stage: 'Nurture',
-			ownerUserId: inactiveOwner.id,
-		}
-	);
+	const inactiveNurtureToday = await seedLead(context, 'E Nurture Due Today', {
+		recordedAt: '2026-01-05 09:00:00',
+		stage: 'Nurture',
+		ownerUserId: inactiveOwner.id,
+	});
 	const assignedConnectedTwoOverdue = await seedLead(
 		context,
 		'F Connected Two Overdue',
@@ -494,25 +492,17 @@ export async function leadAuditCurrentStateScenario(
 			source: null,
 		}
 	);
-	const assignedConvertedNone = await seedLead(
-		context,
-		'K Converted None',
-		{
-			recordedAt: '2026-01-11 09:00:00',
-			stage: 'Converted',
-			ownerUserId: context.assignee.id,
-		}
-	);
-	const creatorOwnedUntouched = await seedLead(
-		context,
-		'L Creator Referral',
-		{
-			recordedAt: '2026-01-12 09:00:00',
-			stage: 'New',
-			ownerUserId: context.creator.id,
-			source: 'Referral',
-		}
-	);
+	const assignedConvertedNone = await seedLead(context, 'K Converted None', {
+		recordedAt: '2026-01-11 09:00:00',
+		stage: 'Converted',
+		ownerUserId: context.assignee.id,
+	});
+	const creatorOwnedUntouched = await seedLead(context, 'L Creator Referral', {
+		recordedAt: '2026-01-12 09:00:00',
+		stage: 'New',
+		ownerUserId: context.creator.id,
+		source: 'Referral',
+	});
 	const deletedOverdue = await seedLead(context, 'M Deleted Overdue', {
 		recordedAt: '2026-01-13 09:00:00',
 		stage: 'Connected',
@@ -580,19 +570,15 @@ export async function leadAuditCurrentStateScenario(
 		notes: 'Documentation only',
 		createdBy: context.assignee.id,
 	});
-	const closedCall = await seedActivity(
-		context,
-		assignedQualifiedClosed.id,
-		{
-			activityType: 'Call',
-			status: 'Completed',
-			callOutcome: 'Connected',
-			scheduledFor: yesterday,
-			occurredAt: '2026-01-08 10:00:00',
-			completedAt: '2026-01-08 10:00:00',
-			createdBy: context.assignee.id,
-		}
-	);
+	const closedCall = await seedActivity(context, assignedQualifiedClosed.id, {
+		activityType: 'Call',
+		status: 'Completed',
+		callOutcome: 'Connected',
+		scheduledFor: yesterday,
+		occurredAt: '2026-01-08 10:00:00',
+		completedAt: '2026-01-08 10:00:00',
+		createdBy: context.assignee.id,
+	});
 	const cancelled = await seedActivity(context, assignedQualifiedClosed.id, {
 		activityType: 'Call',
 		status: 'Cancelled',
@@ -656,9 +642,9 @@ export async function leadAuditCurrentStateScenario(
       SELECT id FROM leads WHERE company_name LIKE ?
     ) ORDER BY id ASC`;
 	const snapshotLeads = async () =>
-		(
-			await context.reader.fixtureRows(leadSnapshotSql, [`%${search}%`])
-		).map((row) => JSON.stringify(row));
+		(await context.reader.fixtureRows(leadSnapshotSql, [`%${search}%`])).map(
+			(row) => JSON.stringify(row)
+		);
 	const snapshotActivities = async () =>
 		(
 			await context.reader.fixtureRows(activitySnapshotSql, [`%${search}%`])
@@ -689,8 +675,14 @@ export async function leadAuditCurrentStateScenario(
 		1,
 		'activity authorship does not add another owner workload Lead'
 	);
-	assert.equal(workloadGroup(summary, inactiveOwner.id).owner.is_inactive, true);
-	assert.equal(workloadGroup(summary, inactiveOwner.id).owner.is_unknown, false);
+	assert.equal(
+		workloadGroup(summary, inactiveOwner.id).owner.is_inactive,
+		true
+	);
+	assert.equal(
+		workloadGroup(summary, inactiveOwner.id).owner.is_unknown,
+		false
+	);
 	assert.equal(workloadGroup(summary, null).owner.name, 'Unassigned');
 
 	assert.deepEqual(
@@ -704,7 +696,11 @@ export async function leadAuditCurrentStateScenario(
 	assert.equal(risk(summary, 'no_next_action').count, 3);
 	for (const entry of summary.risks) {
 		assert.equal(entry.counter_unit, 'distinct_leads');
-		assert.equal(entry.as_of, today, 'every risk group is stamped as of now');
+		assert.equal(
+			entry.as_of,
+			summary.as_of.generated_at,
+			'every risk group is stamped as of generation time'
+		);
 	}
 	assert.equal(risk(summary, 'overdue').evidence_unit, 'scheduled_work_item');
 	assert.equal(risk(summary, 'due_today').evidence_unit, 'scheduled_work_item');
@@ -788,7 +784,10 @@ export async function leadAuditCurrentStateScenario(
 	);
 	assert.equal(unassignedFiltered.workload.total, 1);
 	assert.equal(risk(unassignedFiltered, 'unassigned').count, 1);
-	assert.equal(unassignedFiltered.scope.effective_filters.owner.label, 'Unassigned');
+	assert.equal(
+		unassignedFiltered.scope.effective_filters.owner.label,
+		'Unassigned'
+	);
 
 	const stageFiltered = await readCurrentState(
 		context,
@@ -819,10 +818,7 @@ export async function leadAuditCurrentStateScenario(
 		token
 	);
 	assert.equal(missingSource.workload.total, 1);
-	assert.equal(
-		workloadGroup(missingSource, context.assignee.id).count,
-		1
-	);
+	assert.equal(workloadGroup(missingSource, context.assignee.id).count, 1);
 	assert.equal(missingSource.scope.effective_filters.source.is_unknown, true);
 
 	// ── Risk evidence: lead queues and scheduled-work item registers ────────
@@ -837,20 +833,24 @@ export async function leadAuditCurrentStateScenario(
 	assert.equal(untouchedEvidence.pagination.total, 10);
 	assert.equal(untouchedEvidence.distinct_leads_total, 10);
 	assert.equal(untouchedEvidence.rows.length, 10);
+	assert.ok(untouchedEvidence.rows.every((row) => row.kind === 'lead'));
 	assert.ok(
-		untouchedEvidence.rows.every((row) => row.kind === 'lead')
-	);
-	assert.ok(
-		untouchedEvidence.rows.some((row) => row.lead.id === assignedConnectedNote.id),
+		untouchedEvidence.rows.some(
+			(row) => row.lead.id === assignedConnectedNote.id
+		),
 		'a completed note alone does not remove the Lead from untouched'
 	);
 	assert.equal(
-		untouchedEvidence.rows.some((row) => row.lead.id === assignedConnectedDone.id),
+		untouchedEvidence.rows.some(
+			(row) => row.lead.id === assignedConnectedDone.id
+		),
 		false,
 		'a completed call is outreach'
 	);
 	assert.equal(
-		untouchedEvidence.rows.some((row) => row.lead.id === assignedQualifiedClosed.id),
+		untouchedEvidence.rows.some(
+			(row) => row.lead.id === assignedQualifiedClosed.id
+		),
 		false,
 		'a completed call keeps the Lead out of untouched even with closed plans'
 	);
@@ -891,12 +891,16 @@ export async function leadAuditCurrentStateScenario(
 		'New does not require a next action'
 	);
 	assert.equal(
-		noNextActionEvidence.rows.some((row) => row.lead.id === assignedDisqualifiedNone.id),
+		noNextActionEvidence.rows.some(
+			(row) => row.lead.id === assignedDisqualifiedNone.id
+		),
 		false,
 		'Disqualified does not require a next action'
 	);
 	assert.equal(
-		noNextActionEvidence.rows.some((row) => row.lead.id === assignedConvertedNone.id),
+		noNextActionEvidence.rows.some(
+			(row) => row.lead.id === assignedConvertedNone.id
+		),
 		false,
 		'Converted does not require a next action'
 	);
@@ -909,8 +913,15 @@ export async function leadAuditCurrentStateScenario(
 	);
 	assert.equal(overdueEvidence.group.evidence_unit, 'scheduled_work_item');
 	assert.equal(overdueEvidence.pagination.total, 3, 'three overdue work items');
-	assert.equal(overdueEvidence.distinct_leads_total, 2, 'two distinct overdue Leads');
-	assert.equal(risk(summary, 'overdue').count, overdueEvidence.distinct_leads_total);
+	assert.equal(
+		overdueEvidence.distinct_leads_total,
+		2,
+		'two distinct overdue Leads'
+	);
+	assert.equal(
+		risk(summary, 'overdue').count,
+		overdueEvidence.distinct_leads_total
+	);
 	assert.ok(
 		overdueEvidence.rows.every(
 			(row) =>
@@ -929,7 +940,9 @@ export async function leadAuditCurrentStateScenario(
 	assert.ok(overdueItemIds.has(twoOverdueOne));
 	assert.ok(overdueItemIds.has(twoOverdueTwo));
 	assert.equal(
-		overdueEvidence.rows.some((row) => row.lead.id === assignedQualifiedClosed.id),
+		overdueEvidence.rows.some(
+			(row) => row.lead.id === assignedQualifiedClosed.id
+		),
 		false,
 		'cancelled and transferred plans are not outstanding'
 	);
@@ -954,7 +967,13 @@ export async function leadAuditCurrentStateScenario(
 	// ── Workload evidence keeps the same distinct-Lead population ───────────
 	const assigneeWorkload = await readEvidence(
 		context,
-		{ search, group: 'workload', owner: context.assignee.id, page: 1, limit: 100 },
+		{
+			search,
+			group: 'workload',
+			owner: context.assignee.id,
+			page: 1,
+			limit: 100,
+		},
 		token
 	);
 	assert.equal(assigneeWorkload.group.key, 'workload');
@@ -1026,7 +1045,11 @@ export async function leadAuditCurrentStateScenario(
 		...overduePageOne.rows.map((row) => row.work_item?.id),
 		...overduePageTwo.rows.map((row) => row.work_item?.id),
 	]);
-	assert.equal(pagedItemIds.size, 3, 'each work item appears once across pages');
+	assert.equal(
+		pagedItemIds.size,
+		3,
+		'each work item appears once across pages'
+	);
 	assert.equal(
 		new Set([
 			...overduePageOne.rows.map((row) => row.lead.id),
@@ -1135,7 +1158,8 @@ export async function leadAuditCurrentStateScenario(
 	);
 	assert.ok(
 		closedActivities.some(
-			(activity) => activity.id === closedCall && activity.status === 'Completed'
+			(activity) =>
+				activity.id === closedCall && activity.status === 'Completed'
 		)
 	);
 	assert.ok(completedCall > 0 && noteOnly > 0 && deletedOverdueActivity > 0);
@@ -1168,7 +1192,11 @@ export async function leadAuditCurrentStateScenario(
 		'the reassigned intake Lead leaves the unassigned workload'
 	);
 	assert.equal(risk(reassigned, 'unassigned').count, 0);
-	assert.equal(risk(reassigned, 'untouched').count, 10, 'reassignment is not new outreach');
+	assert.equal(
+		risk(reassigned, 'untouched').count,
+		10,
+		'reassignment is not new outreach'
+	);
 	assert.equal(risk(reassigned, 'overdue').count, 2);
 	assert.equal(risk(reassigned, 'due_today').count, 1);
 	assert.equal(risk(reassigned, 'no_next_action').count, 3);
