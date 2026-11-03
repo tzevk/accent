@@ -410,11 +410,6 @@ export async function leadAuditIntakeScenario(
 		'the actual reporting offset is disclosed'
 	);
 	assert.ok(defaults.meta.live_data_warning.length > 0);
-	assert.deepEqual(
-		defaults.available_views.map((view) => view.key),
-		['overview', 'intake'],
-		'later views stay absent until implemented'
-	);
 
 	// ── Presets are calculated from the database calendar ───────────────────
 	const previous = previousMonth(today);

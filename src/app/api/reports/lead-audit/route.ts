@@ -4,14 +4,14 @@ import {
 	LeadAuditValidationError,
 	canReadLeadAudit,
 	readLeadAuditReport,
+	resolveLeadAuditConversionOptions,
 } from '@/server/reports/lead-audit';
 
 /**
  * GET /api/reports/lead-audit
  *
- * The Lead Audit and Performance intake section: the selected period's system
- * entry, separately dated Enquiries, the intake and Enquiry Date trends, and
- * stored source volumes, under the applied filters.
+ * Intake, period work, current risks, cohort progress, timing, and available
+ * audit evidence under one read-only observation and explicit section scopes.
  *
  * Access: both `reports:read` and `leads:read`, or the established super-admin
  * bypass. The unrelated Project Activities report field grant is not accepted.
@@ -40,7 +40,10 @@ export async function GET(request: Request): Promise<Response> {
 	}
 
 	try {
-		const data = await readLeadAuditReport(new URL(request.url).searchParams);
+		const data = await readLeadAuditReport(
+			new URL(request.url).searchParams,
+			resolveLeadAuditConversionOptions(user)
+		);
 		return NextResponse.json({ success: true, data });
 	} catch (error) {
 		if (error instanceof LeadAuditValidationError) {

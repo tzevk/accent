@@ -2,6 +2,7 @@ export type {
 	LeadAuditDisclosure,
 	LeadAuditFilterOptions,
 	LeadAuditIntakeSection,
+	LeadAuditReport,
 	LeadAuditMetric,
 	LeadAuditRegisterRow,
 	LeadAuditRegisterSection,
@@ -22,6 +23,11 @@ export interface LeadAuditFilterDraft {
 	stage: string;
 	priority: string;
 	search: string;
+	actor: string;
+	activityType: string;
+	outcome: string;
+	eventType: string;
+	undated: boolean;
 }
 
 export interface LeadAuditViewTab {

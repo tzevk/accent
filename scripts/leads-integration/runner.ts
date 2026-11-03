@@ -148,6 +148,11 @@ import {
 	type SoftDeleteSeed,
 } from './scenarios/soft-delete.ts';
 import { leadAuditIntakeScenario } from './scenarios/report-intake.ts';
+import { leadAuditCurrentStateScenario } from './scenarios/report-current-state.ts';
+import { leadAuditConversionScenario } from './scenarios/report-conversion.ts';
+import { leadAuditTimingScenario } from './scenarios/report-timing.ts';
+import { leadAuditWorkScenario } from './scenarios/report-work.ts';
+import { reportAuditScenario } from './scenarios/report-audit.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -235,6 +240,17 @@ function makeHttp(baseUrl: string): LoginHttpClient {
 
 	return {
 		get: (path, sessionToken) => request(path, { method: 'GET' }, sessionToken),
+		download: async (path, sessionToken) => {
+			const headers = new Headers();
+			if (sessionToken) headers.set('Cookie', `session=${sessionToken}`);
+			const response = await fetch(`${baseUrl}${path}`, { headers });
+			return {
+				status: response.status,
+				contentType: response.headers.get('content-type'),
+				contentDisposition: response.headers.get('content-disposition'),
+				bytes: new Uint8Array(await response.arrayBuffer()),
+			};
+		},
 		post: (path, body, sessionToken) => {
 			if (typeof FormData !== 'undefined' && body instanceof FormData) {
 				return request(path, { method: 'POST', body }, sessionToken);
@@ -1863,15 +1879,20 @@ async function stopAppServer(server: ChildProcess | null): Promise<void> {
 	await promise;
 }
 
+const selectedScenario = process.env.LEADS_INTEGRATION_SCENARIO?.trim();
+let passedScenarios = 0;
+
 async function runScenario(
 	name: string,
 	scenario: Scenario,
 	context: ScenarioContext
 ): Promise<void> {
+	if (selectedScenario && selectedScenario !== name) return;
 	const started = Date.now();
 	try {
 		await scenario(context);
 		log(`PASS ${name} (${Date.now() - started}ms)`);
+		passedScenarios += 1;
 	} catch (error) {
 		const detail =
 			error instanceof Error ? (error.stack ?? error.message) : String(error);
@@ -1882,6 +1903,7 @@ async function runScenario(
 export async function runLeadsIntegration(
 	getResolved: () => ResolvedSafety
 ): Promise<void> {
+	passedScenarios = 0;
 	const resolved = getResolved();
 	const keep =
 		process.argv.includes('--keep') ||
@@ -2425,8 +2447,26 @@ export async function runLeadsIntegration(
 			context
 		);
 		await runScenario('lead-audit-intake', leadAuditIntakeScenario, context);
+		await runScenario(
+			'lead-audit-current-state',
+			leadAuditCurrentStateScenario,
+			context
+		);
+		await runScenario(
+			'lead-audit-conversion',
+			leadAuditConversionScenario,
+			context
+		);
+		await runScenario('lead-audit-timing', leadAuditTimingScenario, context);
+		await runScenario('lead-audit-work', leadAuditWorkScenario, context);
+		await runScenario('lead-audit-audit', reportAuditScenario, context);
 		log(IBAND);
-		log(`PASS all 84 scenarios (${trackedLeads.length} leads created)`);
+		if (passedScenarios === 0) {
+			fail(`no scenario matched ${JSON.stringify(selectedScenario)}`);
+		}
+		log(
+			`PASS ${selectedScenario ? 'selected' : 'all'} ${passedScenarios} scenarios (${trackedLeads.length} leads created)`
+		);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other

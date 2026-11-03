@@ -10,6 +10,11 @@ export const DEFAULT_DRAFT: LeadAuditFilterDraft = {
 	stage: '',
 	priority: '',
 	search: '',
+	actor: '',
+	activityType: '',
+	outcome: '',
+	eventType: '',
+	undated: false,
 };
 
 export const PRESET_OPTIONS = [
@@ -35,6 +40,11 @@ export function draftToQuery(
 		stage: draft.stage || undefined,
 		priority: draft.priority || undefined,
 		search: draft.search.trim() || undefined,
+		actor: draft.actor || undefined,
+		activity_type: draft.activityType || undefined,
+		outcome: draft.outcome || undefined,
+		event_type: draft.eventType || undefined,
+		undated: draft.undated ? '1' : undefined,
 	};
 	if (draft.preset === 'custom') {
 		query.from_date = draft.from || undefined;

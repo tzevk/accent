@@ -14,14 +14,24 @@ import FilterToolbar from './filter-toolbar';
 import ReportHeader from './report-header';
 import IntakeView from './views/intake-view';
 import OverviewView from './views/overview-view';
-import {
-	DEFAULT_DRAFT,
-	draftToQuery,
-	validateDraft,
-} from './filters';
+import WorkView from './views/work-view';
+import WorkSummary from './work/work-summary';
+import CurrentStateView from './views/current-state-view';
+import CurrentStateEvidence from './current-state-evidence';
+import ConversionView from './views/conversion-view';
+import TimingView from './views/timing-view';
+import AuditView from './views/audit-view';
+import CoverageView from './views/coverage-view';
+import type { LeadAuditWorkMetric } from '@/server/reports/lead-audit/work-types';
+import type { CurrentStateEvidenceSelection } from '@/server/reports/lead-audit/current-state-types';
+import type {
+	LeadAuditConversionEvidenceFilter,
+	LeadAuditConversionEvidenceSection,
+} from '@/server/reports/lead-audit/conversion-types';
+import { DEFAULT_DRAFT, draftToQuery, validateDraft } from './filters';
 import type {
 	LeadAuditFilterDraft,
-	LeadAuditIntakeSection,
+	LeadAuditReport,
 	LeadAuditMetric,
 	LeadAuditRegisterSection,
 } from './types';
@@ -33,13 +43,19 @@ interface SessionUser {
 
 interface ReportEnvelope {
 	success: boolean;
-	data?: LeadAuditIntakeSection;
+	data?: LeadAuditReport;
 	error?: string;
 }
 
 interface RegisterEnvelope {
 	success: boolean;
 	data?: LeadAuditRegisterSection;
+	error?: string;
+}
+
+interface ConversionEnvelope {
+	success: boolean;
+	data?: LeadAuditConversionEvidenceSection;
 	error?: string;
 }
 
@@ -66,6 +82,13 @@ export default function LeadAuditPage() {
 	const [activeView, setActiveView] = useState('overview');
 	const [metric, setMetric] = useState<LeadAuditMetric>('recorded');
 	const [page, setPage] = useState(1);
+	const [workMetric, setWorkMetric] =
+		useState<LeadAuditWorkMetric>('completed');
+	const [currentSelection, setCurrentSelection] =
+		useState<CurrentStateEvidenceSelection | null>(null);
+	const [conversionMetric, setConversionMetric] =
+		useState<LeadAuditConversionEvidenceFilter>('all');
+	const [conversionPage, setConversionPage] = useState(1);
 
 	const isSuperAdmin =
 		user?.is_super_admin === true || user?.is_super_admin === 1;
@@ -86,14 +109,25 @@ export default function LeadAuditPage() {
 	});
 
 	const report = reportQuery.data?.data ?? null;
+	const appliedQuery = useMemo(
+		() =>
+			report
+				? {
+						...queryParams,
+						from_date: report.scope.from_date,
+						to_date: report.scope.to_date,
+					}
+				: queryParams,
+		[queryParams, report]
+	);
 	const registerParams = useMemo(
 		() => ({
-			...queryParams,
+			...appliedQuery,
 			metric,
 			page,
 			limit: PAGE_SIZE,
 		}),
-		[queryParams, metric, page]
+		[appliedQuery, metric, page]
 	);
 
 	const registerQuery = useQuery<RegisterEnvelope>({
@@ -104,6 +138,25 @@ export default function LeadAuditPage() {
 		refetchOnWindowFocus: false,
 		staleTime: 30_000,
 		retry: false,
+	});
+
+	const conversionParams = {
+		...appliedQuery,
+		evidence: conversionMetric,
+		page: conversionPage,
+		limit: PAGE_SIZE,
+	};
+	const conversionQuery = useQuery<ConversionEnvelope>({
+		queryKey: [
+			'reports',
+			'lead-audit',
+			'conversion-evidence',
+			conversionParams,
+		],
+		queryFn: () =>
+			apiGet('/api/reports/lead-audit/conversion/evidence', conversionParams),
+		enabled:
+			!authLoading && hasAccess && activeView === 'intake' && report !== null,
 	});
 
 	// Presets come from the database calendar. Once the server resolves the
@@ -123,10 +176,7 @@ export default function LeadAuditPage() {
 		);
 	}, [report, applied.preset]);
 
-	const tabs = useMemo(
-		() => report?.available_views ?? [],
-		[report]
-	);
+	const tabs = useMemo(() => report?.available_views ?? [], [report]);
 	useEffect(() => {
 		if (tabs.length === 0) return;
 		if (!tabs.some((tab) => tab.key === activeView)) {
@@ -158,6 +208,8 @@ export default function LeadAuditPage() {
 		setValidationMessage('');
 		setApplied({ ...draft, search: draft.search.trim() });
 		setPage(1);
+		setCurrentSelection(null);
+		setConversionPage(1);
 	};
 
 	const resetFilters = () => {
@@ -167,11 +219,35 @@ export default function LeadAuditPage() {
 		setMetric('recorded');
 		setPage(1);
 		setActiveView('overview');
+		setCurrentSelection(null);
+		setWorkMetric('completed');
+		setConversionMetric('all');
+		setConversionPage(1);
 	};
 
 	const selectMetric = (next: LeadAuditMetric) => {
 		setMetric(next);
 		setActiveView('intake');
+		setPage(1);
+	};
+
+	const selectWorkMetric = (next: LeadAuditWorkMetric) => {
+		setWorkMetric(next);
+		setActiveView('work');
+	};
+	const selectCurrentGroup = (selection: CurrentStateEvidenceSelection) => {
+		setCurrentSelection(selection);
+		setActiveView('work');
+	};
+	const selectConversion = (next: LeadAuditConversionEvidenceFilter) => {
+		setConversionMetric(next);
+		setConversionPage(1);
+		setActiveView('intake');
+	};
+	const drillIntoAudit = (patch: Partial<LeadAuditFilterDraft>) => {
+		setDraft((current) => ({ ...current, ...patch }));
+		setApplied((current) => ({ ...current, ...patch }));
+		setActiveView('audit');
 		setPage(1);
 	};
 
@@ -222,6 +298,7 @@ export default function LeadAuditPage() {
 					{report ? (
 						<ReportHeader
 							report={report}
+							evidenceFilters={applied}
 							tabs={tabs}
 							activeView={activeView}
 							onSelectView={setActiveView}
@@ -258,13 +335,16 @@ export default function LeadAuditPage() {
 							role="status"
 						>
 							<ArrowPathIcon
-								className="h-5 w-5 animate-spin text-[#64126D]"
+								className="h-5 w-5 motion-safe:animate-spin text-[#64126D]"
 								aria-hidden="true"
 							/>
 							Loading the Lead Audit report…
 						</div>
 					) : reportError !== '' ? (
-						<div className="rounded-xl border border-red-200 bg-red-50 p-4" role="alert">
+						<div
+							className="rounded-xl border border-red-200 bg-red-50 p-4"
+							role="alert"
+						>
 							<div className="flex items-start gap-2">
 								<ExclamationTriangleIcon
 									className="mt-0.5 h-5 w-5 shrink-0 text-red-700"
@@ -291,25 +371,90 @@ export default function LeadAuditPage() {
 							The report returned no body. Apply the filters again or refresh.
 						</div>
 					) : activeView === 'intake' ? (
-						<IntakeView
-							report={report}
-							metric={metric}
-							register={registerQuery.data?.data ?? null}
-							registerLoading={
-								registerQuery.isLoading ||
-								(registerQuery.isFetching && !registerQuery.data)
-							}
-							registerError={registerError}
-							page={page}
-							onMetricChange={(next) => {
-								setMetric(next);
-								setPage(1);
-							}}
-							onPageChange={setPage}
-							onRetry={() => registerQuery.refetch()}
+						<div className="min-w-0 space-y-4">
+							<IntakeView
+								report={report}
+								metric={metric}
+								register={registerQuery.data?.data ?? null}
+								registerLoading={
+									registerQuery.isLoading ||
+									(registerQuery.isFetching && !registerQuery.data)
+								}
+								registerError={registerError}
+								page={page}
+								onMetricChange={(next) => {
+									setMetric(next);
+									setPage(1);
+								}}
+								onPageChange={setPage}
+								onRetry={() => registerQuery.refetch()}
+							/>
+							<ConversionView
+								section={report.conversion}
+								variant="detail"
+								onSelectEvidence={selectConversion}
+								selectedEvidence={conversionMetric}
+								evidence={conversionQuery.data?.data ?? null}
+								evidenceLoading={
+									conversionQuery.isLoading || conversionQuery.isFetching
+								}
+								evidenceError={
+									conversionQuery.error?.message ||
+									conversionQuery.data?.error ||
+									''
+								}
+								onEvidencePageChange={setConversionPage}
+								onRetry={() => conversionQuery.refetch()}
+							/>
+						</div>
+					) : activeView === 'work' ? (
+						<div className="min-w-0 space-y-4">
+							{currentSelection ? (
+								<CurrentStateEvidence
+									key={JSON.stringify([currentSelection, appliedQuery])}
+									selection={currentSelection}
+									appliedQuery={appliedQuery}
+									onClose={() => setCurrentSelection(null)}
+								/>
+							) : null}
+							<WorkView
+								work={report.work}
+								appliedQuery={appliedQuery}
+								metric={workMetric}
+								onMetricChange={setWorkMetric}
+							/>
+							<CurrentStateView
+								section={report.current_state}
+								variant="work"
+								onSelectGroup={selectCurrentGroup}
+							/>
+						</div>
+					) : activeView === 'audit' ? (
+						<AuditView
+							report={report.audit}
+							appliedQuery={appliedQuery}
+							onDrillDown={drillIntoAudit}
 						/>
+					) : activeView === 'coverage' ? (
+						<CoverageView report={report.coverage} />
 					) : (
-						<OverviewView report={report} onSelectMetric={selectMetric} />
+						<div className="min-w-0 space-y-4">
+							<OverviewView report={report} onSelectMetric={selectMetric} />
+							<WorkSummary
+								work={report.work}
+								onSelectMetric={selectWorkMetric}
+							/>
+							<ConversionView
+								section={report.conversion}
+								variant="summary"
+								onSelectEvidence={selectConversion}
+							/>
+							<TimingView section={report.timing} appliedQuery={appliedQuery} />
+							<CurrentStateView
+								section={report.current_state}
+								onSelectGroup={selectCurrentGroup}
+							/>
+						</div>
 					)}
 				</div>
 			</main>

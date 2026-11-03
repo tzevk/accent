@@ -8,8 +8,10 @@ import {
 	GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import { formatDate } from '@/lib/format';
+import { LEAD_AUDIT_EVIDENCE_TYPE_OPTIONS } from '@/server/reports/lead-audit/audit-types';
 import type {
 	LeadAuditIntakeSection,
+	LeadAuditFilterDraft,
 	LeadAuditViewTab,
 } from './types';
 
@@ -20,6 +22,7 @@ interface ReportHeaderProps {
 	onSelectView: (key: string) => void;
 	onRefresh: () => void;
 	refreshing: boolean;
+	evidenceFilters?: LeadAuditFilterDraft;
 }
 
 function calendarDate(value: string): string {
@@ -33,6 +36,7 @@ export default function ReportHeader({
 	onSelectView,
 	onRefresh,
 	refreshing,
+	evidenceFilters,
 }: ReportHeaderProps) {
 	const filters = report.scope.effective_filters;
 	const chips = [
@@ -42,6 +46,33 @@ export default function ReportHeader({
 		`Stage: ${filters.stage.label}`,
 		`Priority: ${filters.priority ?? 'All priorities'}`,
 		...(filters.search ? [`Search: “${filters.search}”`] : []),
+		...(evidenceFilters?.actor
+			? [
+					`Work/audit actor: ${
+						evidenceFilters.actor === 'unknown'
+							? 'Unknown actor'
+							: (report.filter_options.actors?.find(
+									(actor) => String(actor.id) === evidenceFilters.actor
+								)?.name ?? `User #${evidenceFilters.actor}`)
+					}`,
+				]
+			: []),
+		...(evidenceFilters?.activityType
+			? [`Work/audit activity: ${evidenceFilters.activityType}`]
+			: []),
+		...(evidenceFilters?.outcome
+			? [`Work/audit outcome: ${evidenceFilters.outcome}`]
+			: []),
+		...(evidenceFilters?.eventType
+			? [
+					`Audit event: ${
+						LEAD_AUDIT_EVIDENCE_TYPE_OPTIONS.find(
+							(event) => event.value === evidenceFilters.eventType
+						)?.label ?? evidenceFilters.eventType
+					}`,
+				]
+			: []),
+		...(evidenceFilters?.undated ? ['Audit population: undated evidence'] : []),
 	];
 
 	return (
@@ -61,8 +92,8 @@ export default function ReportHeader({
 								Lead Audit and Performance
 							</h1>
 							<p className="mt-0.5 text-sm text-white/85">
-								Intake and sources — system entry, stated Enquiry Dates, and the
-								filtered Lead register.
+								Lead intake, completed work, evidenced handoffs, and current
+								operational risks.
 							</p>
 						</div>
 					</div>
@@ -80,7 +111,7 @@ export default function ReportHeader({
 							className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white/10 px-3 text-xs font-medium text-white ring-1 ring-white/25 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-60"
 						>
 							<ArrowPathIcon
-								className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
+								className={`h-3.5 w-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`}
 								aria-hidden="true"
 							/>
 							Refresh

@@ -6,10 +6,21 @@
  * snake_case, matching the other report APIs; the module speaks camelCase.
  */
 import type { LeadStage } from '@/lib/lead-stages';
+import type { LeadAuditWorkSection } from './work-types';
+import type { LeadAuditCurrentStateSection } from './current-state-types';
+import type { LeadAuditConversionSection } from './conversion-types';
+import type { LeadAuditTimingSection } from './timing-types';
+import type {
+	LeadAuditEvidenceSection,
+	LeadAuditCoverageSection,
+} from './audit-types';
 
 export const LEAD_AUDIT_VIEWS = [
 	{ key: 'overview', label: 'Overview' },
 	{ key: 'intake', label: 'Intake and sources' },
+	{ key: 'work', label: 'Work and accountability' },
+	{ key: 'audit', label: 'Audit evidence' },
+	{ key: 'coverage', label: 'Data coverage' },
 ] as const;
 
 export type LeadAuditViewKey = (typeof LEAD_AUDIT_VIEWS)[number]['key'];
@@ -119,6 +130,7 @@ export interface LeadAuditFilterOptions {
 	sources: LeadAuditSourceGroup[];
 	stages: Array<{ value: string; label: string }>;
 	priorities: string[];
+	actors?: Array<{ id: number; name: string | null; is_active: boolean }>;
 }
 
 export interface LeadAuditDisclosure {
@@ -149,6 +161,15 @@ export interface LeadAuditIntakeSection {
 	sources: LeadAuditSourceGroup[];
 	filter_options: LeadAuditFilterOptions;
 	disclosures: LeadAuditDisclosure[];
+}
+
+export interface LeadAuditReport extends LeadAuditIntakeSection {
+	work: LeadAuditWorkSection;
+	current_state: LeadAuditCurrentStateSection;
+	conversion: LeadAuditConversionSection;
+	timing: LeadAuditTimingSection;
+	audit: LeadAuditEvidenceSection;
+	coverage: LeadAuditCoverageSection;
 }
 
 export interface LeadAuditRegisterRow {

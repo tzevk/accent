@@ -153,6 +153,8 @@ interface ConversionBaseRow {
 	lead_source: unknown;
 	enquiry_status: string | null;
 	owner_user_id: number | string | null;
+	owner_full_name: string | null;
+	owner_username: string | null;
 	enquiry_date: string | null;
 	created_at: string | null;
 	in_cohort: number | string | null;
@@ -217,7 +219,11 @@ export function resolveLeadAuditConversionOptions(
 	user: LeadAuditConversionReader | null | undefined
 ): LeadAuditConversionReadOptions {
 	return {
-		includeProposals: hasPermission(user, RESOURCES.PROPOSALS, PERMISSIONS.READ),
+		includeProposals: hasPermission(
+			user,
+			RESOURCES.PROPOSALS,
+			PERMISSIONS.READ
+		),
 		includeProjects: hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.READ),
 	};
 }
@@ -226,10 +232,7 @@ function toCount(value: unknown): number {
 	return Number(value) || 0;
 }
 
-function conversionRate(
-	handoffs: number,
-	cohortSize: number
-): number | null {
+function conversionRate(handoffs: number, cohortSize: number): number | null {
 	if (cohortSize === 0) return null;
 	return Math.round((handoffs / cohortSize) * 10_000) / 100;
 }
@@ -384,7 +387,11 @@ function evidenceOf(row: ConversionBaseRow): {
 	const eventAt = row.event_at ? String(row.event_at) : null;
 	const canonicalResolved = toNullableId(row.canonical_id) !== null;
 	if (eventAt !== null) {
-		return { evidence: 'conversion_event', handoff: true, conversionAt: eventAt };
+		return {
+			evidence: 'conversion_event',
+			handoff: true,
+			conversionAt: eventAt,
+		};
 	}
 	if (canonicalResolved) {
 		return { evidence: 'canonical_link', handoff: true, conversionAt: null };
@@ -414,10 +421,7 @@ function toConversionRow(
 		contact_name: trimOrNull(row.contact_name),
 		source: leadAuditSourceValue(row.lead_source),
 		stage: { value: stage, label: leadAuditStageLabel(stage) },
-		owner:
-			ownerId === null
-				? null
-				: { id: ownerId, name: ownerName },
+		owner: ownerId === null ? null : { id: ownerId, name: ownerName },
 		recorded_at: row.created_at ? String(row.created_at) : '',
 		enquiry_date: row.enquiry_date ? String(row.enquiry_date) : null,
 		evidence: evidence.evidence,
@@ -439,10 +443,7 @@ async function queryEvidenceRows(
 	const limitClause = pagination === null ? '' : 'LIMIT ? OFFSET ?';
 	const params: unknown[] = [...base.params];
 	if (pagination !== null) {
-		params.push(
-			pagination.limit,
-			(pagination.page - 1) * pagination.limit
-		);
+		params.push(pagination.limit, (pagination.page - 1) * pagination.limit);
 	}
 	const order =
 		evidence === 'period'
@@ -476,7 +477,10 @@ function effectiveFilterScope(
 	effective: LeadAuditEffectiveFilters
 ): LeadAuditSectionFilterScope {
 	const applied: LeadAuditSectionFilterScope['effective'] = [
-		{ ...EFFECTIVE_FILTER_BASE, label: `${filters.fromDate} to ${filters.toDate}` },
+		{
+			...EFFECTIVE_FILTER_BASE,
+			label: `${filters.fromDate} to ${filters.toDate}`,
+		},
 	];
 	if (filters.ownerUnassigned || filters.ownerUserId !== null) {
 		applied.push({ key: 'owner', label: effective.owner.label });
@@ -581,15 +585,10 @@ export async function readLeadAuditConversionSection(
 		includeProjects,
 	];
 
-	const [
-		cohortResult,
-		sourceResult,
-		stageResult,
-		periodResult,
-		effective,
-	] = await Promise.all([
-		db.execute(
-			`SELECT
+	const [cohortResult, sourceResult, stageResult, periodResult, effective] =
+		await Promise.all([
+			db.execute(
+				`SELECT
          COUNT(*) AS cohort_size,
          SUM(CASE WHEN base.event_at IS NOT NULL OR p.id IS NOT NULL THEN 1 ELSE 0 END) AS handoffs,
          SUM(CASE WHEN base.event_at IS NOT NULL THEN 1 ELSE 0 END) AS events,
@@ -607,10 +606,10 @@ export async function readLeadAuditConversionSection(
        ${CANONICAL_PROPOSAL_JOIN}
        ${PROJECT_JOIN}
        WHERE base.in_cohort = 1`,
-			aggregateParams
-		),
-		db.execute(
-			`SELECT
+				aggregateParams
+			),
+			db.execute(
+				`SELECT
          COALESCE(BINARY base.lead_source, BINARY '') AS source,
          COUNT(*) AS cohort_size,
          SUM(CASE WHEN base.event_at IS NOT NULL OR p.id IS NOT NULL THEN 1 ELSE 0 END) AS handoffs,
@@ -620,25 +619,25 @@ export async function readLeadAuditConversionSection(
        ${CANONICAL_PROPOSAL_JOIN}
        WHERE base.in_cohort = 1
        GROUP BY COALESCE(BINARY base.lead_source, BINARY '')`,
-			base.params
-		),
-		db.execute(
-			`SELECT base.enquiry_status AS stage, COUNT(*) AS count
+				base.params
+			),
+			db.execute(
+				`SELECT base.enquiry_status AS stage, COUNT(*) AS count
        FROM (${base.sql}) base
        WHERE base.in_cohort = 1
        GROUP BY base.enquiry_status`,
-			base.params
-		),
-		db.execute(
-			`SELECT
+				base.params
+			),
+			db.execute(
+				`SELECT
          SUM(CASE WHEN base.in_period_handoff = 1 THEN 1 ELSE 0 END) AS period_handoffs,
          SUM(CASE WHEN base.event_at IS NULL AND p.id IS NOT NULL THEN 1 ELSE 0 END) AS undated_canonical_links
        FROM (${base.sql}) base
        ${CANONICAL_PROPOSAL_JOIN}`,
-			base.params
-		),
-		resolveLeadAuditEffectiveFilters(db, filters),
-	]);
+				base.params
+			),
+			resolveLeadAuditEffectiveFilters(db, filters),
+		]);
 
 	const [cohortRows] = cohortResult as unknown as [
 		CohortAggregateRow[],
@@ -717,9 +716,7 @@ export async function readLeadAuditConversionSection(
 	];
 	const period: LeadAuditPeriodHandoffs = {
 		handoffs: toCount(periodRows[0]?.period_handoffs),
-		undated_canonical_links: toCount(
-			periodRows[0]?.undated_canonical_links
-		),
+		undated_canonical_links: toCount(periodRows[0]?.undated_canonical_links),
 		date_basis:
 			'Authoritative recorded conversion time (lead_conversions.converted_at) inside the selected calendar days. Proposal creation and Lead editing times are never substituted.',
 	};
@@ -834,8 +831,7 @@ export async function readLeadAuditConversionEvidenceSection(
 			page: pagination.page,
 			limit: pagination.limit,
 			total,
-			total_pages:
-				total === 0 ? 0 : Math.ceil(total / pagination.limit),
+			total_pages: total === 0 ? 0 : Math.ceil(total / pagination.limit),
 		},
 		downstream_options: {
 			include_proposals: options.includeProposals,
@@ -853,4 +849,3 @@ export const LEAD_AUDIT_CONVERSION_EVIDENCE_DESCRIPTORS: Readonly<
 		LeadAuditConversionEvidenceDescriptor
 	>
 > = EVIDENCE_DESCRIPTORS;
-

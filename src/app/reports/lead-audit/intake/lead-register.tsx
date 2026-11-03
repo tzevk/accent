@@ -136,7 +136,7 @@ export default function LeadRegister({
 					role="status"
 				>
 					<ArrowPathIcon
-						className="h-5 w-5 animate-spin text-[#64126D]"
+						className="h-5 w-5 motion-safe:animate-spin text-[#64126D]"
 						aria-hidden="true"
 					/>
 					Loading Lead evidence…
@@ -270,7 +270,9 @@ export default function LeadRegister({
 											{lead.stage.label}
 										</td>
 										<td className="px-3 py-2.5 align-top text-gray-800">
-											{lead.owner ? lead.owner.name ?? 'Unknown user' : 'Unassigned'}
+											{lead.owner
+												? (lead.owner.name ?? 'Unknown user')
+												: 'Unassigned'}
 										</td>
 										<td className="px-3 py-2.5 align-top text-gray-800">
 											{calendarDate(lead.enquiry_date)}

@@ -7,6 +7,7 @@ import {
 	CURRENT_STATE_RISK_DEFINITIONS,
 	CURRENT_STATE_RISK_KEYS,
 	CURRENT_STATE_WORKLOAD_DEFINITION,
+	CurrentStateEvidenceRow,
 	type CurrentStateCounterUnit,
 	type CurrentStateEvidenceGroup,
 	type CurrentStateEvidenceSelection,
@@ -709,10 +710,7 @@ export async function readLeadAuditCurrentStateExportRows(
 				? await readAllWorkItemRows(db, filters, definition.key)
 				: await readAllLeadRows(
 						db,
-						joinConditions(
-							filterCondition,
-							queueSqlCondition(definition.key)
-						),
+						joinConditions(filterCondition, queueSqlCondition(definition.key)),
 						LEAD_EVIDENCE_ORDER
 					);
 	}

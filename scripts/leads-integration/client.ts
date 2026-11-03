@@ -6,6 +6,13 @@ export interface HttpResponse {
 	json: () => unknown;
 }
 
+export interface HttpDownloadResponse {
+	status: number;
+	contentType: string | null;
+	contentDisposition: string | null;
+	bytes: Uint8Array;
+}
+
 export function extractSessionCookie(setCookie: string | null): string | null {
 	if (!setCookie) return null;
 	const match = setCookie.match(/(?:^|,\s*)session=([^;,\s]+)/);
@@ -354,6 +361,10 @@ export interface ReportFixtureLeadInput {
 
 export interface HttpClient {
 	get: (path: string, sessionToken?: string) => Promise<HttpResponse>;
+	download: (
+		path: string,
+		sessionToken?: string
+	) => Promise<HttpDownloadResponse>;
 	post: (
 		path: string,
 		body: Record<string, unknown> | FormData,
@@ -386,7 +397,7 @@ export interface LoginHttpClient extends HttpClient {
 }
 
 export interface ScenarioContext {
-	http: HttpClient;
+	http: LoginHttpClient;
 	reader: Reader;
 	runTag: string;
 	creator: FixtureIdentity;

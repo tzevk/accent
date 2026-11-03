@@ -149,9 +149,7 @@ const EvidenceRowSchema = z
 			value: z.string().nullable(),
 			label: z.string(),
 		}),
-		owner: z
-			.object({ id: z.number(), name: z.string().nullable() })
-			.nullable(),
+		owner: z.object({ id: z.number(), name: z.string().nullable() }).nullable(),
 		recorded_at: z.string(),
 		enquiry_date: z.string().nullable(),
 		evidence: z.enum([
@@ -194,12 +192,12 @@ const EvidenceEnvelopeSchema = z
 						effective: z.array(
 							z.object({ key: z.string(), label: z.string() })
 						),
-						ignored: z.array(
-							z.object({ key: z.string(), reason: z.string() })
-						),
+						ignored: z.array(z.object({ key: z.string(), reason: z.string() })),
 					})
 					.passthrough(),
-				scope: z.object({ from_date: z.string(), to_date: z.string() }).passthrough(),
+				scope: z
+					.object({ from_date: z.string(), to_date: z.string() })
+					.passthrough(),
 				meta: z.object({ generated_at: z.string() }).passthrough(),
 				disclosures: z.array(
 					z.object({ code: z.string(), text: z.string() }).passthrough()
@@ -515,7 +513,11 @@ async function seedReader(
 		.object({ success: z.literal(true), user: z.object({ id: z.number() }) })
 		.passthrough()
 		.parse(JSON.parse(text) as unknown);
-	assert.equal(parsed.user.id, inserted.insertId, 'login resolves the seeded user');
+	assert.equal(
+		parsed.user.id,
+		inserted.insertId,
+		'login resolves the seeded user'
+	);
 	return { id: inserted.insertId, username, sessionToken };
 }
 
@@ -838,14 +840,34 @@ export async function leadAuditConversionScenario(
 		token
 	);
 	const cohort = may.section.cohort;
-	assert.equal(cohort.cohort_size, 9, 'distinct non-deleted cohort Leads');
+	assert.equal(
+		cohort.cohort_size,
+		9,
+		`distinct non-deleted cohort Leads: ${JSON.stringify({
+			scope: may.section.scope,
+			intake: JSON.parse(may.text).data.summary,
+			cohort,
+		})}`
+	);
 	assert.equal(cohort.handoffs_evidenced, 5, 'evidenced cohort handoffs');
 	assert.equal(cohort.conversion_rate, 55.56, '5 of 9 cohort Leads');
-	assert.equal(cohort.conversion_events, 4, 'dated conversion events in the cohort');
+	assert.equal(
+		cohort.conversion_events,
+		4,
+		'dated conversion events in the cohort'
+	);
 	assert.equal(cohort.undated_links, 1, 'the undated canonical link');
 	assert.equal(cohort.unresolved_evidence, 1, 'unresolved links are gaps');
-	assert.equal(cohort.stage_only_claims, 1, 'a Converted label alone is not evidence');
-	assert.equal(cohort.no_handoff_evidence, 2, 'cohort Leads without handoff evidence');
+	assert.equal(
+		cohort.stage_only_claims,
+		1,
+		'a Converted label alone is not evidence'
+	);
+	assert.equal(
+		cohort.no_handoff_evidence,
+		2,
+		'cohort Leads without handoff evidence'
+	);
 	assert.match(cohort.observed_through, /^\d{4}-\d{2}-\d{2}/);
 	assert.equal(
 		cohort.handoffs_evidenced +
@@ -857,7 +879,11 @@ export async function leadAuditConversionScenario(
 	);
 
 	const period = may.section.period;
-	assert.equal(period.handoffs, 4, 'dated handoffs inside the period, including older Leads');
+	assert.equal(
+		period.handoffs,
+		4,
+		'dated handoffs inside the period, including older Leads'
+	);
 	assert.equal(
 		period.undated_canonical_links,
 		2,
@@ -940,25 +966,47 @@ export async function leadAuditConversionScenario(
 		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, evidence: 'undated' },
 		token
 	);
-	assert.deepEqual(undated.body.rows.map((row) => row.id), [d.id]);
+	assert.deepEqual(
+		undated.body.rows.map((row) => row.id),
+		[d.id]
+	);
 	assert.equal(undated.body.rows[0]?.conversion_at, null);
 	assert.equal(undated.body.rows[0]?.evidence, 'canonical_link');
 
 	const unresolved = await readEvidence(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, evidence: 'unresolved' },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			evidence: 'unresolved',
+		},
 		token
 	);
-	assert.deepEqual(unresolved.body.rows.map((row) => row.id), [e.id]);
+	assert.deepEqual(
+		unresolved.body.rows.map((row) => row.id),
+		[e.id]
+	);
 	assert.equal(unresolved.body.rows[0]?.handoff_evidenced, false);
-	assert.equal(unresolved.body.rows[0]?.downstream.proposal_state, 'unresolved');
+	assert.equal(
+		unresolved.body.rows[0]?.downstream.proposal_state,
+		'unresolved'
+	);
 
 	const stageOnly = await readEvidence(
 		context,
-		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search, evidence: 'stage_only' },
+		{
+			from_date: PERIOD_FROM,
+			to_date: PERIOD_TO,
+			search,
+			evidence: 'stage_only',
+		},
 		token
 	);
-	assert.deepEqual(stageOnly.body.rows.map((row) => row.id), [f.id]);
+	assert.deepEqual(
+		stageOnly.body.rows.map((row) => row.id),
+		[f.id]
+	);
 	assert.equal(stageOnly.body.rows[0]?.handoff_evidenced, false);
 	assert.equal(stageOnly.body.rows[0]?.stage.value, 'Converted');
 	assert.equal(stageOnly.body.rows[0]?.downstream.proposal_state, 'none');
@@ -1029,7 +1077,11 @@ export async function leadAuditConversionScenario(
 		...pageTwo.body.rows,
 		...pageThree.body.rows,
 	].map((row) => row.id);
-	assert.equal(new Set(pageIds).size, 10, 'each Lead appears once across pages');
+	assert.equal(
+		new Set(pageIds).size,
+		10,
+		'each Lead appears once across pages'
+	);
 	const beyond = await readEvidence(
 		context,
 		{
@@ -1101,7 +1153,11 @@ export async function leadAuditConversionScenario(
 	assert.equal(websiteOnly.section.cohort.cohort_size, 3);
 	assert.equal(websiteOnly.section.cohort.handoffs_evidenced, 2);
 	assert.equal(websiteOnly.section.cohort.conversion_rate, 66.67);
-	assert.equal(websiteOnly.section.period.handoffs, 2, 'A and B carry the label');
+	assert.equal(
+		websiteOnly.section.period.handoffs,
+		2,
+		'A and B carry the label'
+	);
 	assert.equal(websiteOnly.section.source_conversion.length, 1);
 
 	const convertedWebsite = await readConversion(
@@ -1146,9 +1202,7 @@ export async function leadAuditConversionScenario(
 		assert.ok(ignoredKeys.includes(key), `${key} is disclosed as ignored`);
 	}
 	assert.deepEqual(
-		ignoredFilters.section.evidence_filters.effective.map(
-			(entry) => entry.key
-		),
+		ignoredFilters.section.evidence_filters.effective.map((entry) => entry.key),
 		['period', 'search'],
 		'only the applied period and search are effective'
 	);
@@ -1167,17 +1221,8 @@ export async function leadAuditConversionScenario(
 		token
 	);
 	assert.deepEqual(
-		fullyFiltered.section.evidence_filters.effective.map(
-			(entry) => entry.key
-		),
-		[
-			'period',
-			'owner',
-			'source',
-			'stage',
-			'priority',
-			'search',
-		],
+		fullyFiltered.section.evidence_filters.effective.map((entry) => entry.key),
+		['period', 'owner', 'source', 'stage', 'priority', 'search'],
 		'each applied shared filter is disclosed as effective'
 	);
 
@@ -1194,7 +1239,9 @@ export async function leadAuditConversionScenario(
 	assert.equal(empty.section.source_conversion.length, 0);
 	assert.equal(empty.section.stage_distribution.length, 0);
 	assert.ok(
-		empty.section.disclosures.some((entry) => /not applicable/i.test(entry.text)),
+		empty.section.disclosures.some((entry) =>
+			/not applicable/i.test(entry.text)
+		),
 		'the empty cohort explains Not applicable'
 	);
 	const emptyEvidence = await readEvidence(
@@ -1249,8 +1296,14 @@ export async function leadAuditConversionScenario(
 		},
 		token
 	);
-	assert.equal(restrictedEvidence.body.downstream_options.include_proposals, false);
-	assert.equal(restrictedEvidence.body.downstream_options.include_projects, false);
+	assert.equal(
+		restrictedEvidence.body.downstream_options.include_proposals,
+		false
+	);
+	assert.equal(
+		restrictedEvidence.body.downstream_options.include_projects,
+		false
+	);
 	assert.ok(
 		restrictedEvidence.body.rows.every(
 			(row) =>
@@ -1296,14 +1349,8 @@ export async function leadAuditConversionScenario(
 		},
 		proposalsOnly.sessionToken
 	);
-	assert.equal(
-		proposalReader.body.downstream_options.include_proposals,
-		true
-	);
-	assert.equal(
-		proposalReader.body.downstream_options.include_projects,
-		false
-	);
+	assert.equal(proposalReader.body.downstream_options.include_proposals, true);
+	assert.equal(proposalReader.body.downstream_options.include_projects, false);
 	const proposalBRow = proposalReader.body.rows.find((row) => row.id === b.id);
 	assert.ok(proposalBRow);
 	assert.equal(proposalBRow.downstream.proposal_state, 'available');
@@ -1327,14 +1374,8 @@ export async function leadAuditConversionScenario(
 		},
 		projectsOnly.sessionToken
 	);
-	assert.equal(
-		projectReader.body.downstream_options.include_proposals,
-		false
-	);
-	assert.equal(
-		projectReader.body.downstream_options.include_projects,
-		true
-	);
+	assert.equal(projectReader.body.downstream_options.include_proposals, false);
+	assert.equal(projectReader.body.downstream_options.include_projects, true);
 	assert.ok(
 		projectReader.body.rows.every(
 			(row) =>
@@ -1360,7 +1401,10 @@ export async function leadAuditConversionScenario(
 	assert.equal(bothReader.body.downstream_options.include_projects, true);
 	const bothB = bothReader.body.rows.find((row) => row.id === b.id);
 	assert.equal(bothB?.downstream.proposal?.project_state, 'available');
-	assert.equal(bothB?.downstream.proposal?.project?.title, `${projectPrefix} B`);
+	assert.equal(
+		bothB?.downstream.proposal?.project?.title,
+		`${projectPrefix} B`
+	);
 	assert.equal(bothB?.downstream.proposal?.project?.status, 'ONGOING');
 	assert.equal(bothB?.downstream.proposal?.project?.progress, 25);
 	const bothH = bothReader.body.rows.find((row) => row.id === h.id);
