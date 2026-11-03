@@ -256,13 +256,38 @@ async function readConversion(
 	return { section: parsed.data.conversion, text: response.text };
 }
 
+const ConversionSectionEnvelopeSchema = z
+	.object({
+		success: z.literal(true),
+		data: ConversionSectionSchema,
+	})
+	.passthrough();
+
+async function readConversionSectionRoute(
+	context: ScenarioContext,
+	values: Record<string, string | number | null | undefined>,
+	token: string
+): Promise<{ section: ConversionSection; text: string }> {
+	const response = await context.http.get(
+		`/api/reports/lead-audit/conversion${query(values)}`,
+		token
+	);
+	assert.equal(
+		response.status,
+		200,
+		`conversion section status (body: ${response.text})`
+	);
+	const parsed = ConversionSectionEnvelopeSchema.parse(response.json());
+	return { section: parsed.data, text: response.text };
+}
+
 async function readEvidence(
 	context: ScenarioContext,
 	values: Record<string, string | number | null | undefined>,
 	token: string
 ): Promise<{ body: EvidenceBody; text: string }> {
 	const response = await context.http.get(
-		`/api/reports/lead-audit/conversion${query(values)}`,
+		`/api/reports/lead-audit/conversion/evidence${query(values)}`,
 		token
 	);
 	assert.equal(
@@ -845,6 +870,18 @@ export async function leadAuditConversionScenario(
 		'period handoffs are never divided by period intake as a rate'
 	);
 
+	// The dedicated section route reports the same applied figures.
+	const sectionRoute = await readConversionSectionRoute(
+		context,
+		{ from_date: PERIOD_FROM, to_date: PERIOD_TO, search },
+		token
+	);
+	assert.equal(sectionRoute.section.cohort.cohort_size, 9);
+	assert.equal(sectionRoute.section.cohort.conversion_rate, 55.56);
+	assert.equal(sectionRoute.section.period.handoffs, 4);
+	assert.equal(sectionRoute.section.downstream.proposal_states.restricted, 5);
+	assert.equal(sectionRoute.text.includes(proposalPrefix), false);
+
 	// H's conversion event survives the later relink: it is still a handoff,
 	// and its current canonical Proposal is the new one.
 	const handoffs = await readEvidence(
@@ -1374,12 +1411,18 @@ export async function leadAuditConversionScenario(
 		'SENT'
 	);
 
-	// ── Report access gates on the evidence route ───────────────────────────
-	const evidencePath = `/api/reports/lead-audit/conversion${query({
+	// ── Report access gates on both conversion routes ──────────────────────
+	const sectionPath = `/api/reports/lead-audit/conversion${query({
 		from_date: PERIOD_FROM,
 		to_date: PERIOD_TO,
 		search,
 	})}`;
+	const evidencePath = `/api/reports/lead-audit/conversion/evidence${query({
+		from_date: PERIOD_FROM,
+		to_date: PERIOD_TO,
+		search,
+	})}`;
+	assert.equal((await context.http.get(sectionPath)).status, 401);
 	assert.equal((await context.http.get(evidencePath)).status, 401);
 	for (const identity of [
 		context.readOnly,
@@ -1387,9 +1430,14 @@ export async function leadAuditConversionScenario(
 		context.projectReportOnly,
 	]) {
 		assert.equal(
+			(await context.http.get(sectionPath, identity.sessionToken)).status,
+			403,
+			`${identity.username} lacks a required read grant on the section`
+		);
+		assert.equal(
 			(await context.http.get(evidencePath, identity.sessionToken)).status,
 			403,
-			`${identity.username} lacks a required read grant`
+			`${identity.username} lacks a required read grant on the evidence`
 		);
 	}
 

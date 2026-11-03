@@ -8,8 +8,9 @@ downstream Proposal and Project context to the Lead Audit report.
 Lead Conversion means Proposal handoff, never a sale won.
 
 The main report response composes the section as `data.conversion`. The
-drill-down evidence is its own authenticated read at
-`GET /api/reports/lead-audit/conversion`.
+The drill-down evidence is its own authenticated read at
+`GET /api/reports/lead-audit/conversion/evidence`, and the section is also
+available directly at `GET /api/reports/lead-audit/conversion`.
 
 ## Metric contract
 
@@ -70,12 +71,15 @@ A restricted reader still receives the Lead-side handoff evidence and the
 `Restricted` state. `Restricted` is never presented as "No Proposal" or
 "No Project".
 
-## Route parameters
+## Routes
 
-`GET /api/reports/lead-audit/conversion`
+`GET /api/reports/lead-audit/conversion` returns the section. Shared report
+filters apply: `preset`, `from_date`, `to_date`, `owner`, `source`,
+`source_missing`, `stage`, `priority`, `search`.
 
-- Shared report filters: `preset`, `from_date`, `to_date`, `owner`,
-  `source`, `source_missing`, `stage`, `priority`, `search`.
+`GET /api/reports/lead-audit/conversion/evidence` returns the paginated
+drill-down and accepts the same shared filters plus:
+
 - `evidence`: `all` (default), `handoff`, `period`, `undated`, `unresolved`,
   `stage_only`. `undated=1` is accepted as an alias for `evidence=undated`
   when `evidence` is absent.
@@ -83,8 +87,8 @@ A restricted reader still receives the Lead-side handoff evidence and the
 - Unknown evidence kinds return `422` with code
   `invalid_conversion_evidence`. Shared filter validation codes are reused.
 
-The response returns `scope`, `meta`, the evidence descriptor, rows,
-pagination, `downstream_options`, the section filter scope, and
+The evidence response returns `scope`, `meta`, the evidence descriptor,
+rows, pagination, `downstream_options`, the section filter scope, and
 disclosures. Ordering is deterministic: `created_at DESC, id DESC`, except
 the period population, which orders by authoritative conversion time.
 
@@ -102,7 +106,8 @@ filters that were actually applied.
 | `conversion.ts` | Section read, paginated evidence read, complete export read, downstream resolution, disclosures |
 | `conversion-types.ts` | Section vocabulary, reusing the existing Proposal/Project link states |
 | `conversion-filters.ts` | The closed `evidence` vocabulary and its named validation code |
-| `../api/reports/lead-audit/conversion/route.ts` | Authenticated evidence read |
+| `../api/reports/lead-audit/conversion/route.ts` | Authenticated section read |
+| `../api/reports/lead-audit/conversion/evidence/route.ts` | Authenticated evidence read |
 
 Reads accept the caller's shared connection and clock:
 `readLeadAuditConversionSection(db, filters, clock, options)` and
