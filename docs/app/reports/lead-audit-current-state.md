@@ -16,19 +16,20 @@ range selection does not change them.
 **Evidence API:** `GET /api/reports/lead-audit/current-state/evidence`
 **Section reader:** `readLeadAuditCurrentStateSection(db, filters, clock, options?)`
 **Evidence reader:** `readLeadAuditCurrentStateEvidence(db, filters, clock, selection, pagination, options?)`
+**Export reader:** `readLeadAuditCurrentStateExportRows(db, filters, clock, options?)`
 
 ## Queue definitions and date basis
 
 The counters and queue conditions reuse `src/server/leads/queues.ts`; the
 report does not create a second queue vocabulary.
 
-| Risk group    | Population                                                                                                                       | Counter unit   | Evidence unit                     |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------- |
-| Unassigned    | Non-deleted Leads with `owner_user_id IS NULL`                                                                                    | distinct Leads | Lead                              |
-| Untouched     | Non-deleted Leads with no completed Call, Email, or Meeting; a completed Note alone does not count as outreach                     | distinct Leads | Lead                              |
-| Overdue       | Non-deleted Leads with outstanding scheduled work dated before the database calendar day                                          | distinct Leads | individual scheduled work item    |
-| Due today     | Non-deleted Leads with outstanding scheduled work dated on the database calendar day                                               | distinct Leads | individual scheduled work item    |
-| No Next Action | Non-deleted Leads in Attempting Contact, Connected, Qualified, or Nurture with no outstanding scheduled work                      | distinct Leads | Lead                              |
+| Risk group     | Population                                                                                                     | Counter unit   | Evidence unit                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------ |
+| Unassigned     | Non-deleted Leads with `owner_user_id IS NULL`                                                                 | distinct Leads | Lead                           |
+| Untouched      | Non-deleted Leads with no completed Call, Email, or Meeting; a completed Note alone does not count as outreach | distinct Leads | Lead                           |
+| Overdue        | Non-deleted Leads with outstanding scheduled work dated before the database calendar day                       | distinct Leads | individual scheduled work item |
+| Due today      | Non-deleted Leads with outstanding scheduled work dated on the database calendar day                           | distinct Leads | individual scheduled work item |
+| No Next Action | Non-deleted Leads in Attempting Contact, Connected, Qualified, or Nurture with no outstanding scheduled work   | distinct Leads | Lead                           |
 
 Outstanding scheduled work follows the existing queue rule: a row with
 `status = 'Scheduled'`, no `transferred_followup_id`, a scheduled date, and no
@@ -90,6 +91,16 @@ Current-state filters are parsed once by the shared report parser:
   return `422` with `invalid_current_state_group` or
   `invalid_current_state_risk`.
 
+## Export rows
+
+`readLeadAuditCurrentStateExportRows` reads the summary and every detail row on
+the caller's one observation connection. It returns
+`LeadAuditCurrentStateExportSection`: the complete section plus
+`workload_rows` (one row per Lead) and `risk_rows` (every full-result row for
+each of the five queues, including all individual scheduled work items).
+Nothing in this path paginates, so a workbook reconciles its summaries with
+complete details instead of the visible HTTP page.
+
 ## Evidence shapes
 
 A Lead row carries the Lead identity, contact, stored source, priority,
@@ -141,7 +152,7 @@ Leads, ownership, activities, and history unchanged.
 
 The component shows the observation time, time zone, database date basis, the
 effective current-state filter chips, and every ignored filter with its
-reason. Risk cards are stamped **As of** the observation day and state their
+reason. Risk cards are stamped **As of** the generation time and state their
 counter and evidence units. The workload table marks Unassigned, Inactive, and
 Unknown user references. Evidence buttons are rendered only when the page
 supplies an `onSelectGroup` callback; the component keeps no private applied
