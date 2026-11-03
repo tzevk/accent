@@ -672,14 +672,8 @@ export async function leadAuditTimingScenario(
          FROM lead_activities WHERE lead_id IN (${placeholders}) ORDER BY id ASC`,
 			allIds
 		);
-	const readSources = () =>
-		context.reader.fixtureRows(
-			'SELECT id, lead_source FROM leads WHERE id = ? ORDER BY id ASC',
-			[deletedLead.id]
-		);
 	const leadsBefore = await readLeads();
 	const activitiesBefore = await readActivities();
-	const sourcesBefore = await readSources();
 
 	// ── The observation is measured from system entry, with coverage ────────
 	const odd = await readTiming(
@@ -1162,18 +1156,14 @@ export async function leadAuditTimingScenario(
 	assert.equal(composedBody.timing.p90_seconds, odd.p90_seconds);
 
 	// ── Reads leave the fixture sources untouched ───────────────────────────
-	assert.deepEqual(await readLeads(), leadsBefore, 'Lead rows are unchanged');
+	assert.deepEqual(
+		await readLeads(),
+		leadsBefore,
+		'Lead rows and stored source labels are unchanged'
+	);
 	assert.deepEqual(
 		await readActivities(),
 		activitiesBefore,
 		'activity rows are unchanged, including the corrected row'
-	);
-	assert.deepEqual(
-		await context.reader.fixtureRows(
-			'SELECT id, lead_source FROM leads WHERE id IN (?) ORDER BY id ASC',
-			[deletedLead.id]
-		),
-		sourcesBefore,
-		'stored source labels are unchanged'
 	);
 }
