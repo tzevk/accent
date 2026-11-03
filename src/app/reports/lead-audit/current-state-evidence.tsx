@@ -23,7 +23,7 @@ interface Envelope {
 }
 
 const buttonClass =
-	'rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:opacity-50';
+	'rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-[#64126D] aria-disabled:cursor-not-allowed aria-disabled:opacity-50';
 
 export default function CurrentStateEvidence({
 	selection,
@@ -207,8 +207,11 @@ export default function CurrentStateEvidence({
 					<div className="mt-3 flex flex-wrap items-center gap-3">
 						<button
 							type="button"
-							disabled={page <= 1}
-							onClick={() => setPage(page - 1)}
+							aria-disabled={page <= 1}
+							onClick={() => {
+								if (page <= 1) return;
+								setPage(page - 1);
+							}}
 							className={buttonClass}
 						>
 							Previous evidence page
@@ -218,8 +221,11 @@ export default function CurrentStateEvidence({
 						</span>
 						<button
 							type="button"
-							disabled={page >= data.pagination.total_pages}
-							onClick={() => setPage(page + 1)}
+							aria-disabled={page >= data.pagination.total_pages}
+							onClick={() => {
+								if (page >= data.pagination.total_pages) return;
+								setPage(page + 1);
+							}}
 							className={buttonClass}
 						>
 							Next evidence page

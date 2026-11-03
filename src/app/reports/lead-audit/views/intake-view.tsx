@@ -66,7 +66,7 @@ function TrendCard({
 				</div>
 			</div>
 			{points.length === 0 ? (
-				<p className="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
+				<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
 					{emptyText}
 				</p>
 			) : (
@@ -199,7 +199,9 @@ export default function IntakeView({
 							<tbody>
 								{report.sources.map((source) => (
 									<tr
-										key={source.is_unknown ? '__unknown__' : source.label ?? ''}
+										key={
+											source.is_unknown ? '__unknown__' : (source.label ?? '')
+										}
 										className="border-b border-gray-50"
 									>
 										<th
@@ -222,7 +224,10 @@ export default function IntakeView({
 							</tbody>
 							<tfoot>
 								<tr className="border-t border-gray-200 text-xs text-gray-600">
-									<th scope="row" className="py-1.5 pr-3 text-left font-semibold">
+									<th
+										scope="row"
+										className="py-1.5 pr-3 text-left font-semibold"
+									>
 										Distinct labels
 									</th>
 									<td className="py-1.5 text-right font-semibold tabular-nums text-gray-900">

@@ -91,7 +91,7 @@ export default function WorkEvidence({
 					role="status"
 				>
 					<ArrowPathIcon
-						className="h-5 w-5 animate-spin text-[#64126D]"
+						className="h-5 w-5 motion-safe:animate-spin text-[#64126D]"
 						aria-hidden="true"
 					/>
 					Loading work evidence…
@@ -182,8 +182,7 @@ export default function WorkEvidence({
 											</span>
 											<span className="mt-0.5 block text-xs text-gray-600">
 												{row.status}
-												{row.activity_type.is_unknown &&
-												row.activity_type.value
+												{row.activity_type.is_unknown && row.activity_type.value
 													? ` · stored “${row.activity_type.value}”`
 													: ''}
 											</span>
@@ -203,8 +202,8 @@ export default function WorkEvidence({
 										</td>
 										<td className="px-3 py-2.5 align-top text-gray-800">
 											{row.lead.current_owner
-												? row.lead.current_owner.name ??
-													`Unknown user #${row.lead.current_owner.id}`
+												? (row.lead.current_owner.name ??
+													`Unknown user #${row.lead.current_owner.id}`)
 												: 'Unassigned'}
 										</td>
 										<td className="px-3 py-2.5 align-top text-gray-800">
@@ -251,7 +250,7 @@ export default function WorkEvidence({
 							</tbody>
 						</table>
 					</div>
-					<div className="flex flex-col gap-2 border-t border-gray-100 p-3 sm:flex-row sm:items-center sm:justify-between">
+					<div className="flex flex-col gap-2 border-t border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
 						<p className="text-xs text-gray-600">
 							{total.toLocaleString('en-IN')} activit
 							{total === 1 ? 'y' : 'ies'} in this evidence set. Page {page} of{' '}
@@ -260,18 +259,24 @@ export default function WorkEvidence({
 						<div className="flex items-center gap-2">
 							<button
 								type="button"
-								disabled={page <= 1}
-								onClick={() => onPageChange(page - 1)}
-								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:cursor-not-allowed disabled:opacity-50"
+								aria-disabled={page <= 1}
+								onClick={() => {
+									if (page <= 1) return;
+									onPageChange(page - 1);
+								}}
+								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 							>
 								<ChevronLeftIcon className="h-3.5 w-3.5" aria-hidden="true" />
 								Previous
 							</button>
 							<button
 								type="button"
-								disabled={page >= totalPages}
-								onClick={() => onPageChange(page + 1)}
-								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:cursor-not-allowed disabled:opacity-50"
+								aria-disabled={page >= totalPages}
+								onClick={() => {
+									if (page >= totalPages) return;
+									onPageChange(page + 1);
+								}}
+								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 							>
 								Next
 								<ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />

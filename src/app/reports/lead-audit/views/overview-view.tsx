@@ -118,7 +118,8 @@ export default function OverviewView({
 							{count(summary.missing_enquiry_date)}
 						</p>
 						<p className="mt-2 text-xs text-amber-900">
-							Recorded Leads with no Enquiry Date.
+							Recorded Leads with no Enquiry Date. They stay in Leads recorded
+							and are excluded from Enquiries dated in period.
 						</p>
 						<span className="mt-2 inline-block text-xs font-semibold text-amber-900 group-hover:underline">
 							View missing-date evidence

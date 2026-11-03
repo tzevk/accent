@@ -294,18 +294,24 @@ export default function LeadRegister({
 						<div className="flex items-center gap-2">
 							<button
 								type="button"
-								disabled={page <= 1}
-								onClick={() => onPageChange(page - 1)}
-								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:cursor-not-allowed disabled:opacity-50"
+								aria-disabled={page <= 1}
+								onClick={() => {
+									if (page <= 1) return;
+									onPageChange(page - 1);
+								}}
+								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 							>
 								<ChevronLeftIcon className="h-3.5 w-3.5" aria-hidden="true" />
 								Previous
 							</button>
 							<button
 								type="button"
-								disabled={page >= totalPages}
-								onClick={() => onPageChange(page + 1)}
-								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] disabled:cursor-not-allowed disabled:opacity-50"
+								aria-disabled={page >= totalPages}
+								onClick={() => {
+									if (page >= totalPages) return;
+									onPageChange(page + 1);
+								}}
+								className="inline-flex h-8 items-center gap-1 rounded-md border border-gray-300 bg-white px-3 text-xs font-medium text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 							>
 								Next
 								<ChevronRightIcon className="h-3.5 w-3.5" aria-hidden="true" />

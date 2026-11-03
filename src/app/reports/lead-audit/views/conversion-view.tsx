@@ -670,7 +670,7 @@ export default function ConversionView({
 							role="status"
 						>
 							<ArrowPathIcon
-								className="h-4 w-4 animate-spin"
+								className="h-4 w-4 motion-safe:animate-spin"
 								aria-hidden="true"
 							/>
 							Loading conversion evidence…
@@ -688,24 +688,30 @@ export default function ConversionView({
 									<div className="flex gap-2">
 										<button
 											type="button"
-											onClick={() =>
-												onEvidencePageChange?.(evidence.pagination.page - 1)
-											}
-											disabled={evidence.pagination.page <= 1}
-											className="rounded-lg border border-gray-300 px-3 py-1 font-medium text-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+											onClick={() => {
+												if (evidence.pagination.page <= 1) return;
+												onEvidencePageChange?.(evidence.pagination.page - 1);
+											}}
+											aria-disabled={evidence.pagination.page <= 1}
+											className="rounded-lg border border-gray-300 px-3 py-1 font-medium text-gray-800 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 										>
 											Previous
 										</button>
 										<button
 											type="button"
-											onClick={() =>
-												onEvidencePageChange?.(evidence.pagination.page + 1)
-											}
-											disabled={
+											onClick={() => {
+												if (
+													evidence.pagination.page >=
+													evidence.pagination.total_pages
+												)
+													return;
+												onEvidencePageChange?.(evidence.pagination.page + 1);
+											}}
+											aria-disabled={
 												evidence.pagination.page >=
 												evidence.pagination.total_pages
 											}
-											className="rounded-lg border border-gray-300 px-3 py-1 font-medium text-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+											className="rounded-lg border border-gray-300 px-3 py-1 font-medium text-gray-800 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 										>
 											Next
 										</button>

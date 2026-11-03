@@ -10,15 +10,12 @@ import type {
 	LeadAuditWorkMetric,
 	LeadAuditWorkSection,
 } from '@/server/reports/lead-audit/work-types';
+import { formatCount } from '../figures';
 
 interface WorkSummaryProps {
 	work: LeadAuditWorkSection;
 	/** Open the work evidence behind the selected figure. */
 	onSelectMetric: (metric: LeadAuditWorkMetric) => void;
-}
-
-function count(value: number): string {
-	return value.toLocaleString('en-IN');
 }
 
 /**
@@ -64,12 +61,13 @@ export function WorkSummary({ work, onSelectMetric }: WorkSummaryProps) {
 						Completed work
 					</span>
 					<span className="mt-1 block text-2xl font-bold tabular-nums text-gray-900">
-						{count(summary.completed_total)}
+						{formatCount(summary.completed_total)}
 					</span>
-					<span className="mt-1 block text-xs text-gray-600">
-						{count(summary.by_type.call)} calls · {count(summary.by_type.email)}{' '}
-						emails · {count(summary.by_type.meeting)} meetings ·{' '}
-						{count(summary.by_type.note)} notes
+					<span className="mt-1 block text-xs leading-normal text-gray-600">
+						{formatCount(summary.by_type.call)} calls ·{' '}
+						{formatCount(summary.by_type.email)} emails ·{' '}
+						{formatCount(summary.by_type.meeting)} meetings ·{' '}
+						{formatCount(summary.by_type.note)} notes
 					</span>
 				</button>
 
@@ -83,10 +81,10 @@ export function WorkSummary({ work, onSelectMetric }: WorkSummaryProps) {
 						Lead Outreach
 					</span>
 					<span className="mt-1 block text-2xl font-bold tabular-nums text-gray-900">
-						{count(summary.outreach_total)}
+						{formatCount(summary.outreach_total)}
 					</span>
-					<span className="mt-1 block text-xs text-gray-600">
-						On {count(summary.distinct_leads_with_outreach)} distinct Lead
+					<span className="mt-1 block text-xs leading-normal text-gray-600">
+						On {formatCount(summary.distinct_leads_with_outreach)} distinct Lead
 						{summary.distinct_leads_with_outreach === 1 ? '' : 's'}. Notes are
 						not outreach.
 					</span>
@@ -102,21 +100,21 @@ export function WorkSummary({ work, onSelectMetric }: WorkSummaryProps) {
 						Successful contact
 					</span>
 					<span className="mt-1 block text-2xl font-bold tabular-nums text-gray-900">
-						{count(summary.successful_contact)}
+						{formatCount(summary.successful_contact)}
 					</span>
-					<span className="mt-1 block text-xs text-gray-600">
+					<span className="mt-1 block text-xs leading-normal text-gray-600">
 						Connected calls and confirmed replies on{' '}
-						{count(summary.distinct_leads_with_successful_contact)} distinct
-						Lead
+						{formatCount(summary.distinct_leads_with_successful_contact)}{' '}
+						distinct Lead
 						{summary.distinct_leads_with_successful_contact === 1 ? '' : 's'}.
 					</span>
 				</button>
 			</div>
 
 			<p className="mt-3 text-xs text-gray-600" role="note">
-				{count(summary.by_type.unknown)} unknown type ·{' '}
-				{count(work.coverage.unknown_occurrence_date)} undated · authorship by
-				recorded author
+				{formatCount(summary.by_type.unknown)} unknown type ·{' '}
+				{formatCount(work.coverage.unknown_occurrence_date)} undated ·
+				authorship by recorded author
 			</p>
 		</section>
 	);

@@ -99,7 +99,7 @@ function MetricCard({
 				{icon}
 			</div>
 			<p className="mt-2 text-2xl font-bold tabular-nums">{value}</p>
-			<p className="mt-1 text-xs text-gray-600">{detail}</p>
+			<p className="mt-1 text-xs leading-normal text-gray-600">{detail}</p>
 			<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
 				{disabled ? 'No matching evidence' : 'View evidence'}
 			</span>
@@ -160,14 +160,14 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 					>
 						Time to first outreach
 					</h2>
-					<p className="text-sm text-gray-600">
+					<p className="max-w-prose text-sm text-gray-600">
 						System entry to earliest evidenced outreach for cohort Leads. Not
 						client response time.
 					</p>
-					<p className="mt-1 text-xs text-gray-600">
-						Clock: {section.metric.clock} Observation:{' '}
-						{section.metric.observation} Generated {section.meta.generated_at} (
-						{section.meta.time_zone.label}).
+					<p className="mt-1 max-w-prose text-xs text-gray-600">
+						Generated at {section.meta.generated_at} (
+						{section.meta.time_zone.label}). Clock and observation are defined
+						under How to read this figure.
 					</p>
 				</div>
 
@@ -183,16 +183,26 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 							/>
 							<div>
 								<h3 className="text-sm font-semibold text-amber-950">
-									Time to first outreach is not available
+									{section.cohort_leads === 0
+										? 'No Leads recorded in this period'
+										: 'Time to first outreach is not available'}
 								</h3>
-								<p className="mt-0.5 text-sm text-amber-900">
-									No valid timing sample exists for this cohort, so the metric
-									is unavailable rather than zero. Coverage:{' '}
-									{formatCount(section.cohort_leads)} cohort Lead(s),{' '}
-									{formatCount(section.without_outreach)} without evidenced
-									outreach, and {formatCount(exclusions.total)} excluded for
-									unknown or negative timing evidence.
-								</p>
+								{section.cohort_leads === 0 ? (
+									<p className="mt-0.5 max-w-prose text-sm text-amber-900">
+										The applied filters contain no Leads recorded in this
+										period, so time to first outreach is unavailable. An empty
+										cohort is not a zero-duration population.
+									</p>
+								) : (
+									<p className="mt-0.5 max-w-prose text-sm text-amber-900">
+										No valid timing sample exists for this cohort, so the metric
+										is unavailable rather than zero. Coverage:{' '}
+										{formatCount(section.cohort_leads)} cohort Lead(s),{' '}
+										{formatCount(section.without_outreach)} without evidenced
+										outreach, and {formatCount(exclusions.total)} excluded for
+										unknown or negative timing evidence.
+									</p>
+								)}
 							</div>
 						</div>
 					</div>
@@ -234,9 +244,9 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 						disabled={!hasSamples}
 					/>
 					<MetricCard
-						label="Valid samples"
+						label="Timing samples"
 						value={formatCount(section.valid_samples)}
-						detail={`${formatCount(section.cohort_leads)} Lead(s) in the selected intake cohort.`}
+						detail={`Cohort Leads with a known, non-negative interval from system entry to their earliest evidenced outreach; ${formatCount(section.cohort_leads)} cohort Leads in total.`}
 						icon={
 							<ChartBarIcon
 								className="h-5 w-5 text-[#64126D]"
@@ -357,9 +367,8 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 									DISCLOSURE_LABELS[population] ??
 									'Timing evidence'}
 							</h2>
-							<p className="text-sm text-gray-600">
-								{evidence?.metric.definition ??
-									'Loading the cohort evidence behind the selected timing figure.'}
+							<p className="max-w-prose text-sm text-gray-600">
+								{evidence?.metric.definition ?? ''}
 							</p>
 						</div>
 						<button
@@ -377,7 +386,7 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 							role="status"
 						>
 							<ArrowPathIcon
-								className="h-5 w-5 animate-spin text-[#64126D]"
+								className="h-5 w-5 motion-safe:animate-spin text-[#64126D]"
 								aria-hidden="true"
 							/>
 							Loading the timing evidence…
@@ -458,7 +467,7 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 												<td className="px-2 py-2 tabular-nums text-gray-700">
 													{row.recorded_at}
 												</td>
-												<td className="px-2 py-2 text-gray-700">
+												<td className="px-2 py-2 tabular-nums text-gray-700">
 													{row.first_outreach_at ?? 'Unknown'}
 													<div className="text-xs text-gray-600">
 														{row.first_outreach_type ?? 'No outreach type'}
@@ -503,26 +512,32 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 									<div className="flex gap-2">
 										<button
 											type="button"
-											onClick={() =>
-												setPage((current) => Math.max(1, current - 1))
-											}
-											disabled={evidence.pagination.page <= 1}
-											className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+											onClick={() => {
+												if (evidence.pagination.page <= 1) return;
+												setPage((current) => Math.max(1, current - 1));
+											}}
+											aria-disabled={evidence.pagination.page <= 1}
+											className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 										>
 											Previous
 										</button>
 										<button
 											type="button"
-											onClick={() =>
+											onClick={() => {
+												if (
+													evidence.pagination.page >=
+													evidence.pagination.total_pages
+												)
+													return;
 												setPage((current) =>
 													Math.min(evidence.pagination.total_pages, current + 1)
-												)
-											}
-											disabled={
+												);
+											}}
+											aria-disabled={
 												evidence.pagination.page >=
 												evidence.pagination.total_pages
 											}
-											className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+											className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 										>
 											Next
 										</button>

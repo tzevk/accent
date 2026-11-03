@@ -106,9 +106,11 @@ export default function ReportHeader({
 						</Link>
 						<button
 							type="button"
-							onClick={onRefresh}
-							disabled={refreshing}
-							className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white/10 px-3 text-xs font-medium text-white ring-1 ring-white/25 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-60"
+							onClick={() => {
+								if (!refreshing) onRefresh();
+							}}
+							aria-disabled={refreshing}
+							className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white/10 px-3 text-xs font-medium text-white ring-1 ring-white/25 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white aria-disabled:opacity-60"
 						>
 							<ArrowPathIcon
 								className={`h-3.5 w-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`}
@@ -156,7 +158,7 @@ export default function ReportHeader({
 					{chips.map((chip) => (
 						<li
 							key={chip}
-							className="rounded-full bg-white/15 px-2.5 py-1 ring-1 ring-white/20"
+							className="min-w-0 break-words rounded-full bg-white/15 px-2.5 py-1 ring-1 ring-white/20"
 						>
 							{chip}
 						</li>
@@ -172,10 +174,10 @@ export default function ReportHeader({
 								type="button"
 								onClick={() => onSelectView(tab.key)}
 								aria-current={selected ? 'page' : undefined}
-								className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+								className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 ${
 									selected
-										? 'bg-white text-[#64126D]'
-										: 'bg-white/10 text-white hover:bg-white/20'
+										? 'bg-white text-[#64126D] focus-visible:ring-[#64126D] focus-visible:ring-offset-2'
+										: 'bg-white/10 text-white hover:bg-white/20 focus-visible:ring-white'
 								}`}
 							>
 								{tab.label}

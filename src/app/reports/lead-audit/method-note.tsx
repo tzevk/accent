@@ -32,7 +32,7 @@ export function MethodNote({
 		>
 			<summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl p-3 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] sm:p-4 [&::-webkit-details-marker]:hidden">
 				<ChevronRightIcon
-					className="h-4 w-4 shrink-0 text-gray-500 transition-transform group-open:rotate-90"
+					className="h-4 w-4 shrink-0 text-gray-500 motion-safe:transition-transform group-open:rotate-90"
 					aria-hidden="true"
 				/>
 				<span className="min-w-0">

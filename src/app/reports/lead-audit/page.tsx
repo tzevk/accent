@@ -294,8 +294,8 @@ export default function LeadAuditPage() {
 						/>
 						<h1 className="text-lg font-bold text-gray-900">Access Denied</h1>
 						<p className="mt-1 text-sm text-gray-600">
-							The Lead Audit and Performance report requires both the Reports
-							read grant and the Leads read grant.
+							You need both the Reports read grant and the Leads read grant to
+							view this report. Ask an administrator to grant them.
 						</p>
 					</div>
 				</div>
@@ -410,7 +410,8 @@ export default function LeadAuditPage() {
 						</div>
 					) : report === null ? (
 						<div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-600">
-							The report returned no body. Apply the filters again or refresh.
+							The report did not return any data. Select Apply to request it
+							again.
 						</div>
 					) : activeView === 'intake' ? (
 						<div className="min-w-0 space-y-4">

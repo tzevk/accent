@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
 	ArrowPathIcon,
@@ -88,10 +88,7 @@ function NarrativeDetail({
 }) {
 	if (loading) {
 		return (
-			<div
-				className="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700"
-				role="status"
-			>
+			<div className="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
 				<ArrowPathIcon
 					className="h-4 w-4 motion-safe:animate-spin text-[#64126D]"
 					aria-hidden="true"
@@ -256,17 +253,29 @@ function EvidenceTable({
 	narrativeError,
 	onCloseNarrative,
 	emptyText,
+	loading,
 }: {
 	rows: LeadAuditEvidenceRow[];
-	onInspect: (row: LeadAuditEvidenceRow) => void;
+	onInspect: (row: LeadAuditEvidenceRow, trigger: HTMLButtonElement) => void;
 	inspected: string;
 	narrative: LeadAuditEvidenceNarrative | null;
 	narrativeLoading: boolean;
 	narrativeError: string;
 	onCloseNarrative: () => void;
 	emptyText: string;
+	loading: boolean;
 }) {
 	if (rows.length === 0) {
+		if (loading) {
+			return (
+				<p
+					className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600"
+					role="status"
+				>
+					Loading evidence page…
+				</p>
+			);
+		}
 		return (
 			<p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
 				{emptyText}
@@ -369,7 +378,7 @@ function EvidenceTable({
 								) : null}
 								<button
 									type="button"
-									onClick={() => onInspect(row)}
+									onClick={(event) => onInspect(row, event.currentTarget)}
 									className="mt-1 inline-flex h-7 items-center rounded-md border border-gray-300 bg-white px-2 text-xs font-semibold text-gray-800 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 								>
 									Inspect evidence
@@ -404,16 +413,31 @@ function DeletedTable({
 	narrativeLoading,
 	narrativeError,
 	onCloseNarrative,
+	loading,
 }: {
 	rows: LeadAuditDeletedEvidenceRow[];
-	onInspect: (row: LeadAuditDeletedEvidenceRow) => void;
+	onInspect: (
+		row: LeadAuditDeletedEvidenceRow,
+		trigger: HTMLButtonElement
+	) => void;
 	inspected: string;
 	narrative: LeadAuditEvidenceNarrative | null;
 	narrativeLoading: boolean;
 	narrativeError: string;
 	onCloseNarrative: () => void;
+	loading: boolean;
 }) {
 	if (rows.length === 0) {
+		if (loading) {
+			return (
+				<p
+					className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600"
+					role="status"
+				>
+					Loading deleted evidence page…
+				</p>
+			);
+		}
 		return (
 			<p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
 				No retained deleted evidence matches the applied Lead filters.
@@ -490,7 +514,7 @@ function DeletedTable({
 								<span className="block">{row.summary}</span>
 								<button
 									type="button"
-									onClick={() => onInspect(row)}
+									onClick={(event) => onInspect(row, event.currentTarget)}
 									className="mt-1 inline-flex h-7 items-center rounded-md border border-amber-300 bg-white px-2 text-xs font-semibold text-amber-900 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
 								>
 									Inspect deleted evidence
@@ -533,6 +557,7 @@ export default function AuditView({
 	);
 	const [narrativeLoading, setNarrativeLoading] = useState(false);
 	const [narrativeError, setNarrativeError] = useState('');
+	const narrativeTriggerRef = useRef<HTMLButtonElement | null>(null);
 
 	const appliedKey = JSON.stringify(appliedQuery);
 
@@ -574,7 +599,11 @@ export default function AuditView({
 		retry: false,
 	});
 
-	async function inspectEvidence(row: LeadAuditEvidenceRow) {
+	async function inspectEvidence(
+		row: LeadAuditEvidenceRow,
+		trigger: HTMLButtonElement
+	) {
+		narrativeTriggerRef.current = trigger;
 		setInspected(row.reference);
 		setNarrative(null);
 		setNarrativeError('');
@@ -599,6 +628,13 @@ export default function AuditView({
 		}
 	}
 
+	function closeNarrative() {
+		setInspected('');
+		setNarrative(null);
+		setNarrativeError('');
+		narrativeTriggerRef.current?.focus();
+	}
+
 	const currentEvidence =
 		page === 1 ? report.evidence : (evidenceQuery.data?.data?.evidence ?? []);
 	const currentPagination =
@@ -615,9 +651,18 @@ export default function AuditView({
 		report.evidence_filters.outcome.value !== null ||
 		report.evidence_filters.event_type.value !== null ||
 		report.evidence_filters.undated.value;
+	const evidencePageLoading = page > 1 && evidenceQuery.isFetching;
+	const deletedPageLoading = deletedPage > 1 && deletedQuery.isFetching;
 
 	return (
 		<div className="space-y-4">
+			<span className="sr-only" role="status">
+				{narrativeLoading
+					? 'Loading narrative evidence…'
+					: narrative
+						? 'Narrative evidence loaded.'
+						: ''}
+			</span>
 			<section
 				aria-labelledby="lead-audit-audit-summary-heading"
 				className="space-y-2"
@@ -818,30 +863,38 @@ export default function AuditView({
 					narrative={narrative}
 					narrativeLoading={narrativeLoading}
 					narrativeError={narrativeError}
-					onCloseNarrative={() => {
-						setInspected('');
-						setNarrative(null);
-						setNarrativeError('');
-					}}
+					onCloseNarrative={closeNarrative}
 					emptyText="No evidence matched the applied filters for this recording period."
+					loading={evidencePageLoading}
 				/>
 				<div className="mt-3 flex items-center justify-between gap-2">
 					<button
 						type="button"
-						onClick={() => setPage((current) => Math.max(1, current - 1))}
-						disabled={page <= 1}
-						className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+						onClick={() => {
+							if (page <= 1) return;
+							setPage((current) => Math.max(1, current - 1));
+						}}
+						aria-disabled={page <= 1}
+						className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-800 hover:bg-gray-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 					>
 						Previous evidence page
 					</button>
 					<button
 						type="button"
-						onClick={() => setPage((current) => current + 1)}
-						disabled={
+						onClick={() => {
+							if (
+								currentPagination.total_pages === 0 ||
+								page >= currentPagination.total_pages
+							) {
+								return;
+							}
+							setPage((current) => current + 1);
+						}}
+						aria-disabled={
 							currentPagination.total_pages === 0 ||
 							page >= currentPagination.total_pages
 						}
-						className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
+						className="inline-flex h-8 items-center rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-800 hover:bg-gray-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 					>
 						Next evidence page
 					</button>
@@ -922,20 +975,18 @@ export default function AuditView({
 					narrative={narrative}
 					narrativeLoading={narrativeLoading}
 					narrativeError={narrativeError}
-					onCloseNarrative={() => {
-						setInspected('');
-						setNarrative(null);
-						setNarrativeError('');
-					}}
+					onCloseNarrative={closeNarrative}
+					loading={deletedPageLoading}
 				/>
 				<div className="mt-3 flex items-center justify-between gap-2">
 					<button
 						type="button"
-						onClick={() =>
-							setDeletedPage((current) => Math.max(1, current - 1))
-						}
-						disabled={deletedPage <= 1}
-						className="inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+						onClick={() => {
+							if (deletedPage <= 1) return;
+							setDeletedPage((current) => Math.max(1, current - 1));
+						}}
+						aria-disabled={deletedPage <= 1}
+						className="inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
 					>
 						Previous deleted page
 					</button>
@@ -946,12 +997,20 @@ export default function AuditView({
 					</p>
 					<button
 						type="button"
-						onClick={() => setDeletedPage((current) => current + 1)}
-						disabled={
+						onClick={() => {
+							if (
+								currentDeleted.pagination.total_pages === 0 ||
+								deletedPage >= currentDeleted.pagination.total_pages
+							) {
+								return;
+							}
+							setDeletedPage((current) => current + 1);
+						}}
+						aria-disabled={
 							currentDeleted.pagination.total_pages === 0 ||
 							deletedPage >= currentDeleted.pagination.total_pages
 						}
-						className="inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+						className="inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
 					>
 						Next deleted page
 					</button>

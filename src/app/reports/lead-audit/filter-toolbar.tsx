@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import {
 	ArrowPathIcon,
@@ -65,11 +66,17 @@ export default function FilterToolbar({
 	const priorities = options?.priorities ?? ['Low', 'Medium', 'High'];
 	const actors = options?.actors ?? [];
 
+	useEffect(() => {
+		if (invalidMessage === '') return;
+		document.getElementById('lead-audit-from')?.focus();
+	}, [invalidMessage]);
+
 	return (
 		<form
 			className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4"
 			onSubmit={(event) => {
 				event.preventDefault();
+				if (busy) return;
 				onApply();
 			}}
 			aria-label="Lead Audit filters"
@@ -101,6 +108,10 @@ export default function FilterToolbar({
 							type="date"
 							value={draft.from}
 							disabled={!custom}
+							aria-invalid={invalidMessage !== '' ? true : undefined}
+							aria-describedby={
+								invalidMessage !== '' ? 'lead-audit-filter-error' : undefined
+							}
 							onChange={(event) => onChange({ from: event.target.value })}
 							className={`${controlClass} pl-8`}
 						/>
@@ -118,6 +129,10 @@ export default function FilterToolbar({
 							type="date"
 							value={draft.to}
 							disabled={!custom}
+							aria-invalid={invalidMessage !== '' ? true : undefined}
+							aria-describedby={
+								invalidMessage !== '' ? 'lead-audit-filter-error' : undefined
+							}
 							onChange={(event) => onChange({ to: event.target.value })}
 							className={`${controlClass} pl-8`}
 						/>
@@ -325,17 +340,19 @@ export default function FilterToolbar({
 			<div className="mt-3 flex flex-wrap items-center gap-2">
 				<button
 					type="submit"
-					disabled={busy || invalidMessage !== ''}
-					className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#64126D] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#52105a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+					aria-disabled={busy || invalidMessage !== ''}
+					className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#64126D] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#52105a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 				>
 					<MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
 					Apply
 				</button>
 				<button
 					type="button"
-					onClick={onReset}
-					disabled={busy}
-					className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+					onClick={() => {
+						if (!busy) onReset();
+					}}
+					aria-disabled={busy}
+					className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 				>
 					<ArrowPathIcon className="h-4 w-4" aria-hidden="true" />
 					Reset
@@ -347,7 +364,11 @@ export default function FilterToolbar({
 						: 'Applied filters stay fixed until Apply.'}
 				</span>
 				{invalidMessage !== '' ? (
-					<span className="text-xs font-medium text-red-700" role="alert">
+					<span
+						id="lead-audit-filter-error"
+						className="text-xs font-medium text-red-700"
+						role="alert"
+					>
 						{invalidMessage}
 					</span>
 				) : null}

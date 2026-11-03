@@ -34,7 +34,7 @@ async function responseMessage(response: Response): Promise<string> {
 	} catch {
 		// A non-JSON error body still gets a status-based message below.
 	}
-	return `The workbook download failed (${response.status}).`;
+	return `The workbook download failed (${response.status}). Select Export Excel to try again.`;
 }
 
 /**
@@ -70,8 +70,7 @@ export function LeadAuditExportAction({
 			const objectUrl = URL.createObjectURL(blob);
 			const disposition = response.headers.get('Content-Disposition') || '';
 			const match = disposition.match(/filename="?([^";]+)"?/i);
-			const filename =
-				match?.[1] || `lead-audit-export-${Date.now()}.xlsx`;
+			const filename = match?.[1] || `lead-audit-export-${Date.now()}.xlsx`;
 			const anchor = document.createElement('a');
 			anchor.href = objectUrl;
 			anchor.download = filename;
@@ -81,11 +80,9 @@ export function LeadAuditExportAction({
 			anchor.remove();
 			setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 			setMessage('Workbook downloaded.');
-		} catch (error) {
+		} catch {
 			setMessage(
-				error instanceof Error
-					? error.message
-					: 'The workbook download failed.'
+				'The workbook download failed. Check your connection and select Export Excel to try again.'
 			);
 		} finally {
 			setPending(false);
@@ -100,14 +97,14 @@ export function LeadAuditExportAction({
 			<button
 				type="button"
 				onClick={handleExport}
-				disabled={!canExport || pending}
+				aria-disabled={!canExport || pending}
 				aria-describedby={statusId}
-				className="inline-flex h-8 items-center gap-1.5 rounded-md bg-white/10 px-3 text-xs font-medium text-white ring-1 ring-white/25 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-60"
+				className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 			>
 				<ArrowDownTrayIcon className="h-3.5 w-3.5" aria-hidden="true" />
 				{pending ? 'Preparing workbook…' : 'Export Excel'}
 			</button>
-			<span className="inline-flex items-center gap-1.5 text-xs text-white">
+			<span className="inline-flex items-center gap-1.5 text-sm text-gray-800">
 				<input
 					id={checkboxId}
 					type="checkbox"
@@ -115,21 +112,18 @@ export function LeadAuditExportAction({
 					onChange={(event) => setIncludeNarrative(event.target.checked)}
 					disabled={!canExport || pending}
 					aria-describedby={`${checkboxId}-hint`}
-					className="h-3.5 w-3.5 rounded border-white/50 bg-white/10 text-[#64126D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-60"
+					className="h-4 w-4 rounded border-gray-400 bg-white accent-[#64126D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 				/>
 				<label htmlFor={checkboxId}>Include detailed evidence</label>
 			</span>
-			<span
-				id={`${checkboxId}-hint`}
-				className="text-[11px] text-white/75"
-			>
+			<span id={`${checkboxId}-hint`} className="text-xs text-gray-600">
 				Off by default. Notes and reasons appear only when selected.
 			</span>
 			<span
 				id={statusId}
 				role="status"
 				aria-live="polite"
-				className="text-[11px] text-white/85"
+				className="text-xs text-gray-700"
 			>
 				{message !== ''
 					? message

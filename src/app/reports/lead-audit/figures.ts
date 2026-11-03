@@ -20,8 +20,7 @@ export function formatRate(value: number | null): string {
 /** A 0–1 share, or Not applicable when the population is empty. */
 export function formatShare(share: number | null): string {
 	if (share === null) return 'Not applicable';
-	const percent = share * 100;
-	return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`;
+	return formatRate(Math.round(share * 1000) / 10);
 }
 
 /**

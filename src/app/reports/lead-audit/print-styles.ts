@@ -142,7 +142,7 @@ export const leadAuditPrintStyles = `
 	.lead-audit-print-root th,
 	.lead-audit-print-root td {
 		padding: 1.1mm 1.5mm;
-		border: 0.4pt solid #9ca3af;
+		border: 0.4pt solid #6b7280;
 		text-align: left;
 		vertical-align: top;
 		overflow-wrap: anywhere;
@@ -168,7 +168,9 @@ export const leadAuditPrintStyles = `
 		break-inside: avoid;
 		page-break-inside: avoid;
 	}
-	.lead-audit-print-numeric {
+	.lead-audit-print-root .lead-audit-print-numeric,
+	.lead-audit-print-root th.text-right,
+	.lead-audit-print-root td.text-right {
 		text-align: right;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;

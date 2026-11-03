@@ -671,7 +671,7 @@ export default function WorkView({
 					role="status"
 				>
 					<ArrowPathIcon
-						className="h-3.5 w-3.5 animate-spin text-[#64126D]"
+						className="h-3.5 w-3.5 motion-safe:animate-spin text-[#64126D]"
 						aria-hidden="true"
 					/>
 					Refreshing work evidence…
