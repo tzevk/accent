@@ -135,6 +135,17 @@ export interface CurrentStateEvidenceGroup {
 	evidence_unit: CurrentStateEvidenceUnit;
 }
 
+/**
+ * The complete current-state observation for export: the summary figures
+ * plus every workload and exception row, read on the caller's connection.
+ * Export detail never goes through HTTP pagination.
+ */
+export interface LeadAuditCurrentStateExportSection extends LeadAuditCurrentStateSection {
+	/** One row per Lead in the current-owner workload. */
+	workload_rows: CurrentStateEvidenceRow[];
+	/** Every full-result row for each queue, keyed by risk. */
+	risk_rows: Record<CurrentStateRiskKey, CurrentStateEvidenceRow[]>;
+}
 export interface LeadAuditCurrentStateEvidenceSection {
 	as_of: CurrentStateObservation;
 	scope: CurrentStateScope;
