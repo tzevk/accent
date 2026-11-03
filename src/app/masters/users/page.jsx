@@ -175,6 +175,7 @@ export default function UserMasterPage() {
 
 // Users Tab - Shows only users (employees with user accounts)
 function UsersTabContent() {
+	const router = useRouter();
 	const searchParams = useSearchParams();
 	const { user: sessionUser, can } = useSessionRBAC();
 	const canRepairLinks =
