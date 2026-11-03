@@ -146,6 +146,7 @@ export interface LeadAuditCurrentStateExportSection extends LeadAuditCurrentStat
 	/** Every full-result row for each queue, keyed by risk. */
 	risk_rows: Record<CurrentStateRiskKey, CurrentStateEvidenceRow[]>;
 }
+
 export interface LeadAuditCurrentStateEvidenceSection {
 	as_of: CurrentStateObservation;
 	scope: CurrentStateScope;
