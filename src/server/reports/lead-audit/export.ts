@@ -362,14 +362,11 @@ function borderRow(row: ExcelJS.Row): void {
 	});
 }
 
-/** The applied scope line every detail sheet repeats. */
-function appliedFilterNotes(snapshot: LeadAuditExportSnapshot): string[] {
+/** The Lead-level applied scope every detail sheet repeats. */
+function leadFilterNotes(snapshot: LeadAuditExportSnapshot): string[] {
 	const filters = snapshot.intake.scope.effective_filters;
 	return [
-		`Applied filters: owner ${filters.owner.label}; source ${filters.source.label}; stage ${filters.stage.label}; priority ${filters.priority ?? 'All priorities'}; search ${filters.search || 'None'}.`,
-		...snapshot.work.work_filters.applied.map(
-			(filter) => `${filter.label}: ${filter.display} (${filter.state}).`
-		),
+		`Lead filters: owner ${filters.owner.label}; source ${filters.source.label}; stage ${filters.stage.label}; priority ${filters.priority ?? 'All priorities'}; search ${filters.search || 'None'}. Work and audit evidence filters are listed with their states in the Summary sheet.`,
 	];
 }
 
@@ -381,7 +378,7 @@ function dataSheet(
 ): ExcelJS.Worksheet {
 	return createDataSheet(wb, {
 		...options,
-		notes: [...appliedFilterNotes(snapshot), ...options.notes],
+		notes: [...leadFilterNotes(snapshot), ...options.notes],
 	});
 }
 
