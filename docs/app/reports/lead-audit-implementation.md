@@ -290,3 +290,28 @@ Verification record:
   undated toggle, switching conversion evidence to a different population
   (the report now builds its own query). Re-run audit and work scenarios
   passed with the new fixtures; the transport has a unit test.
+- **2026-11-03 — full harness, 91 scenarios:** all 91 authenticated HTTP
+  scenarios passed on MariaDB 10.11.15 in one run, including the workbook
+  (`lead-audit-export`) and print-summary (`lead-audit-print`) scenarios.
+- **2026-11-03 — browser, workbook:** as an exporter, Export Excel downloaded
+  an 18-sheet workbook (summary and methodology, three register populations,
+  sources, work, authors, current workload and Lead list, exceptions, cohort,
+  period handoffs, downstream context, timing, audit evidence, corrections,
+  deleted evidence, coverage). A cell scan found no spreadsheet formulas and
+  no notes, reasons, or correction free text by default. Selecting Include
+  detailed evidence and exporting the same scope added the correction reason
+  and the before/after note values; the default workbook contained neither.
+  Both exports came from the real button in the report toolbar.
+- **2026-11-03 — browser, print:** the Print summary action produced a
+  six-page A4 browser PDF from a populated scope and from an empty January
+  2020 scope. Print media hid the navigation, report header, filter toolbar,
+  actions, views, and evidence panels; only the summary rendered, with nine
+  tables whose headings repeat. The populated PDF carried generation time,
+  time zone, filters, definitions, coverage, exclusions, and the live-data
+  warning; the empty scope printed zeros with their date bases and three
+  Not applicable rates, with no `undefined` or `NaN`. At 320 pixels the print
+  layout stayed 320 pixels wide with no clipped figures, and short headings
+  such as Count stayed whole. At 200% zoom all three toolbar actions stayed
+  reachable and the document width remained the viewport width; the only
+  overflow in the combined 320-pixel plus 200% emulation came from the global
+  navigation bar, not the report.

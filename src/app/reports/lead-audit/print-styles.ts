@@ -150,6 +150,10 @@ export const leadAuditPrintStyles = `
 	.lead-audit-print-root th {
 		background: #f3f4f6 !important;
 		font-weight: 600;
+		/* A short heading such as "Count" must stay one word; only body
+		   cells may break inside a word to fit a narrow print width. */
+		overflow-wrap: normal;
+		word-break: keep-all;
 	}
 	.lead-audit-print-root caption,
 	.lead-audit-print-root th,

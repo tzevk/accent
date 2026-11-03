@@ -91,7 +91,8 @@ function cellText(cell: ExcelJS.Cell): string {
 
 async function loadWorkbook(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
 	const workbook = new ExcelJS.Workbook();
-	await workbook.xlsx.load(Buffer.from(bytes));
+	// exceljs declares its own ArrayBuffer-like Buffer; hand it an exact copy.
+	await workbook.xlsx.load(bytes.slice().buffer);
 	return workbook;
 }
 
