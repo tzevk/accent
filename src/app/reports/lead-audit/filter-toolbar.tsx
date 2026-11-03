@@ -7,10 +7,7 @@ import {
 	MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { PRESET_OPTIONS } from './filters';
-import type {
-	LeadAuditFilterDraft,
-	LeadAuditFilterOptions,
-} from './types';
+import type { LeadAuditFilterDraft, LeadAuditFilterOptions } from './types';
 
 interface FilterToolbarProps {
 	draft: LeadAuditFilterDraft;
@@ -142,13 +139,22 @@ export default function FilterToolbar({
 				<Field label="Source" htmlFor="lead-audit-source">
 					<select
 						id="lead-audit-source"
-						value={draft.sourceMissing ? '__missing__' : draft.source}
+						value={
+							draft.sourceMissing
+								? '__missing__'
+								: draft.source === ''
+									? ''
+									: `source:${draft.source}`
+						}
 						onChange={(event) => {
 							const value = event.target.value;
 							if (value === '__missing__') {
 								onChange({ source: '', sourceMissing: true });
 							} else {
-								onChange({ source: value, sourceMissing: false });
+								onChange({
+									source: value.slice('source:'.length),
+									sourceMissing: false,
+								});
 							}
 						}}
 						className={controlClass}
@@ -158,8 +164,13 @@ export default function FilterToolbar({
 						{sources
 							.filter((source) => !source.is_unknown)
 							.map((source) => (
-								<option key={source.label ?? ''} value={source.label ?? ''}>
-									{source.label}
+								<option
+									key={source.label ?? ''}
+									value={`source:${source.label ?? ''}`}
+								>
+									{source.label?.trim() === source.label
+										? source.label
+										: JSON.stringify(source.label)}
 								</option>
 							))}
 					</select>
@@ -234,7 +245,9 @@ export default function FilterToolbar({
 					Reset
 				</button>
 				<span className="text-xs text-gray-600" role="status">
-					{busy ? 'Updating report…' : 'Applied filters stay fixed until Apply.'}
+					{busy
+						? 'Updating report…'
+						: 'Applied filters stay fixed until Apply.'}
 				</span>
 				{invalidMessage !== '' ? (
 					<span className="text-xs font-medium text-red-700" role="alert">

@@ -69,8 +69,9 @@ same next-day bound.
 Invalid calendar dates, incomplete or reversed custom ranges, unknown
 presets, unknown stages, unknown priorities, malformed owner ids, conflicting
 source filters, and unknown register metrics return `422` with a named `code`.
-Source labels are not a closed vocabulary: an unfamiliar stored label is a
-valid exact filter.
+Source labels are not a closed vocabulary. Every non-empty label is an exact
+filter, including literal `all` and `__missing__`. Omit `source` to select
+all labels; use `source_missing=1` to select missing labels.
 
 Apply is the primary action; Reset restores the current month and all-record
 scope. Draft filters do not affect the report until Apply.
