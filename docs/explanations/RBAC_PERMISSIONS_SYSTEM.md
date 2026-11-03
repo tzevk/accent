@@ -234,7 +234,7 @@ The proxy does **not** check resource-level permissions — API routes authorize
 
 - Gated by `users:read`
 - Shows employee linkage, permission count, status per user
-- "Permissions" button navigates to per-user editor
+- The "Permissions" action and permission-count badge both open the selected account's editor.
 
 ### Permission editor: `/masters/users/[id]/permissions`
 
