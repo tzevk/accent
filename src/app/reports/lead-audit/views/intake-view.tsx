@@ -6,6 +6,7 @@ import {
 	TagIcon,
 } from '@heroicons/react/24/outline';
 import { formatDate } from '@/lib/format';
+import { HelpTip } from '../help-tip';
 import LeadRegister from '../intake/lead-register';
 import type {
 	LeadAuditIntakeSection,
@@ -60,9 +61,9 @@ function TrendCard({
 						aria-hidden="true"
 					/>
 				)}
-				<div>
+				<div className="flex min-w-0 items-center gap-1.5">
 					<h3 className="text-base font-bold text-gray-900">{title}</h3>
-					<p className="text-sm text-gray-600">{description}</p>
+					<HelpTip label={`About ${title}`}>{description}</HelpTip>
 				</div>
 			</div>
 			{points.length === 0 ? (
@@ -156,18 +157,23 @@ export default function IntakeView({
 						className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
 						aria-hidden="true"
 					/>
-					<div>
+					<div className="flex min-w-0 items-center gap-1.5">
 						<h2
 							id="lead-audit-sources-heading"
 							className="text-base font-bold text-gray-900"
 						>
 							Source volumes
 						</h2>
-						<p className="text-sm text-gray-600">
+						<HelpTip label="About sources">
 							Stored source labels are preserved exactly. Labels are never
 							merged by case or spacing, and missing labels appear as Unknown
 							source.
-						</p>
+						</HelpTip>
+						<HelpTip label="About source labels">
+							These volumes count Leads recorded in the period. They are not
+							advertising efficiency or return, because the report has no spend
+							data.
+						</HelpTip>
 					</div>
 				</div>
 				{report.sources.length === 0 ? (
@@ -238,11 +244,6 @@ export default function IntakeView({
 						</table>
 					</div>
 				)}
-				<p className="mt-2 text-xs text-gray-600" role="note">
-					These volumes count Leads recorded in the period. They are not
-					advertising efficiency or return, because the report has no spend
-					data.
-				</p>
 			</section>
 
 			<LeadRegister

@@ -5,6 +5,7 @@ import {
 	ExclamationTriangleIcon,
 	UserGroupIcon,
 } from '@heroicons/react/24/outline';
+import { HelpTip } from '../help-tip';
 import { MethodNote } from '../method-note';
 import type {
 	CurrentStateEvidenceSelection,
@@ -69,8 +70,20 @@ function RiskCard({
 	const body = (
 		<>
 			<div className="flex items-start justify-between gap-2">
-				<span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-					{risk.label}
+				<span className="flex min-w-0 items-center gap-1.5">
+					<span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+						{risk.label}
+					</span>
+					<HelpTip
+						className="pointer-events-auto"
+						label={`About ${risk.label}`}
+					>
+						{risk.definition} Evidence lists{' '}
+						{risk.evidence_unit === 'scheduled_work_item'
+							? 'individual scheduled work items'
+							: 'the matching Leads'}
+						.
+					</HelpTip>
 				</span>
 				<ExclamationTriangleIcon
 					className={`h-5 w-5 shrink-0 ${
@@ -85,14 +98,7 @@ function RiskCard({
 			<p className="mt-1 text-xs font-medium text-gray-700">
 				{risk.count === 1 ? 'distinct Lead' : 'distinct Leads'}
 			</p>
-			<p className="mt-2 text-xs text-gray-600">{risk.definition}</p>
-			<p className="mt-2 text-[11px] text-gray-500">
-				As of {risk.as_of}. Evidence lists{' '}
-				{risk.evidence_unit === 'scheduled_work_item'
-					? 'individual scheduled work items'
-					: 'the matching Leads'}
-				.
-			</p>
+			<p className="mt-2 text-[11px] text-gray-500">As of {risk.as_of}.</p>
 			{onSelectGroup ? (
 				<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
 					View {risk.label} evidence
@@ -109,14 +115,15 @@ function RiskCard({
 		);
 	}
 	return (
-		<button
-			type="button"
-			onClick={() => select({ group: 'risk', risk: risk.key })}
-			aria-label={`View ${risk.label} evidence, ${formatCount(risk.count)} distinct Leads`}
-			className="group rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-[#64126D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2"
-		>
-			{body}
-		</button>
+		<div className="group relative rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-colors hover:border-[#64126D]">
+			<button
+				type="button"
+				onClick={() => select({ group: 'risk', risk: risk.key })}
+				aria-label={`View ${risk.label} evidence, ${formatCount(risk.count)} distinct Leads`}
+				className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2"
+			/>
+			<div className="pointer-events-none relative">{body}</div>
+		</div>
 	);
 }
 
@@ -284,16 +291,16 @@ export default function CurrentStateView({
 }: CurrentStateViewProps) {
 	const risks = (
 		<section aria-labelledby={`lead-audit-current-risks-${variant}`}>
-			<div className="mb-2">
+			<div className="mb-2 flex min-w-0 items-center gap-1.5">
 				<h2
 					id={`lead-audit-current-risks-${variant}`}
 					className="text-lg font-bold text-gray-900"
 				>
 					Current operational risks
 				</h2>
-				<p className="text-sm text-gray-600">
+				<HelpTip label="About current risks">
 					Five Lead queues at the observation time; counters are distinct Leads.
-				</p>
+				</HelpTip>
 			</div>
 			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
 				{section.risks.map((risk) => (
@@ -313,17 +320,17 @@ export default function CurrentStateView({
 					className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
 					aria-hidden="true"
 				/>
-				<div>
+				<div className="flex min-w-0 items-center gap-1.5">
 					<h2
 						id={`lead-audit-current-workload-${variant}`}
 						className="text-lg font-bold text-gray-900"
 					>
 						Current-owner workload
 					</h2>
-					<p className="text-sm text-gray-600">
+					<HelpTip label="About current-owner workload">
 						Present responsibility by owner; unassigned and inactive owners stay
 						visible.
-					</p>
+					</HelpTip>
 				</div>
 			</div>
 			<WorkloadTable section={section} onSelectGroup={onSelectGroup} />

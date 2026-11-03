@@ -10,6 +10,7 @@ import {
 import { LEAD_ACTIVITY_TYPES, LEAD_CALL_OUTCOMES } from '@/lib/lead-activities';
 import { LEAD_AUDIT_EVIDENCE_TYPE_OPTIONS } from '@/server/reports/lead-audit/audit-types';
 import { PRESET_OPTIONS } from './filters';
+import { HelpTip } from './help-tip';
 import type { LeadAuditFilterDraft, LeadAuditFilterOptions } from './types';
 
 interface FilterToolbarProps {
@@ -249,13 +250,15 @@ export default function FilterToolbar({
 
 			<fieldset className="mt-4 min-w-0 border-t border-gray-200 pt-3">
 				<legend className="px-1 text-sm font-semibold text-gray-800">
-					Work and audit filters
+					<span className="flex min-w-0 items-center gap-1.5">
+						Work and audit filters
+						<HelpTip label="About work and audit filters">
+							Actor, activity type, and outcome narrow work and audit evidence;
+							the other filters narrow Lead figures.
+						</HelpTip>
+					</span>
 				</legend>
-				<p className="mb-3 max-w-prose text-xs text-gray-600">
-					Actor, activity type, and outcome narrow work and audit evidence; the
-					other filters narrow Lead figures.
-				</p>
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+				<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 					<Field label="Recorded actor" htmlFor="lead-audit-actor">
 						<select
 							id="lead-audit-actor"

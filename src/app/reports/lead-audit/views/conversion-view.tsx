@@ -9,6 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { formatCount, formatRate } from '../figures';
+import { HelpTip } from '../help-tip';
 import { MethodNote } from '../method-note';
 import type {
 	LeadAuditConversionDownstream,
@@ -151,15 +152,18 @@ function CohortCard({
 					: 'rounded-xl border border-gray-200 bg-white p-4 shadow-sm'
 			}
 		>
-			<p
-				className={
-					tone === 'warn'
-						? 'text-xs font-semibold uppercase tracking-wide text-amber-900'
-						: 'text-xs font-semibold uppercase tracking-wide text-gray-600'
-				}
-			>
-				{label}
-			</p>
+			<div className="flex min-w-0 items-center gap-1.5">
+				<p
+					className={
+						tone === 'warn'
+							? 'text-xs font-semibold uppercase tracking-wide text-amber-900'
+							: 'text-xs font-semibold uppercase tracking-wide text-gray-600'
+					}
+				>
+					{label}
+				</p>
+				<HelpTip label={`About ${label}`}>{hint}</HelpTip>
+			</div>
 			<p
 				className={
 					tone === 'warn'
@@ -168,15 +172,6 @@ function CohortCard({
 				}
 			>
 				{value}
-			</p>
-			<p
-				className={
-					tone === 'warn'
-						? 'mt-2 text-xs text-amber-900'
-						: 'mt-2 text-xs text-gray-600'
-				}
-			>
-				{hint}
 			</p>
 			{children}
 		</div>
@@ -302,19 +297,19 @@ export default function ConversionView({
 						className="mt-0.5 h-5 w-5 shrink-0 text-[#64126D]"
 						aria-hidden="true"
 					/>
-					<div>
+					<div className="flex min-w-0 items-center gap-1.5">
 						<h2
 							id="lead-audit-cohort-heading"
 							className="text-lg font-bold text-gray-900"
 						>
 							Cohort progress and handoffs
 						</h2>
-						<p className="text-sm text-gray-600">
+						<HelpTip label="About cohort progress">
 							Lead Cohort Conversion Rate uses the whole intake cohort observed
 							at the generation time. Handoffs after the intake period count; a
 							Converted label alone does not. Period handoffs are a separate
 							population and are never divided by period intake.
-						</p>
+						</HelpTip>
 					</div>
 				</div>
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -397,17 +392,19 @@ export default function ConversionView({
 					aria-labelledby="lead-audit-source-conversion-heading"
 					className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 				>
-					<h2
-						id="lead-audit-source-conversion-heading"
-						className="text-base font-bold text-gray-900"
-					>
-						Source conversion
-					</h2>
-					<p className="text-sm text-gray-600">
-						Stored source labels are shown exactly as recorded. Labels are not
-						merged by case or spacing, and missing labels appear as Unknown
-						source.
-					</p>
+					<div className="flex min-w-0 items-center gap-1.5">
+						<h2
+							id="lead-audit-source-conversion-heading"
+							className="text-base font-bold text-gray-900"
+						>
+							Source conversion
+						</h2>
+						<HelpTip label="About source conversion">
+							Stored source labels are shown exactly as recorded. Labels are not
+							merged by case or spacing, and missing labels appear as Unknown
+							source.
+						</HelpTip>
+					</div>
 					{section.source_conversion.length === 0 ? (
 						<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
 							No cohort Leads were recorded for the applied filters, so no
@@ -492,16 +489,18 @@ export default function ConversionView({
 					aria-labelledby="lead-audit-current-stage-heading"
 					className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 				>
-					<h2
-						id="lead-audit-current-stage-heading"
-						className="text-base font-bold text-gray-900"
-					>
-						Current stage distribution
-					</h2>
-					<p className="text-sm text-gray-600">
-						Present state of the cohort at the generation time. This is not a
-						sequential funnel and does not prove historical stage transitions.
-					</p>
+					<div className="flex min-w-0 items-center gap-1.5">
+						<h2
+							id="lead-audit-current-stage-heading"
+							className="text-base font-bold text-gray-900"
+						>
+							Current stage distribution
+						</h2>
+						<HelpTip label="About current stage distribution">
+							Present state of the cohort at the generation time. This is not a
+							sequential funnel and does not prove historical stage transitions.
+						</HelpTip>
+					</div>
 					{section.stage_distribution.length === 0 ? (
 						<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
 							The cohort is empty for the applied filters, so there is no
@@ -549,18 +548,20 @@ export default function ConversionView({
 				aria-labelledby="lead-audit-downstream-heading"
 				className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 			>
-				<h2
-					id="lead-audit-downstream-heading"
-					className="text-base font-bold text-gray-900"
-				>
-					Downstream context of evidenced handoffs
-				</h2>
-				<p className="text-sm text-gray-600">
-					Canonical Proposal status and progress need the proposal read
-					permission; Project details need the project read permission.
-					Restricted is not the same as no downstream record, and denied fields
-					are removed on the server.
-				</p>
+				<div className="flex min-w-0 items-center gap-1.5">
+					<h2
+						id="lead-audit-downstream-heading"
+						className="text-base font-bold text-gray-900"
+					>
+						Downstream context of evidenced handoffs
+					</h2>
+					<HelpTip label="About downstream context">
+						Canonical Proposal status and progress need the proposal read
+						permission; Project details need the project read permission.
+						Restricted is not the same as no downstream record, and denied
+						fields are removed on the server.
+					</HelpTip>
+				</div>
 				<div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
 					<div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
 						<h3 className="text-xs font-bold uppercase tracking-wide text-gray-700">
@@ -617,17 +618,17 @@ export default function ConversionView({
 					className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 				>
 					<div className="flex flex-wrap items-start justify-between gap-2">
-						<div>
+						<div className="flex min-w-0 items-center gap-1.5">
 							<h2
 								id="lead-audit-conversion-evidence-heading"
 								className="text-base font-bold text-gray-900"
 							>
 								{evidence?.evidence.label ?? 'Conversion evidence'}
 							</h2>
-							<p className="text-sm text-gray-600">
+							<HelpTip label="About conversion evidence">
 								{evidence?.evidence.definition ??
 									'Select a cohort figure to open its matching Lead evidence with the same filters.'}
-							</p>
+							</HelpTip>
 						</div>
 						{selectedEvidence ? (
 							<span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-700">

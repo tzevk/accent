@@ -10,6 +10,7 @@ import {
 	ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { leadAuditGet } from '../api';
+import { HelpTip } from '../help-tip';
 import { MethodNote } from '../method-note';
 import { formatCount, formatDuration, formatShare } from '../figures';
 import type {
@@ -84,26 +85,36 @@ function MetricCard({
 			? 'border-amber-200 bg-amber-50/70 text-amber-950'
 			: 'border-gray-200 bg-white text-gray-900';
 	return (
-		<button
-			type="button"
-			onClick={onClick}
-			disabled={disabled}
-			className={`group rounded-xl border p-4 text-left shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 ${colour} ${
-				disabled ? 'cursor-default opacity-80' : 'hover:border-[#64126D]'
+		<div
+			className={`group relative rounded-xl border p-4 text-left shadow-sm transition-colors ${colour} ${
+				disabled ? 'opacity-80' : 'hover:border-[#64126D]'
 			}`}
 		>
-			<div className="flex items-center justify-between gap-2">
-				<span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-					{label}
+			<button
+				type="button"
+				onClick={onClick}
+				disabled={disabled}
+				aria-label={`View evidence: ${label}`}
+				className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 disabled:cursor-default"
+			/>
+			<div className="pointer-events-none relative">
+				<div className="flex min-w-0 items-center justify-between gap-2">
+					<span className="flex min-w-0 items-center gap-1.5">
+						<span className="min-w-0 text-xs font-semibold uppercase tracking-wide text-gray-600">
+							{label}
+						</span>
+						<HelpTip className="pointer-events-auto" label={`About ${label}`}>
+							{detail}
+						</HelpTip>
+					</span>
+					{icon}
+				</div>
+				<p className="mt-2 text-2xl font-bold tabular-nums">{value}</p>
+				<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
+					{disabled ? 'No matching evidence' : 'View evidence'}
 				</span>
-				{icon}
 			</div>
-			<p className="mt-2 text-2xl font-bold tabular-nums">{value}</p>
-			<p className="mt-1 text-xs leading-normal text-gray-600">{detail}</p>
-			<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
-				{disabled ? 'No matching evidence' : 'View evidence'}
-			</span>
-		</button>
+		</div>
 	);
 }
 
@@ -154,16 +165,18 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 		<div className="space-y-4">
 			<section aria-labelledby="lead-audit-timing-heading">
 				<div className="mb-2">
-					<h2
-						id="lead-audit-timing-heading"
-						className="text-lg font-bold text-gray-900"
-					>
-						Time to first outreach
-					</h2>
-					<p className="max-w-prose text-sm text-gray-600">
-						System entry to earliest evidenced outreach for cohort Leads. Not
-						client response time.
-					</p>
+					<div className="flex min-w-0 items-center gap-1.5">
+						<h2
+							id="lead-audit-timing-heading"
+							className="text-lg font-bold text-gray-900"
+						>
+							Time to first outreach
+						</h2>
+						<HelpTip label="About time to first outreach">
+							System entry to earliest evidenced outreach for cohort Leads. Not
+							client response time.
+						</HelpTip>
+					</div>
 					<p className="mt-1 max-w-prose text-xs text-gray-600">
 						Generated at {section.meta.generated_at} (
 						{section.meta.time_zone.label}). Clock and observation are defined
