@@ -235,6 +235,8 @@ The proxy does **not** check resource-level permissions — API routes authorize
 - Gated by `users:read`
 - Shows employee linkage, permission count, status per user
 - The "Permissions" action and permission-count badge both open the selected account's editor.
+- Desktop columns fit the page width. Long account values wrap; narrow screens show labelled account details instead of horizontal scrolling.
+- Permissions show a compact numeric shortcut. Row actions use icon-only buttons with accessible names and hover titles.
 
 ### Permission editor: `/masters/users/[id]/permissions`
 

@@ -18,6 +18,8 @@ import {
 	MagnifyingGlassIcon,
 	PlusIcon,
 	LockClosedIcon,
+	LockOpenIcon,
+	LinkIcon,
 	XMarkIcon,
 	ChevronRightIcon,
 	InformationCircleIcon,
@@ -153,7 +155,7 @@ export default function UserMasterPage() {
 					</div>
 
 					{/* Tab Content Area */}
-					<div className="p-6 min-h-[500px]">
+					<div className="min-w-0 p-3 sm:p-4 lg:p-5 min-h-[500px]">
 						{activeTab === 'users' && (
 							<Suspense
 								fallback={
@@ -432,8 +434,8 @@ function UsersTabContent() {
 
 			{/* Search and Filters */}
 			<div className="flex flex-col sm:flex-row gap-4 justify-between">
-				<div className="flex flex-col sm:flex-row gap-3 flex-1">
-					<div className="relative flex-1 max-w-md">
+				<div className="flex min-w-0 flex-col sm:flex-row gap-3 flex-1">
+					<div className="relative min-w-0 flex-1 max-w-md">
 						<MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
 						<input
 							type="text"
@@ -469,35 +471,67 @@ function UsersTabContent() {
 			</div>
 
 			{/* Users Table */}
-			<div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-				<div className="overflow-x-auto">
-					<table className="min-w-full divide-y divide-gray-200">
-						<thead className="bg-gray-50">
+			<div className="@container/users min-w-0 overflow-hidden bg-white rounded-lg border border-gray-200">
+				<div className="min-w-0">
+					<table
+						aria-label="User accounts"
+						className="block w-full @min-[52rem]/users:table @min-[52rem]/users:table-fixed"
+					>
+						<colgroup className="hidden @min-[52rem]/users:table-column-group">
+							<col className="w-[24%]" />
+							<col className="w-[23%]" />
+							<col className="w-[13%]" />
+							<col className="w-[12%]" />
+							<col className="w-[10%]" />
+							<col className="w-[18%]" />
+						</colgroup>
+						<thead className="sr-only bg-gray-50 @min-[52rem]/users:not-sr-only">
 							<tr>
-								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th
+									scope="col"
+									className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+								>
 									User
 								</th>
-								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th
+									scope="col"
+									className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+								>
 									Employee Details
 								</th>
-								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th
+									scope="col"
+									className="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+								>
 									Permissions
 								</th>
-								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th
+									scope="col"
+									className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+								>
 									Last Login
 								</th>
-								<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th
+									scope="col"
+									className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+								>
 									Status
 								</th>
-								<th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+								<th
+									scope="col"
+									className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+								>
 									Actions
 								</th>
 							</tr>
 						</thead>
-						<tbody className="bg-white divide-y divide-gray-200">
+						<tbody className="block divide-y divide-gray-200 @min-[52rem]/users:table-row-group">
 							{accountActionError && (
-								<tr>
-									<td colSpan={6}>
+								<tr className="block @min-[52rem]/users:table-row">
+									<td
+										colSpan={6}
+										className="block @min-[52rem]/users:table-cell"
+									>
 										<p role="alert" className="px-6 py-2 text-sm text-red-700">
 											{accountActionError}
 										</p>
@@ -505,8 +539,11 @@ function UsersTabContent() {
 								</tr>
 							)}
 							{accountActionMessage && (
-								<tr>
-									<td colSpan={6}>
+								<tr className="block @min-[52rem]/users:table-row">
+									<td
+										colSpan={6}
+										className="block @min-[52rem]/users:table-cell"
+									>
 										<p
 											role="status"
 											className="px-6 py-2 text-sm text-green-700"
@@ -517,10 +554,10 @@ function UsersTabContent() {
 								</tr>
 							)}
 							{filteredUsers.length === 0 ? (
-								<tr>
+								<tr className="block @min-[52rem]/users:table-row">
 									<td
 										colSpan={6}
-										className="px-6 py-12 text-center text-gray-500"
+										className="block px-6 py-12 text-center text-gray-500 @min-[52rem]/users:table-cell"
 									>
 										{accountLoadError
 											? 'User accounts are unavailable.'
@@ -541,19 +578,25 @@ function UsersTabContent() {
 									return (
 										<tr
 											key={user.id}
-											className={`hover:bg-gray-50 ${String(user.id) === focusedAccountId ? 'bg-purple-50 ring-2 ring-inset ring-[#64126D]' : ''}`}
+											className={`grid min-w-0 grid-cols-2 hover:bg-gray-50 @min-[52rem]/users:table-row ${String(user.id) === focusedAccountId ? 'bg-purple-50 ring-2 ring-inset ring-[#64126D]' : ''}`}
 											data-account-id={user.id}
 											tabIndex={
 												String(user.id) === focusedAccountId ? -1 : undefined
 											}
 										>
-											<td className="px-6 py-4 whitespace-nowrap">
-												<div className="flex items-center">
-													<div className="h-10 w-10 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium">
+											<td className="col-span-2 block min-w-0 px-3 py-3 align-top @min-[52rem]/users:table-cell">
+												<span
+													aria-hidden="true"
+													className="mb-1 block text-xs font-medium text-gray-500 @min-[52rem]/users:hidden"
+												>
+													User
+												</span>
+												<div className="flex min-w-0 items-start gap-2">
+													<div className="h-8 w-8 shrink-0 rounded-full bg-[#64126D] flex items-center justify-center text-white font-medium">
 														{fullName.charAt(0).toUpperCase()}
 													</div>
-													<div className="ml-4">
-														<div className="text-sm font-medium text-gray-900">
+													<div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+														<div className="text-sm font-medium leading-5 text-gray-900">
 															{user.username}
 														</div>
 														<div className="text-sm text-gray-500">
@@ -562,7 +605,13 @@ function UsersTabContent() {
 													</div>
 												</div>
 											</td>
-											<td className="px-6 py-4 whitespace-nowrap">
+											<td className="col-span-2 block min-w-0 px-3 py-3 align-top [overflow-wrap:anywhere] @min-[52rem]/users:table-cell">
+												<span
+													aria-hidden="true"
+													className="mb-1 block text-xs font-medium text-gray-500 @min-[52rem]/users:hidden"
+												>
+													Employee Details
+												</span>
 												{user.employee_id ? (
 													<div>
 														<div className="text-sm font-medium text-gray-900">
@@ -589,23 +638,43 @@ function UsersTabContent() {
 													</span>
 												)}
 											</td>
-											<td className="px-6 py-4 whitespace-nowrap">
-												<button
-													onClick={() => goToPermissions(user.id)}
-													className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 transition-colors"
+											<td className="col-span-2 block min-w-0 px-3 py-3 align-top @min-[52rem]/users:table-cell @min-[52rem]/users:px-2">
+												<span
+													aria-hidden="true"
+													className="mb-1 block text-xs font-medium text-gray-500 @min-[52rem]/users:hidden"
 												>
-													<span>{permCount} permissions</span>
-													<ChevronRightIcon className="h-3 w-3" />
+													Permissions
+												</span>
+												<button
+													type="button"
+													onClick={() => goToPermissions(user.id)}
+													aria-label={`${permCount} permissions`}
+													title={`View ${permCount} permissions`}
+													className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-full bg-purple-100 px-2 py-1 text-xs font-medium tabular-nums text-purple-800 hover:bg-purple-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
+												>
+													{permCount}
 												</button>
 											</td>
-											<td className="px-6 py-4 whitespace-nowrap">
+											<td className="block min-w-0 px-3 py-3 align-top [overflow-wrap:anywhere] @min-[52rem]/users:table-cell">
+												<span
+													aria-hidden="true"
+													className="mb-1 block text-xs font-medium text-gray-500 @min-[52rem]/users:hidden"
+												>
+													Last Login
+												</span>
 												<div className="text-sm text-gray-600">
 													{user.last_login
 														? new Date(user.last_login).toLocaleDateString()
 														: 'Never'}
 												</div>
 											</td>
-											<td className="px-6 py-4 whitespace-nowrap">
+											<td className="block min-w-0 px-3 py-3 align-top @min-[52rem]/users:table-cell">
+												<span
+													aria-hidden="true"
+													className="mb-1 block text-xs font-medium text-gray-500 @min-[52rem]/users:hidden"
+												>
+													Status
+												</span>
 												<span
 													className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
 														user.status === 'active'
@@ -616,37 +685,52 @@ function UsersTabContent() {
 													{user.status || 'Active'}
 												</span>
 											</td>
-											<td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-												<div className="flex items-center justify-end gap-1.5">
+											<td className="col-span-2 block min-w-0 px-3 py-3 text-sm font-medium align-top @min-[52rem]/users:table-cell @min-[52rem]/users:text-right">
+												<span
+													aria-hidden="true"
+													className="mb-1 block text-xs font-medium text-gray-500 @min-[52rem]/users:hidden"
+												>
+													Actions
+												</span>
+												<div className="flex min-w-0 flex-wrap items-center gap-1.5 @min-[52rem]/users:justify-end">
 													<button
+														type="button"
 														onClick={() => {
 															setSelectedUserForEdit(user);
 															setShowEditModal(true);
 														}}
-														className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+														aria-label="Edit User"
 														title="Edit User"
+														className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
 													>
-														<PencilIcon className="h-3.5 w-3.5" />
-														Edit
+														<PencilIcon
+															aria-hidden="true"
+															className="h-4 w-4"
+														/>
 													</button>
 													<button
+														type="button"
 														onClick={() => {
 															setSelectedUserForReset(user);
 															setShowResetPasswordModal(true);
 														}}
-														className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors"
+														aria-label="Reset Password"
 														title="Reset Password"
+														className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
 													>
-														<KeyIcon className="h-3.5 w-3.5" />
-														Reset
+														<KeyIcon aria-hidden="true" className="h-4 w-4" />
 													</button>
 													<button
+														type="button"
 														onClick={() => goToPermissions(user.id)}
-														className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#64126D] hover:bg-[#4a0d52] border border-[#64126D] rounded-lg transition-colors shadow-sm"
+														aria-label="Manage Permissions"
 														title="Manage Permissions"
+														className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#64126D] bg-[#64126D] text-white shadow-sm hover:bg-[#4a0d52] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
 													>
-														<ShieldCheckIcon className="h-3.5 w-3.5" />
-														Permissions
+														<ShieldCheckIcon
+															aria-hidden="true"
+															className="h-4 w-4"
+														/>
 													</button>
 													<button
 														type="button"
@@ -656,11 +740,29 @@ function UsersTabContent() {
 																user.status === 'active' ? 'inactive' : 'active'
 															)
 														}
-														className="px-3 py-1.5 text-xs font-medium text-white bg-gray-700 hover:bg-gray-800 rounded-lg"
+														aria-label={
+															user.status === 'active'
+																? 'Disable Access'
+																: 'Restore Access'
+														}
+														title={
+															user.status === 'active'
+																? 'Disable Access'
+																: 'Restore Access'
+														}
+														className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-700 text-white hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
 													>
-														{user.status === 'active'
-															? 'Disable Access'
-															: 'Restore Access'}
+														{user.status === 'active' ? (
+															<LockClosedIcon
+																aria-hidden="true"
+																className="h-4 w-4"
+															/>
+														) : (
+															<LockOpenIcon
+																aria-hidden="true"
+																className="h-4 w-4"
+															/>
+														)}
 													</button>
 													{canRepairLinks &&
 														user.status !== 'active' &&
@@ -668,9 +770,14 @@ function UsersTabContent() {
 															<button
 																type="button"
 																onClick={() => setRepairingUser(user)}
-																className="px-3 py-1.5 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"
+																aria-label="Repair Employee Link"
+																title="Repair Employee Link"
+																className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-1"
 															>
-																Repair Employee Link
+																<LinkIcon
+																	aria-hidden="true"
+																	className="h-4 w-4"
+																/>
 															</button>
 														)}
 												</div>
