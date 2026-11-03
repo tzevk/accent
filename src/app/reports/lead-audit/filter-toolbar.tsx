@@ -155,14 +155,13 @@ export default function FilterToolbar({
 					>
 						<option value="">All sources</option>
 						<option value="__missing__">Unknown source</option>
-						{sources.map((source) => (
-							<option
-								key={source.is_unknown ? '__unknown__' : source.label ?? ''}
-								value={source.label ?? ''}
-							>
-								{source.label ?? 'Unknown source'}
-							</option>
-						))}
+						{sources
+							.filter((source) => !source.is_unknown)
+							.map((source) => (
+								<option key={source.label ?? ''} value={source.label ?? ''}>
+									{source.label}
+								</option>
+							))}
 					</select>
 				</Field>
 
