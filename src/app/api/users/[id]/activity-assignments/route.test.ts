@@ -110,6 +110,94 @@ describe('user activity assignments project discovery', () => {
 	});
 });
 
+describe('user activity assignments lastActivityLoggedAt', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.mockDbConnect.mockResolvedValue(db);
+		mocks.mockGetCurrentUser.mockResolvedValue({
+			id: 42,
+			email: 'member@example.com',
+			is_super_admin: 0,
+		});
+	});
+
+	function assignmentRow(overrides: Record<string, unknown>) {
+		return {
+			project_id: 11,
+			project_name: 'Assigned Project',
+			project_code: 'P-011',
+			project_status: 'Active',
+			project_start_date: '2026-08-02',
+			project_end_date: '2026-09-02',
+			activity_id: 'activity-11',
+			activity_name: 'Assigned activity',
+			status: 'In Progress',
+			estimated_hours: 4,
+			...overrides,
+		};
+	}
+
+	it('returns the latest save across assignments as epoch milliseconds', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[
+					// Older save: numeric epoch seconds (2026-10-13 18:45 UTC).
+					assignmentRow({
+						activity_id: 'activity-11',
+						updated_at_epoch: 1791917100,
+					}),
+					// Newer save: string epoch seconds (2026-10-14 09:30 UTC),
+					// the form some drivers return.
+					assignmentRow({
+						activity_id: 'activity-12',
+						updated_at_epoch: '1791970200',
+					}),
+				],
+			])
+			.mockResolvedValueOnce([[]]);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.lastActivityLoggedAt).toBe(1791970200000);
+	});
+
+	it('ignores assignments without a saved timestamp', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce([
+				[
+					assignmentRow({
+						activity_id: 'activity-11',
+						updated_at_epoch: null,
+					}),
+					assignmentRow({
+						activity_id: 'activity-12',
+						updated_at_epoch: 1791917100,
+					}),
+				],
+			])
+			.mockResolvedValueOnce([[]]);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.lastActivityLoggedAt).toBe(1791917100000);
+	});
+
+	it('returns null when the user has no assignments', async () => {
+		mocks.mockExecute.mockResolvedValueOnce([[]]).mockResolvedValueOnce([[]]);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.assignments).toEqual([]);
+		expect(body.data.lastActivityLoggedAt).toBeNull();
+	});
+});
+
 describe('user activity assignments PUT', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

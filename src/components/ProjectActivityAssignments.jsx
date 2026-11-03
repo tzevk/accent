@@ -415,6 +415,21 @@ export default function ProjectActivityAssignments({
 		setRemarkValues((prev) => ({ ...prev, [key]: value }));
 	};
 
+	/**
+	 * An acknowledged project-activity save resets the dashboard's activity-log
+	 * reminder. A response that reports affected_rows only counts when a row
+	 * actually changed; success responses without that field count as saved.
+	 */
+	const emitActivityLogSaved = (res) => {
+		if (typeof window === 'undefined') return;
+		if (res && 'affected_rows' in res && !(res.affected_rows > 0)) return;
+		window.dispatchEvent(
+			new CustomEvent('activity-log-saved', {
+				detail: { userId, savedAt: Date.now() },
+			})
+		);
+	};
+
 	// Auto-save an edited remark on commit (blur / Ctrl+Enter). Skips the
 	// request when the value was reverted back to the saved one.
 	const saveRemark = async (projectId, activityId, key, originalValue) => {
@@ -423,7 +438,7 @@ export default function ProjectActivityAssignments({
 
 		setRemarkStatus((prev) => ({ ...prev, [key]: 'saving' }));
 		try {
-			await fetchJSON(`/api/users/${userId}/activity-assignments`, {
+			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -432,6 +447,7 @@ export default function ProjectActivityAssignments({
 					remarks: value,
 				}),
 			});
+			emitActivityLogSaved(res);
 			setRemarkStatus((prev) => ({ ...prev, [key]: 'saved' }));
 			setRemarkErrors((prev) => {
 				if (!(key in prev)) return prev;
@@ -598,6 +614,7 @@ export default function ProjectActivityAssignments({
 				}),
 			});
 			if (res?.success) {
+				emitActivityLogSaved(res);
 				setAddingProjectId(null);
 				await loadAssignments();
 			} else {
@@ -648,6 +665,7 @@ export default function ProjectActivityAssignments({
 				}),
 			});
 			if (res?.success) {
+				emitActivityLogSaved(res);
 				setEditingKey(null);
 				setEditForm({});
 				await loadAssignments();

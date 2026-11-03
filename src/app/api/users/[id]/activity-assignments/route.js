@@ -202,6 +202,7 @@ export async function GET(request, { params }) {
 			`
       SELECT
         uaa.*,
+        UNIX_TIMESTAMP(uaa.updated_at) AS updated_at_epoch,
         p.name AS project_name,
         p.project_code,
         p.status AS project_status,
@@ -216,7 +217,24 @@ export async function GET(request, { params }) {
 		);
 
 		const assignments = [];
+		// Latest saved-activity timestamp. The epoch comes from the database so
+		// the app never interprets the SQL wallclock in local time.
+		let lastActivityLoggedAt = null;
 		for (const row of rows) {
+			if (
+				row.updated_at_epoch !== null &&
+				row.updated_at_epoch !== undefined &&
+				row.updated_at_epoch !== ''
+			) {
+				const savedAtMs = Number(row.updated_at_epoch) * 1000;
+				if (
+					Number.isFinite(savedAtMs) &&
+					savedAtMs > 0 &&
+					(lastActivityLoggedAt === null || savedAtMs > lastActivityLoggedAt)
+				) {
+					lastActivityLoggedAt = savedAtMs;
+				}
+			}
 			// Parse daily_entries from JSON string
 			let dailyEntries = [];
 			if (row.daily_entries) {
@@ -402,6 +420,7 @@ export async function GET(request, { params }) {
 				accessibleProjects,
 				documentCounts,
 				stats,
+				lastActivityLoggedAt,
 			},
 		});
 
