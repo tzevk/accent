@@ -29,7 +29,7 @@ variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
 Expect the first run to build the full schema from the baseline migration, then
-start the server and run eighty-three scenarios. On MariaDB 10.11 the whole run
+start the server and run eighty-four scenarios. On MariaDB 10.11 the whole run
 takes a few minutes.
 
 ## What the run does
@@ -39,7 +39,9 @@ takes a few minutes.
    with the same name aborts the run; nothing is ever reused.
 3. Migrates everything before the explicit ticket-369 lead migration.
 4. Seeds run-namespaced users (`lit369-<timestamp>-creator`, `-assignee`,
-   `-readonly`, `-noassign`, and `-proposer`, password `Lit369-pass!`), a
+   `-readonly`, `-noassign`, `-proposer`, `-superadmin`, `-convertonly`,
+   `-updateonly`, `-reportreader`, `-reportonly`, and `-projectreportonly`,
+   password `Lit369-pass!`), a
    duplicate-name tie pair, and four representative pre-migration Lead rows.
 5. Applies the real ticket-369 lead migration over that evidence.
 6. Seeds the legacy Proposals that link to two of those Leads: two on one
@@ -49,9 +51,11 @@ takes a few minutes.
    Proposals, then any later migrations.
 8. Starts `next dev` on `LEADS_INTEGRATION_PORT` (default 31369) with all
    database branches pinned to the disposable database.
-9. Logs each fixture user in through `POST /api/login` and keeps the real
-   session cookies.
-10. Runs eighty-three scenarios.
+9. Logs each fixture user in through `POST /api/login` from its own stable
+   loopback transport address, so the per-client auth budget does not collapse
+   eleven real password logins into one bucket, and keeps the real session
+   cookies.
+10. Runs eighty-four scenarios.
 
 ## Cleanup contract
 
@@ -149,6 +153,7 @@ a full pass, for manual browser follow-up.
 | 81  | generic-edit-refuses-an-open-review-item         | A stage or owner change on a Lead whose legacy value is still in review is refused; the review panel stays the only way through                                                        |
 | 82  | import-row-needs-the-decision-evidence           | A CSV row that asks for Qualified or Nurture carries the same evidence, or it is a row error and no Lead is saved                                                                      |
 | 83  | soft-deleted-lead-keeps-its-proposal-state       | Editing or deleting a Proposal of a soft-deleted Lead leaves that Lead's state and its pointers alone                                                                                  |
+| 84  | lead-audit-intake                                | The Lead Audit intake slice: default period, presets, separate system-entry and Enquiry Date counts, boundaries, missing dates, exact source labels, filters, permissions, deterministic register pagination, and imports counted at entry |
 
 Every scenario asserts both the HTTP response and the persisted row through
 the independent reader (`mysql2` connection owned by the harness, never the

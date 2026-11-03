@@ -27,6 +27,7 @@ import type {
 	HttpResponse,
 	LoginHttpClient,
 	Reader,
+	ReportFixtureLeadInput,
 	Scenario,
 	ScenarioContext,
 } from './client.ts';
@@ -146,6 +147,7 @@ import {
 	softDeletedLeadKeepsItsProposalStateScenario,
 	type SoftDeleteSeed,
 } from './scenarios/soft-delete.ts';
+import { leadAuditIntakeScenario } from './scenarios/report-intake.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -269,10 +271,19 @@ function makeHttp(baseUrl: string): LoginHttpClient {
 			),
 		delete: (path, sessionToken) =>
 			request(path, { method: 'DELETE' }, sessionToken),
-		login: async (username, password) => {
+		login: async (username, password, clientIp) => {
+			// Each fixture signs in as its own local transport identity. The
+			// proxy's auth bucket is keyed by the platform-set address, so
+			// eleven real password logins do not collapse into one client's
+			// ten-per-window budget. The header is the one production trusts;
+			// no auth check or route is bypassed.
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+			};
+			if (clientIp) headers['x-vercel-forwarded-for'] = clientIp;
 			const response = await fetch(`${baseUrl}/api/login`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers,
 				body: JSON.stringify({ username, password }),
 			});
 			const text = await response.text();
@@ -631,6 +642,29 @@ function makeReader(connection: Connection): Reader {
 			);
 			return Number(row?.total ?? 0);
 		},
+		seedReportLead: async (input: ReportFixtureLeadInput) => {
+			const [result] = (await connection.execute(
+				`INSERT INTO leads (
+            company_name, contact_name, project_description, enquiry_status,
+            enquiry_date, lead_source, priority, owner_user_id, isDelete,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				[
+					input.companyName,
+					input.contactName ?? null,
+					input.projectDescription ?? null,
+					input.stage ?? null,
+					input.enquiryDate ?? null,
+					input.source ?? null,
+					input.priority ?? 'Medium',
+					input.ownerUserId ?? null,
+					input.isDeleted ? 1 : 0,
+					input.recordedAt,
+					input.recordedAt,
+				]
+			)) as unknown as [{ insertId: number }, unknown];
+			return requiredNumber(result.insertId, 'leads.id');
+		},
 	};
 }
 
@@ -656,6 +690,8 @@ interface FixtureSpec {
 	key: string;
 	fullName: string;
 	permissions: string[];
+	/** Optional field-level grants, inserted as the stored JSON object. */
+	fieldPermissions?: Record<string, unknown>;
 	/** A super admin bypasses every grant check. */
 	isSuperAdmin?: boolean;
 }
@@ -673,14 +709,15 @@ async function seedFixtureUser(
 	const username = fixtureUsername(runTag, spec.key);
 	const email = `${username}@example.com`;
 	await connection.execute(
-		`INSERT INTO users (username, password_hash, email, full_name, status, is_active, isDelete, permissions, is_super_admin)
-		 VALUES (?, ?, ?, ?, 'active', 1, 0, ?, ?)`,
+		`INSERT INTO users (username, password_hash, email, full_name, status, is_active, isDelete, permissions, field_permissions, is_super_admin)
+		 VALUES (?, ?, ?, ?, 'active', 1, 0, ?, ?, ?)`,
 		[
 			username,
 			passwordHash,
 			email,
 			spec.fullName,
 			JSON.stringify(spec.permissions),
+			spec.fieldPermissions ? JSON.stringify(spec.fieldPermissions) : null,
 			spec.isSuperAdmin ? 1 : 0,
 		]
 	);
@@ -749,6 +786,9 @@ interface FixtureIdentities {
 	superAdmin: FixtureIdentity;
 	convertOnly: FixtureIdentity;
 	updateOnly: FixtureIdentity;
+	reportReader: FixtureIdentity;
+	reportOnly: FixtureIdentity;
+	projectReportOnly: FixtureIdentity;
 }
 
 function fixtureSpecs(runTag: string): FixtureSpec[] {
@@ -834,6 +874,40 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 			// no Lead convert right: the handoff needs both.
 			permissions: ['leads:read', 'leads:update', 'proposals:create'],
 		},
+		{
+			key: 'reportreader',
+			fullName: `${runTag} Report Reader`,
+			// The two grants the Lead Audit report requires. Neither grant
+			// alone is enough, and no field grant substitutes for them.
+			permissions: ['leads:read', 'reports:read'],
+		},
+		{
+			key: 'reportonly',
+			fullName: `${runTag} Report Only`,
+			permissions: ['reports:read'],
+		},
+		{
+			key: 'projectreportonly',
+			fullName: `${runTag} Project Report Only`,
+			// The unrelated existing Project Activities report grant. It
+			// opens those reports and must never open the Lead Audit.
+			permissions: [],
+			fieldPermissions: {
+				modules: {
+					reports: {
+						enabled: true,
+						sections: {
+							report_access: {
+								enabled: true,
+								fields: {
+									project_activities: { permission: 'view' },
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	];
 }
 
@@ -845,9 +919,16 @@ async function loginFixtureIdentities(
 	// Users already exist (seeded before the lead mapping). Login over real
 	// HTTP proves authentication; the reader resolves stable ids.
 	const identities: FixtureIdentity[] = [];
-	for (const spec of fixtureSpecs(runTag)) {
+	for (const [index, spec] of fixtureSpecs(runTag).entries()) {
 		const username = fixtureUsername(runTag, spec.key);
-		const login = await http.login(username, FIXTURE_PASSWORD);
+		// A stable loopback address per fixture keeps each real login in its
+		// own auth bucket; the default shared local address allows only ten
+		// logins per fifteen minutes.
+		const login = await http.login(
+			username,
+			FIXTURE_PASSWORD,
+			`127.0.0.${index + 2}`
+		);
 		const [rows] = await reader.execute(
 			'SELECT id, email, full_name FROM users WHERE username = ? LIMIT 1',
 			[username]
@@ -874,6 +955,9 @@ async function loginFixtureIdentities(
 		superAdmin,
 		convertOnly,
 		updateOnly,
+		reportReader,
+		reportOnly,
+		projectReportOnly,
 	] = identities;
 	if (
 		!creator ||
@@ -883,7 +967,10 @@ async function loginFixtureIdentities(
 		!proposer ||
 		!superAdmin ||
 		!convertOnly ||
-		!updateOnly
+		!updateOnly ||
+		!reportReader ||
+		!reportOnly ||
+		!projectReportOnly
 	)
 		fail('fixture login incomplete');
 	return {
@@ -895,6 +982,9 @@ async function loginFixtureIdentities(
 		superAdmin,
 		convertOnly,
 		updateOnly,
+		reportReader,
+		reportOnly,
+		projectReportOnly,
 	};
 }
 
@@ -2326,8 +2416,13 @@ export async function runLeadsIntegration(
 				softDeletedLeadKeepsItsProposalStateScenario(ctx, softDeleteSeed),
 			context
 		);
+		await runScenario(
+			'lead-audit-intake',
+			leadAuditIntakeScenario,
+			context
+		);
 		log(IBAND);
-		log(`PASS all 83 scenarios (${trackedLeads.length} leads created)`);
+		log(`PASS all 84 scenarios (${trackedLeads.length} leads created)`);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other
