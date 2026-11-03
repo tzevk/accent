@@ -575,7 +575,8 @@ export async function readLeadAuditConversionSection(
 	const includeProposals = options.includeProposals ? 1 : 0;
 	const includeProjects = options.includeProjects ? 1 : 0;
 	const aggregateParams = [
-		...base.params,
+		// The flag markers live in the SELECT list, which precedes the derived
+		// table in the SQL text, so they bind before the dates and filters.
 		includeProposals,
 		1 - includeProposals,
 		includeProposals,
@@ -583,6 +584,7 @@ export async function readLeadAuditConversionSection(
 		1 - includeProjects,
 		includeProposals,
 		includeProjects,
+		...base.params,
 	];
 
 	const [cohortResult, sourceResult, stageResult, periodResult, effective] =
