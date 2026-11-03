@@ -74,7 +74,7 @@ export default function LeadAuditPage() {
 		user: SessionUser | null;
 		can: (resource: string, permission: string) => boolean;
 		RESOURCES: { REPORTS: string; LEADS: string };
-		PERMISSIONS: { READ: string };
+		PERMISSIONS: { READ: string; EXPORT: string };
 	};
 
 	const [draft, setDraft] = useState<LeadAuditFilterDraft>(DEFAULT_DRAFT);
@@ -95,6 +95,7 @@ export default function LeadAuditPage() {
 		user?.is_super_admin === true || user?.is_super_admin === 1;
 	const hasReportsRead = can(RESOURCES.REPORTS, PERMISSIONS.READ);
 	const hasLeadsRead = can(RESOURCES.LEADS, PERMISSIONS.READ);
+	const canExport = isSuperAdmin || can(RESOURCES.REPORTS, PERMISSIONS.EXPORT);
 	const hasAccess =
 		!!user && (isSuperAdmin || (hasReportsRead && hasLeadsRead));
 

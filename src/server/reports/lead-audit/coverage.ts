@@ -22,7 +22,11 @@ import {
 } from './audit-types';
 import { buildDeletedLeadFilterCondition } from './audit-filters';
 import { parseLeadAuditEvidenceFilters } from './evidence-filters';
-import { buildLeadAuditMeta, buildLeadAuditScope, resolveLeadAuditEffectiveFilters } from './scope';
+import {
+	buildLeadAuditMeta,
+	buildLeadAuditScope,
+	resolveLeadAuditEffectiveFilters,
+} from './scope';
 import { buildLeadAuditFilterCondition } from './sql';
 import type {
 	LeadAuditClock,
@@ -41,13 +45,6 @@ interface LeadFactsRow {
 	proposal_conflict: number | string;
 	converted_without_date: number | string;
 	converted_without_evidence: number | string;
-}
-
-interface EvidenceAggregateRow {
-	evidence_type: string;
-	total: number | string;
-	undated: number | string;
-	unknown_actor: number | string;
 }
 
 interface EvidenceFactsRow {
@@ -158,7 +155,10 @@ export async function readLeadAuditCoverageSection(
 	]);
 
 	const [leadRows] = leadResult as unknown as [LeadFactsRow[], unknown];
-	const [evidenceRows] = evidenceResult as unknown as [EvidenceFactsRow[], unknown];
+	const [evidenceRows] = evidenceResult as unknown as [
+		EvidenceFactsRow[],
+		unknown,
+	];
 	const [aggregateRows] = aggregateResult as unknown as [
 		Array<{
 			evidence_type: string;
@@ -372,7 +372,7 @@ export async function readLeadAuditCoverageSection(
 			code: 'rescheduling',
 			label: 'Task rescheduling',
 			detail:
-				'Changing a scheduled activity\'s date updates the task. The report does not reconstruct every earlier schedule from update timestamps.',
+				"Changing a scheduled activity's date updates the task. The report does not reconstruct every earlier schedule from update timestamps.",
 		},
 		{
 			code: 'stage_history',

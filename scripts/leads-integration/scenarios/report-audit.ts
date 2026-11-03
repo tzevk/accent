@@ -8,7 +8,6 @@ import type { LoginHttpClient, ScenarioContext } from '../client.ts';
 // disposable database with explicit recording and occurrence times, and
 // every expected figure is an independent literal from those values.
 
-const PREFIX = 'ReportAudit';
 const PERIOD_FROM = '2026-09-01';
 const PERIOD_TO = '2026-09-30';
 const OUTSIDE_PERIOD_FROM = '2026-10-01';

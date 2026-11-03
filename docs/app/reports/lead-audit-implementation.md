@@ -245,3 +245,16 @@ Verification record:
   validation, timing boundaries, audit narratives, and source non-mutation.
   Each scenario uses its own loopback client address, keeping production
   rate limits active without sharing one unrelated scenario's IP bucket.
+- **2026-11-03 — browser, all views:** with real fixture data, the view
+  buttons switched populations without discarding applied filters, work
+  evidence paged under a selected metric, current-risk cards opened their
+  matching Lead evidence, cohort handoff evidence loaded, and timing
+  figures opened their sample evidence. An audit-only incompatible filter
+  combination produced a named error while the view buttons stayed usable
+  and returning to Overview kept the corrected figures. Audit narratives
+  rendered live and retained deleted evidence, a correction detail showed
+  its before/after values, and all wide audit and coverage tables became
+  labelled focusable scroll regions. At 320 pixels the document width
+  remained 320 pixels; at 200% zoom the header title wrapped instead of
+  clipping. The header's decorative icon is hidden below the `sm`
+  breakpoint, where it previously competed with the title.

@@ -11,10 +11,7 @@
  * a separate population with explicit unknown deletion facts; no reader
  * derives a deletion actor or date from an update timestamp.
  */
-import {
-	LEGACY_REVIEW_LABELS,
-	type LegacyReviewType,
-} from '@/lib/lead-review';
+import { LEGACY_REVIEW_LABELS, type LegacyReviewType } from '@/lib/lead-review';
 import {
 	describeCorrectionChanges,
 	type LeadActivityCorrectionValues,
@@ -62,7 +59,12 @@ import {
 import { parseLeadAuditEvidenceFilters } from './evidence-filters';
 import type { LeadAuditEvidenceFilters } from './evidence-filters';
 import { resolveLeadAuditEvidenceEffectiveFilters } from './evidence-filters';
-import { buildLeadAuditMeta, buildLeadAuditScope, leadAuditStageLabel, resolveLeadAuditEffectiveFilters } from './scope';
+import {
+	buildLeadAuditMeta,
+	buildLeadAuditScope,
+	leadAuditStageLabel,
+	resolveLeadAuditEffectiveFilters,
+} from './scope';
 import { buildLeadAuditFilterCondition } from './sql';
 import {
 	LeadAuditValidationError,
@@ -72,9 +74,7 @@ import {
 	type LeadAuditPagination,
 } from './types';
 
-type QuerySource =
-	| URLSearchParams
-	| Record<string, string | null | undefined>;
+type QuerySource = URLSearchParams | Record<string, string | null | undefined>;
 
 interface UnionRow {
 	evidence_type: string;
@@ -174,7 +174,9 @@ function actorRef(id: unknown, name: unknown): LeadAuditEvidenceActorRef {
 		: { id: actorId, name: actorName, is_unknown: false };
 }
 
-function parseCorrectionValues(raw: string | null): LeadActivityCorrectionValues {
+function parseCorrectionValues(
+	raw: string | null
+): LeadActivityCorrectionValues {
 	const empty: LeadActivityCorrectionValues = {
 		activity_type: null,
 		call_outcome: null,
@@ -189,8 +191,7 @@ function parseCorrectionValues(raw: string | null): LeadActivityCorrectionValues
 			activity_type: parsed.activity_type ?? null,
 			call_outcome: parsed.call_outcome ?? null,
 			reply_confirmed:
-				parsed.reply_confirmed === null ||
-				parsed.reply_confirmed === undefined
+				parsed.reply_confirmed === null || parsed.reply_confirmed === undefined
 					? null
 					: Boolean(parsed.reply_confirmed),
 			occurred_at: parsed.occurred_at ?? null,
@@ -518,7 +519,12 @@ async function loadConversionDownstream(
 		: [];
 	const projects = new Map<
 		number,
-		{ id: number; title: string | null; status: string | null; progress: number | null }
+		{
+			id: number;
+			title: string | null;
+			status: string | null;
+			progress: number | null;
+		}
 	>();
 	if (projectIds.length > 0) {
 		const placeholders = projectIds.map(() => '?').join(', ');
@@ -681,8 +687,7 @@ function buildEffectiveEvidenceFilters(
 	const activityFilter = filters.activityType;
 	const outcomeFilter = filters.outcome;
 	const eventType = filters.eventType;
-	const activitiesOnly =
-		activityFilter !== null || outcomeFilter !== null;
+	const activitiesOnly = activityFilter !== null || outcomeFilter !== null;
 	const actorValue = leadAuditEvidenceActorValue(filters);
 	return {
 		date_basis:
@@ -800,11 +805,17 @@ export async function readLeadAuditEvidenceSection(
 		readEvidenceFilterOptions(db),
 		resolveLeadAuditEvidenceEffectiveFilters(db, evidenceFilters),
 		resolveLeadAuditEffectiveFilters(db, filters),
-		readLeadAuditDeletedEvidenceSection(db, filters, clock, DEFAULT_PAGINATION, {
-			evidenceFilters,
-			includeProposals: false,
-			includeProjects: false,
-		}),
+		readLeadAuditDeletedEvidenceSection(
+			db,
+			filters,
+			clock,
+			DEFAULT_PAGINATION,
+			{
+				evidenceFilters,
+				includeProposals: false,
+				includeProjects: false,
+			}
+		),
 	]);
 
 	const baseRows = unionRows.map(toEvidenceRow);
@@ -943,24 +954,18 @@ export async function readLeadAuditDeletedEvidenceSection(
 	const eventType = deletedEventTypeFor(evidenceFilters);
 	assertAuditEvidenceFilterCompatibility(evidenceFilters, eventType);
 	const undated = options.undated ?? evidenceFilters.undated;
-	const union = buildDeletedUnion(
-		filters,
-		evidenceFilters,
-		eventType,
-		undated
-	);
+	const union = buildDeletedUnion(filters, evidenceFilters, eventType, undated);
 
-	const [total, aggregate, unionRows, summary, effective, baseEffective] =
+	const [total, aggregate, unionRows, summary, baseEffective] =
 		await Promise.all([
-		readCount(
-			db,
-			`SELECT COUNT(*) AS total FROM (${union.sql}) e`,
-			union.params
-		),
-		readAggregate(db, union),
+			readCount(
+				db,
+				`SELECT COUNT(*) AS total FROM (${union.sql}) e`,
+				union.params
+			),
+			readAggregate(db, union),
 			readPage(db, union, pagination),
 			readDeletedSummary(db, filters),
-			resolveLeadAuditEvidenceEffectiveFilters(db, evidenceFilters),
 			resolveLeadAuditEffectiveFilters(db, filters),
 		]);
 
@@ -1102,7 +1107,9 @@ interface NarrativeRef {
 	evidenceId: number;
 }
 
-export function parseAuditNarrativeReference(source: QuerySource): NarrativeRef {
+export function parseAuditNarrativeReference(
+	source: QuerySource
+): NarrativeRef {
 	const rawType =
 		source instanceof URLSearchParams
 			? (source.get('type') ?? '')
@@ -1113,9 +1120,9 @@ export function parseAuditNarrativeReference(source: QuerySource): NarrativeRef 
 			: (source.id ?? '');
 	const type = rawType.trim();
 	if (
-		!(
-			LEAD_AUDIT_EVIDENCE_TYPE_OPTIONS as readonly { value: string }[]
-		).some((option) => option.value === type)
+		!(LEAD_AUDIT_EVIDENCE_TYPE_OPTIONS as readonly { value: string }[]).some(
+			(option) => option.value === type
+		)
 	) {
 		throw new LeadAuditValidationError(
 			'invalid_evidence_type',
@@ -1428,8 +1435,16 @@ export async function readLeadAuditEvidenceNarrative(
 				]
 			: ref.evidenceType === 'stage_change'
 				? [
-						['from_stage', 'From stage', leadAuditStageLabel(trimOrNull(row.from_value))],
-						['to_stage', 'To stage', leadAuditStageLabel(trimOrNull(row.to_value))],
+						[
+							'from_stage',
+							'From stage',
+							leadAuditStageLabel(trimOrNull(row.from_value)),
+						],
+						[
+							'to_stage',
+							'To stage',
+							leadAuditStageLabel(trimOrNull(row.to_value)),
+						],
 						['change_source', 'Change source', row.change_source],
 						['reason', 'Reason', row.reason],
 					]
@@ -1468,7 +1483,11 @@ export async function readLeadAuditEvidenceNarrative(
 													row.review_type as LegacyReviewType
 												] ?? row.review_type),
 									],
-									['original_value', 'Original stored value', row.original_value],
+									[
+										'original_value',
+										'Original stored value',
+										row.original_value,
+									],
 									['resolved_value', 'Resolved value', row.resolved_value],
 									[
 										'resolved_reference',
@@ -1480,8 +1499,16 @@ export async function readLeadAuditEvidenceNarrative(
 												? null
 												: String(toNullableId(row.resolved_reference)),
 									],
-									['resolution_source', 'Resolution source', row.resolution_source],
-									['reviewer_name', 'Recorded reviewer name', row.reviewer_name],
+									[
+										'resolution_source',
+										'Resolution source',
+										row.resolution_source,
+									],
+									[
+										'reviewer_name',
+										'Recorded reviewer name',
+										row.reviewer_name,
+									],
 									['reason', 'Review reason', row.reason],
 								]
 							: []
@@ -1546,7 +1573,9 @@ export async function readLeadAuditEvidenceNarrative(
 				);
 			} else if (downstream.project_state === 'restricted') {
 				fields.push(
-					...narrativeFields([['project_state', 'Project details', 'Restricted']])
+					...narrativeFields([
+						['project_state', 'Project details', 'Restricted'],
+					])
 				);
 			}
 		}
