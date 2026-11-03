@@ -21,7 +21,11 @@ import {
 	type LeadAuditCurrentStateExportSection,
 	type LeadAuditCurrentStateSection,
 } from './current-state-types';
-import { leadAuditStageLabel, buildLeadAuditMeta, resolveLeadAuditEffectiveFilters } from './scope';
+import {
+	leadAuditStageLabel,
+	buildLeadAuditMeta,
+	resolveLeadAuditEffectiveFilters,
+} from './scope';
 import {
 	buildLeadAuditFilterCondition,
 	joinConditions,
@@ -57,44 +61,43 @@ export interface CurrentStateReadOptions {
 const CURRENT_STATE_DATE_BASIS =
 	'Live current state at the database calendar day (CURDATE()); the selected reporting period is not applied.';
 
-const IGNORED_FILTERS: ReadonlyArray<Omit<CurrentStateIgnoredFilter, 'value'>> = [
-	{
-		key: 'actor',
-		label: 'Activity author',
-		reason:
-			'Activity authorship is not current ownership. Current-state workload uses the present Lead owner.',
-	},
-	{
-		key: 'activity_type',
-		label: 'Activity type',
-		reason:
-			'Activity-type filters select period work evidence, not the present Lead state.',
-	},
-	{
-		key: 'outcome',
-		label: 'Work outcome',
-		reason:
-			'Outcome filters select period work evidence, not the present Lead state.',
-	},
-	{
-		key: 'event_type',
-		label: 'Audit event type',
-		reason:
-			'Audit event filters select recorded evidence, not the present Lead state.',
-	},
-	{
-		key: 'undated',
-		label: 'Undated evidence',
-		reason:
-			'Undated-evidence filters select period work or audit evidence, not the present Lead state.',
-	},
-];
+const IGNORED_FILTERS: ReadonlyArray<Omit<CurrentStateIgnoredFilter, 'value'>> =
+	[
+		{
+			key: 'actor',
+			label: 'Activity author',
+			reason:
+				'Activity authorship is not current ownership. Current-state workload uses the present Lead owner.',
+		},
+		{
+			key: 'activity_type',
+			label: 'Activity type',
+			reason:
+				'Activity-type filters select period work evidence, not the present Lead state.',
+		},
+		{
+			key: 'outcome',
+			label: 'Work outcome',
+			reason:
+				'Outcome filters select period work evidence, not the present Lead state.',
+		},
+		{
+			key: 'event_type',
+			label: 'Audit event type',
+			reason:
+				'Audit event filters select recorded evidence, not the present Lead state.',
+		},
+		{
+			key: 'undated',
+			label: 'Undated evidence',
+			reason:
+				'Undated-evidence filters select period work or audit evidence, not the present Lead state.',
+		},
+	];
 
 function readQuery(source: CurrentStateQuerySource, key: string): string {
 	const raw =
-		source instanceof URLSearchParams
-			? source.get(key)
-			: (source[key] ?? null);
+		source instanceof URLSearchParams ? source.get(key) : (source[key] ?? null);
 	return typeof raw === 'string' ? raw.trim() : '';
 }
 
@@ -236,9 +239,10 @@ function leadColumns(row: Record<string, unknown>) {
 					: String(row.contact_name),
 		},
 		source: leadAuditSourceValue(row.lead_source),
-		priority: row.priority === null || row.priority === undefined
-			? null
-			: String(row.priority),
+		priority:
+			row.priority === null || row.priority === undefined
+				? null
+				: String(row.priority),
 		stage: {
 			value: enquiryStatus,
 			label: leadAuditStageLabel(enquiryStatus),
@@ -310,7 +314,6 @@ function queueSqlCondition(risk: CurrentStateRiskKey): SqlCondition {
 	const condition = buildQueueCondition(risk, null);
 	return { sql: condition.clause, params: condition.params };
 }
-
 function evidenceGroup(
 	selection: CurrentStateEvidenceSelection
 ): CurrentStateEvidenceGroup {

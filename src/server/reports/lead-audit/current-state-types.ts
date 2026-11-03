@@ -140,8 +140,7 @@ export interface CurrentStateEvidenceGroup {
  * plus every workload and exception row, read on the caller's connection.
  * Export detail never goes through HTTP pagination.
  */
-export interface LeadAuditCurrentStateExportSection
-	extends LeadAuditCurrentStateSection {
+export interface LeadAuditCurrentStateExportSection extends LeadAuditCurrentStateSection {
 	/** One row per Lead in the current-owner workload. */
 	workload_rows: CurrentStateEvidenceRow[];
 	/** Every full-result row for each queue, keyed by risk. */

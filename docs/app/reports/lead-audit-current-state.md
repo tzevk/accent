@@ -23,13 +23,13 @@ range selection does not change them.
 The counters and queue conditions reuse `src/server/leads/queues.ts`; the
 report does not create a second queue vocabulary.
 
-| Risk group    | Population                                                                                                                       | Counter unit   | Evidence unit                     |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------- |
-| Unassigned    | Non-deleted Leads with `owner_user_id IS NULL`                                                                                    | distinct Leads | Lead                              |
-| Untouched     | Non-deleted Leads with no completed Call, Email, or Meeting; a completed Note alone does not count as outreach                     | distinct Leads | Lead                              |
-| Overdue       | Non-deleted Leads with outstanding scheduled work dated before the database calendar day                                          | distinct Leads | individual scheduled work item    |
-| Due today     | Non-deleted Leads with outstanding scheduled work dated on the database calendar day                                               | distinct Leads | individual scheduled work item    |
-| No Next Action | Non-deleted Leads in Attempting Contact, Connected, Qualified, or Nurture with no outstanding scheduled work                      | distinct Leads | Lead                              |
+| Risk group     | Population                                                                                                     | Counter unit   | Evidence unit                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------ |
+| Unassigned     | Non-deleted Leads with `owner_user_id IS NULL`                                                                 | distinct Leads | Lead                           |
+| Untouched      | Non-deleted Leads with no completed Call, Email, or Meeting; a completed Note alone does not count as outreach | distinct Leads | Lead                           |
+| Overdue        | Non-deleted Leads with outstanding scheduled work dated before the database calendar day                       | distinct Leads | individual scheduled work item |
+| Due today      | Non-deleted Leads with outstanding scheduled work dated on the database calendar day                           | distinct Leads | individual scheduled work item |
+| No Next Action | Non-deleted Leads in Attempting Contact, Connected, Qualified, or Nurture with no outstanding scheduled work   | distinct Leads | Lead                           |
 
 Outstanding scheduled work follows the existing queue rule: a row with
 `status = 'Scheduled'`, no `transferred_followup_id`, a scheduled date, and no
