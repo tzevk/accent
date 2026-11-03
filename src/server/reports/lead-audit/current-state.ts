@@ -301,6 +301,16 @@ function workItemEvidenceRow(
 	};
 }
 
+/**
+ * The queue module speaks `{ clause, params }`; the report SQL helpers speak
+ * `{ sql, params }`. Convert at this single boundary so a queue condition is
+ * never joined as an undefined fragment.
+ */
+function queueSqlCondition(risk: CurrentStateRiskKey): SqlCondition {
+	const condition = buildQueueCondition(risk, null);
+	return { sql: condition.clause, params: condition.params };
+}
+
 function evidenceGroup(
 	selection: CurrentStateEvidenceSelection
 ): CurrentStateEvidenceGroup {
@@ -512,7 +522,7 @@ function workItemCondition(
 			: 'item.scheduled_for = CURDATE()';
 	return joinConditions(
 		buildLeadAuditFilterCondition(filters),
-		buildQueueCondition(risk, null),
+		queueSqlCondition(risk),
 		{
 			sql: `item.status = 'Scheduled'
         AND item.transferred_followup_id IS NULL
@@ -612,7 +622,7 @@ export async function readLeadAuditCurrentStateEvidence(
 		selection.group === 'risk'
 			? joinConditions(
 					buildLeadAuditFilterCondition(filters),
-					buildQueueCondition(selection.risk as CurrentStateRiskKey, null)
+					queueSqlCondition(selection.risk as CurrentStateRiskKey)
 				)
 			: buildLeadAuditFilterCondition(filters);
 	return readLeadEvidence(
@@ -698,7 +708,7 @@ export async function readLeadAuditCurrentStateExportRows(
 						db,
 						joinConditions(
 							filterCondition,
-							buildQueueCondition(definition.key, null)
+							queueSqlCondition(definition.key)
 						),
 						LEAD_EVIDENCE_ORDER
 					);
