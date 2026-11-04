@@ -332,6 +332,59 @@ describe('PUT /api/projects/[id] section-scoped saves', () => {
 		expect(mockExecute).toHaveBeenCalledTimes(1);
 	});
 
+	it('leaves the stored amount untouched when a commercial write is refused', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		await PUT(
+			putRequest({ section: 'commercial', values: { budget: 1000 } }),
+			params()
+		);
+
+		const updates = mockExecute.mock.calls.filter(([sql]) =>
+			String(sql).startsWith('UPDATE projects')
+		);
+		expect(updates).toHaveLength(0);
+	});
+
+	it('rejects a commercial write that includes a column the actor cannot edit', async () => {
+		mockGetCurrentUser.mockResolvedValue(commercialEditor);
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({
+				section: 'commercial',
+				values: { budget: 1000, project_value: 9000 },
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(403);
+		expect(body.code).toBe('PROTECTED_FIELD');
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('persists only the permitted commercial columns', async () => {
+		mockGetCurrentUser.mockResolvedValue(commercialEditor);
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(
+			putRequest({ section: 'commercial', values: { budget: 1000 } }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.updated).toEqual(['budget']);
+		const [sql, queryParams] = mockExecute.mock.calls[1];
+		expect(sql).toMatch(/^UPDATE projects SET budget = \?/);
+		expect(sql).not.toContain('project_value');
+		expect(sql).not.toContain('cost_to_company');
+		expect(queryParams).toEqual([1000, 10]);
+	});
+
 	it('persists a commercial column the actor may edit', async () => {
 		mockGetCurrentUser.mockResolvedValue(commercialEditor);
 		mockExecute

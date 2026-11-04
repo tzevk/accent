@@ -4160,9 +4160,16 @@ export default function EditProjectForm() {
 	};
 
 	const activeSectionId = resolveTabIdLocal(activeTab);
+	// Financial tabs carry their own resource permission; project content
+	// editability must not disable a finance user who can open the project.
+	const financialTabEditable = {
+		quotation: canEditQuotations,
+		purchase_order: canEditPurchaseOrders,
+		invoice: canEditInvoices,
+	};
 	const activeSectionEditable = WORK_SECTION_IDS.includes(activeSectionId)
 		? canEditSection(activeSectionId)
-		: canEditProjectContent;
+		: (financialTabEditable[activeSectionId] ?? canEditProjectContent);
 
 	if (loading) return <LoadingFallback />;
 
