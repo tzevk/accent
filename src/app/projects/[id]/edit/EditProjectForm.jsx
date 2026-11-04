@@ -47,7 +47,11 @@ import {
 	getWeekSpanForProjectRange,
 } from '@/utils/project-weeks';
 import LoadingFallback from '@/components/LoadingFallback';
-import { PROJECT_TABS, TAB_ALIASES } from '@/lib/project-tabs';
+import {
+	PROJECT_TABS,
+	TAB_ALIASES,
+	isFinancialAreaAllowed,
+} from '@/lib/project-tabs';
 import { WORK_SECTION_IDS } from '@/lib/project-rights/sections';
 import { getExportSheetPayloads } from './excel/export/buildPayloads';
 import {
@@ -3951,15 +3955,14 @@ export default function EditProjectForm() {
 			if (tab.userOnly && isAdminUser) return false;
 
 			if (tab.requiresPermission) {
-				const hasAnyPermission =
-					can(tab.requiresPermission, PERMISSIONS.READ) ||
-					can(tab.requiresPermission, PERMISSIONS.UPDATE);
-				if (!hasAnyPermission) return false;
+				// Financial areas are projected from the server-resolved rights;
+				// a client permission grant alone never reveals the tab.
+				return isFinancialAreaAllowed(tab.id, projectRights?.financialAreas);
 			}
 
 			return true;
 		});
-	}, [can, isAdminUser, isSuperAdmin, PERMISSIONS, projectRights]);
+	}, [isAdminUser, isSuperAdmin, projectRights]);
 
 	useEffect(() => {
 		const resolved = resolveTabIdLocal(activeTab);
