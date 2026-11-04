@@ -27,6 +27,7 @@ import type {
 	HttpResponse,
 	LoginHttpClient,
 	Reader,
+	ReportFixtureLeadInput,
 	Scenario,
 	ScenarioContext,
 } from './client.ts';
@@ -146,6 +147,14 @@ import {
 	softDeletedLeadKeepsItsProposalStateScenario,
 	type SoftDeleteSeed,
 } from './scenarios/soft-delete.ts';
+import { leadAuditIntakeScenario } from './scenarios/report-intake.ts';
+import { leadAuditCurrentStateScenario } from './scenarios/report-current-state.ts';
+import { leadAuditConversionScenario } from './scenarios/report-conversion.ts';
+import { leadAuditTimingScenario } from './scenarios/report-timing.ts';
+import { leadAuditWorkScenario } from './scenarios/report-work.ts';
+import { reportAuditScenario } from './scenarios/report-audit.ts';
+import { leadAuditPrintScenario } from './scenarios/report-print.ts';
+import { leadAuditExportScenario } from './scenarios/report-export.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -209,13 +218,14 @@ function requiredNumber(value: unknown, what: string): number {
 	return Number(value);
 }
 
-function makeHttp(baseUrl: string): LoginHttpClient {
+function makeHttp(baseUrl: string, getClientIp: () => string): LoginHttpClient {
 	async function request(
 		path: string,
 		init: RequestInit,
 		sessionToken?: string
 	): Promise<HttpResponse> {
 		const headers = new Headers(init.headers);
+		headers.set('x-vercel-forwarded-for', getClientIp());
 		if (sessionToken) headers.set('Cookie', `session=${sessionToken}`);
 		const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
 		const text = await response.text();
@@ -233,6 +243,18 @@ function makeHttp(baseUrl: string): LoginHttpClient {
 
 	return {
 		get: (path, sessionToken) => request(path, { method: 'GET' }, sessionToken),
+		download: async (path, sessionToken) => {
+			const headers = new Headers();
+			headers.set('x-vercel-forwarded-for', getClientIp());
+			if (sessionToken) headers.set('Cookie', `session=${sessionToken}`);
+			const response = await fetch(`${baseUrl}${path}`, { headers });
+			return {
+				status: response.status,
+				contentType: response.headers.get('content-type'),
+				contentDisposition: response.headers.get('content-disposition'),
+				bytes: new Uint8Array(await response.arrayBuffer()),
+			};
+		},
 		post: (path, body, sessionToken) => {
 			if (typeof FormData !== 'undefined' && body instanceof FormData) {
 				return request(path, { method: 'POST', body }, sessionToken);
@@ -269,10 +291,19 @@ function makeHttp(baseUrl: string): LoginHttpClient {
 			),
 		delete: (path, sessionToken) =>
 			request(path, { method: 'DELETE' }, sessionToken),
-		login: async (username, password) => {
+		login: async (username, password, clientIp) => {
+			// Each fixture signs in as its own local transport identity. The
+			// proxy's auth bucket is keyed by the platform-set address, so
+			// eleven real password logins do not collapse into one client's
+			// ten-per-window budget. The header is the one production trusts;
+			// no auth check or route is bypassed.
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+			};
+			headers['x-vercel-forwarded-for'] = clientIp ?? getClientIp();
 			const response = await fetch(`${baseUrl}/api/login`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers,
 				body: JSON.stringify({ username, password }),
 			});
 			const text = await response.text();
@@ -462,6 +493,14 @@ function makeReader(connection: Connection): Reader {
 	}
 
 	return {
+		fixtureRows: async (sql, params) => {
+			const [rows] = await connection.execute(sql, params);
+			return rows;
+		},
+		fixtureWrite: async (sql, params) => {
+			const [result] = await connection.execute(sql, params);
+			return result as unknown as { insertId: number; affectedRows: number };
+		},
 		leadRow: async (id) => {
 			const row = await firstRow('SELECT * FROM leads WHERE id = ? LIMIT 1', [
 				id,
@@ -631,6 +670,29 @@ function makeReader(connection: Connection): Reader {
 			);
 			return Number(row?.total ?? 0);
 		},
+		seedReportLead: async (input: ReportFixtureLeadInput) => {
+			const [result] = (await connection.execute(
+				`INSERT INTO leads (
+            company_name, contact_name, project_description, enquiry_status,
+            enquiry_date, lead_source, priority, owner_user_id, isDelete,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				[
+					input.companyName,
+					input.contactName ?? null,
+					input.projectDescription ?? null,
+					input.stage ?? null,
+					input.enquiryDate ?? null,
+					input.source ?? null,
+					input.priority ?? 'Medium',
+					input.ownerUserId ?? null,
+					input.isDeleted ? 1 : 0,
+					input.recordedAt,
+					input.recordedAt,
+				]
+			)) as unknown as [{ insertId: number }, unknown];
+			return requiredNumber(result.insertId, 'leads.id');
+		},
 	};
 }
 
@@ -656,6 +718,8 @@ interface FixtureSpec {
 	key: string;
 	fullName: string;
 	permissions: string[];
+	/** Optional field-level grants, inserted as the stored JSON object. */
+	fieldPermissions?: Record<string, unknown>;
 	/** A super admin bypasses every grant check. */
 	isSuperAdmin?: boolean;
 }
@@ -673,14 +737,15 @@ async function seedFixtureUser(
 	const username = fixtureUsername(runTag, spec.key);
 	const email = `${username}@example.com`;
 	await connection.execute(
-		`INSERT INTO users (username, password_hash, email, full_name, status, is_active, isDelete, permissions, is_super_admin)
-		 VALUES (?, ?, ?, ?, 'active', 1, 0, ?, ?)`,
+		`INSERT INTO users (username, password_hash, email, full_name, status, is_active, isDelete, permissions, field_permissions, is_super_admin)
+		 VALUES (?, ?, ?, ?, 'active', 1, 0, ?, ?, ?)`,
 		[
 			username,
 			passwordHash,
 			email,
 			spec.fullName,
 			JSON.stringify(spec.permissions),
+			spec.fieldPermissions ? JSON.stringify(spec.fieldPermissions) : null,
 			spec.isSuperAdmin ? 1 : 0,
 		]
 	);
@@ -749,6 +814,9 @@ interface FixtureIdentities {
 	superAdmin: FixtureIdentity;
 	convertOnly: FixtureIdentity;
 	updateOnly: FixtureIdentity;
+	reportReader: FixtureIdentity;
+	reportOnly: FixtureIdentity;
+	projectReportOnly: FixtureIdentity;
 }
 
 function fixtureSpecs(runTag: string): FixtureSpec[] {
@@ -834,6 +902,40 @@ function fixtureSpecs(runTag: string): FixtureSpec[] {
 			// no Lead convert right: the handoff needs both.
 			permissions: ['leads:read', 'leads:update', 'proposals:create'],
 		},
+		{
+			key: 'reportreader',
+			fullName: `${runTag} Report Reader`,
+			// The two grants the Lead Audit report requires. Neither grant
+			// alone is enough, and no field grant substitutes for them.
+			permissions: ['leads:read', 'reports:read'],
+		},
+		{
+			key: 'reportonly',
+			fullName: `${runTag} Report Only`,
+			permissions: ['reports:read'],
+		},
+		{
+			key: 'projectreportonly',
+			fullName: `${runTag} Project Report Only`,
+			// The unrelated existing Project Activities report grant. It
+			// opens those reports and must never open the Lead Audit.
+			permissions: [],
+			fieldPermissions: {
+				modules: {
+					reports: {
+						enabled: true,
+						sections: {
+							report_access: {
+								enabled: true,
+								fields: {
+									project_activities: { permission: 'view' },
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	];
 }
 
@@ -845,9 +947,16 @@ async function loginFixtureIdentities(
 	// Users already exist (seeded before the lead mapping). Login over real
 	// HTTP proves authentication; the reader resolves stable ids.
 	const identities: FixtureIdentity[] = [];
-	for (const spec of fixtureSpecs(runTag)) {
+	for (const [index, spec] of fixtureSpecs(runTag).entries()) {
 		const username = fixtureUsername(runTag, spec.key);
-		const login = await http.login(username, FIXTURE_PASSWORD);
+		// A stable loopback address per fixture keeps each real login in its
+		// own auth bucket; the default shared local address allows only ten
+		// logins per fifteen minutes.
+		const login = await http.login(
+			username,
+			FIXTURE_PASSWORD,
+			`127.0.0.${index + 2}`
+		);
 		const [rows] = await reader.execute(
 			'SELECT id, email, full_name FROM users WHERE username = ? LIMIT 1',
 			[username]
@@ -874,6 +983,9 @@ async function loginFixtureIdentities(
 		superAdmin,
 		convertOnly,
 		updateOnly,
+		reportReader,
+		reportOnly,
+		projectReportOnly,
 	] = identities;
 	if (
 		!creator ||
@@ -883,7 +995,10 @@ async function loginFixtureIdentities(
 		!proposer ||
 		!superAdmin ||
 		!convertOnly ||
-		!updateOnly
+		!updateOnly ||
+		!reportReader ||
+		!reportOnly ||
+		!projectReportOnly
 	)
 		fail('fixture login incomplete');
 	return {
@@ -895,6 +1010,9 @@ async function loginFixtureIdentities(
 		superAdmin,
 		convertOnly,
 		updateOnly,
+		reportReader,
+		reportOnly,
+		projectReportOnly,
 	};
 }
 
@@ -1765,15 +1883,20 @@ async function stopAppServer(server: ChildProcess | null): Promise<void> {
 	await promise;
 }
 
+const selectedScenario = process.env.LEADS_INTEGRATION_SCENARIO?.trim();
+let passedScenarios = 0;
+
 async function runScenario(
 	name: string,
 	scenario: Scenario,
 	context: ScenarioContext
 ): Promise<void> {
+	if (selectedScenario && selectedScenario !== name) return;
 	const started = Date.now();
 	try {
 		await scenario(context);
 		log(`PASS ${name} (${Date.now() - started}ms)`);
+		passedScenarios += 1;
 	} catch (error) {
 		const detail =
 			error instanceof Error ? (error.stack ?? error.message) : String(error);
@@ -1784,6 +1907,7 @@ async function runScenario(
 export async function runLeadsIntegration(
 	getResolved: () => ResolvedSafety
 ): Promise<void> {
+	passedScenarios = 0;
 	const resolved = getResolved();
 	const keep =
 		process.argv.includes('--keep') ||
@@ -1945,7 +2069,13 @@ export async function runLeadsIntegration(
 				fail(`migration ${migration} not recorded applied`);
 		}
 
-		const http = makeHttp(baseUrl);
+		// Each scenario is a separate local client. Keep production rate limits
+		// active without unrelated scenarios sharing one IP bucket.
+		const http = makeHttp(
+			baseUrl,
+			() =>
+				`127.1.${Math.floor(passedScenarios / 254)}.${(passedScenarios % 254) + 1}`
+		);
 		server = startAppServer(resolved, port);
 		const trackedLeads: number[] = [];
 		await waitForHealth(baseUrl, server, 180000);
@@ -2326,8 +2456,29 @@ export async function runLeadsIntegration(
 				softDeletedLeadKeepsItsProposalStateScenario(ctx, softDeleteSeed),
 			context
 		);
+		await runScenario('lead-audit-intake', leadAuditIntakeScenario, context);
+		await runScenario(
+			'lead-audit-current-state',
+			leadAuditCurrentStateScenario,
+			context
+		);
+		await runScenario(
+			'lead-audit-conversion',
+			leadAuditConversionScenario,
+			context
+		);
+		await runScenario('lead-audit-timing', leadAuditTimingScenario, context);
+		await runScenario('lead-audit-work', leadAuditWorkScenario, context);
+		await runScenario('lead-audit-audit', reportAuditScenario, context);
+		await runScenario('lead-audit-print', leadAuditPrintScenario, context);
+		await runScenario('lead-audit-export', leadAuditExportScenario, context);
 		log(IBAND);
-		log(`PASS all 83 scenarios (${trackedLeads.length} leads created)`);
+		if (passedScenarios === 0) {
+			fail(`no scenario matched ${JSON.stringify(selectedScenario)}`);
+		}
+		log(
+			`PASS ${selectedScenario ? 'selected' : 'all'} ${passedScenarios} scenarios (${trackedLeads.length} leads created)`
+		);
 		scenariosPassed = true;
 	} finally {
 		// --keep retains the database only after a full pass; every other
