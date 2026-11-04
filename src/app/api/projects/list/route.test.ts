@@ -97,6 +97,13 @@ describe('GET /api/projects/list project-rights sweep', () => {
 		expect(mockDbConnect).not.toHaveBeenCalled();
 	});
 
+	it('reads only non-deleted projects so a deleted row leaves the list', async () => {
+		await GET(request());
+
+		const [sql] = mockExecute.mock.calls[0];
+		expect(String(sql)).toContain('isDelete = 0');
+	});
+
 	it('returns every commercial column unchanged to a super admin', async () => {
 		mockGetCurrentUser.mockResolvedValue({
 			...member,
