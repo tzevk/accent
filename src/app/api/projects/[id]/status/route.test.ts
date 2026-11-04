@@ -40,6 +40,11 @@ const leadProject = {
 	project_team: JSON.stringify([{ user_id: 7, role: 'Project Lead' }]),
 };
 
+const completedProject = {
+	...leadProject,
+	status: 'Completed',
+};
+
 const lead = {
 	id: 7,
 	email: 'lead@example.com',
@@ -64,6 +69,12 @@ const reopener = {
 	field_permissions: {
 		projectScopes: { projects: { reopen: 'all' } },
 	},
+};
+
+const reopenOnly = {
+	...reopener,
+	id: 99,
+	email: 'reopen@example.com',
 };
 
 const statusEditor = {
@@ -134,7 +145,7 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 	});
 
 	it('denies a lead-only reopen and leaves state unchanged', async () => {
-		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+		mockExecute.mockResolvedValueOnce([[completedProject], []]);
 
 		const response = await PUT(statusRequest('active'), params());
 
@@ -147,6 +158,7 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 		mockExecute.mockResolvedValueOnce([[leadProject], []]);
 
 		const close = await PUT(statusRequest('completed'), params());
+		mockExecute.mockResolvedValueOnce([[completedProject], []]);
 		const reopen = await PUT(statusRequest('active'), params());
 
 		expect(close.status).toBe(403);
@@ -174,7 +186,7 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 	it('reopens with a reopen grant', async () => {
 		mockGetCurrentUser.mockResolvedValue(reopener);
 		mockExecute
-			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([[completedProject], []])
 			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
 
 		const response = await PUT(statusRequest('active'), params());
@@ -187,7 +199,7 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 
 	it('does not let a close grant reopen', async () => {
 		mockGetCurrentUser.mockResolvedValue(closer);
-		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+		mockExecute.mockResolvedValueOnce([[completedProject], []]);
 
 		const response = await PUT(statusRequest('active'), params());
 
@@ -203,6 +215,64 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 
 		expect(response.status).toBe(403);
 		expect(updateCalls()).toHaveLength(0);
+	});
+
+	it('does not let a lifecycle grant move an ordinary board column', async () => {
+		mockGetCurrentUser.mockResolvedValue(reopenOnly);
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(statusRequest('cancelled'), params());
+
+		expect(response.status).toBe(403);
+		expect(updateCalls()).toHaveLength(0);
+	});
+
+	it('does not let project-details edit move a completed project to a board column', async () => {
+		mockGetCurrentUser.mockResolvedValue(lead);
+		mockExecute.mockResolvedValueOnce([[completedProject], []]);
+
+		const response = await PUT(statusRequest('planning'), params());
+
+		expect(response.status).toBe(403);
+		expect(updateCalls()).toHaveLength(0);
+	});
+
+	it('moves a completed project to planning only with reopen authority', async () => {
+		mockGetCurrentUser.mockResolvedValue(reopenOnly);
+		mockExecute
+			.mockResolvedValueOnce([[completedProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(statusRequest('planning'), params());
+
+		expect(response.status).toBe(200);
+		expect(updateCalls()[0][1]).toEqual(['planning', 10]);
+	});
+
+	it('moves an ordinary board column with project-details edit authority', async () => {
+		mockGetCurrentUser.mockResolvedValue(statusEditor);
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(statusRequest('planning'), params());
+
+		expect(response.status).toBe(200);
+		const [sql, queryParams] = updateCalls()[0];
+		expect(sql).toContain('status = ?');
+		expect(queryParams).toEqual(['planning', 10]);
+	});
+
+	it('lets a lead move an ordinary board column without a lifecycle grant', async () => {
+		mockGetCurrentUser.mockResolvedValue(lead);
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(statusRequest('in-progress'), params());
+
+		expect(response.status).toBe(200);
+		expect(updateCalls()[0][1]).toEqual(['in-progress', 10]);
 	});
 
 	it('updates the runtime variant row by id', async () => {

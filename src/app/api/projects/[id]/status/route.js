@@ -31,10 +31,23 @@ export async function PUT(request, { params }) {
 			);
 		}
 
-		const isClose = status.toLowerCase() === 'completed';
+		// Close and reopen are lifecycle transitions with their own grants.
+		// The current stored status decides which boundary applies: leaving
+		// completed requires reopen, entering completed requires close, and
+		// only a non-completed -> non-completed board move is an ordinary
+		// project-details edit.
+		const normalizedStatus = status.toLowerCase();
+		const currentStatus = String(
+			project.status ?? project.project_status ?? ''
+		).toLowerCase();
+		const wasCompleted = currentStatus.includes('complet');
+		const isClose = normalizedStatus === 'completed';
+		const isReopen = wasCompleted && !isClose;
 		const permitted = isClose
 			? rights.canPerform.close
-			: rights.canPerform.reopen;
+			: isReopen
+				? rights.canPerform.reopen
+				: rights.sections?.project_details?.edit === true;
 		if (!permitted) {
 			return NextResponse.json(
 				{ success: false, error: PROJECT_ACCESS_DENIED },
