@@ -541,4 +541,31 @@ describe('POST /api/projects/[id]/team', () => {
 			)
 		).toBe(false);
 	});
+
+	it('removes a member by writing only project_team and keeping history', async () => {
+		mockStoredTeam();
+
+		const response = await POST(
+			request({ operation: 'remove_member', memberId: 42 }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.project_team).toEqual([STORED_TEAM[1]]);
+
+		const writes = mockExecute.mock.calls.filter(([sql]) =>
+			/^(UPDATE|INSERT|DELETE)\b/i.test(String(sql))
+		);
+		expect(writes).toHaveLength(1);
+		expect(writes[0][0]).toBe(
+			'UPDATE projects SET project_team = ? WHERE id = ? AND isDelete = 0'
+		);
+		// Historical assignment rows, list entries, and authorship stay as
+		// reporting evidence; removal only edits the stored team.
+		for (const [sql] of mockExecute.mock.calls) {
+			expect(String(sql)).not.toContain('user_activity_assignments');
+			expect(String(sql)).not.toContain('_list');
+		}
+	});
 });

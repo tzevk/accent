@@ -291,6 +291,7 @@ export async function POST(
 	}
 
 	const access = await requireProjectAccess(request, routeId, {
+		requireContribution: true,
 		getLeadPolicy: loadLeadPolicy,
 	});
 	if ('response' in access) return access.response;

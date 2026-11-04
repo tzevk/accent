@@ -977,3 +977,69 @@ describe('activity assignment requires project team membership', () => {
 		expect(body.data.assignments[0].activity_name).toBe('Legacy work');
 	});
 });
+
+describe('user activity assignments after team removal', () => {
+	// The actor still owns the assignment rows, but the stored team no
+	// longer contains them. Removal wins on the next request.
+	const REMOVED_TEAM = JSON.stringify([
+		{ id: 7, email: 'lead@example.com', role: 'Project Lead' },
+	]);
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.mockDbConnect.mockResolvedValue(db);
+		mocks.mockGetCurrentUser.mockResolvedValue({
+			id: 42,
+			email: 'member@example.com',
+			is_super_admin: 0,
+		});
+	});
+
+	it.each(['PATCH', 'PUT', 'DELETE'] as const)(
+		'denies %s without touching assignment or project rows',
+		async (method) => {
+			mocks.mockExecute.mockResolvedValueOnce([
+				[
+					{
+						project_id: 1,
+						project_team: REMOVED_TEAM,
+						project_activities_list: '[]',
+					},
+				],
+			]);
+
+			const writeBody = {
+				project_id: '1',
+				activity_id: 'a1',
+				discipline_name: 'Structural',
+				activity_name: 'RCC Check',
+				status: 'In Progress',
+			};
+			const response = await (
+				method === 'PATCH' ? PATCH : method === 'PUT' ? PUT : DELETE
+			)(
+				new Request('http://localhost/api/users/42/activity-assignments', {
+					method,
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(writeBody),
+				}),
+				params()
+			);
+			const body = await response.json();
+
+			expect(response.status).toBe(409);
+			expect(body).toEqual({
+				success: false,
+				code: 'ASSIGNEE_NOT_PROJECT_MEMBER',
+				error:
+					'Add member@example.com to the Project Team before assigning this activity.',
+			});
+			expect(
+				mocks.mockExecute.mock.calls.some(([sql]) =>
+					/^(UPDATE|INSERT|DELETE)/i.test(String(sql))
+				)
+			).toBe(false);
+			expect(mocks.mockBeginTransaction).not.toHaveBeenCalled();
+		}
+	);
+});

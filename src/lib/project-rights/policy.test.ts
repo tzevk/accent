@@ -422,6 +422,137 @@ describe('resolveProjectRights scopes', () => {
 	});
 });
 
+describe('resolveProjectRights contribution', () => {
+	const contributionSections = [
+		'query_log',
+		'assumption',
+		'discussion',
+		'lessons_learnt',
+	] as const;
+
+	it('lets an ordinary team member contribute without edit rights', () => {
+		const rights = resolveProjectRights({
+			user: user(),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.isMember).toBe(true);
+		expect(rights.canContribute).toBe(true);
+		// Read is the member baseline; child workflows still accept entries.
+		for (const section of contributionSections) {
+			expect(rights.sections[section].read).toBe(true);
+			expect(rights.sections[section].edit).toBe(false);
+		}
+	});
+
+	it('lets a project lead contribute', () => {
+		const rights = resolveProjectRights({
+			user: user({ id: 43, email: 'lead@example.com' }),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.isLead).toBe(true);
+		expect(rights.canContribute).toBe(true);
+	});
+
+	it('lets a super admin contribute without membership', () => {
+		const rights = resolveProjectRights({
+			user: user({ is_super_admin: true }),
+			project: { project_team: [] },
+		});
+
+		expect(rights.isMember).toBe(false);
+		expect(rights.canContribute).toBe(true);
+	});
+
+	it('denies a read-only grant even when it opens the workspace', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				id: 99,
+				email: 'reader@example.com',
+				merged_permissions: ['projects:read'],
+				field_permissions: {
+					...withScopes({ read: 'all' }),
+					modules: {
+						projects: {
+							enabled: true,
+							sections: {
+								query_log: {
+									enabled: true,
+									fields: {
+										query_description: { permission: 'view' },
+									},
+								},
+							},
+						},
+					},
+				},
+			}),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.canOpen).toBe(true);
+		expect(rights.sections.query_log.read).toBe(true);
+		expect(rights.canContribute).toBe(false);
+	});
+
+	it('allows an explicit update grant inside its scope', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				id: 99,
+				email: 'editor@example.com',
+				merged_permissions: ['projects:update'],
+				field_permissions: withScopes({ update: 'all' }),
+			}),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.isMember).toBe(false);
+		expect(rights.canContribute).toBe(true);
+	});
+
+	it('denies an update grant whose scope excludes the project', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				id: 99,
+				email: 'outside@example.com',
+				merged_permissions: ['projects:update'],
+				field_permissions: withScopes({ update: 'assigned' }),
+			}),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.canOpen).toBe(false);
+		expect(rights.canContribute).toBe(false);
+	});
+
+	it('denies a user holding only financial or team-management grants', () => {
+		const assignOnly = resolveProjectRights({
+			user: user({
+				id: 99,
+				email: 'assigner@example.com',
+				merged_permissions: ['projects:assign'],
+				field_permissions: withScopes({ assign: 'all' }),
+			}),
+			project: { project_team: TEAM },
+		});
+		const financialOnly = resolveProjectRights({
+			user: user({ id: 98, email: 'finance@example.com' }),
+			project: { project_team: TEAM },
+			financialPermissions: {
+				quotation: true,
+				purchase_order: true,
+				invoice: true,
+			},
+		});
+
+		expect(assignOnly.canOpen).toBe(true);
+		expect(assignOnly.canContribute).toBe(false);
+		expect(financialOnly.canOpen).toBe(false);
+		expect(financialOnly.canContribute).toBe(false);
+	});
+});
+
 describe('resolveProjectRights sections', () => {
 	it('applies a hidden lead policy section and a view-only section', () => {
 		const rights = resolveProjectRights({
