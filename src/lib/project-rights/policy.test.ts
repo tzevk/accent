@@ -4,6 +4,18 @@ import {
 	resolveProjectRights,
 	type ProjectRightsUser,
 } from './policy';
+import {
+	PROJECT_PERMISSION_SECTIONS,
+	buildProjectScopesPayload,
+	buildSectionPayload,
+	type FieldPermissionLevel,
+} from './permission-config';
+import {
+	PROJECT_ACTIONS,
+	type ProjectAction,
+	type ProjectScope,
+} from './grants';
+import { WORK_SECTION_IDS } from './sections';
 
 const TEAM = [
 	{ id: 42, name: 'Member', email: 'member@example.com', role: 'Team Member' },
@@ -25,6 +37,81 @@ function user(overrides: Partial<ProjectRightsUser> = {}): ProjectRightsUser {
 
 function withScopes(scopes: Record<string, string>) {
 	return { projectScopes: { projects: scopes } };
+}
+
+/**
+ * Build the exact `field_permissions` tree the permission editor saves.
+ * Sections and fields come from the shared config, not from a hand-written
+ * fixture, so the round-trip follows the editor's shape.
+ */
+function editorFieldPermissions(
+	grantedActions: ProjectAction[],
+	scopes: Partial<Record<ProjectAction, ProjectScope>>,
+	sectionPermission: FieldPermissionLevel = 'hidden'
+) {
+	const fieldState: Record<
+		string,
+		Record<string, FieldPermissionLevel>
+	> = {};
+	const enabledState: Record<string, boolean> = {};
+	for (const [sectionKey, section] of Object.entries(
+		PROJECT_PERMISSION_SECTIONS
+	)) {
+		fieldState[sectionKey] = {};
+		enabledState[sectionKey] = true;
+		for (const fieldKey of Object.keys(section.fields)) {
+			fieldState[sectionKey][fieldKey] = sectionPermission;
+		}
+	}
+
+	return {
+		modules: {
+			projects: {
+				enabled: true,
+				name: 'Projects',
+				category: 'module',
+				crud: Object.fromEntries(
+					PROJECT_ACTIONS.map((action) => [
+						action,
+						grantedActions.includes(action),
+					])
+				),
+				sections: buildSectionPayload(
+					PROJECT_PERMISSION_SECTIONS,
+					fieldState,
+					enabledState
+				),
+			},
+		},
+		projectScopes: {
+			projects: buildProjectScopesPayload(scopes, grantedActions),
+		},
+	};
+}
+
+function editorSectionPermissions(
+	overrides: Record<string, Record<string, FieldPermissionLevel>>
+) {
+	const fieldState: Record<
+		string,
+		Record<string, FieldPermissionLevel>
+	> = {};
+	const enabledState: Record<string, boolean> = {};
+	for (const [sectionKey, section] of Object.entries(
+		PROJECT_PERMISSION_SECTIONS
+	)) {
+		fieldState[sectionKey] = {};
+		enabledState[sectionKey] = true;
+		for (const fieldKey of Object.keys(section.fields)) {
+			fieldState[sectionKey][fieldKey] =
+				overrides[sectionKey]?.[fieldKey] ?? 'hidden';
+		}
+	}
+	return buildSectionPayload(
+		PROJECT_PERMISSION_SECTIONS,
+		fieldState,
+		enabledState
+	);
 }
 
 describe('resolveProjectRights workspace entry', () => {
@@ -392,4 +479,276 @@ describe('DEFAULT_LEAD_POLICY', () => {
 			Array.from({ length: 16 }, () => 'edit')
 		);
 	});
+});
+
+describe('editor payload round-trip', () => {
+	const lead = { id: 43, email: 'lead@example.com' };
+	const member = { id: 42, email: 'member@example.com' };
+	const stranger = { id: 99, email: 'stranger@example.com' };
+
+	function rightsFor(
+		actor: { id: number; email: string },
+		granted: ProjectAction[],
+		scopes: Partial<Record<ProjectAction, ProjectScope>>
+	) {
+		return resolveProjectRights({
+			user: user({
+				...actor,
+				merged_permissions: granted.map((action) => `projects:${action}`),
+				// Round-trip through JSON, as the database column stores it.
+				field_permissions: JSON.parse(
+					JSON.stringify(editorFieldPermissions(granted, scopes))
+				),
+			}),
+			project: { project_team: TEAM },
+		});
+	}
+
+	it('honours read scope led for a lead and refuses a non-lead member', () => {
+		const inside = rightsFor(lead, ['read'], { read: 'led' });
+		const outside = rightsFor(member, ['read'], { read: 'led' });
+
+		expect(inside.canOpen).toBe(true);
+		expect(inside.readableSections).toHaveLength(16);
+		// The member keeps the baseline membership view, not the grant.
+		expect(outside.readableSections).toHaveLength(10);
+	});
+
+	it('honours read scope assigned inside the team and refuses a stranger', () => {
+		const inside = rightsFor(member, ['read'], { read: 'assigned' });
+		const outside = rightsFor(stranger, ['read'], { read: 'assigned' });
+
+		expect(inside.readableSections).toHaveLength(16);
+		expect(outside.canOpen).toBe(false);
+		expect(outside.readableSections).toEqual([]);
+	});
+
+	it('honours read scope all for a user with no relationship', () => {
+		const rights = rightsFor(stranger, ['read'], { read: 'all' });
+
+		expect(rights.canOpen).toBe(true);
+		expect(rights.readableSections).toHaveLength(16);
+	});
+
+	it('honours update scope assigned inside the team and refuses a stranger', () => {
+		const inside = rightsFor(member, ['update'], { update: 'assigned' });
+		const outside = rightsFor(stranger, ['update'], { update: 'assigned' });
+
+		expect(inside.editableSections).toHaveLength(16);
+		expect(outside.canOpen).toBe(false);
+		expect(outside.editableSections).toEqual([]);
+	});
+
+	it('honours update scope led for a lead and refuses a non-lead member', () => {
+		const inside = rightsFor(lead, ['update'], { update: 'led' });
+		const outside = rightsFor(member, ['update'], { update: 'led' });
+
+		expect(inside.editableSections).toHaveLength(16);
+		expect(outside.editableSections).toEqual([]);
+	});
+
+	it('honours update scope all for a user with no relationship', () => {
+		const rights = rightsFor(stranger, ['update'], { update: 'all' });
+
+		expect(rights.canOpen).toBe(true);
+		expect(rights.editableSections).toHaveLength(16);
+	});
+
+	it('honours assign scope assigned inside the team and refuses a stranger', () => {
+		const inside = rightsFor(member, ['assign'], { assign: 'assigned' });
+		const outside = rightsFor(stranger, ['assign'], { assign: 'assigned' });
+
+		expect(inside.canManageTeam).toBe(true);
+		expect(outside.canManageTeam).toBe(false);
+		expect(outside.canOpen).toBe(false);
+	});
+
+	it('honours assign scope led for a lead and refuses a non-lead member', () => {
+		const inside = rightsFor(lead, ['assign'], { assign: 'led' });
+		const outside = rightsFor(member, ['assign'], { assign: 'led' });
+
+		expect(inside.canManageTeam).toBe(true);
+		expect(outside.canManageTeam).toBe(false);
+	});
+
+	it('honours assign scope all for a user with no relationship', () => {
+		const rights = rightsFor(stranger, ['assign'], { assign: 'all' });
+
+		expect(rights.canManageTeam).toBe(true);
+	});
+
+	it.each(['close', 'reopen', 'delete'] as const)(
+		'honours %s scope assigned inside the team and refuses a stranger',
+		(action) => {
+			const inside = rightsFor(member, [action], { [action]: 'assigned' });
+			const outside = rightsFor(stranger, [action], { [action]: 'assigned' });
+
+			expect(inside.canPerform[action]).toBe(true);
+			expect(outside.canPerform[action]).toBe(false);
+		}
+	);
+
+	it.each(['close', 'reopen', 'delete'] as const)(
+		'honours %s scope led for a lead and refuses a non-lead member',
+		(action) => {
+			const inside = rightsFor(lead, [action], { [action]: 'led' });
+			const outside = rightsFor(member, [action], { [action]: 'led' });
+
+			expect(inside.canPerform[action]).toBe(true);
+			expect(outside.canPerform[action]).toBe(false);
+			// The member's own membership still opens the workspace.
+			expect(outside.isMember).toBe(true);
+		}
+	);
+
+	it.each(['close', 'reopen', 'delete'] as const)(
+		'honours %s scope all for a user with no relationship',
+		(action) => {
+			const inside = rightsFor(stranger, [action], { [action]: 'all' });
+			const outside = rightsFor(stranger, [action], { [action]: 'led' });
+
+			expect(inside.canPerform[action]).toBe(true);
+			expect(outside.canPerform[action]).toBe(false);
+		}
+	);
+
+	it('treats a granted action without a saved scope as led, not all', () => {
+		const memberRights = resolveProjectRights({
+			user: user({
+				...member,
+				merged_permissions: ['projects:update'],
+				field_permissions: editorFieldPermissions(['update'], {}),
+			}),
+			project: { project_team: TEAM },
+		});
+		const leadRights = resolveProjectRights({
+			user: user({
+				...lead,
+				merged_permissions: ['projects:update'],
+				field_permissions: editorFieldPermissions(['update'], {}),
+			}),
+			project: { project_team: TEAM },
+		});
+
+		expect(memberRights.directScopes.update).toBe('led');
+		expect(memberRights.editableSections).toEqual([]);
+		expect(leadRights.directScopes.update).toBe('led');
+		expect(leadRights.editableSections).toHaveLength(16);
+	});
+});
+
+describe('editor payload section enforcement', () => {
+	it('adds a read-only section that the shared lead policy hides', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				id: 43,
+				email: 'lead@example.com',
+				field_permissions: {
+					modules: {
+						projects: {
+							enabled: true,
+							sections: editorSectionPermissions({
+								project_details: { project_name: 'view' },
+							}),
+						},
+					},
+				},
+			}),
+			project: { project_team: TEAM },
+			leadPolicy: { sections: { project_details: 'hidden' } },
+		});
+
+		expect(rights.sections.project_details).toEqual({
+			read: true,
+			edit: false,
+		});
+	});
+
+	it('adds an editable section that the shared lead policy hides when update is in scope', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				id: 43,
+				email: 'lead@example.com',
+				merged_permissions: ['projects:update'],
+				field_permissions: {
+					modules: {
+						projects: {
+							enabled: true,
+							sections: editorSectionPermissions({
+								scope: { original_scope: 'edit' },
+							}),
+						},
+					},
+					projectScopes: { projects: { update: 'led' } },
+				},
+			}),
+			project: { project_team: TEAM },
+			leadPolicy: { sections: { scope: 'hidden' } },
+		});
+
+		expect(rights.sections.scope).toEqual({ read: true, edit: true });
+	});
+
+	it('grants nothing for a hidden section field permission', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				id: 43,
+				email: 'lead@example.com',
+				field_permissions: {
+					modules: {
+						projects: {
+							enabled: true,
+							sections: editorSectionPermissions({
+								project_details: { project_name: 'hidden' },
+							}),
+						},
+					},
+				},
+			}),
+			project: { project_team: TEAM },
+			leadPolicy: { sections: { project_details: 'hidden' } },
+		});
+
+		expect(rights.sections.project_details).toEqual({
+			read: false,
+			edit: false,
+		});
+		expect(rights.readableSections).not.toContain('project_details');
+	});
+});
+
+describe('every configurable work section is enforced', () => {
+	it.each(WORK_SECTION_IDS)(
+		'grants read for the %s section through its saved field permission',
+		(sectionId) => {
+			const section = PROJECT_PERMISSION_SECTIONS[sectionId];
+			expect(section).toBeDefined();
+			const [firstField] = Object.keys(section.fields);
+			expect(firstField).toBeDefined();
+
+			const rights = resolveProjectRights({
+				user: user({
+					id: 99,
+					email: 'outside@example.com',
+					field_permissions: {
+						modules: {
+							projects: {
+								enabled: true,
+								sections: editorSectionPermissions({
+									[sectionId]: { [firstField]: 'view' },
+								}),
+							},
+						},
+					},
+				}),
+				project: { project_team: TEAM },
+				leadPolicy: { sections: { [sectionId]: 'hidden' } },
+			});
+
+			expect(rights.sections[sectionId]).toEqual({
+				read: true,
+				edit: false,
+			});
+		}
+	);
 });
