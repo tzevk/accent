@@ -28,7 +28,7 @@ vi.mock('@/utils/schema-cache', () => ({
 	hasColumn: vi.fn().mockResolvedValue(true),
 }));
 
-const { GET } = await import('@/app/api/projects/[id]/route');
+const { GET, PUT } = await import('@/app/api/projects/[id]/route');
 
 const project = {
 	id: 10,
@@ -131,5 +131,231 @@ describe('GET /api/projects/[id] project-rights sweep', () => {
 		expect(response.status).toBe(200);
 		expect(body.data).not.toHaveProperty('project_activities');
 		expect(body.data).not.toHaveProperty('project_activities_list');
+	});
+});
+
+const lead = {
+	...member,
+	id: 7,
+	email: 'lead@example.com',
+	field_permissions: {},
+};
+
+const leadProject = {
+	...project,
+	project_team: JSON.stringify([{ user_id: 7, role: 'Project Lead' }]),
+};
+
+const commercialEditor = {
+	...lead,
+	field_permissions: {
+		modules: {
+			projects: {
+				enabled: true,
+				sections: {
+					commercial: {
+						enabled: true,
+						fields: {
+							budget: { permission: 'edit' },
+						},
+					},
+				},
+			},
+		},
+	},
+};
+
+function putRequest(body: unknown): Request {
+	return new Request('http://localhost/api/projects/PRJ-10', {
+		method: 'PUT',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body),
+	});
+}
+
+describe('PUT /api/projects/[id] section-scoped saves', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockDbConnect.mockResolvedValue(mockDb);
+		mockGetCurrentUser.mockResolvedValue(lead);
+		mockGetTableColumns.mockResolvedValue(
+			new Set(['project_id', 'id', 'project_code', 'project_team'])
+		);
+	});
+
+	it('returns 401 without a session', async () => {
+		mockGetCurrentUser.mockResolvedValueOnce(null);
+
+		const response = await PUT(
+			putRequest({ section: 'scope', values: { scope_of_work: 'x' } }),
+			params()
+		);
+
+		expect(response.status).toBe(401);
+		expect(mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('updates only the named section columns for a lead', async () => {
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(
+			putRequest({
+				section: 'project_details',
+				values: { name: 'Renamed', priority: 'LOW' },
+			}),
+			params()
+		);
+
+		expect(response.status).toBe(200);
+		const [sql, queryParams] = mockExecute.mock.calls[1];
+		expect(sql).toMatch(/^UPDATE projects SET name = \?, priority = \?/);
+		expect(sql).toContain('WHERE id = ? AND isDelete = 0');
+		expect(sql).not.toContain('project_team');
+		expect(sql).not.toContain('budget');
+		expect(queryParams).toEqual(['Renamed', 'LOW', 10]);
+	});
+
+	it('returns the generic 403 for an unknown project, never 404', async () => {
+		mockExecute.mockResolvedValueOnce([[], []]);
+
+		const response = await PUT(
+			putRequest({ section: 'scope', values: { scope_of_work: 'x' } }),
+			params('missing-project')
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(403);
+		expect(body.error).toBe(
+			'You do not have permission to access this project'
+		);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('refuses a section the actor cannot edit', async () => {
+		mockGetCurrentUser.mockResolvedValue(member);
+		mockExecute.mockResolvedValueOnce([[project], []]);
+
+		const response = await PUT(
+			putRequest({ section: 'scope', values: { scope_of_work: 'x' } }),
+			params()
+		);
+
+		expect(response.status).toBe(403);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('rejects a field outside the named section', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({
+				section: 'project_details',
+				values: { scope_of_work: 'not mine' },
+			}),
+			params()
+		);
+
+		expect(response.status).toBe(400);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('rejects a protected commercial column in a work section', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({
+				section: 'project_details',
+				values: { budget: 1000 },
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(400);
+		expect(body.code).toBe('PROTECTED_FIELD');
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('rejects the old whole-form payload without a section', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({ name: 'Legacy save', priority: 'HIGH' }),
+			params()
+		);
+
+		expect(response.status).toBe(400);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('never writes the team column through a project save', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({
+				section: 'project_team',
+				values: { project_team: [] },
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(400);
+		expect(body.code).toBe('SECTION_NOT_WRITABLE');
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('requires commercial field edit rights for a commercial write', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const denied = await PUT(
+			putRequest({ section: 'commercial', values: { budget: 1000 } }),
+			params()
+		);
+
+		expect(denied.status).toBe(403);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('persists a commercial column the actor may edit', async () => {
+		mockGetCurrentUser.mockResolvedValue(commercialEditor);
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(
+			putRequest({ section: 'commercial', values: { budget: 1000 } }),
+			params()
+		);
+
+		expect(response.status).toBe(200);
+		const [sql, queryParams] = mockExecute.mock.calls[1];
+		expect(sql).toMatch(/^UPDATE projects SET budget = \?/);
+		expect(sql).toContain('WHERE id = ? AND isDelete = 0');
+		expect(queryParams).toEqual([1000, 10]);
+	});
+
+	it('serializes list columns for the named section only', async () => {
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(
+			putRequest({
+				section: 'documents_issued',
+				values: {
+					documents_issued_list: [{ document_number: 'D-1' }],
+				},
+			}),
+			params()
+		);
+
+		expect(response.status).toBe(200);
+		const [sql, queryParams] = mockExecute.mock.calls[1];
+		expect(sql).toMatch(/^UPDATE projects SET documents_issued_list = \?/);
+		expect(queryParams[0]).toBe('[{"document_number":"D-1"}]');
+		expect(queryParams[1]).toBe(10);
 	});
 });

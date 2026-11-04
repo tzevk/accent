@@ -279,10 +279,10 @@ function ProjectsInner() {
 		if (!ok) return;
 
 		try {
-			const result = await fetchJSON(`/api/projects/${projectKey}`, {
+			const result = await fetchJSON(`/api/projects/${projectKey}/status`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ status: 'completed', progress: 100 }),
+				body: JSON.stringify({ status: 'completed' }),
 			});
 
 			if (result?.success) {
@@ -355,7 +355,10 @@ function ProjectsInner() {
 				{
 					method: 'PUT',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ project_code: trimmed || null }),
+					body: JSON.stringify({
+						section: 'project_details',
+						values: { project_code: trimmed || null },
+					}),
 				}
 			);
 		} catch (err) {
@@ -1598,7 +1601,7 @@ function ProjectsInner() {
 																	)
 																);
 																fetchJSON(
-																	`/api/projects/${p.id ?? p.project_id ?? p.project_code}`,
+																	`/api/projects/${p.id ?? p.project_id ?? p.project_code}/status`,
 																	{
 																		method: 'PUT',
 																		headers: {
@@ -1686,7 +1689,7 @@ function ProjectsInner() {
 																	)
 																);
 																fetchJSON(
-																	`/api/projects/${p.id ?? p.project_id ?? p.project_code}`,
+																	`/api/projects/${p.id ?? p.project_id ?? p.project_code}/status`,
 																	{
 																		method: 'PUT',
 																		headers: {
