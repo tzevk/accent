@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ProjectRightsModule from '@/lib/project-rights';
 import type {
 	ProjectRights,
 	ResolveProjectRightsInput,
@@ -13,6 +14,9 @@ const mockDbConnect = vi.fn();
 const mockGetCurrentUser = vi.fn();
 const mockGetTableColumns = vi.fn();
 const mockLogActivity = vi.fn();
+const { mockLoadLeadPolicy } = vi.hoisted(() => ({
+	mockLoadLeadPolicy: vi.fn(),
+}));
 
 const mockDb = {
 	execute: mockExecute,
@@ -37,6 +41,14 @@ vi.mock('@/utils/schema-cache', () => ({
 vi.mock('@/utils/activity-logger', () => ({
 	logActivity: mockLogActivity,
 }));
+
+// The stored policy is exercised by the admin route and the loader's own
+// tests; here the loader seam returns the default so the DB double can stay
+// focused on the team row.
+vi.mock('@/lib/project-rights', async (importOriginal) => {
+	const actual = await importOriginal<typeof ProjectRightsModule>();
+	return { ...actual, loadLeadPolicy: mockLoadLeadPolicy };
+});
 
 // Policy decisions stay real; only the lead-designation authority can be
 // narrowed for the refusal test, mirroring a policy that separates the two.
@@ -137,6 +149,7 @@ describe('POST /api/projects/[id]/team', () => {
 		mockCommit.mockResolvedValue(undefined);
 		mockRollback.mockResolvedValue(undefined);
 		mockLogActivity.mockResolvedValue(undefined);
+		mockLoadLeadPolicy.mockResolvedValue({ sections: {} });
 	});
 
 	it('returns 401 without a session', async () => {
@@ -345,6 +358,183 @@ describe('POST /api/projects/[id]/team', () => {
 		expect(response.status).toBe(409);
 		expect(body.code).toBe('LEAD_CHANGE_NOT_ALLOWED');
 		expect(mockRollback).toHaveBeenCalledTimes(1);
+		expect(
+			mockExecute.mock.calls.some(([sql]) =>
+				String(sql).startsWith('UPDATE projects')
+			)
+		).toBe(false);
+	});
+
+	const leadUser = {
+		id: 43,
+		email: 'lead@example.com',
+		is_super_admin: 0,
+		permissions: [],
+		role_permissions: [],
+		merged_permissions: [],
+		field_permissions: {},
+	};
+
+	it('enforces the last-lead rule for a direct request', async () => {
+		mockGetCurrentUser.mockResolvedValue(leadUser);
+		mockStoredTeam();
+
+		const response = await POST(
+			request({ operation: 'remove_member', memberId: 43 }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(409);
+		expect(body.code).toBe('LAST_LEAD_REQUIRES_REPLACEMENT');
+		expect(body.error).toContain('at least one Project Lead');
+		expect(mockRollback).toHaveBeenCalledTimes(1);
+		expect(mockCommit).not.toHaveBeenCalled();
+		expect(
+			mockExecute.mock.calls.some(([sql]) =>
+				String(sql).startsWith('UPDATE projects')
+			)
+		).toBe(false);
+	});
+
+	it('refuses self-demotion of the final lead without a replacement', async () => {
+		mockGetCurrentUser.mockResolvedValue(leadUser);
+		mockStoredTeam();
+
+		const response = await POST(
+			request({ operation: 'update_role', memberId: 43, role: 'Engineer' }),
+			params()
+		);
+
+		expect(response.status).toBe(409);
+		expect((await response.json()).code).toBe(
+			'LAST_LEAD_REQUIRES_REPLACEMENT'
+		);
+	});
+
+	it('promotes a named replacement and returns the exact lead set', async () => {
+		mockGetCurrentUser.mockResolvedValue(leadUser);
+		mockStoredTeam();
+
+		const response = await POST(
+			request({
+				operation: 'remove_member',
+				memberId: 43,
+				replacementLeadId: 42,
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.success).toBe(true);
+		expect(body.data.project_team).toEqual([
+			{ ...STORED_TEAM[0], role: 'Project Lead' },
+		]);
+		expect(mockCommit).toHaveBeenCalledTimes(1);
+
+		// The replacement is written in the same team update.
+		const updateCall = mockExecute.mock.calls[2];
+		expect(JSON.parse(updateCall[1][0])).toEqual([
+			{ ...STORED_TEAM[0], role: 'Project Lead' },
+		]);
+	});
+
+	it('refuses a replacement who is not another current member', async () => {
+		mockGetCurrentUser.mockResolvedValue(leadUser);
+		mockStoredTeam();
+
+		const response = await POST(
+			request({
+				operation: 'remove_member',
+				memberId: 43,
+				replacementLeadId: 43,
+			}),
+			params()
+		);
+
+		expect(response.status).toBe(409);
+		expect((await response.json()).code).toBe('REPLACEMENT_NOT_IN_TEAM');
+	});
+
+	it('lets explicit assign authority clear the final lead', async () => {
+		mockStoredTeam();
+
+		const response = await POST(
+			request({ operation: 'remove_member', memberId: 43 }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.project_team).toEqual([STORED_TEAM[0]]);
+		expect(body.data.project_team.some((m) => m.role === 'Project Lead')).toBe(
+			false
+		);
+	});
+
+	it('sees the updated stored team on a second locked read', async () => {
+		const twoLeads = [
+			STORED_TEAM[0],
+			STORED_TEAM[1],
+			{
+				id: 45,
+				name: 'Second Lead',
+				email: 'lead2@example.com',
+				role: 'Project Lead',
+			},
+		];
+		mockGetCurrentUser.mockResolvedValue(leadUser);
+		mockExecute
+			.mockResolvedValueOnce([
+				[{ ...project, project_team: JSON.stringify(twoLeads) }],
+				[],
+			])
+			.mockResolvedValueOnce([
+				[{ project_team: JSON.stringify(twoLeads) }],
+				[],
+			])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const first = await POST(
+			request({ operation: 'remove_member', memberId: 45 }),
+			params()
+		);
+		const firstBody = await first.json();
+
+		expect(first.status).toBe(200);
+		expect(firstBody.data.project_team).toHaveLength(2);
+		expect(
+			firstBody.data.project_team.filter((m) => m.role === 'Project Lead')
+		).toHaveLength(1);
+
+		// The second removal re-reads the stored team under the lock, so the
+		// remaining lead is now the final one and cannot be removed bare.
+		const storedAfterFirst = firstBody.data.project_team;
+		mockExecute.mockReset();
+		mockExecute
+			.mockResolvedValueOnce([
+				[
+					{
+						...project,
+						project_team: JSON.stringify(storedAfterFirst),
+					},
+				],
+				[],
+			])
+			.mockResolvedValueOnce([
+				[{ project_team: JSON.stringify(storedAfterFirst) }],
+				[],
+			]);
+
+		const second = await POST(
+			request({ operation: 'remove_member', memberId: 43 }),
+			params()
+		);
+		const secondBody = await second.json();
+
+		expect(second.status).toBe(409);
+		expect(secondBody.code).toBe('LAST_LEAD_REQUIRES_REPLACEMENT');
 		expect(
 			mockExecute.mock.calls.some(([sql]) =>
 				String(sql).startsWith('UPDATE projects')
