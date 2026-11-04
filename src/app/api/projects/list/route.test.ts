@@ -61,6 +61,11 @@ describe('GET /api/projects/list project-rights sweep', () => {
 		});
 		mockGetCurrentUser.mockResolvedValue(member);
 		mockExecute.mockResolvedValueOnce([rows, []]);
+		mockExecute.mockImplementation(async (sql: string) =>
+			sql.includes('FROM project_lead_policy')
+				? [[{ sections: '{}' }], []]
+				: [[], []]
+		);
 	});
 
 	it('returns only openable projects with rights and filtered fields', async () => {

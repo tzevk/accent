@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
 	requireProjectAccess,
 	filterProjectForRights,
+	loadLeadPolicy,
 } from '@/lib/project-rights';
 
 /**
@@ -29,7 +30,9 @@ export async function GET(request, { params }) {
 	const startTime = Date.now();
 	const { id } = await params;
 
-	const access = await requireProjectAccess(request, id);
+	const access = await requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+	});
 	if ('response' in access) return access.response;
 
 	const { project, rights, db, ownsDb } = access;

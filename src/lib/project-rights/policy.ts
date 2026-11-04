@@ -15,9 +15,9 @@ import {
 	MEMBER_READ_SECTIONS,
 	PROTECTED_COMMERCIAL_COLUMNS,
 	WORK_SECTION_IDS,
-	type LeadSectionSetting,
 	type SectionId,
 } from './sections';
+import { DEFAULT_LEAD_POLICY, type LeadPolicy } from './lead-policy';
 import {
 	hasProjectAction,
 	parseCommercialFieldRights,
@@ -29,16 +29,9 @@ import {
 	type ProjectScope,
 } from './grants';
 
-export type LeadPolicy = {
-	sections: Partial<Record<SectionId, LeadSectionSetting>>;
-};
-
-/** The approved starting policy: every work section editable. */
-export const DEFAULT_LEAD_POLICY: LeadPolicy = {
-	sections: Object.fromEntries(
-		WORK_SECTION_IDS.map((section) => [section, 'edit'])
-	) as Partial<Record<SectionId, LeadSectionSetting>>,
-};
+// The shared lead policy lives in `lead-policy.ts`; re-exported here so
+// existing `./policy` imports keep working.
+export * from './lead-policy';
 
 export type SectionRight = { read: boolean; edit: boolean };
 
@@ -164,7 +157,10 @@ export function resolveProjectRights({
 				}
 			}
 
-			if (isMember && MEMBER_READ_SECTIONS.includes(section)) {
+			// The shared lead policy owns a lead's access. An ordinary member
+			// keeps the baseline readable sections; a lead's policy may hide
+			// them (hiding removes read as well as edit).
+			if (isMember && !isLead && MEMBER_READ_SECTIONS.includes(section)) {
 				right.read = true;
 			}
 

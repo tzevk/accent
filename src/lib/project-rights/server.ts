@@ -17,6 +17,7 @@ import {
 	type ProjectRights,
 	type ProjectRightsUser,
 } from './policy';
+import { normalizeLeadPolicy } from './lead-policy';
 
 type DbConnection = {
 	execute: (
@@ -116,6 +117,53 @@ export async function findProjectRow(
 	}
 
 	return null;
+}
+
+/**
+ * The minimal query surface `loadLeadPolicy` needs; every mysql2 pool
+ * connection satisfies it.
+ */
+export type PolicyReader = {
+	execute(sql: string, params?: unknown): Promise<[unknown, unknown]>;
+};
+
+/**
+ * Read the single stored lead policy row (id = 1).
+ *
+ * Fails closed: a missing row falls back to the approved default, while a
+ * database error or an unreadable `sections` payload throws so the caller
+ * denies access instead of silently widening lead rights.
+ */
+export async function loadLeadPolicy(db: PolicyReader): Promise<LeadPolicy> {
+	const result = await db.execute(
+		'SELECT sections FROM project_lead_policy WHERE id = 1 LIMIT 1'
+	);
+	const first = Array.isArray(result) ? result[0] : undefined;
+	const row = Array.isArray(first) ? first[0] : undefined;
+	if (row === undefined || row === null) return DEFAULT_LEAD_POLICY;
+	if (typeof row !== 'object' || Array.isArray(row) || !('sections' in row)) {
+		throw new Error('project_lead_policy row is unreadable');
+	}
+
+	const raw = row.sections;
+	let parsed: unknown = raw;
+	if (typeof raw === 'string') {
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			throw new Error('project_lead_policy.sections is not valid JSON');
+		}
+	}
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+		throw new Error('project_lead_policy.sections must be an object');
+	}
+
+	// Stored shape is the section map; tolerate a wrapped `{ sections }` row
+	// written by hand.
+	const policyInput =
+		'sections' in parsed ? { sections: parsed.sections } : { sections: parsed };
+
+	return normalizeLeadPolicy(policyInput);
 }
 
 function parsePermissionArray(value: unknown): string[] {
