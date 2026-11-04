@@ -80,10 +80,10 @@ function ProjectsInner() {
 		isSuperAdmin ||
 		can(RESOURCES.PROJECTS, PERMISSIONS.READ) ||
 		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	const canDeleteProjects =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.DELETE);
-	const canCloseProjects =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.CLOSE);
+	// Lifecycle actions are per-project: the list API returns each row with
+	// its resolved rights. A global permission boolean never authorizes them.
+	const canRowPerform = (project, action) =>
+		Boolean(project?.rights?.canPerform?.[action]);
 	const viewParam = searchParams.get('view');
 	const focusParam = searchParams.get('focus');
 
@@ -250,11 +250,13 @@ function ProjectsInner() {
 		}
 	};
 
-	const handleDelete = async (id) => {
+	const handleDelete = async (project) => {
 		if (!window.confirm('Are you sure you want to delete this project?'))
 			return;
+		const projectKey = projKey(project);
+		if (!projectKey) return;
 		try {
-			const result = await fetchJSON(`/api/projects?id=${id}`, {
+			const result = await fetchJSON(`/api/projects/${projectKey}`, {
 				method: 'DELETE',
 			});
 			if (result.success) await fetchProjects();
@@ -1134,7 +1136,7 @@ function ProjectsInner() {
 																	</td>
 																	<td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
 																		<div className="flex items-center justify-end gap-2">
-																			{canCloseProjects &&
+																			{canRowPerform(project, 'close') &&
 																				!String(project.status || '')
 																					.toLowerCase()
 																					.includes('complet') && (
@@ -1149,7 +1151,7 @@ function ProjectsInner() {
 																					</button>
 																				)}
 
-																			{canCloseProjects &&
+																			{canRowPerform(project, 'reopen') &&
 																				String(project.status || '')
 																					.toLowerCase()
 																					.includes('complet') && (
@@ -1197,14 +1199,10 @@ function ProjectsInner() {
 																					<PencilIcon className="h-4 w-4" />
 																				</button>
 																			)}
-																			{canDeleteProjects && (
+																			{canRowPerform(project, 'delete') && (
 																				<button
 																					onClick={() =>
-																						handleDelete(
-																							project.project_id ??
-																								project.id ??
-																								project.project_code
-																						)
+																						handleDelete(project)
 																					}
 																					className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
 																					title="Delete Project"

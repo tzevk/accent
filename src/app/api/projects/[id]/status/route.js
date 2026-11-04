@@ -1,45 +1,27 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/utils/database';
-import { getCurrentUser } from '@/utils/api-permissions';
-import { hasPermission } from '@/utils/rbac';
-import { RESOURCES, PERMISSIONS } from '@/utils/permissions';
 import { hasColumn } from '@/utils/schema-cache';
+import {
+	PROJECT_ACCESS_DENIED,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 /**
  * PUT /api/projects/[id]/status
  * Body: { status: string }
- * Access: super admins or users with projects:update permission.
+ *
+ * Lifecycle is separate from editing. Closing requires the close grant in
+ * scope; any other (reopen/activate) transition requires the reopen grant.
+ * Lead designation contributes nothing; a general update grant does not
+ * reach this route.
  */
 export async function PUT(request, { params }) {
-	let db;
+	const { id } = await params;
+	const access = await requireProjectAccess(request, id);
+	if ('response' in access) return access.response;
+
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		const user = await getCurrentUser(request);
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
-
-		const canUpdate =
-			user.is_super_admin === true ||
-			user.is_super_admin === 1 ||
-			hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-		if (!canUpdate) {
-			return NextResponse.json(
-				{ success: false, error: 'Forbidden' },
-				{ status: 403 }
-			);
-		}
-
-		const { id } = await params;
-		if (!id || id === 'undefined') {
-			return NextResponse.json(
-				{ success: false, error: 'Invalid project id' },
-				{ status: 400 }
-			);
-		}
-
 		const body = await request.json().catch(() => ({}));
 		const status = typeof body?.status === 'string' ? body.status.trim() : '';
 		if (!status) {
@@ -49,7 +31,25 @@ export async function PUT(request, { params }) {
 			);
 		}
 
-		db = await dbConnect();
+		// Close and reopen are lifecycle transitions with their own grants.
+		// Every other board column (NEW, planning, in-progress, on-hold,
+		// cancelled) is an ordinary project-details edit; it must not use a
+		// lifecycle grant to bypass the lifecycle boundary.
+		const normalizedStatus = status.toLowerCase();
+		const isClose = normalizedStatus === 'completed';
+		const isReopen =
+			normalizedStatus === 'active' || normalizedStatus === 'reopened';
+		const permitted = isClose
+			? rights.canPerform.close
+			: isReopen
+				? rights.canPerform.reopen
+				: rights.sections?.project_details?.edit === true;
+		if (!permitted) {
+			return NextResponse.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
+			);
+		}
 
 		const hasProjectStatus = await hasColumn(db, 'projects', 'project_status');
 		const hasStatus = await hasColumn(db, 'projects', 'status');
@@ -72,28 +72,27 @@ export async function PUT(request, { params }) {
 			setParams.push(status);
 		}
 
-		// Try update by project_id first (common in this codebase). If it doesn't match, fallback to primary id.
-		let affectedRows = 0;
-		{
-			const [r] = await db.execute(
-				`UPDATE projects SET ${setParts.join(', ')} WHERE project_id = ? AND isDelete = 0`,
-				[...setParams, id]
+		// Resolve the real key of the row the access helper already resolved.
+		const keyColumn =
+			project.id !== undefined && project.id !== null ? 'id' : 'project_id';
+		const keyValue = project[keyColumn];
+		if (keyValue === undefined || keyValue === null) {
+			return NextResponse.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
 			);
-			affectedRows = r?.affectedRows || 0;
 		}
 
-		if (affectedRows === 0 && /^\d+$/.test(String(id))) {
-			const [r2] = await db.execute(
-				`UPDATE projects SET ${setParts.join(', ')} WHERE id = ? AND isDelete = 0`,
-				[...setParams, parseInt(String(id), 10)]
-			);
-			affectedRows = r2?.affectedRows || 0;
-		}
+		const [result] = await db.execute(
+			`UPDATE projects SET ${setParts.join(', ')} WHERE ${keyColumn} = ? AND isDelete = 0`,
+			[...setParams, keyValue]
+		);
 
+		const affectedRows = result?.affectedRows || 0;
 		if (affectedRows === 0) {
 			return NextResponse.json(
-				{ success: false, error: 'Project not found' },
-				{ status: 404 }
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
 			);
 		}
 
@@ -109,10 +108,15 @@ export async function PUT(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) {
+		if (ownsDb) {
 			try {
-				db.release();
-			} catch {}
+				db.release?.();
+			} catch (error) {
+				console.warn(
+					'Error releasing DB connection in status PUT:',
+					error?.message
+				);
+			}
 		}
 	}
 }
