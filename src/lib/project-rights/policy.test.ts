@@ -15,6 +15,7 @@ import {
 	type ProjectAction,
 	type ProjectScope,
 } from './grants';
+import { WORK_SECTION_IDS } from './sections';
 
 const TEAM = [
 	{ id: 42, name: 'Member', email: 'member@example.com', role: 'Team Member' },
@@ -714,4 +715,40 @@ describe('editor payload section enforcement', () => {
 		});
 		expect(rights.readableSections).not.toContain('project_details');
 	});
+});
+
+describe('every configurable work section is enforced', () => {
+	it.each(WORK_SECTION_IDS)(
+		'grants read for the %s section through its saved field permission',
+		(sectionId) => {
+			const section = PROJECT_PERMISSION_SECTIONS[sectionId];
+			expect(section).toBeDefined();
+			const [firstField] = Object.keys(section.fields);
+			expect(firstField).toBeDefined();
+
+			const rights = resolveProjectRights({
+				user: user({
+					id: 99,
+					email: 'outside@example.com',
+					field_permissions: {
+						modules: {
+							projects: {
+								enabled: true,
+								sections: editorSectionPermissions({
+									[sectionId]: { [firstField]: 'view' },
+								}),
+							},
+						},
+					},
+				}),
+				project: { project_team: TEAM },
+				leadPolicy: { sections: { [sectionId]: 'hidden' } },
+			});
+
+			expect(rights.sections[sectionId]).toEqual({
+				read: true,
+				edit: false,
+			});
+		}
+	);
 });
