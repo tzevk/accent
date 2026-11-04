@@ -1796,16 +1796,31 @@ async function initProjectMomDocumentsTable(db) {
 	await db.execute(`
     CREATE TABLE IF NOT EXISTS project_mom_documents (
       id VARCHAR(36) PRIMARY KEY,
+      project_id INT NULL,
       original_name VARCHAR(255) NOT NULL,
       file_type VARCHAR(120) NOT NULL,
       file_size BIGINT NOT NULL,
       file_data LONGBLOB NOT NULL,
       uploaded_by INT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_project_id (project_id),
       INDEX idx_uploaded_by (uploaded_by),
       INDEX idx_created_at (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+	try {
+		await db.execute('ALTER TABLE project_mom_documents ADD COLUMN project_id INT NULL');
+	} catch {
+		/* column already exists */
+	}
+	try {
+		await db.execute(
+			'ALTER TABLE project_mom_documents ADD INDEX idx_project_id (project_id)'
+		);
+	} catch {
+		/* index already exists */
+	}
 }
 
 async function initFollowUpsTable(db) {

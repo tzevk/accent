@@ -3850,6 +3850,7 @@ export default function EditProjectForm() {
 		try {
 			const formData = new FormData();
 			formData.append('file', file);
+			formData.append('project_id', String(id));
 
 			const res = await fetch('/api/projects/mom-upload', {
 				method: 'POST',

@@ -17,6 +17,7 @@ import {
 import {
 	isLeadSectionSetting,
 	isSectionId,
+	hasAllProjectScope,
 	loadLeadPolicy,
 	normalizeLeadSectionRecord,
 	type LeadPolicy,
@@ -28,6 +29,27 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 type SectionRecord = Record<SectionId, LeadSectionSetting>;
+
+/**
+ * The shared policy applies to every project, so only a super admin or a
+ * project administrator whose grant covers all projects may read or rewrite
+ * it. A `led`/`assigned` update grant must not reach it.
+ */
+function canAdministerProjectPolicy(user: unknown): boolean {
+	const candidate = user as Parameters<typeof hasAllProjectScope>[0] | null;
+	if (!candidate) return false;
+	return Boolean(candidate.is_super_admin) || hasAllProjectScope(candidate);
+}
+
+function policyForbidden(): NextResponse {
+	return NextResponse.json(
+		{
+			success: false,
+			error: 'Forbidden: all-projects project administration is required',
+		},
+		{ status: 403 }
+	);
+}
 
 function policyPayload(
 	sections: LeadPolicy['sections'],
@@ -71,6 +93,7 @@ export async function GET(request: Request) {
 	);
 	if (auth instanceof Response) return auth;
 	if (!auth.authorized) return auth.response;
+	if (!canAdministerProjectPolicy(auth.user)) return policyForbidden();
 
 	try {
 		const data = await withDb(async (db) => {
@@ -99,6 +122,7 @@ export async function PUT(request: Request) {
 	);
 	if (auth instanceof Response) return auth;
 	if (!auth.authorized) return auth.response;
+	if (!canAdministerProjectPolicy(auth.user)) return policyForbidden();
 
 	let body: unknown;
 	try {

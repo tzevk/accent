@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,7 +20,7 @@ vi.mock('@/context/SessionContext', () => ({ useSession }));
 
 const { default: ProjectsPage } = await import('@/app/projects/page.jsx');
 
-function rights(canPerform = {}) {
+function rights(canPerform = {}, overrides = {}) {
 	return {
 		canOpen: true,
 		isMember: true,
@@ -40,6 +40,7 @@ function rights(canPerform = {}) {
 			reopen: false,
 			...canPerform,
 		},
+		...overrides,
 	};
 }
 
@@ -199,6 +200,113 @@ describe('projects list lifecycle actions', () => {
 			expect(window.alert).toHaveBeenCalledWith(
 				'Error closing project: You do not have permission to access this project'
 			);
+		});
+	});
+});
+
+describe('projects list workspace entry and edit affordances', () => {
+	const editableDetails = {
+		editableSections: ['project_details'],
+		readableSections: ['project_details'],
+		sections: { project_details: { read: true, edit: true } },
+	};
+
+	it('shows View for a member who can open the project but shows no Edit', async () => {
+		setProjects([project({ rights: rights() })]);
+
+		render(<ProjectsPage />);
+		await screen.findByText('Alpha Project');
+
+		expect(screen.getByTitle('View Details')).toBeVisible();
+		expect(screen.queryByTitle('Edit Project')).not.toBeInTheDocument();
+	});
+
+	it('shows Edit only when the row has an editable section', async () => {
+		setProjects([
+			project({ rights: rights({}, editableDetails) }),
+		]);
+
+		render(<ProjectsPage />);
+		await screen.findByText('Alpha Project');
+
+		expect(screen.getByTitle('View Details')).toBeVisible();
+		expect(screen.getByTitle('Edit Project')).toBeVisible();
+	});
+
+	it('renders the project code as read-only text for a member', async () => {
+		setProjects([project({ rights: rights() })]);
+
+		render(<ProjectsPage />);
+		await screen.findByText('Alpha Project');
+
+		expect(
+			screen.queryByTitle('Click to edit project code')
+		).not.toBeInTheDocument();
+		expect(screen.getByText('CODE-10')).toBeVisible();
+	});
+
+	it('renders the inline code editor only with project-details edit', async () => {
+		const user = userEvent.setup();
+		setProjects([project({ rights: rights({}, editableDetails) })]);
+
+		render(<ProjectsPage />);
+		await user.click(
+			await screen.findByTitle('Click to edit project code')
+		);
+
+		expect(screen.getByDisplayValue('CODE-10')).toBeVisible();
+	});
+
+	it('makes a board card draggable only with project-details edit', async () => {
+		setProjects([project({ rights: rights() })]);
+		const { container } = render(<ProjectsPage />);
+
+		await userEvent.setup().click(await screen.findByRole('tab', { name: 'Board' }));
+
+		expect(container.querySelector('[draggable="true"]')).toBeNull();
+	});
+
+	it('refuses a drop into Completed without the close grant', async () => {
+		setProjects([project({ rights: rights({}, editableDetails) })]);
+		render(<ProjectsPage />);
+
+		await userEvent.setup().click(await screen.findByRole('tab', { name: 'Board' }));
+		const completed = (
+			await screen.findByRole('heading', { name: 'Completed' })
+		).closest('.rounded-xl');
+
+		fireEvent.drop(completed, {
+			dataTransfer: { getData: () => '10' },
+		});
+
+		expect(
+			fetchJSON.mock.calls.some(([url]) => String(url).includes('/status'))
+		).toBe(false);
+	});
+
+	it('permits a drop into Completed with the close grant', async () => {
+		setProjects([
+			project({ rights: rights({ close: true }, editableDetails) }),
+		]);
+		render(<ProjectsPage />);
+
+		await userEvent.setup().click(await screen.findByRole('tab', { name: 'Board' }));
+		const completed = (
+			await screen.findByRole('heading', { name: 'Completed' })
+		).closest('.rounded-xl');
+
+		fireEvent.drop(completed, {
+			dataTransfer: { getData: () => '10' },
+		});
+
+		await waitFor(() => {
+			expect(
+				fetchJSON.mock.calls.some(
+					([url]) =>
+						String(url).includes('/api/projects/10/status') ||
+						String(url).includes('/api/projects/PROJ-10/status')
+				)
+			).toBe(true);
 		});
 	});
 });

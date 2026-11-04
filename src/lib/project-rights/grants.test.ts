@@ -133,6 +133,45 @@ describe('commercial and explicit section field permissions', () => {
 		expect(rights.edit).toEqual(['budget']);
 	});
 
+	it('revokes commercial field rights when the projects module is disabled', () => {
+		const rights = parseCommercialFieldRights({
+			modules: {
+				projects: {
+					enabled: false,
+					sections: {
+						commercial: {
+							enabled: true,
+							fields: { budget: { permission: 'edit' } },
+						},
+					},
+				},
+			},
+		});
+
+		expect(rights).toEqual({ view: [], edit: [] });
+	});
+
+	it('revokes commercial field rights when the commercial section is disabled', () => {
+		const rights = parseCommercialFieldRights({
+			modules: {
+				projects: {
+					enabled: true,
+					sections: {
+						commercial: {
+							enabled: false,
+							fields: {
+								budget: { permission: 'edit' },
+								profitability: { permission: 'view' },
+							},
+						},
+					},
+				},
+			},
+		});
+
+		expect(rights).toEqual({ view: [], edit: [] });
+	});
+
 	it('collects explicit readable and editable sections', () => {
 		const rights = parseExplicitSectionRights({
 			modules: {

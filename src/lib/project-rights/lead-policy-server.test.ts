@@ -64,6 +64,29 @@ describe('loadLeadPolicy', () => {
 		);
 	});
 
+	it.each([
+		['null', { sections: null }],
+		['a number', { sections: 12 }],
+		['an array', { sections: ['edit'] }],
+		['a string', { sections: 'project_details=hidden' }],
+	])(
+		'throws instead of widening every section when a wrapped sections value is %s',
+		async (_label, sections) => {
+			await expect(loadLeadPolicy(dbWith([{ sections }]))).rejects.toThrow(
+				'must be an object'
+			);
+		}
+	);
+
+	it('reads a wrapped sections object written by hand', async () => {
+		const policy = await loadLeadPolicy(
+			dbWith([{ sections: { sections: { scope: 'hidden' } } }])
+		);
+
+		expect(policy.sections.scope).toBe('hidden');
+		expect(policy.sections.project_details).toBe('edit');
+	});
+
 	it('propagates a database error so access fails closed', async () => {
 		const db = {
 			execute: vi.fn().mockRejectedValue(new Error('connection lost')),

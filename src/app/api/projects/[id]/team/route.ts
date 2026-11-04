@@ -186,11 +186,28 @@ export async function POST(
 			}
 
 			const storedTeam = storedRow.project_team;
+			// The pre-lock decision is stale by definition. Recompute against
+			// the locked team so a manager who lost authority between the
+			// initial read and the lock cannot save through the old rights.
+			const lockedRights = resolveProjectRights({
+				user,
+				project: { ...project, project_team: storedTeam },
+				leadPolicy,
+				financialPermissions: rights.financialAreas,
+			});
+			if (!lockedRights.canManageTeam) {
+				await teamDb.rollback();
+				return Response.json(
+					{ success: false, error: PROJECT_ACCESS_DENIED },
+					{ status: 403 }
+				);
+			}
+
 			const result = applyOperation(
 				namedOperation,
 				storedTeam,
 				body,
-				rights
+				lockedRights
 			);
 			if (!result.ok) {
 				await teamDb.rollback();

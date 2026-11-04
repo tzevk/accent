@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { hasColumn } from '@/utils/schema-cache';
 import {
 	PROJECT_ACCESS_DENIED,
+	loadLeadPolicy,
 	requireProjectAccess,
 } from '@/lib/project-rights';
 
@@ -16,7 +17,9 @@ import {
  */
 export async function PUT(request, { params }) {
 	const { id } = await params;
-	const access = await requireProjectAccess(request, id);
+	const access = await requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+	});
 	if ('response' in access) return access.response;
 
 	const { project, rights, db, ownsDb } = access;

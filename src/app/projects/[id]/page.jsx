@@ -295,6 +295,7 @@ export default function ProjectViewPage() {
 		data: projectData,
 		error: fetchError,
 		isLoading: loading,
+		mutate: refreshProject,
 	} = useSWR(id ? `/api/projects/${id}` : null, fetchJSON);
 	const project = projectData?.success ? projectData.data : null;
 	const error =
@@ -2408,7 +2409,11 @@ export default function ProjectViewPage() {
 
 					{/* Project Activity Tab — shows all team members' activity assignments */}
 					{activeTab === 'project_activity' && (
-						<ProjectActivityTab projectId={project.id ?? project.project_id} />
+						<ProjectActivityTab
+							projectId={project.id ?? project.project_id}
+							canAssignActivity={rights?.canAssignActivity === true}
+							onAssignmentChange={() => refreshProject()}
+						/>
 					)}
 
 					{/* Upload Documents Tab */}

@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { PoolConnection } from 'mysql2/promise';
 import { logActivity } from '@/utils/activity-logger';
-import { loadLeadPolicy, requireProjectAccess } from '@/lib/project-rights';
+import {
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 type MemberSection =
 	| 'assumption'
@@ -191,7 +195,7 @@ export async function GET(
 		getLeadPolicy: loadLeadPolicy,
 	});
 	if ('response' in access) return access.response;
-	const { project, db, ownsDb } = access;
+	const { project, rights, db, ownsDb } = access;
 
 	try {
 		const numericProjectId = projectRowId(project as ProjectRow);
@@ -202,20 +206,30 @@ export async function GET(
 			);
 		}
 
-		const [discussionRows] = await db.execute(
-			`SELECT * FROM project_followups
+		let discussions: unknown[] = [];
+		if (rights.sections.discussion.read) {
+			const [discussionRows] = await db.execute(
+				`SELECT * FROM project_followups
              WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)
              ORDER BY follow_up_date DESC, created_at DESC`,
-			[numericProjectId]
-		);
+				[numericProjectId]
+			);
+			discussions = Array.isArray(discussionRows) ? discussionRows : [];
+		}
 
 		return jsonResponse({
 			success: true,
 			data: {
-				assumptions: parseList(project.project_assumption_list),
-				discussions: Array.isArray(discussionRows) ? discussionRows : [],
-				queryLog: parseList(project.project_query_log_list),
-				lessonsLearnt: parseList(project.project_lessons_learnt_list),
+				assumptions: rights.sections.assumption.read
+					? parseList(project.project_assumption_list)
+					: [],
+				discussions,
+				queryLog: rights.sections.query_log.read
+					? parseList(project.project_query_log_list)
+					: [],
+				lessonsLearnt: rights.sections.lessons_learnt.read
+					? parseList(project.project_lessons_learnt_list)
+					: [],
 			},
 		});
 	} catch (error) {
@@ -296,6 +310,12 @@ export async function POST(
 	});
 	if ('response' in access) return access.response;
 	const project = access.project as ProjectRow;
+	const rights = access.rights;
+	// A lead whose shared policy keeps this section read-only or hidden cannot
+	// append through a direct request. Ordinary members keep contributing.
+	if (rights.isLead && !rights.sections[typedSection].edit) {
+		return projectAccessDeniedResponse();
+	}
 	const { ownsDb } = access;
 	const user = access.user as RequestUser;
 	const db = access.db as unknown as PoolConnection;

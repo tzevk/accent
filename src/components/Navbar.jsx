@@ -508,7 +508,11 @@ export default function Navbar() {
 
 		return navigationConfig.filter((item) => {
 			if (item.href === '/projects') {
-				return hasProjectAccess || can(item.resource, PERMISSIONS.READ);
+				// `/api/projects/access` is authoritative: it includes a
+				// super admin and any scoped action that actually covers a
+				// project. A global `projects:read` string says nothing about
+				// project scope, so it must not reveal the entry.
+				return hasProjectAccess;
 			}
 			return can(item.resource, PERMISSIONS.READ);
 		});

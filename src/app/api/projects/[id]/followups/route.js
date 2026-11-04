@@ -1,41 +1,58 @@
-import { dbConnect } from '@/utils/database';
-import { requireProjectAccess } from '@/lib/project-rights';
 import {
-	ensurePermission,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
+
+function denied() {
+	return projectAccessDeniedResponse();
+}
+
+/** Discussion contribution is a section right, not a global update grant. */
+function canWriteDiscussion(rights) {
+	return (
+		rights.canContribute &&
+		(!rights.isLead || rights.sections.discussion.edit === true)
+	);
+}
+
+async function withAccess(request, id, options) {
+	const access = await requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+		...options,
+	});
+	return access;
+}
+
+function releaseQuietly(db, ownsDb) {
+	if (!ownsDb) return;
+	try {
+		db?.release?.();
+	} catch {}
+}
 
 // GET follow-ups for a specific project
 export async function GET(request, { params }) {
-	// RBAC check
-	const authResult = await ensurePermission(
-		request,
-		RESOURCES.PROJECTS,
-		PERMISSIONS.READ
-	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	const { id } = await params;
+	if (!id) {
+		return Response.json(
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
+		);
+	}
 
-	let db;
+	const access = await withAccess(request, id);
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		const { id } = await params;
+		if (!rights.sections.discussion.read) return denied();
 
-		if (!id) {
-			return Response.json(
-				{ success: false, error: 'Project ID is required' },
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		// Get follow-ups for this project
 		const [rows] = await db.execute(
 			`SELECT * FROM project_followups 
        WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)
        ORDER BY follow_up_date DESC, created_at DESC`,
-			[id]
+			[project.project_id ?? project.id]
 		);
 
 		return Response.json({ success: true, data: rows });
@@ -46,69 +63,64 @@ export async function GET(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		releaseQuietly(db, ownsDb);
 	}
 }
 
 // POST - Create new follow-up for a project
 export async function POST(request, { params }) {
-	// RBAC check
-	const authResult = await ensurePermission(
-		request,
-		RESOURCES.PROJECTS,
-		PERMISSIONS.UPDATE
-	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	const { id } = await params;
+	if (!id) {
+		return Response.json(
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
+		);
+	}
 
-	let db;
+	let data;
 	try {
-		const { id } = await params;
-		const data = await request.json();
+		data = await request.json();
+	} catch {
+		return Response.json(
+			{ success: false, error: 'Malformed request body' },
+			{ status: 400 }
+		);
+	}
 
-		if (!id) {
-			return Response.json(
-				{ success: false, error: 'Project ID is required' },
-				{ status: 400 }
-			);
-		}
+	const {
+		follow_up_date,
+		follow_up_type,
+		description,
+		status,
+		priority,
+		milestone,
+		responsible_person,
+		action_items,
+		outcome,
+		next_action,
+		next_follow_up_date,
+		blockers,
+		notes,
+		logged_by,
+		created_by,
+	} = data || {};
 
-		const {
-			follow_up_date,
-			follow_up_type,
-			description,
-			status,
-			priority,
-			milestone,
-			responsible_person,
-			action_items,
-			outcome,
-			next_action,
-			next_follow_up_date,
-			blockers,
-			notes,
-			logged_by,
-			created_by,
-		} = data;
+	if (!follow_up_date || !description) {
+		return Response.json(
+			{
+				success: false,
+				error: 'Follow-up date and description are required',
+			},
+			{ status: 400 }
+		);
+	}
 
-		if (!follow_up_date || !description) {
-			return Response.json(
-				{
-					success: false,
-					error: 'Follow-up date and description are required',
-				},
-				{ status: 400 }
-			);
-		}
+	const access = await withAccess(request, id, { requireContribution: true });
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
 
-		db = await dbConnect();
-
-		// A removed member loses contribution rights on their next request.
-		const access = await requireProjectAccess(request, id, {
-			db,
-			requireContribution: true,
-		});
-		if ('response' in access) return access.response;
+	try {
+		if (!canWriteDiscussion(rights)) return denied();
 
 		const [result] = await db.execute(
 			`INSERT INTO project_followups 
@@ -116,7 +128,7 @@ export async function POST(request, { params }) {
          responsible_person, action_items, outcome, next_action, next_follow_up_date, blockers, notes, logged_by, created_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
-				id,
+				project.project_id ?? project.id,
 				follow_up_date,
 				follow_up_type || 'Internal Review',
 				description,
@@ -147,50 +159,46 @@ export async function POST(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		releaseQuietly(db, ownsDb);
 	}
 }
 
 // PUT - Update existing follow-up
 export async function PUT(request, { params }) {
-	// RBAC check
-	const authResult = await ensurePermission(
-		request,
-		RESOURCES.PROJECTS,
-		PERMISSIONS.UPDATE
-	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	const { id: projectId } = await params;
+	if (!projectId) {
+		return Response.json(
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
+		);
+	}
 
-	let db;
+	let data;
 	try {
-		const { id: projectId } = await params;
-		const data = await request.json();
+		data = await request.json();
+	} catch {
+		return Response.json(
+			{ success: false, error: 'Malformed request body' },
+			{ status: 400 }
+		);
+	}
 
-		if (!projectId) {
-			return Response.json(
-				{ success: false, error: 'Project ID is required' },
-				{ status: 400 }
-			);
-		}
+	const { id: followupId, ...updateFields } = data || {};
+	if (!followupId) {
+		return Response.json(
+			{ success: false, error: 'Follow-up ID is required' },
+			{ status: 400 }
+		);
+	}
 
-		const { id: followupId, ...updateFields } = data;
+	const access = await withAccess(request, projectId, {
+		requireContribution: true,
+	});
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
 
-		if (!followupId) {
-			return Response.json(
-				{ success: false, error: 'Follow-up ID is required' },
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		// A removed member loses contribution rights on their next request.
-		const access = await requireProjectAccess(request, projectId, {
-			db,
-			requireContribution: true,
-		});
-		if ('response' in access) return access.response;
+	try {
+		if (!canWriteDiscussion(rights)) return denied();
 
 		// Build dynamic update query
 		const allowedFields = [
@@ -227,7 +235,7 @@ export async function PUT(request, { params }) {
 			);
 		}
 
-		values.push(followupId, projectId);
+		values.push(followupId, project.project_id ?? project.id);
 
 		await db.execute(
 			`UPDATE project_followups SET ${updates.join(', ')} WHERE id = ? AND project_id = ? AND (isDelete = 0 OR isDelete IS NULL)`,
@@ -245,54 +253,41 @@ export async function PUT(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		releaseQuietly(db, ownsDb);
 	}
 }
 
 // DELETE - Delete a follow-up
 export async function DELETE(request, { params }) {
-	// RBAC check
-	const authResult = await ensurePermission(
-		request,
-		RESOURCES.PROJECTS,
-		PERMISSIONS.DELETE
-	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	const { id: projectId } = await params;
+	const { searchParams } = new URL(request.url);
+	const followupId = searchParams.get('followup_id');
 
-	let db;
+	if (!projectId) {
+		return Response.json(
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
+		);
+	}
+	if (!followupId) {
+		return Response.json(
+			{ success: false, error: 'Follow-up ID is required' },
+			{ status: 400 }
+		);
+	}
+
+	const access = await withAccess(request, projectId, {
+		requireContribution: true,
+	});
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		const { id: projectId } = await params;
-		const { searchParams } = new URL(request.url);
-		const followupId = searchParams.get('followup_id');
+		if (!canWriteDiscussion(rights)) return denied();
 
-		if (!projectId) {
-			return Response.json(
-				{ success: false, error: 'Project ID is required' },
-				{ status: 400 }
-			);
-		}
-
-		if (!followupId) {
-			return Response.json(
-				{ success: false, error: 'Follow-up ID is required' },
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		// A removed member loses contribution rights on their next request.
-		const access = await requireProjectAccess(request, projectId, {
-			db,
-			requireContribution: true,
-		});
-		if ('response' in access) return access.response;
-
-		// Soft delete the follow-up
 		await db.execute(
 			'UPDATE project_followups SET isDelete = 1 WHERE id = ? AND project_id = ? AND (isDelete = 0 OR isDelete IS NULL)',
-			[followupId, projectId]
+			[followupId, project.project_id ?? project.id]
 		);
 
 		return Response.json({
@@ -306,6 +301,6 @@ export async function DELETE(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) await db.end();
+		releaseQuietly(db, ownsDb);
 	}
 }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ProjectRightsModule from '@/lib/project-rights';
 
 const mockExecute = vi.fn();
 const mockRelease = vi.fn();
@@ -29,6 +30,15 @@ vi.mock('@/utils/schema-cache', () => ({
 			column === 'status'
 		),
 }));
+
+const { mockLoadLeadPolicy } = vi.hoisted(() => ({
+	mockLoadLeadPolicy: vi.fn(),
+}));
+
+vi.mock('@/lib/project-rights', async (importOriginal) => {
+	const actual = await importOriginal<typeof ProjectRightsModule>();
+	return { ...actual, loadLeadPolicy: mockLoadLeadPolicy };
+});
 
 const { PUT } = await import('@/app/api/projects/[id]/status/route');
 
@@ -108,6 +118,7 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 		vi.clearAllMocks();
 		mockDbConnect.mockResolvedValue(mockDb);
 		mockGetCurrentUser.mockResolvedValue(lead);
+		mockLoadLeadPolicy.mockResolvedValue({ sections: {} });
 		mockGetTableColumns.mockResolvedValue(
 			new Set(['project_id', 'project_code', 'project_team'])
 		);
@@ -274,6 +285,22 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 		expect(response.status).toBe(200);
 		expect(updateCalls()[0][1]).toEqual(['in-progress', 10]);
 	});
+
+	it.each(['view', 'hidden'] as const)(
+		'refuses a board move when the stored lead policy makes project_details %s',
+		async (setting) => {
+			mockGetCurrentUser.mockResolvedValue(lead);
+			mockLoadLeadPolicy.mockResolvedValue({
+				sections: { project_details: setting },
+			});
+			mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+			const response = await PUT(statusRequest('planning'), params());
+
+			expect(response.status).toBe(403);
+			expect(updateCalls()).toHaveLength(0);
+		}
+	);
 
 	it('updates the runtime variant row by id', async () => {
 		mockGetCurrentUser.mockResolvedValue(closer);

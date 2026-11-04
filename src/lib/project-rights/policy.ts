@@ -194,11 +194,14 @@ export function resolveProjectRights({
 	const canManageTeam = isSuperAdmin || isLead || assignCovers;
 
 	// Activity assignment is its own authority. An ordinary member or an
-	// unrelated authenticated user cannot assign work; a lead can because the
-	// lead policy gives the activity section. The assignee must separately be
-	// a current team member (checked by the route).
+	// unrelated authenticated user cannot assign work; a lead can only when
+	// the shared policy keeps the activity section editable. The assignee
+	// must separately be a current team member (checked by the route).
 	const canAssignActivity =
-		isSuperAdmin || assignCovers || updateCovers || isLead;
+		isSuperAdmin ||
+		assignCovers ||
+		updateCovers ||
+		(isLead && sections.project_activity.edit);
 	if (canManageTeam) {
 		sections.project_team.read = true;
 	}

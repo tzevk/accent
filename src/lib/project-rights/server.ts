@@ -165,11 +165,17 @@ export async function loadLeadPolicy(db: PolicyReader): Promise<LeadPolicy> {
 	}
 
 	// Stored shape is the section map; tolerate a wrapped `{ sections }` row
-	// written by hand.
-	const policyInput =
-		'sections' in parsed ? { sections: parsed.sections } : { sections: parsed };
+	// written by hand, but only when the inner value is a section map. A
+	// malformed wrapper must deny instead of defaulting every section to edit.
+	if ('sections' in parsed) {
+		const wrapped = parsed.sections;
+		if (!wrapped || typeof wrapped !== 'object' || Array.isArray(wrapped)) {
+			throw new Error('project_lead_policy.sections must be an object');
+		}
+		return normalizeLeadPolicy({ sections: wrapped });
+	}
 
-	return normalizeLeadPolicy(policyInput);
+	return normalizeLeadPolicy({ sections: parsed });
 }
 
 function parsePermissionArray(value: unknown): string[] {

@@ -183,7 +183,8 @@ export function parseCommercialFieldRights(
 ): CommercialFieldRights {
 	const fieldObject = parseJsonObject(fieldPermissions);
 	const modules = asRecord(fieldObject.modules);
-	const sections = asRecord(asRecord(modules?.projects)?.sections);
+	const projects = asRecord(modules?.projects);
+	const sections = asRecord(projects?.sections);
 	const commercial = asRecord(sections?.commercial);
 	const fields = asRecord(commercial?.fields);
 
@@ -191,17 +192,28 @@ export function parseCommercialFieldRights(
 	const edit: string[] = [];
 	const protectedColumns: readonly string[] = PROTECTED_COMMERCIAL_COLUMNS;
 
-	if (fields) {
-		for (const [fieldKey, raw] of Object.entries(fields)) {
-			const definition = asRecord(raw);
-			const permission = definition?.permission;
-			const column = commercialColumnFor(fieldKey);
-			if (!protectedColumns.includes(column)) continue;
-			if (permission === 'view' || permission === 'edit') {
-				view.push(column);
-			}
-			if (permission === 'edit') edit.push(column);
+	// A disabled module or section revokes its field permissions even when a
+	// stale `permission` value remains in the saved editor payload. A boolean
+	// permission is not a grant either.
+	if (
+		!projects ||
+		projects.enabled === false ||
+		!commercial ||
+		commercial.enabled === false ||
+		!fields
+	) {
+		return { view, edit };
+	}
+
+	for (const [fieldKey, raw] of Object.entries(fields)) {
+		const definition = asRecord(raw);
+		const permission = definition?.permission;
+		const column = commercialColumnFor(fieldKey);
+		if (!protectedColumns.includes(column)) continue;
+		if (permission === 'view' || permission === 'edit') {
+			view.push(column);
 		}
+		if (permission === 'edit') edit.push(column);
 	}
 
 	return { view: [...new Set(view)].sort(), edit: [...new Set(edit)].sort() };

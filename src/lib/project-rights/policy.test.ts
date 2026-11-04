@@ -1023,6 +1023,41 @@ describe('canAssignActivity authority', () => {
 		expect(rightsFor(lead).canAssignActivity).toBe(true);
 	});
 
+	it.each(['view', 'hidden'] as const)(
+		'does not let a lead assign when the policy makes project_activity %s',
+		(setting) => {
+			const rights = resolveProjectRights({
+				user: user({
+					...lead,
+					merged_permissions: [],
+					field_permissions: {},
+				}),
+				project: { project_team: TEAM },
+				leadPolicy: { sections: { project_activity: setting } },
+			});
+
+			expect(rights.isLead).toBe(true);
+			expect(rights.sections.project_activity.read).toBe(setting === 'view');
+			expect(rights.sections.project_activity.edit).toBe(false);
+			expect(rights.canAssignActivity).toBe(false);
+		}
+	);
+
+	it('keeps an explicit assign grant for a lead whose activity section is view-only', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				...lead,
+				merged_permissions: ['projects:assign'],
+				field_permissions: withScopes({ assign: 'all' }),
+			}),
+			project: { project_team: TEAM },
+			leadPolicy: { sections: { project_activity: 'view' } },
+		});
+
+		expect(rights.sections.project_activity.edit).toBe(false);
+		expect(rights.canAssignActivity).toBe(true);
+	});
+
 	it('does not let a non-lead member assign without a grant', () => {
 		expect(rightsFor(member).canAssignActivity).toBe(false);
 	});

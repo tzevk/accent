@@ -146,12 +146,17 @@ describe('Navbar Projects entry', () => {
 		).not.toBeInTheDocument();
 	});
 
-	it('shows Projects from an explicit project read permission', async () => {
+	it('hides Projects from a scoped read grant that leads nothing', async () => {
 		rbacMock.projectsRead = true;
 		fetchMock.mockResolvedValue(projectAccessResponse(false));
 
 		render(<Navbar />);
 
-		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
+		await waitFor(() => {
+			expect(fetchMock).toHaveBeenCalled();
+		});
+		expect(
+			screen.queryByRole('link', { name: 'Projects' })
+		).not.toBeInTheDocument();
 	});
 });

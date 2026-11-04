@@ -223,6 +223,56 @@ describe('POST /api/projects/[id]/team', () => {
 		expect(logged.request).toBeDefined();
 	});
 
+	it('refuses a manager whose authority was revoked before the row lock', async () => {
+		// A is lead in the row the access helper read. B removes A and commits
+		// before A's request locks; the locked team no longer contains A.
+		const lead = {
+			...assignManager,
+			id: 43,
+			email: 'lead@example.com',
+			merged_permissions: [],
+			field_permissions: {},
+		};
+		mockGetCurrentUser.mockResolvedValue(lead);
+		mockExecute
+			.mockResolvedValueOnce([[project], []])
+			.mockResolvedValueOnce([
+				[
+					{
+						project_team: JSON.stringify([
+							{
+								id: 42,
+								email: 'member@example.com',
+								role: 'Team Member',
+							},
+						]),
+					},
+				],
+				[],
+			]);
+
+		const response = await POST(
+			request({
+				operation: 'add_member',
+				member: { id: 44, email: 'new@example.com', name: 'New' },
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(403);
+		expect(body.error).toBe(
+			'You do not have permission to access this project'
+		);
+		expect(mockRollback).toHaveBeenCalledTimes(1);
+		expect(mockCommit).not.toHaveBeenCalled();
+		expect(
+			mockExecute.mock.calls.some(([sql]) =>
+				String(sql).startsWith('UPDATE projects')
+			)
+		).toBe(false);
+	});
+
 	it('refuses a project-team write for an update-only user', async () => {
 		mockGetCurrentUser.mockResolvedValue(updateOnly);
 		mockExecute.mockResolvedValueOnce([[project], []]);

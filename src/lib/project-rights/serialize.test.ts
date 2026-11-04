@@ -163,3 +163,119 @@ describe('filterProjectForRights', () => {
 		expect(Object.hasOwn(filtered, 'budget')).toBe(false);
 	});
 });
+
+describe('filterProjectForRights allowlist', () => {
+	const realisticRow = {
+		...project,
+		project_title: 'Alpha',
+		company_name: 'Client Co',
+		linked_company_name: 'Client Co',
+		unit_qty: '25',
+		duration: '6 weeks',
+		project_duration_planned: '42',
+		project_duration_actual: '40',
+		assigned_to: 'ops@example.com',
+		planning_activities_list: '[]',
+		kickoff_meeting_date: '2026-02-01',
+		kickoff_followup_date: '2026-02-10',
+		internal_meeting_date: '2026-03-01',
+		next_internal_meeting: '2026-04-01',
+		// Unmapped today: these must never be copied through by accident.
+		payment_terms: 'Net 30',
+		currency: 'USD',
+		invoicing_status: 'Partially invoiced',
+		quotation_validity: '30 days',
+		billing_and_payment_terms: 'Monthly',
+		contact_email: 'billing@client.example',
+		phone: '+1 555 0100',
+		project_description: 'Legacy description',
+		assignments: '[]',
+		documents_list: '[]',
+		disciplines: '[]',
+		project_activities: [{ id: 'a1', name: 'Design' }],
+	};
+
+	it('returns only readable-section columns for a member, never unmapped columns', () => {
+		const filtered = filterProjectForRights(realisticRow, memberRights);
+
+		for (const hiddenColumn of [
+			'description',
+			'client_name',
+			'unit_qty',
+			'duration',
+			'project_duration_planned',
+			'project_duration_actual',
+			'assigned_to',
+			'planning_activities_list',
+			'kickoff_meeting_date',
+			'kickoff_followup_date',
+			'internal_meeting_date',
+			'next_internal_meeting',
+			'project_activities',
+		]) {
+			expect(Object.hasOwn(filtered, hiddenColumn)).toBe(false);
+		}
+		for (const unmappedColumn of [
+			'payment_terms',
+			'currency',
+			'invoicing_status',
+			'quotation_validity',
+			'billing_and_payment_terms',
+			'contact_email',
+			'phone',
+			'project_description',
+			'assignments',
+			'documents_list',
+			'disciplines',
+		]) {
+			expect(Object.hasOwn(filtered, unmappedColumn)).toBe(false);
+		}
+
+		// Readable sections and safe summary fields stay.
+		expect(filtered.scope_of_work).toBe('Scope work');
+		expect(filtered.project_team).toBe('[]');
+		expect(Object.hasOwn(filtered, 'project_activities_list')).toBe(false);
+		expect(filtered.project_title).toBe('Alpha');
+		expect(filtered.company_name).toBe('Client Co');
+		expect(filtered.name).toBe('Alpha Project');
+	});
+
+	it('exposes every field a readable section owns, including write-only columns', () => {
+		const filtered = filterProjectForRights(realisticRow, leadRights);
+
+		expect(filtered.unit_qty).toBe('25');
+		expect(filtered.duration).toBe('6 weeks');
+		expect(filtered.project_duration_planned).toBe('42');
+		expect(filtered.project_duration_actual).toBe('40');
+		expect(filtered.assigned_to).toBe('ops@example.com');
+		expect(filtered.planning_activities_list).toBe('[]');
+		expect(filtered.kickoff_meeting_date).toBe('2026-02-01');
+		expect(filtered.kickoff_followup_date).toBe('2026-02-10');
+		expect(filtered.internal_meeting_date).toBe('2026-03-01');
+		expect(filtered.next_internal_meeting).toBe('2026-04-01');
+		expect(filtered.project_activities).toEqual([{ id: 'a1', name: 'Design' }]);
+
+		for (const unmappedColumn of [
+			'payment_terms',
+			'currency',
+			'invoicing_status',
+			'quotation_validity',
+			'billing_and_payment_terms',
+			'contact_email',
+			'phone',
+			'project_description',
+			'assignments',
+			'documents_list',
+			'disciplines',
+		]) {
+			expect(Object.hasOwn(filtered, unmappedColumn)).toBe(false);
+		}
+	});
+
+	it('keeps an unmapped column absent even when the whole payload is edited in place', () => {
+		const filtered = filterProjectForRights(realisticRow, memberRights);
+
+		expect(realisticRow.currency).toBe('USD');
+		expect(Object.hasOwn(filtered, 'currency')).toBe(false);
+	});
+});

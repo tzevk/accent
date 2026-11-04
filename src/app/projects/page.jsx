@@ -64,26 +64,24 @@ export default function Projects() {
 function ProjectsInner() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
-	const {
-		user: sessionUser,
-		can,
-		RESOURCES,
-		PERMISSIONS,
-		refreshSession,
-	} = useSession();
-	const isSuperAdmin = !!sessionUser?.is_super_admin;
-	const canViewProjects =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.READ);
-	const canEditProjects =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	const canOpenProjectEditor =
-		isSuperAdmin ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.READ) ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	const { refreshSession } = useSession();
 	// Lifecycle actions are per-project: the list API returns each row with
 	// its resolved rights. A global permission boolean never authorizes them.
 	const canRowPerform = (project, action) =>
 		Boolean(project?.rights?.canPerform?.[action]);
+	const canEditProjectDetails = (project) =>
+		project?.rights?.sections?.project_details?.edit === true;
+	/**
+	 * Mirror the status route: leaving/entering completed needs close or
+	 * reopen authority, any other board move needs project-details edit.
+	 */
+	const canMoveProjectToStatus = (project, targetStatus) => {
+		const target = String(targetStatus || '').toLowerCase();
+		const current = String(project?.status || '').toLowerCase();
+		if (target.includes('complet')) return canRowPerform(project, 'close');
+		if (current.includes('complet')) return canRowPerform(project, 'reopen');
+		return canEditProjectDetails(project);
+	};
 	const viewParam = searchParams.get('view');
 	const focusParam = searchParams.get('focus');
 
@@ -1018,7 +1016,7 @@ function ProjectsInner() {
 																				}
 																				autoFocus
 																			/>
-																		) : (
+																		) : canEditProjectDetails(project) ? (
 																			<button
 																				type="button"
 																				className="text-sm font-mono text-gray-900 hover:text-purple-600 hover:underline cursor-pointer"
@@ -1031,6 +1029,12 @@ function ProjectsInner() {
 																					project.project_id ||
 																					'-'}
 																			</button>
+																		) : (
+																			<span className="text-sm font-mono text-gray-900">
+																				{project.project_code ||
+																					project.project_id ||
+																					'-'}
+																			</span>
 																		)}
 																	</td>
 																	<td className="px-4 py-3">
@@ -1173,7 +1177,7 @@ function ProjectsInner() {
 																						<ArrowPathIcon className="h-4 w-4" />
 																					</button>
 																				)}
-																			{canViewProjects && (
+																			{project.rights?.canOpen === true && (
 																				<button
 																					onClick={() =>
 																						router.push(
@@ -1186,7 +1190,7 @@ function ProjectsInner() {
 																					<EyeIcon className="h-4 w-4" />
 																				</button>
 																			)}
-																			{canOpenProjectEditor && (
+																			{(project.rights?.editableSections?.length || 0) > 0 && (
 																				<button
 																					onClick={() =>
 																						router.push(
@@ -1570,6 +1574,19 @@ function ProjectsInner() {
 														)?.id;
 														const dstCol = col.id;
 														if (!srcCol) return;
+														if (srcCol !== dstCol) {
+															const dragged = findProjectByKey(key);
+															if (
+																!dragged ||
+																!canMoveProjectToStatus(dragged, dstCol)
+															) {
+																setDragOverCol(null);
+																setDraggingKey(null);
+																setDragOverKey(null);
+																setDragInsertPos(null);
+																return;
+															}
+														}
 														setDragOverCol(null);
 														setDraggingKey(null);
 														setDragOverKey(null);
@@ -1634,6 +1651,19 @@ function ProjectsInner() {
 														)?.id;
 														const dstCol = col.id;
 														if (!srcCol) return;
+														if (srcCol !== dstCol) {
+															const dragged = findProjectByKey(key);
+															if (
+																!dragged ||
+																!canMoveProjectToStatus(dragged, dstCol)
+															) {
+																setDragOverCol(null);
+																setDraggingKey(null);
+																setDragOverKey(null);
+																setDragInsertPos(null);
+																return;
+															}
+														}
 														setDragOverCol(null);
 														setDraggingKey(null);
 														const targetKey = dragOverKey;
@@ -1731,8 +1761,12 @@ function ProjectsInner() {
 															return (
 																<div
 																	key={key}
-																	draggable
+																	draggable={canEditProjectDetails(project)}
 																	onDragStart={(e) => {
+																		if (!canEditProjectDetails(project)) {
+																			e.preventDefault();
+																			return;
+																		}
 																		e.dataTransfer.setData('text/plain', key);
 																		e.dataTransfer.effectAllowed = 'move';
 																		setDraggingKey(key);
@@ -1754,7 +1788,7 @@ function ProjectsInner() {
 																			before ? 'before' : 'after'
 																		);
 																	}}
-																	className={`bg-white/85 backdrop-blur rounded-md border border-white/70 px-3 py-2 shadow-sm transition-all duration-200 ease-out cursor-grab active:cursor-grabbing hover:scale-[1.02] hover:shadow-md ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-[#64126D] cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-purple-300' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
+																	className={`bg-white/85 backdrop-blur rounded-md border border-white/70 px-3 py-2 shadow-sm transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-md ${canEditProjectDetails(project) ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-[#64126D] cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-purple-300' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
 																>
 																	{dragOverKey === key &&
 																		dragInsertPos === 'before' && (

@@ -118,10 +118,11 @@ export const COMMERCIAL_COLUMN_ALIASES: Record<string, string> = {
 };
 
 /**
- * Section -> readable project columns. Used to omit unreadable sections from
- * read payloads; `SECTION_WRITES` below owns the write map.
+ * Section -> display columns. These are the fields the tabs render; the
+ * read map below unions them with the write maps so a readable section
+ * exposes every field it owns.
  */
-export const SECTION_COLUMNS: Record<SectionId, readonly string[]> = {
+const SECTION_DISPLAY_COLUMNS: Record<SectionId, readonly string[]> = {
 	project_details: [
 		'name',
 		'project_code',
@@ -360,6 +361,26 @@ export const SECTION_LIST_COLUMNS: Record<SectionId, readonly string[]> =
 		])
 	) as Record<SectionId, readonly string[]>;
 
+/**
+ * Section -> readable project columns. The union of the display fields and
+ * the write maps, so a readable section exposes every column it owns — even
+ * when a tab does not render it. Columns outside this map and the identity
+ * list are never returned by `filterProjectForRights`.
+ */
+export const SECTION_COLUMNS: Record<SectionId, readonly string[]> =
+	Object.fromEntries(
+		WORK_SECTION_IDS.map((section) => [
+			section,
+			[
+				...new Set([
+					...SECTION_DISPLAY_COLUMNS[section],
+					...SECTION_WRITES[section].columns,
+					...SECTION_WRITES[section].listColumns,
+				]),
+			],
+		])
+	) as Record<SectionId, readonly string[]>;
+
 /** The only columns a `commercial` save may write, each needing edit rights. */
 export const COMMERCIAL_WRITE_COLUMNS = PROTECTED_COMMERCIAL_COLUMNS;
 
@@ -377,6 +398,24 @@ export const PROJECT_IDENTITY_FIELDS = [
 	'start_date',
 	'end_date',
 	'created_at',
+] as const;
+
+/**
+ * Derived, non-sensitive display fields the list queries attach by name
+ * (joined company/proposal titles). They are safe for any actor who may
+ * open the project and are never stored on the projects row.
+ */
+export const PROJECT_SUMMARY_FIELDS = [
+	'project_title',
+	'company_name',
+	'linked_company_name',
+	'proposal_client_name',
+	'proposal_company_name',
+	// Aliases used by the assigned-projects query for list-safe identity.
+	'project_name',
+	'project_status',
+	'project_start_date',
+	'project_end_date',
 ] as const;
 
 export function isSectionId(value: unknown): value is SectionId {

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/utils/api-permissions';
-import { dbConnect } from '@/utils/database';
 import { v4 as uuidv4 } from 'uuid';
+import {
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 // Allowed file types for MOM (Minutes of Meeting) documents
 const ALLOWED_TYPES = {
@@ -34,27 +37,45 @@ const ALLOWED_EXTENSIONS = [
 ];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
+async function requireMomAccess(request, projectId, right) {
+	const access = await requireProjectAccess(request, projectId, {
+		getLeadPolicy: loadLeadPolicy,
+	});
+	if ('response' in access) return access;
+	if (!access.rights.sections.minutes_internal_meet[right]) {
+		return { response: projectAccessDeniedResponse() };
+	}
+	return access;
+}
+
+function releaseAccess(access) {
+	if (access?.ownsDb) access.db.release?.();
+}
+
+function projectKey(project) {
+	return project.project_id ?? project.id;
+}
+
 /**
  * POST /api/projects/mom-upload
- * Upload a MOM (Minutes of Meeting) document attachment
+ * Upload a MOM (Minutes of Meeting) document attachment.
+ * Fields: file, project_id.
  */
 export async function POST(request) {
-	let db;
 	try {
-		const currentUser = await getCurrentUser(request);
-		if (!currentUser) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
-
 		const formData = await request.formData();
 		const file = formData.get('file');
+		const projectId = formData.get('project_id');
 
 		if (!file) {
 			return NextResponse.json(
 				{ success: false, error: 'No file uploaded' },
+				{ status: 400 }
+			);
+		}
+		if (!projectId) {
+			return NextResponse.json(
+				{ success: false, error: 'project_id is required' },
 				{ status: 400 }
 			);
 		}
@@ -84,109 +105,114 @@ export async function POST(request) {
 			);
 		}
 
-		db = await dbConnect();
+		const access = await requireMomAccess(request, projectId, 'edit');
+		if ('response' in access) return access.response;
+		const { project, user, db } = access;
 
-		const docId = uuidv4();
-		const bytes = await file.arrayBuffer();
-		const buffer = Buffer.from(bytes);
-		await db.execute(
-			`INSERT INTO project_mom_documents (id, original_name, file_type, file_size, file_data, uploaded_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-			[
-				docId,
-				file.name,
-				file.type || 'application/octet-stream',
-				file.size,
-				buffer,
-				currentUser.id || null,
-			]
-		);
+		try {
+			const docId = uuidv4();
+			const bytes = await file.arrayBuffer();
+			const buffer = Buffer.from(bytes);
+			await db.execute(
+				`INSERT INTO project_mom_documents (id, project_id, original_name, file_type, file_size, file_data, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				[
+					docId,
+					projectKey(project),
+					file.name,
+					file.type || 'application/octet-stream',
+					file.size,
+					buffer,
+					user.id || null,
+				]
+			);
 
-		const extension = ALLOWED_TYPES[file.type] || `.${fileExt}`;
-
-		return NextResponse.json({
-			success: true,
-			data: {
-				id: docId,
-				file_name: fileName,
-				original_name: file.name,
-				file_url: `/api/projects/mom-upload?id=${docId}`,
-				file_type: file.type,
-				file_size: file.size,
-			},
-		});
+			return NextResponse.json({
+				success: true,
+				data: {
+					id: docId,
+					file_name: fileName,
+					original_name: file.name,
+					file_url: `/api/projects/mom-upload?id=${docId}&project_id=${projectKey(project)}`,
+					file_type: file.type,
+					file_size: file.size,
+				},
+			});
+		} finally {
+			releaseAccess(access);
+		}
 	} catch (error) {
 		console.error('[MOM Upload] Error:', error);
 		return NextResponse.json(
 			{ success: false, error: 'Upload failed' },
 			{ status: 500 }
 		);
-	} finally {
-		if (db) db.release();
 	}
 }
 
 /**
- * GET /api/projects/mom-upload?id=<docId>
- * Fetch MOM document content by id
+ * GET /api/projects/mom-upload?id=<docId>&project_id=<project>
+ * Fetch MOM document content by id within its project.
  */
 export async function GET(request) {
-	let db;
 	try {
-		const currentUser = await getCurrentUser(request);
-		if (!currentUser) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
-
 		const { searchParams } = new URL(request.url);
 		const id = searchParams.get('id');
+		const projectId = searchParams.get('project_id');
 		if (!id) {
 			return NextResponse.json(
 				{ success: false, error: 'Document id is required' },
 				{ status: 400 }
 			);
 		}
-
-		db = await dbConnect();
-
-		const [rows] = await db.execute(
-			`SELECT id, original_name, file_type, file_data FROM project_mom_documents WHERE id = ? LIMIT 1`,
-			[id]
-		);
-
-		if (!rows || rows.length === 0) {
+		if (!projectId) {
 			return NextResponse.json(
-				{ success: false, error: 'Document not found' },
-				{ status: 404 }
+				{ success: false, error: 'project_id is required' },
+				{ status: 400 }
 			);
 		}
 
-		const doc = rows[0];
-		const contentType = doc.file_type || 'application/octet-stream';
-		const fileBuffer = doc.file_data;
-		const safeName = String(doc.original_name || 'mom-document').replace(
-			/[\r\n"]/g,
-			''
-		);
+		const access = await requireMomAccess(request, projectId, 'read');
+		if ('response' in access) return access.response;
+		const { project, db } = access;
 
-		return new NextResponse(fileBuffer, {
-			status: 200,
-			headers: {
-				'Content-Type': contentType,
-				'Content-Disposition': `inline; filename="${safeName}"`,
-				'Cache-Control': 'private, max-age=3600',
-			},
-		});
+		try {
+			const [rows] = await db.execute(
+				`SELECT id, original_name, file_type, file_data FROM project_mom_documents WHERE id = ? AND project_id = ? LIMIT 1`,
+				[id, projectKey(project)]
+			);
+
+			if (!rows || rows.length === 0) {
+				return NextResponse.json(
+					{ success: false, error: 'Document not found' },
+					{ status: 404 }
+				);
+			}
+
+			const doc = rows[0];
+			const contentType = doc.file_type || 'application/octet-stream';
+			const fileBuffer = doc.file_data;
+			const safeName = String(doc.original_name || 'mom-document').replace(
+				/[\r\n"]/g,
+				''
+			);
+
+			return new NextResponse(fileBuffer, {
+				status: 200,
+				headers: {
+					'Content-Type': contentType,
+					'Content-Disposition': `inline; filename="${safeName}"`,
+					'Cache-Control': 'private, max-age=3600',
+				},
+			});
+		} finally {
+			releaseAccess(access);
+		}
 	} catch (error) {
 		console.error('[MOM Download] Error:', error);
 		return NextResponse.json(
 			{ success: false, error: 'Failed to fetch document' },
 			{ status: 500 }
 		);
-	} finally {
-		if (db) db.release();
 	}
 }

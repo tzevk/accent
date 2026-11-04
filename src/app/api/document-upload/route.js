@@ -17,6 +17,34 @@ import {
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { query } from '@/utils/database';
+import {
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
+
+/**
+ * Resolve a project entity through the shared policy. Returns the access
+ * result or a generic denial; never a resource permission.
+ */
+async function requireProjectDocumentAccess(request, entityId, right) {
+	const access = await requireProjectAccess(request, entityId, {
+		getLeadPolicy: loadLeadPolicy,
+	});
+	if ('response' in access) return access;
+	if (!access.rights.sections.upload_documents[right]) {
+		return { response: projectAccessDeniedResponse() };
+	}
+	return access;
+}
+
+function releaseAccess(access) {
+	if (access?.ownsDb) access.db.release?.();
+}
+
+function storedProjectId(project) {
+	return project.project_id ?? project.id;
+}
 
 /**
  * POST /api/document-upload
@@ -57,24 +85,39 @@ export async function POST(request) {
 			);
 		}
 
-		// RBAC authorization check (SEC-06)
-		const resource = ENTITY_RESOURCE_MAP[entityType];
-		const auth = await ensurePermission(request, resource, PERMISSIONS.UPDATE);
-		if (auth instanceof Response) return auth;
-		if (!auth.authorized) {
-			return NextResponse.json(
-				{ success: false, error: 'Forbidden' },
-				{ status: 403 }
+		let authorizedEntityId = numericEntityId;
+		let uploadedBy;
+		if (entityType === 'project') {
+			const access = await requireProjectDocumentAccess(
+				request,
+				numericEntityId,
+				'edit'
 			);
-		}
+			if ('response' in access) return access.response;
+			authorizedEntityId = Number(storedProjectId(access.project));
+			uploadedBy = access.user.id;
+			releaseAccess(access);
+		} else {
+			// RBAC authorization check (SEC-06)
+			const resource = ENTITY_RESOURCE_MAP[entityType];
+			const auth = await ensurePermission(request, resource, PERMISSIONS.UPDATE);
+			if (auth instanceof Response) return auth;
+			if (!auth.authorized) {
+				return NextResponse.json(
+					{ success: false, error: 'Forbidden' },
+					{ status: 403 }
+				);
+			}
+			uploadedBy = auth.user?.id;
 
-		// Verify target entity exists and is active (SEC-06 IDOR check)
-		const exists = await verifyEntityExists(entityType, numericEntityId);
-		if (!exists) {
-			return NextResponse.json(
-				{ success: false, error: `${entityType} not found` },
-				{ status: 404 }
-			);
+			// Verify target entity exists and is active (SEC-06 IDOR check)
+			const exists = await verifyEntityExists(entityType, numericEntityId);
+			if (!exists) {
+				return NextResponse.json(
+					{ success: false, error: `${entityType} not found` },
+					{ status: 404 }
+				);
+			}
 		}
 
 		// Check file type & extension — both must be allowed (own-property
@@ -141,13 +184,13 @@ export async function POST(request) {
 			[
 				docId,
 				entityType,
-				numericEntityId,
+				authorizedEntityId,
 				safeOriginalName,
 				uniqueFilename,
 				downloadUrl,
 				file.type,
 				file.size,
-				auth.user.id,
+				uploadedBy,
 			]
 		);
 
@@ -203,24 +246,36 @@ export async function GET(request) {
 			);
 		}
 
-		// RBAC authorization check (SEC-06)
-		const resource = ENTITY_RESOURCE_MAP[entityType];
-		const auth = await ensurePermission(request, resource, PERMISSIONS.READ);
-		if (auth instanceof Response) return auth;
-		if (!auth.authorized) {
-			return NextResponse.json(
-				{ success: false, error: 'Forbidden' },
-				{ status: 403 }
+		let authorizedEntityId = numericEntityId;
+		if (entityType === 'project') {
+			const access = await requireProjectDocumentAccess(
+				request,
+				numericEntityId,
+				'read'
 			);
-		}
+			if ('response' in access) return access.response;
+			authorizedEntityId = Number(storedProjectId(access.project));
+			releaseAccess(access);
+		} else {
+			// RBAC authorization check (SEC-06)
+			const resource = ENTITY_RESOURCE_MAP[entityType];
+			const auth = await ensurePermission(request, resource, PERMISSIONS.READ);
+			if (auth instanceof Response) return auth;
+			if (!auth.authorized) {
+				return NextResponse.json(
+					{ success: false, error: 'Forbidden' },
+					{ status: 403 }
+				);
+			}
 
-		// Verify target entity exists and is active (SEC-06 IDOR check)
-		const exists = await verifyEntityExists(entityType, numericEntityId);
-		if (!exists) {
-			return NextResponse.json(
-				{ success: false, error: `${entityType} not found` },
-				{ status: 404 }
-			);
+			// Verify target entity exists and is active (SEC-06 IDOR check)
+			const exists = await verifyEntityExists(entityType, numericEntityId);
+			if (!exists) {
+				return NextResponse.json(
+					{ success: false, error: `${entityType} not found` },
+					{ status: 404 }
+				);
+			}
 		}
 
 		const [rows] = await query(
@@ -228,7 +283,7 @@ export async function GET(request) {
        FROM entity_documents 
        WHERE entity_type = ? AND entity_id = ? 
        ORDER BY created_at DESC`,
-			[entityType, numericEntityId]
+			[entityType, authorizedEntityId]
 		);
 
 		// Ensure all file_url entries point to the authenticated download endpoint
@@ -285,43 +340,54 @@ export async function DELETE(request) {
 			);
 		}
 
-		// Authorization check:
-		// 1. Caller with resource:delete or super_admin can delete any doc for that entity.
-		// 2. Caller with resource:update can delete documents they uploaded themselves.
-		const authDelete = await ensurePermission(
-			request,
-			resource,
-			PERMISSIONS.DELETE
-		);
-		const canDeleteDirectly =
-			!(authDelete instanceof Response) &&
-			(authDelete.user?.is_super_admin || authDelete.authorized);
-
-		if (!canDeleteDirectly) {
-			const authUpdate = await ensurePermission(
+		if (doc.entity_type === 'project') {
+			// Project documents are governed by the upload_documents section.
+			const access = await requireProjectDocumentAccess(
+				request,
+				doc.entity_id,
+				'edit'
+			);
+			if ('response' in access) return access.response;
+			releaseAccess(access);
+		} else {
+			// Authorization check:
+			// 1. Caller with resource:delete or super_admin can delete any doc for that entity.
+			// 2. Caller with resource:update can delete documents they uploaded themselves.
+			const authDelete = await ensurePermission(
 				request,
 				resource,
-				PERMISSIONS.UPDATE
+				PERMISSIONS.DELETE
 			);
-			if (authUpdate instanceof Response) return authUpdate;
-			if (!authUpdate.authorized) {
-				return NextResponse.json(
-					{ success: false, error: 'Forbidden' },
-					{ status: 403 }
-				);
-			}
+			const canDeleteDirectly =
+				!(authDelete instanceof Response) &&
+				(authDelete.user?.is_super_admin || authDelete.authorized);
 
-			const isOwner =
-				doc.uploaded_by &&
-				Number(doc.uploaded_by) === Number(authUpdate.user?.id);
-			if (!isOwner && !authUpdate.user?.is_super_admin) {
-				return NextResponse.json(
-					{
-						success: false,
-						error: 'Forbidden: you can only delete documents you uploaded',
-					},
-					{ status: 403 }
+			if (!canDeleteDirectly) {
+				const authUpdate = await ensurePermission(
+					request,
+					resource,
+					PERMISSIONS.UPDATE
 				);
+				if (authUpdate instanceof Response) return authUpdate;
+				if (!authUpdate.authorized) {
+					return NextResponse.json(
+						{ success: false, error: 'Forbidden' },
+						{ status: 403 }
+					);
+				}
+
+				const isOwner =
+					doc.uploaded_by &&
+					Number(doc.uploaded_by) === Number(authUpdate.user?.id);
+				if (!isOwner && !authUpdate.user?.is_super_admin) {
+					return NextResponse.json(
+						{
+							success: false,
+							error: 'Forbidden: you can only delete documents you uploaded',
+						},
+						{ status: 403 }
+					);
+				}
 			}
 		}
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextResponse } from 'next/server';
+import type * as ProjectRightsModule from '@/lib/project-rights';
 
 const {
 	mockQuery,
@@ -20,6 +21,57 @@ const {
 vi.mock('@/utils/database', () => ({
 	query: (...args: unknown[]) => mockQuery(...args),
 }));
+
+const { mockRequireProjectAccess } = vi.hoisted(() => ({
+	mockRequireProjectAccess: vi.fn(),
+}));
+
+vi.mock('@/lib/project-rights', async (importOriginal) => {
+	const actual = await importOriginal<typeof ProjectRightsModule>();
+	return {
+		...actual,
+		requireProjectAccess: mockRequireProjectAccess,
+		loadLeadPolicy: vi.fn().mockResolvedValue({ sections: {} }),
+	};
+});
+
+function grantProjectAccess({
+	read = true,
+	edit = true,
+	userId = 5,
+	projectId = 10,
+} = {}) {
+	mockRequireProjectAccess.mockResolvedValue({
+		user: { id: userId, email: 'member@example.com' },
+		project: { id: projectId, project_id: projectId },
+		rights: {
+			canOpen: true,
+			canContribute: true,
+			isMember: true,
+			isLead: false,
+			sections: { upload_documents: { read, edit } },
+		},
+		leadPolicy: { sections: {} },
+		db: { release: vi.fn() },
+		ownsDb: false,
+	});
+}
+
+function denyProjectAccess(status = 403) {
+	mockRequireProjectAccess.mockResolvedValue({
+		response: NextResponse.json(
+			{
+				success: false,
+				error:
+					status === 401
+						? 'Unauthorized'
+						: 'You do not have permission to access this project',
+			},
+			{ status }
+		),
+	});
+}
+
 let currentMockUser: Record<string, unknown> | null = null;
 
 vi.mock('@/utils/api-permissions', async (importOriginal) => {
@@ -85,6 +137,7 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockQuery.mockReset();
+		mockRequireProjectAccess.mockReset();
 		currentMockUser = null;
 		mockExistsSync.mockReturnValue(true);
 	});
@@ -108,6 +161,7 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 		});
 
 		it('returns 401 when user is not authenticated', async () => {
+			denyProjectAccess(401);
 			const { POST } = await import('@/app/api/document-upload/route');
 			const file = makeMockFile('spec.pdf', 'application/pdf');
 			const req = makePostRequest({
@@ -119,13 +173,14 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 			const res = await POST(req);
 			expect(res.status).toBe(401);
 		});
-		it('returns 403 when user lacks update permission on the entity', async () => {
+		it('returns 403 when the project upload section is read-only', async () => {
 			currentMockUser = {
 				id: 2,
 				username: 'bob',
 				is_super_admin: 0,
-				merged_permissions: ['projects:read'], // missing projects:update
+				merged_permissions: ['projects:read'],
 			};
+			grantProjectAccess({ read: true, edit: false });
 
 			const { POST } = await import('@/app/api/document-upload/route');
 			const file = makeMockFile('spec.pdf', 'application/pdf');
@@ -137,17 +192,19 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 			const res = await POST(req);
 			expect(res.status).toBe(403);
 			const body = await res.json();
-			expect(body.error).toContain('Forbidden');
+			expect(body.error).toBe(
+				'You do not have permission to access this project'
+			);
 		});
 
-		it('returns 404 when target entity does not exist (IDOR prevention)', async () => {
+		it('denies a project the actor cannot access (IDOR prevention)', async () => {
 			currentMockUser = {
 				id: 1,
 				username: 'alice',
 				is_super_admin: 0,
 				merged_permissions: ['projects:update'],
 			};
-			mockQuery.mockResolvedValueOnce([[]]); // SELECT id FROM projects -> empty
+			denyProjectAccess();
 
 			const { POST } = await import('@/app/api/document-upload/route');
 			const file = makeMockFile('spec.pdf', 'application/pdf');
@@ -157,9 +214,11 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 				entity_id: '999',
 			});
 			const res = await POST(req);
-			expect(res.status).toBe(404);
+			expect(res.status).toBe(403);
 			const body = await res.json();
-			expect(body.error).toContain('project not found');
+			expect(body.error).toBe(
+				'You do not have permission to access this project'
+			);
 		});
 
 		it('returns 400 when file extension or type is disallowed', async () => {
@@ -169,7 +228,7 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 				is_super_admin: 0,
 				merged_permissions: ['projects:update'],
 			};
-			mockQuery.mockResolvedValueOnce([[{ id: 10 }]]); // project exists
+			grantProjectAccess();
 
 			const { POST } = await import('@/app/api/document-upload/route');
 			const file = makeMockFile('payload.svg', 'image/svg+xml');
@@ -191,7 +250,7 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 				is_super_admin: 0,
 				merged_permissions: ['projects:update'],
 			};
-			mockQuery.mockResolvedValueOnce([[{ id: 10 }]]); // project exists
+			grantProjectAccess({ userId: 5 });
 			mockQuery.mockResolvedValueOnce([{ affectedRows: 1 }]); // INSERT
 
 			const { POST } = await import('@/app/api/document-upload/route');
@@ -218,7 +277,7 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 			expect(writtenPath).toMatch(/[0-9a-f-]{36}\.pdf$/);
 
 			// Verify DB record
-			const [insertSql, insertParams] = mockQuery.mock.calls[1];
+			const [insertSql, insertParams] = mockQuery.mock.calls[0];
 			expect(insertSql).toContain('INSERT INTO entity_documents');
 			expect(insertParams[1]).toBe('project');
 			expect(insertParams[2]).toBe(10);
@@ -254,6 +313,61 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 
 			const res = await GET(req);
 			expect(res.status).toBe(403);
+		});
+
+		it('lists project documents only for a readable upload section', async () => {
+			currentMockUser = {
+				id: 3,
+				username: 'member',
+				is_super_admin: 0,
+				merged_permissions: [],
+			};
+			grantProjectAccess({ read: true, edit: false });
+			mockQuery.mockResolvedValueOnce([
+				[
+					{
+						id: 'project-doc-1',
+						entity_type: 'project',
+						entity_id: 10,
+						original_name: 'spec.pdf',
+					},
+				],
+			]);
+
+			const { GET } = await import('@/app/api/document-upload/route');
+			const res = await GET(
+				new Request(
+					'http://localhost/api/document-upload?entity_type=project&entity_id=10'
+				)
+			);
+			const body = await res.json();
+
+			expect(res.status).toBe(200);
+			expect(body.data).toHaveLength(1);
+			expect(mockQuery).toHaveBeenCalledWith(
+				expect.stringContaining('FROM entity_documents'),
+				['project', 10]
+			);
+		});
+
+		it('denies project documents when upload_documents is not readable', async () => {
+			currentMockUser = {
+				id: 3,
+				username: 'member',
+				is_super_admin: 0,
+				merged_permissions: [],
+			};
+			grantProjectAccess({ read: false, edit: false });
+
+			const { GET } = await import('@/app/api/document-upload/route');
+			const res = await GET(
+				new Request(
+					'http://localhost/api/document-upload?entity_type=project&entity_id=10'
+				)
+			);
+
+			expect(res.status).toBe(403);
+			expect(mockQuery).not.toHaveBeenCalled();
 		});
 
 		it('returns 404 when invoice does not exist', async () => {
@@ -315,13 +429,14 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 	});
 
 	describe('DELETE /api/document-upload', () => {
-		it("returns 403 when user with update permission tries to delete someone else's document", async () => {
+		it('returns 403 when the project upload section is read-only', async () => {
 			currentMockUser = {
 				id: 10,
 				username: 'charlie',
 				is_super_admin: 0,
-				merged_permissions: ['projects:update'], // has update but not projects:delete
+				merged_permissions: ['projects:update'],
 			};
+			grantProjectAccess({ read: true, edit: false });
 
 			mockQuery.mockResolvedValueOnce([
 				[
@@ -330,7 +445,7 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 						entity_type: 'project',
 						entity_id: 5,
 						file_name: 'doc-uuid-123.pdf',
-						uploaded_by: 99, // uploaded by different user
+						uploaded_by: 99,
 					},
 				],
 			]);
@@ -346,16 +461,19 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 			const res = await DELETE(req);
 			expect(res.status).toBe(403);
 			const body = await res.json();
-			expect(body.error).toContain('Forbidden');
+			expect(body.error).toBe(
+				'You do not have permission to access this project'
+			);
 		});
 
-		it('allows deletion when user uploaded the document and has update permission', async () => {
+		it('allows deletion with project upload edit authority', async () => {
 			currentMockUser = {
 				id: 10,
 				username: 'charlie',
 				is_super_admin: 0,
-				merged_permissions: ['projects:update'],
+				merged_permissions: [],
 			};
+			grantProjectAccess({ read: true, edit: true });
 
 			mockQuery.mockResolvedValueOnce([
 				[
@@ -364,7 +482,7 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 						entity_type: 'project',
 						entity_id: 5,
 						file_name: 'doc-uuid-123.pdf',
-						uploaded_by: 10, // same user
+						uploaded_by: 99,
 					},
 				],
 			]);
@@ -383,13 +501,14 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 			expect(mockUnlink).toHaveBeenCalled();
 		});
 
-		it('allows deletion when user has delete permission even if not the uploader', async () => {
+		it('denies deletion when the project has no upload edit right', async () => {
 			currentMockUser = {
 				id: 1,
 				username: 'admin',
 				is_super_admin: 0,
 				merged_permissions: ['projects:delete'],
 			};
+			grantProjectAccess({ read: true, edit: false });
 
 			mockQuery.mockResolvedValueOnce([
 				[
@@ -402,7 +521,6 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 					},
 				],
 			]);
-			mockQuery.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
 			const { DELETE } = await import('@/app/api/document-upload/route');
 			const req = new Request(
@@ -413,8 +531,8 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 			);
 
 			const res = await DELETE(req);
-			expect(res.status).toBe(200);
-			expect(mockUnlink).toHaveBeenCalled();
+			expect(res.status).toBe(403);
+			expect(mockUnlink).not.toHaveBeenCalled();
 		});
 	});
 
@@ -457,6 +575,71 @@ describe('SEC-06 & SEC-10 — Document Upload, IDOR, and Authenticated Downloads
 
 			const res = await GET(req);
 			expect(res.status).toBe(403);
+		});
+
+		it('denies a project document download when upload_documents is unreadable', async () => {
+			currentMockUser = {
+				id: 4,
+				username: 'outsider',
+				is_super_admin: 0,
+				merged_permissions: [],
+			};
+			mockQuery.mockResolvedValueOnce([
+				[
+					{
+						id: 'doc-project-1',
+						entity_type: 'project',
+						entity_id: 10,
+						original_name: 'spec.pdf',
+						file_name: 'doc-project-1.pdf',
+						file_type: 'application/pdf',
+					},
+				],
+			]);
+			grantProjectAccess({ read: false, edit: false });
+
+			const { GET } = await import('@/app/api/document-upload/download/route');
+			const req = new Request(
+				'http://localhost/api/document-upload/download?id=doc-project-1'
+			);
+
+			const res = await GET(req);
+			expect(res.status).toBe(403);
+			expect(await res.json()).toEqual({
+				success: false,
+				error: 'You do not have permission to access this project',
+			});
+		});
+
+		it('serves a project document to a section reader', async () => {
+			currentMockUser = {
+				id: 4,
+				username: 'member',
+				is_super_admin: 0,
+				merged_permissions: [],
+			};
+			mockQuery.mockResolvedValueOnce([
+				[
+					{
+						id: 'doc-project-1',
+						entity_type: 'project',
+						entity_id: 10,
+						original_name: 'spec.pdf',
+						file_name: 'doc-project-1.pdf',
+						file_type: 'application/pdf',
+					},
+				],
+			]);
+			grantProjectAccess({ read: true, edit: false });
+			mockExistsSync.mockReturnValue(true);
+
+			const { GET } = await import('@/app/api/document-upload/download/route');
+			const req = new Request(
+				'http://localhost/api/document-upload/download?id=doc-project-1'
+			);
+
+			const res = await GET(req);
+			expect(res.status).toBe(200);
 		});
 
 		it('returns 404 when file does not exist on disk', async () => {

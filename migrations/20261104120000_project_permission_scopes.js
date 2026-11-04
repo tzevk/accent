@@ -58,6 +58,28 @@ function parseFieldPermissions(raw) {
 	return typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
+function asRecord(value) {
+	return value && typeof value === 'object' && !Array.isArray(value)
+		? value
+		: null;
+}
+
+/**
+ * Project actions granted through the nested permission-editor tree
+ * (`field_permissions.modules.projects.crud`). `hasProjectAction` treats a
+ * `true` crud entry as a grant, so the migration must seed its scope too.
+ */
+function nestedProjectActions(fieldPermissions) {
+	const modules = asRecord(fieldPermissions.modules);
+	const projects = asRecord(modules?.projects);
+	if (!projects || projects.enabled === false) return [];
+	const crud = asRecord(projects.crud);
+	if (!crud) return [];
+	return PROJECT_ACTIONS.filter((action) => crud[action] === true).map(
+		(action) => `projects:${action}`
+	);
+}
+
 export async function up(knex) {
 	const users = await knex
 		.select('id', 'role_id', 'permissions', 'field_permissions')
@@ -68,12 +90,13 @@ export async function up(knex) {
 	);
 
 	for (const user of users) {
+		const fieldPermissions = parseFieldPermissions(user.field_permissions);
 		const merged = new Set([
 			...(rolePermissions.get(user.role_id) ?? []),
 			...parsePermissions(user.permissions),
+			...nestedProjectActions(fieldPermissions),
 		]);
 
-		const fieldPermissions = parseFieldPermissions(user.field_permissions);
 		const existingProjectScopes =
 			fieldPermissions.projectScopes &&
 			typeof fieldPermissions.projectScopes === 'object' &&

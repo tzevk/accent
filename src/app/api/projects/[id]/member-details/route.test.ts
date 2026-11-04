@@ -402,4 +402,178 @@ describe('member project details API', () => {
 		expect(mockCommit).toHaveBeenCalledOnce();
 		expect(mockLogActivity).toHaveBeenCalledOnce();
 	});
+
+	it('returns empty arrays for a lead whose policy hides the member sections', async () => {
+		const leadProject = {
+			...project,
+			project_team: JSON.stringify([
+				{ user_id: 43, email: 'lead@example.com', role: 'Project Lead' },
+			]),
+		};
+		mockGetCurrentUser.mockResolvedValue({
+			...member,
+			id: 43,
+			email: 'lead@example.com',
+		});
+		mockLoadLeadPolicy.mockResolvedValue({
+			sections: {
+				assumption: 'hidden',
+				query_log: 'hidden',
+				lessons_learnt: 'hidden',
+				discussion: 'hidden',
+			},
+		});
+		mockExecute.mockReset();
+		mockExecute.mockResolvedValueOnce([[leadProject]]);
+
+		const response = await GET(request('GET'), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data).toEqual({
+			assumptions: [],
+			discussions: [],
+			queryLog: [],
+			lessonsLearnt: [],
+		});
+		expect(
+			mockExecute.mock.calls.some(([sql]) =>
+				String(sql).includes('project_followups')
+			)
+		).toBe(false);
+	});
+
+	it('returns only the readable member sections for a lead', async () => {
+		const leadProject = {
+			...project,
+			project_team: JSON.stringify([
+				{ user_id: 43, email: 'lead@example.com', role: 'Project Lead' },
+			]),
+		};
+		mockGetCurrentUser.mockResolvedValue({
+			...member,
+			id: 43,
+			email: 'lead@example.com',
+		});
+		mockLoadLeadPolicy.mockResolvedValue({
+			sections: { assumption: 'hidden', query_log: 'view' },
+		});
+		mockExecute.mockReset();
+		mockExecute
+			.mockResolvedValueOnce([[leadProject]])
+			.mockResolvedValueOnce([
+				[{ id: 5, project_id: 10, description: 'Review' }],
+			]);
+
+		const response = await GET(request('GET'), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.assumptions).toEqual([]);
+		expect(body.data.queryLog).toEqual([{ id: 'old-query' }]);
+		expect(body.data.lessonsLearnt).toEqual([{ id: 'old-lesson' }]);
+		expect(body.data.discussions).toEqual([
+			{ id: 5, project_id: 10, description: 'Review' },
+		]);
+	});
+
+	it('returns no member data to an action-only non-member', async () => {
+		mockGetCurrentUser.mockResolvedValue({
+			...member,
+			id: 99,
+			email: 'assigner@example.com',
+			merged_permissions: ['projects:assign'],
+			field_permissions: {
+				projectScopes: { projects: { assign: 'all' } },
+			},
+		});
+		mockExecute.mockReset();
+		mockExecute.mockResolvedValueOnce([[project]]);
+
+		const response = await GET(request('GET'), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data).toEqual({
+			assumptions: [],
+			discussions: [],
+			queryLog: [],
+			lessonsLearnt: [],
+		});
+		expect(
+			mockExecute.mock.calls.some(([sql]) =>
+				String(sql).includes('project_followups')
+			)
+		).toBe(false);
+	});
+
+	it.each(['view', 'hidden'] as const)(
+		'refuses a lead contribution to a %s member section',
+		async (setting) => {
+			const leadProject = {
+				...project,
+				project_team: JSON.stringify([
+					{ user_id: 43, email: 'lead@example.com', role: 'Project Lead' },
+				]),
+			};
+			mockGetCurrentUser.mockResolvedValue({
+				...member,
+				id: 43,
+				email: 'lead@example.com',
+			});
+			mockLoadLeadPolicy.mockResolvedValue({
+				sections: { assumption: setting },
+			});
+			mockExecute.mockReset();
+			mockExecute.mockResolvedValueOnce([[leadProject]]);
+
+			const response = await POST(
+				request('POST', {
+					section: 'assumption',
+					entry: { assumption_description: 'Lead cannot add this' },
+				}),
+				params()
+			);
+
+			expect(response.status).toBe(403);
+			expect(await response.json()).toEqual({
+				success: false,
+				error: 'You do not have permission to access this project',
+			});
+			expect(mockBeginTransaction).not.toHaveBeenCalled();
+			expect(
+				mockExecute.mock.calls.some(([sql]) =>
+					String(sql).startsWith('UPDATE projects')
+				)
+			).toBe(false);
+			expect(mockLogActivity).not.toHaveBeenCalled();
+		}
+	);
+
+	it('keeps the ordinary member discussion workflow while a lead policy is view-only', async () => {
+		mockLoadLeadPolicy.mockResolvedValue({
+			sections: { discussion: 'view' },
+		});
+		const insertedDiscussion = {
+			id: 99,
+			project_id: 10,
+			description: 'Member discussion',
+		};
+		mockExecute
+			.mockResolvedValueOnce([[project]])
+			.mockResolvedValueOnce([{ insertId: 99 }])
+			.mockResolvedValueOnce([[insertedDiscussion]]);
+
+		const response = await POST(
+			request('POST', {
+				section: 'discussion',
+				entry: { description: 'Member discussion' },
+			}),
+			params()
+		);
+
+		expect(response.status).toBe(200);
+		expect((await response.json()).data.entry).toEqual(insertedDiscussion);
+		expect(mockLogActivity).toHaveBeenCalledOnce();
+	});
 });

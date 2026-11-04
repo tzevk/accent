@@ -56,6 +56,9 @@ const editor = {
 	email: 'editor@example.com',
 	is_super_admin: 0,
 	merged_permissions: ['projects:update'],
+	field_permissions: {
+		projectScopes: { projects: { update: 'all' } },
+	},
 };
 
 function allEdit() {
@@ -157,6 +160,20 @@ describe('GET /api/admin/project-lead-policy', () => {
 
 		expect(response.status).toBe(200);
 	});
+
+	it('returns 403 for a scoped projects:update holder', async () => {
+		currentUser = {
+			...editor,
+			field_permissions: {
+				projectScopes: { projects: { update: 'led' } },
+			},
+		};
+
+		const response = await GET(request('GET'));
+
+		expect(response.status).toBe(403);
+		expect(mockWithDb).not.toHaveBeenCalled();
+	});
 });
 
 describe('PUT /api/admin/project-lead-policy', () => {
@@ -171,6 +188,20 @@ describe('PUT /api/admin/project-lead-policy', () => {
 
 	it('returns 403 without projects:update', async () => {
 		currentUser = { ...editor, merged_permissions: [] };
+
+		const response = await PUT(request('PUT', { sections: {} }));
+
+		expect(response.status).toBe(403);
+		expect(mockWithDb).not.toHaveBeenCalled();
+	});
+
+	it('returns 403 for a scoped projects:update holder', async () => {
+		currentUser = {
+			...editor,
+			field_permissions: {
+				projectScopes: { projects: { update: 'assigned' } },
+			},
+		};
 
 		const response = await PUT(request('PUT', { sections: {} }));
 

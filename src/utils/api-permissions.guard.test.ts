@@ -154,14 +154,7 @@ describe('ensurePermission guard — instanceof Response pattern', () => {
 		expect(response.status).toBe(403);
 	});
 
-	it('rejects unauthorized followups POST with NextResponse guard', async () => {
-		const { ensurePermission } = await import('@/utils/api-permissions');
-		const deniedResponse = NextResponse.json(
-			{ success: false, error: 'Forbidden' },
-			{ status: 403 }
-		);
-		ensurePermission.mockResolvedValue(deniedResponse);
-
+	it('rejects unauthorized followups POST through the project access guard', async () => {
 		const { POST } = await import('@/app/api/projects/[id]/followups/route');
 		const response = await POST(
 			createRequest({
@@ -171,7 +164,7 @@ describe('ensurePermission guard — instanceof Response pattern', () => {
 			}),
 			{ params: Promise.resolve({ id: '1' }) }
 		);
-		expect(response.status).toBe(403);
+		expect(response.status).toBe(401);
 	});
 
 	it('allows request when ensurePermission returns authorized', async () => {
