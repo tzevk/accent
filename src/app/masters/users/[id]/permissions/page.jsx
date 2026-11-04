@@ -1392,7 +1392,7 @@ const MODULE_FIELDS = {
 const SPECIAL_PERMS = {
 	leads: ['assign', 'convert'],
 	proposals: ['convert', 'approve'],
-	projects: ['assign', 'close'],
+	projects: ['assign', 'close', 'reopen'],
 	activities: ['assign'],
 };
 

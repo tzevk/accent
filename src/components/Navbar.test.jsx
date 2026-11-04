@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.fn();
@@ -6,6 +6,7 @@ const rbacMock = vi.hoisted(() => ({
 	superAdmin: true,
 	payrollRead: true,
 	adminRead: true,
+	projectsRead: false,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -24,7 +25,8 @@ vi.mock('@/utils/client-rbac', () => ({
 		can: (resource, permission) =>
 			permission === 'read' &&
 			((resource === 'payroll' && rbacMock.payrollRead) ||
-				(resource === 'admin' && rbacMock.adminRead)),
+				(resource === 'admin' && rbacMock.adminRead) ||
+				(resource === 'projects' && rbacMock.projectsRead)),
 		RESOURCES: { ADMIN: 'admin', PAYROLL: 'payroll' },
 		PERMISSIONS: { READ: 'read' },
 	}),
@@ -44,6 +46,7 @@ describe('Navbar payroll group', () => {
 		rbacMock.superAdmin = true;
 		rbacMock.payrollRead = true;
 		rbacMock.adminRead = true;
+		rbacMock.projectsRead = false;
 		vi.stubGlobal('fetch', fetchMock);
 		fetchMock.mockResolvedValue({
 			ok: true,
@@ -99,5 +102,56 @@ describe('Navbar payroll group', () => {
 
 		expect(screen.getByRole('link', { name: 'Salary Profiles' })).toBeVisible();
 		expect(screen.getByRole('link', { name: 'Contract Pay' })).toBeVisible();
+	});
+});
+
+
+describe('Navbar Projects entry', () => {
+	const projectAccessResponse = (hasAccess) => ({
+		ok: true,
+		json: async () => ({ success: true, data: { hasAccess } }),
+	});
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		rbacMock.superAdmin = false;
+		rbacMock.payrollRead = false;
+		rbacMock.adminRead = false;
+		rbacMock.projectsRead = false;
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	it('shows Projects to a user with a project relationship but no project permission', async () => {
+		fetchMock.mockResolvedValue(projectAccessResponse(true));
+
+		render(<Navbar />);
+
+		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/projects/access',
+			expect.objectContaining({ cache: 'no-store' })
+		);
+	});
+
+	it('hides Projects from a user with no relationship and no project permission', async () => {
+		fetchMock.mockResolvedValue(projectAccessResponse(false));
+
+		render(<Navbar />);
+
+		await waitFor(() => {
+			expect(fetchMock).toHaveBeenCalled();
+		});
+		expect(
+			screen.queryByRole('link', { name: 'Projects' })
+		).not.toBeInTheDocument();
+	});
+
+	it('shows Projects from an explicit project read permission', async () => {
+		rbacMock.projectsRead = true;
+		fetchMock.mockResolvedValue(projectAccessResponse(false));
+
+		render(<Navbar />);
+
+		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
 	});
 });

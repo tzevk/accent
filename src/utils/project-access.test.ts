@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+	getProjectTeamMembership,
 	hasUserProjectAssignment,
+	isProjectLeadRole,
 	isUserInProjectTeam,
 } from '@/utils/project-access';
 
@@ -42,6 +44,38 @@ describe('project access helpers', () => {
 				12
 			)
 		).toBe(false);
+	});
+
+	it('resolves membership and lead identity from the same team list', () => {
+		const team = [
+			{ user_id: 42, role: 'Team Member' },
+			{ email: 'lead@example.com', role: '  project LEAD ' },
+		];
+
+		expect(getProjectTeamMembership(team, 42)).toEqual({
+			isMember: true,
+			isLead: false,
+			member: { user_id: 42, role: 'Team Member' },
+		});
+		expect(
+			getProjectTeamMembership(team, 99, 'LEAD@example.com')
+		).toMatchObject({
+			isMember: true,
+			isLead: true,
+		});
+		expect(getProjectTeamMembership(team, 7, 'other@example.com')).toEqual({
+			isMember: false,
+			isLead: false,
+			member: null,
+		});
+	});
+
+	it('treats only the exact Project Lead role as lead identity', () => {
+		expect(isProjectLeadRole('Project Lead')).toBe(true);
+		expect(isProjectLeadRole(' project lead ')).toBe(true);
+		expect(isProjectLeadRole('Project Manager')).toBe(false);
+		expect(isProjectLeadRole('Lead Designer')).toBe(false);
+		expect(isProjectLeadRole(undefined)).toBe(false);
 	});
 
 	it('rejects malformed or unrelated team data', () => {

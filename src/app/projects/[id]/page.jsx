@@ -298,25 +298,31 @@ export default function ProjectViewPage() {
 			? projectData.error || 'Failed to load project'
 			: null);
 
-	const isSuperAdmin =
-		sessionUser?.is_super_admin === true ||
-		sessionUser?.is_super_admin === 1 ||
-		sessionUser?.is_super_admin === '1';
-	const canEditProjectContent =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	const isEmployeeWorkspace = !isSuperAdmin && !canEditProjectContent;
+	// Server-resolved rights are the only source of tab visibility and
+	// read-only state. The client never re-derives project authority.
+	const rights = projectData?.rights ?? null;
+	const isEmployeeWorkspace = rights
+		? !rights.sections?.project_details?.read
+		: false;
+	const canEditProjectContent = Boolean(rights?.editableSections?.length);
 
-	const visibleTabs = useMemo(
-		() =>
-			isEmployeeWorkspace
-				? EMPLOYEE_TAB_IDS.map((tabId) =>
-						EMPLOYEE_TAB_CONFIG.find((tab) => tab.id === tabId)
-					).filter(Boolean)
-				: TAB_CONFIG.filter(
-						(tab) => !tab.requiresUpdate || canEditProjectContent
-					),
-		[canEditProjectContent, isEmployeeWorkspace]
-	);
+	const visibleTabs = useMemo(() => {
+		if (!rights) return [];
+		const readableSections = rights.readableSections || [];
+		if (isEmployeeWorkspace) {
+			return EMPLOYEE_TAB_IDS.filter((tabId) =>
+				readableSections.includes(tabId)
+			)
+				.map((tabId) => EMPLOYEE_TAB_CONFIG.find((tab) => tab.id === tabId))
+				.filter(Boolean);
+		}
+		return TAB_CONFIG.filter((tab) => {
+			if (tab.requiresPermission) {
+				return Boolean(rights.financialAreas?.[tab.requiresPermission]);
+			}
+			return readableSections.includes(tab.id);
+		});
+	}, [rights, isEmployeeWorkspace]);
 
 	const focusTab = useCallback(
 		(index) => {
@@ -742,16 +748,19 @@ export default function ProjectViewPage() {
 		);
 	}
 
-	if (error || !project) {
+	if (error || !project || !rights) {
+		const denialMessage =
+			typeof error === 'string' && error
+				? error
+				: (error?.message ??
+					(!rights && project
+						? 'You do not have permission to access this project.'
+						: 'Project not found'));
 		return (
 			<div className="min-h-screen bg-gray-50 flex flex-col">
 				<Navbar />
 				<div className="flex-1 flex flex-col items-center justify-center text-sm text-gray-500 space-y-3 pt-16">
-					<p>
-						{typeof error === 'string' && error
-							? error
-							: (error?.message ?? 'Project not found')}
-					</p>
+					<p>{denialMessage}</p>
 					<Link
 						href="/projects"
 						className="px-4 py-2 text-xs rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors"

@@ -1,10 +1,8 @@
-import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/utils/api-permissions';
 import {
-	hasUserProjectAssignment,
-	isUserInProjectTeam,
-} from '@/utils/project-access';
+	requireProjectAccess,
+	filterProjectForRights,
+} from '@/lib/project-rights';
 
 /**
  * Helper to safely parse JSON fields
@@ -22,86 +20,26 @@ function parseJsonField(value, fallback = []) {
 /**
  * GET /api/projects/[id]/detail
  *
- * Optimized endpoint for fetching single project details.
- *
- * Performance optimizations:
- * 1. No schema introspection queries
- * 2. Single query with OR conditions for flexible ID matching
- * 3. Parallel fetch for project and activities
- * 4. Cache-Control headers
+ * Optimized endpoint for fetching single project details for the edit screen.
+ * Authorization and payload shaping both come from the shared project-rights
+ * policy: a denied project returns the generic 403 (never an empty payload),
+ * unreadable sections are omitted, and `rights` travels beside `data`.
  */
 export async function GET(request, { params }) {
 	const startTime = Date.now();
+	const { id } = await params;
+
+	const access = await requireProjectAccess(request, id);
+	if ('response' in access) return access.response;
+
+	const { project, rights, db, ownsDb } = access;
 
 	try {
-		const user = await getCurrentUser(request);
-		if (!user) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
+		const projectKey = project.id ?? project.project_id;
 
-		const { id } = await params;
-		if (!id || id === 'undefined') {
-			return NextResponse.json(
-				{ success: false, error: 'Invalid project id' },
-				{ status: 400 }
-			);
-		}
-
-		const isSuperAdmin = user.is_super_admin;
-		const canSeeAllProjects = isSuperAdmin;
-
-		const db = await dbConnect();
-
-		try {
-			// Single query to find project - try project_id first, then project_code
-			let project = null;
-
-			// Always try text-based lookup first since project_id is the primary identifier
-			const [rows] = await db.execute(
-				`
-        SELECT * FROM projects 
-        WHERE (project_id = ? OR project_code = ?) AND isDelete = 0
-        LIMIT 1
-      `,
-				[id, id]
-			);
-			project = rows[0];
-
-			if (!project) {
-				return NextResponse.json(
-					{ success: false, error: 'Project not found' },
-					{ status: 404 }
-				);
-			}
-
-			// Team or normalized activity-assignment access check
-			if (!canSeeAllProjects) {
-				const isTeamMember = isUserInProjectTeam(
-					project.project_team,
-					user.id,
-					user.email
-				);
-				const hasAssignment =
-					!isTeamMember &&
-					(await hasUserProjectAssignment(db, project, user.id));
-				if (!isTeamMember && !hasAssignment) {
-					return NextResponse.json(
-						{
-							success: false,
-							error: 'You do not have permission to access this project',
-						},
-						{ status: 403 }
-					);
-				}
-			}
-
-			// Determine project key for related queries
-			const projectKey = project.id || project.project_id;
-
-			// Fetch related data in parallel
+		let projectActivities = [];
+		let assignments = [];
+		if (rights.sections.project_activity.read) {
 			const [activitiesResult, assignmentsResult] = await Promise.all([
 				db
 					.execute(
@@ -109,7 +47,6 @@ export async function GET(request, { params }) {
 						[projectKey]
 					)
 					.catch(() => [[]]),
-
 				db
 					.execute(
 						'SELECT * FROM user_activity_assignments WHERE project_id = ?',
@@ -117,92 +54,80 @@ export async function GET(request, { params }) {
 					)
 					.catch(() => [[]]),
 			]);
+			projectActivities = activitiesResult[0] || [];
+			assignments = assignmentsResult[0] || [];
+		}
 
-			const [projectActivities] = activitiesResult;
-			const [assignments] = assignmentsResult;
+		const jsonFields = [
+			'planning_activities_list',
+			'documents_list',
+			'input_documents_list',
+			'documents_received_list',
+			'documents_issued_list',
+			'project_handover_list',
+			'project_manhours_list',
+			'project_query_log_list',
+			'project_assumption_list',
+			'project_lessons_learnt_list',
+			'project_schedule_list',
+			'kickoff_meetings_list',
+			'internal_meetings_list',
+			'software_items',
+			'project_activities_list',
+			'project_team',
+		];
 
-			// Parse all JSON fields
-			const jsonFields = [
-				'planning_activities_list',
-				'documents_list',
-				'input_documents_list',
-				'documents_received_list',
-				'documents_issued_list',
-				'project_handover_list',
-				'project_manhours_list',
-				'project_query_log_list',
-				'project_assumption_list',
-				'project_lessons_learnt_list',
-				'project_schedule_list',
-				'kickoff_meetings_list',
-				'internal_meetings_list',
-				'software_items',
-				'project_activities_list',
-				'project_team',
-			];
+		for (const field of jsonFields) {
+			if (project[field]) {
+				project[field] = parseJsonField(project[field]);
+			}
+		}
 
-			for (const field of jsonFields) {
-				if (project[field]) {
-					project[field] = parseJsonField(project[field]);
-				}
+		if (
+			rights.sections.project_activity.read &&
+			Array.isArray(project.project_activities_list) &&
+			assignments.length > 0
+		) {
+			const assignmentMap = new Map();
+			for (const assignment of assignments) {
+				assignmentMap.set(assignment.activity_name, assignment);
 			}
 
-			// Merge activity assignments
-			if (
-				project.project_activities_list &&
-				Array.isArray(project.project_activities_list) &&
-				assignments.length > 0
-			) {
-				const assignmentMap = new Map();
-				for (const assignment of assignments) {
-					assignmentMap.set(assignment.activity_name, assignment);
+			project.project_activities_list = project.project_activities_list.map(
+				(activity) => {
+					const assignment = assignmentMap.get(activity.name);
+					if (!assignment) return activity;
+					return {
+						...activity,
+						assigned_user: assignment.user_id
+							? String(assignment.user_id)
+							: activity.assigned_user || '',
+						due_date: assignment.due_date || activity.due_date || '',
+						priority: assignment.priority || activity.priority || 'MEDIUM',
+					};
 				}
+			);
+		}
 
-				project.project_activities_list = project.project_activities_list.map(
-					(activity) => {
-						const assignment = assignmentMap.get(activity.name);
-						if (assignment) {
-							return {
-								...activity,
-								assigned_user: assignment.user_id
-									? String(assignment.user_id)
-									: activity.assigned_user || '',
-								due_date: assignment.due_date || activity.due_date || '',
-								priority: assignment.priority || activity.priority || 'MEDIUM',
-							};
-						}
-						return activity;
-					}
-				);
-			}
+		const queryTime = Date.now() - startTime;
 
-			const queryTime = Date.now() - startTime;
-
-			const response = NextResponse.json({
-				success: true,
-				data: {
+		const response = NextResponse.json({
+			success: true,
+			data: filterProjectForRights(
+				{
 					...project,
 					project_activities: projectActivities || [],
 				},
-				_meta: { queryTimeMs: queryTime },
-			});
+				rights
+			),
+			rights,
+			_meta: { queryTimeMs: queryTime },
+		});
 
-			// No caching for edit pages — always return fresh data
-			response.headers.set(
-				'Cache-Control',
-				'no-store, no-cache, must-revalidate'
-			);
+		// No caching for edit pages — always return fresh data
+		response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
 
-			return response;
-		} finally {
-			if (db && typeof db.release === 'function') {
-				try {
-					db.release();
-				} catch (e) {
-					console.error('Error releasing connection:', e);
-				}
-			}
-		}
+		return response;
 	} catch (error) {
 		console.error('Project detail error:', error);
 		return NextResponse.json(
@@ -213,5 +138,13 @@ export async function GET(request, { params }) {
 			},
 			{ status: 500 }
 		);
+	} finally {
+		if (ownsDb) {
+			try {
+				db.release?.();
+			} catch (e) {
+				console.error('Error releasing connection:', e);
+			}
+		}
 	}
 }

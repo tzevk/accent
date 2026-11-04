@@ -8,8 +8,9 @@ import { fileURLToPath } from 'node:url';
  *
  * Every HTTP handler exported from `src/app/api/**\/route.{js,ts}` must
  * authorize the request itself — a reference to `getCurrentUser`,
- * `getServerAuth`, or `ensurePermission` inside the handler body — or be
- * listed in `scripts/route-auth-allowlist.json` with a reason.
+ * `getServerAuth`, `ensurePermission`, `requireProjectAccess`, or
+ * `resolveProjectAccess` inside the handler body — or be listed in
+ * `scripts/route-auth-allowlist.json` with a reason.
  *
  * The check is per handler, not per file: `activity-master`'s GET/POST were
  * guarded while its PUT/DELETE were not, so a file-level check would miss the
@@ -30,7 +31,8 @@ const HTTP_METHODS = new Set([
 	'OPTIONS',
 ]);
 
-const AUTH_REFERENCE = /\b(getCurrentUser|getServerAuth|ensurePermission)\b/;
+const AUTH_REFERENCE =
+	/\b(getCurrentUser|getServerAuth|ensurePermission|requireProjectAccess|resolveProjectAccess)\b/;
 
 /** Blank out comments and string/template literals so only code can satisfy the check. */
 function stripCommentsAndStrings(source) {

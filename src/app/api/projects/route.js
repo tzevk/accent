@@ -7,40 +7,25 @@ import {
 	PERMISSIONS,
 	getCurrentUser,
 } from '@/utils/api-permissions';
-import { hasPermission } from '@/utils/rbac';
 import {
 	hasColumn,
 	getTableColumns,
 	getPrimaryKeyColumn,
 } from '@/utils/schema-cache';
 import {
+	DEFAULT_LEAD_POLICY,
+	filterProjectForRights,
+	resolveProjectRights,
+} from '@/lib/project-rights';
+import {
 	sanitizeJsonStrings,
 	sanitizeOptionalRichText,
 } from '@/lib/sanitize-fields';
-
-// Helper to check if user is in project team
-function isUserInProjectTeam(projectTeam, userId, userEmail) {
-	if (!projectTeam) return false;
-	try {
-		const team =
-			typeof projectTeam === 'string' ? JSON.parse(projectTeam) : projectTeam;
-		if (!Array.isArray(team)) return false;
-		return team.some(
-			(member) =>
-				String(member.user_id) === String(userId) ||
-				String(member.id) === String(userId) ||
-				member.email === userEmail
-		);
-	} catch {
-		return false;
-	}
-}
 
 // GET all projects
 export async function GET(request) {
 	let db;
 	try {
-		// Get current user first
 		const user = await getCurrentUser(request);
 		if (!user) {
 			return NextResponse.json(
@@ -48,9 +33,6 @@ export async function GET(request) {
 				{ status: 401 }
 			);
 		}
-
-		// Only super admins can see all projects; everyone else sees only their team's projects
-		const canSeeAllProjects = user.is_super_admin;
 
 		db = await dbConnect();
 
@@ -106,28 +88,22 @@ export async function GET(request) {
 			rows = r;
 		}
 
-		// Filter to only projects where user is in the team (unless super admin)
-		let filteredRows = rows;
-		if (!canSeeAllProjects) {
-			console.log(
-				'[Projects API] Filtering projects by team membership for user:',
-				user.email
-			);
-			filteredRows = rows.filter((project) =>
-				isUserInProjectTeam(project.project_team, user.id, user.email)
-			);
-			console.log(
-				`[Projects API] User ${user.email} can see ${filteredRows.length} out of ${rows.length} projects`
-			);
-		} else {
-			console.log(
-				'[Projects API] Super admin - showing all',
-				rows.length,
-				'projects'
-			);
+		// Every row is resolved through the shared project-rights policy.
+		const projects = [];
+		for (const project of rows) {
+			const rights = resolveProjectRights({
+				user,
+				project,
+				leadPolicy: DEFAULT_LEAD_POLICY,
+			});
+			if (!rights.canOpen) continue;
+			projects.push({
+				...filterProjectForRights(project, rights),
+				rights,
+			});
 		}
 
-		return NextResponse.json({ success: true, data: filteredRows });
+		return NextResponse.json({ success: true, data: projects });
 	} catch (error) {
 		console.error('Projects GET error:', error);
 		return NextResponse.json(
