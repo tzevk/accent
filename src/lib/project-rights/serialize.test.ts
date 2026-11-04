@@ -107,4 +107,59 @@ describe('filterProjectForRights', () => {
 		expect(filtered.project_value).toBe('5000');
 		expect(filtered.profitability_estimate).toBeUndefined();
 	});
+
+	it('omits protected columns as absent keys, not blank values', () => {
+		const filtered = filterProjectForRights(project, memberRights);
+
+		for (const column of [
+			'budget',
+			'project_value',
+			'cost_to_company',
+			'profitability_estimate',
+			'actual_profit_loss',
+		]) {
+			expect(Object.hasOwn(filtered, column)).toBe(false);
+			expect(Object.hasOwn(project, column)).toBe(true);
+		}
+	});
+
+	it('keeps the response shape and the authorised amounts unchanged', () => {
+		const rights = {
+			...memberRights,
+			commercial: {
+				view: [
+					'budget',
+					'project_value',
+					'cost_to_company',
+					'profitability_estimate',
+					'actual_profit_loss',
+				],
+				edit: [],
+			},
+		};
+
+		const filtered = filterProjectForRights(project, rights);
+
+		expect(Object.hasOwn(filtered, 'project_value')).toBe(true);
+		expect(filtered.budget).toBe('1000');
+		expect(filtered.project_value).toBe('5000');
+		expect(filtered.cost_to_company).toBe('4000');
+		expect(filtered.profitability_estimate).toBe('20');
+		expect(filtered.actual_profit_loss).toBe('500');
+	});
+
+	it('does not reveal commercial amounts for a financial-document grant alone', () => {
+		const rights = {
+			...memberRights,
+			financialAreas: { quotation: true, purchase_order: false, invoice: false },
+			commercial: { view: [], edit: [] },
+		};
+
+		const filtered = filterProjectForRights(project, rights);
+
+		expect(rights.financialAreas.quotation).toBe(true);
+		expect(Object.hasOwn(filtered, 'cost_to_company')).toBe(false);
+		expect(Object.hasOwn(filtered, 'profitability_estimate')).toBe(false);
+		expect(Object.hasOwn(filtered, 'budget')).toBe(false);
+	});
 });

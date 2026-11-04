@@ -471,6 +471,26 @@ describe('resolveProjectRights commercial and financial rights', () => {
 		});
 		expect(rights.canOpen).toBe(false);
 	});
+
+	it('does not reveal commercial columns for a document grant alone', () => {
+		const rights = resolveProjectRights({
+			user: user({ id: 42, email: 'member@example.com' }),
+			project: { project_team: TEAM },
+			financialPermissions: {
+				quotation: true,
+				purchase_order: true,
+				invoice: true,
+			},
+		});
+
+		expect(rights.financialAreas).toEqual({
+			quotation: true,
+			purchase_order: true,
+			invoice: true,
+		});
+		expect(rights.commercial).toEqual({ view: [], edit: [] });
+		expect(rights.canOpen).toBe(true);
+	});
 });
 
 describe('DEFAULT_LEAD_POLICY', () => {
