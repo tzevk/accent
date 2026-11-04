@@ -91,6 +91,8 @@ Use the [issue tracker workflow](agents/issue-tracker.md) to check current task 
 - [Resource page decoupling](todo/RESOURCE_PAGE_DECOUPLING.md)
 - [Monthly company and project expenditure design](app/reports/project-expenditure-design.md)
 - [Monthly company and project expenditure specification](app/reports/project-expenditure-spec.md) — [implementation issue #304](https://github.com/tzevk/accent/issues/304)
+- [Lead Audit and Performance report design](app/reports/lead-audit-design.md) — approved design; implemented in issue #398.
+- [Lead Audit and Performance report specification](app/reports/lead-audit-spec.md) — implemented in issue #398 (PR #407).
 
 ## Contributor workflows
 

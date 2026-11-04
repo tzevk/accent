@@ -48,6 +48,26 @@ _Avoid_: Follow-up date column, Reminder, Proposal revision
 A recorded repair of a Lead activity. It keeps the previous values, the reason, the person who corrected it, and the time. A corrected activity stays one activity.
 _Avoid_: Edit, Deletion, Overwrite
 
+**Lead Intake**:
+The recording of new Leads in Accent during a period. It measures system entry, not when the enquiries actually arrived.
+_Avoid_: Leads received, Actual arrivals
+
+**Enquiry Date**:
+The stated date of a Lead's enquiry, which can be unknown or corrected. It is distinct from the date the Lead was recorded.
+_Avoid_: Record creation date, Verified receipt date
+
+**Lead Outreach**:
+A completed call, email, or meeting for a Lead. A note or scheduled next action is not outreach, and outreach does not necessarily establish contact.
+_Avoid_: Successful contact, All recorded work
+
+**Lead Intake Cohort**:
+The group of Leads first recorded during the same reporting period. Their later progress belongs to that group, even when it happens outside the intake period.
+_Avoid_: Leads worked in period, Enquiries dated in period
+
+**Lead Cohort Conversion Rate**:
+The share of a Lead Intake Cohort with an evidenced Proposal handoff by the stated observation time. It is not the number of handoffs in a period divided by that period's new Leads.
+_Avoid_: Sales win rate, Period conversion ratio
+
 **Employee**:
 A person employed by the company, represented by an employment record. An Employee may have a User Account, but employment and system access are separate.
 _Avoid_: User, Staff, Resource
