@@ -1,10 +1,3 @@
-import { dbConnect } from '@/utils/database';
-import {
-	RESOURCES,
-	PERMISSIONS,
-	getCurrentUser,
-} from '@/utils/api-permissions';
-import { hasPermission } from '@/utils/rbac';
 import {
 	COMMERCIAL_SECTION,
 	PROJECT_ACCESS_DENIED,
@@ -15,7 +8,6 @@ import {
 	requireProjectAccess,
 	validateSectionWrite,
 } from '@/lib/project-rights';
-import { isUserInProjectTeam } from '@/utils/project-access';
 import { sanitizeOptionalRichText } from '@/lib/sanitize-fields';
 
 // Rich-text columns keep the previous write-path sanitization.
@@ -298,74 +290,42 @@ export async function PUT(request, context) {
 
 // DELETE project
 export async function DELETE(request, { params }) {
-	let db;
+	const { id } = await params;
+	const access = await requireProjectAccess(request, id);
+	if ('response' in access) return access.response;
+
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		// Get current user first
-		const user = await getCurrentUser(request);
-		if (!user) {
+		if (!rights.canPerform.delete) {
 			return Response.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
 			);
 		}
 
-		// Check if user has full projects:delete permission (only super admins)
-		const hasFullAccess =
-			user.is_super_admin ||
-			hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.DELETE);
-
-		const { id } = await params;
-		const projectId = parseInt(id);
-
-		db = await dbConnect();
-
-		// If user doesn't have full access, check if they're in the project team
-		if (!hasFullAccess) {
-			const [projectRows] = await db.execute(
-				'SELECT project_team FROM projects WHERE project_id = ? AND isDelete = 0',
-				[projectId]
+		// Soft-delete the row the access helper resolved, using its real
+		// key: the runtime schema uses numeric `id`, the baseline uses
+		// `project_id`.
+		const keyColumn =
+			project.id !== undefined && project.id !== null ? 'id' : 'project_id';
+		const keyValue = project[keyColumn];
+		if (keyValue === undefined || keyValue === null) {
+			return Response.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
 			);
-			if (projectRows && projectRows.length > 0) {
-				const isTeamMember = isUserInProjectTeam(
-					projectRows[0].project_team,
-					user.id,
-					user.email
-				);
-				if (!isTeamMember) {
-					console.log(
-						`[Projects API DELETE] User ${user.email} denied delete access to project ${id} - not a team member`
-					);
-					return Response.json(
-						{
-							success: false,
-							error: 'You do not have permission to delete this project',
-						},
-						{ status: 403 }
-					);
-				}
-				console.log(
-					`[Projects API DELETE] User ${user.email} granted delete access to project ${id} as team member`
-				);
-			} else {
-				return Response.json(
-					{ success: false, error: 'Project not found' },
-					{ status: 404 }
-				);
-			}
 		}
 
 		const [result] = await db.execute(
-			'UPDATE projects SET isDelete = 1 WHERE id = ?',
-			[projectId]
+			`UPDATE projects SET isDelete = 1 WHERE ${keyColumn} = ? AND isDelete = 0`,
+			[keyValue]
 		);
 
-		if (result.affectedRows === 0) {
+		if (!result || (result.affectedRows ?? 0) === 0) {
 			return Response.json(
-				{
-					success: false,
-					error: 'Project not found',
-				},
-				{ status: 404 }
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
 			);
 		}
 
@@ -374,7 +334,7 @@ export async function DELETE(request, { params }) {
 			message: 'Project deleted successfully',
 		});
 	} catch (error) {
-		console.error('Database error:', error);
+		console.error('Project delete error:', error);
 		return Response.json(
 			{
 				success: false,
@@ -383,11 +343,11 @@ export async function DELETE(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db && typeof db.release === 'function') {
+		if (ownsDb) {
 			try {
-				db.release();
-			} catch (e) {
-				/* ignore */
+				db.release?.();
+			} catch (error) {
+				console.warn('Error releasing DB connection in DELETE:', error?.message);
 			}
 		}
 	}
