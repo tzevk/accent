@@ -297,7 +297,7 @@ describe('resolveProjectRights scopes', () => {
 		expect(outside.editableSections).toEqual([]);
 	});
 
-	it('assign scope manages the team but is not a general update grant', () => {
+	it('assign scope manages the team and may change the lead designation', () => {
 		const rights = resolveProjectRights({
 			user: user({
 				merged_permissions: ['projects:assign'],
@@ -308,8 +308,58 @@ describe('resolveProjectRights scopes', () => {
 
 		expect(rights.canOpen).toBe(true);
 		expect(rights.canManageTeam).toBe(true);
+		expect(rights.canChangeLeadDesignation).toBe(true);
+		expect(rights.readableSections).toContain('project_team');
+		// Team authority is not a general update grant.
 		expect(rights.editableSections).toEqual([]);
+	});
+
+	it('gives an assign-only manager the team section and nothing else', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				id: 99,
+				email: 'assigner@example.com',
+				merged_permissions: ['projects:assign'],
+				field_permissions: withScopes({ assign: 'all' }),
+			}),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.canOpen).toBe(true);
+		expect(rights.isMember).toBe(false);
+		expect(rights.canManageTeam).toBe(true);
+		expect(rights.canChangeLeadDesignation).toBe(true);
+		expect(rights.readableSections).toEqual(['project_team']);
+		expect(rights.editableSections).toEqual([]);
+	});
+
+	it('keeps an update-only user out of team management', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				merged_permissions: ['projects:update'],
+				field_permissions: withScopes({ update: 'assigned' }),
+			}),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.editableSections).toHaveLength(16);
+		expect(rights.canManageTeam).toBe(false);
 		expect(rights.canChangeLeadDesignation).toBe(false);
+	});
+
+	it('keeps the team section readable for a manager who hides it', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				merged_permissions: ['projects:assign'],
+				field_permissions: withScopes({ assign: 'all' }),
+			}),
+			project: { project_team: TEAM },
+			leadPolicy: { sections: { project_team: 'hidden' } },
+		});
+
+		expect(rights.canManageTeam).toBe(true);
+		expect(rights.sections.project_team.read).toBe(true);
+		expect(rights.sections.project_team.edit).toBe(false);
 	});
 
 	it.each([
