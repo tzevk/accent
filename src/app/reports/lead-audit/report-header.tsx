@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { formatDate } from '@/lib/format';
 import { LEAD_AUDIT_EVIDENCE_TYPE_OPTIONS } from '@/server/reports/lead-audit/audit-types';
@@ -34,6 +35,19 @@ export default function ReportHeader({
 	evidenceFilters,
 }: ReportHeaderProps) {
 	const filters = report.scope.effective_filters;
+	const navRef = useRef<HTMLElement | null>(null);
+	useEffect(() => {
+		const nav = navRef.current;
+		const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+		if (!nav || !active) return;
+		nav.scrollTo({
+			left: Math.max(
+				0,
+				active.offsetLeft - (nav.clientWidth - active.clientWidth) / 2
+			),
+			behavior: 'auto',
+		});
+	}, [activeView]);
 	const chips = [
 		`${calendarDate(report.scope.from_date)} – ${calendarDate(report.scope.to_date)}`,
 		...(filters.owner.label !== 'All owners'
@@ -85,20 +99,23 @@ export default function ReportHeader({
 
 			<div className="relative flex items-start justify-between gap-3">
 				<div className="min-w-0">
-					<h1 className="break-words text-xl font-bold tracking-tight sm:text-2xl">
-						Lead Audit and Performance
-					</h1>
-					<div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-white/85">
-						<span>
-							Generated {report.meta.generated_at} ·{' '}
-							{report.meta.time_zone.label}
-						</span>
-						<HelpTip label="About this report" tone="inverse">
+					<div className="flex items-start gap-1.5">
+						<h1 className="break-words text-xl font-bold tracking-tight sm:text-2xl">
+							Lead Audit and Performance
+						</h1>
+						<HelpTip
+							label="About this report"
+							tone="inverse"
+							className="mt-1.5"
+						>
 							Lead intake, completed work, evidenced handoffs, and current
 							operational risks. {report.scope.date_basis}{' '}
 							{report.meta.live_data_warning}
 						</HelpTip>
 					</div>
+					<p className="mt-1 text-xs text-white/85">
+						Generated {report.meta.generated_at} · {report.meta.time_zone.label}
+					</p>
 				</div>
 				<button
 					type="button"
@@ -118,6 +135,7 @@ export default function ReportHeader({
 			</div>
 
 			<nav
+				ref={navRef}
 				aria-label="Lead Audit views"
 				className="relative mt-3 flex gap-1 overflow-x-auto pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:pb-0"
 			>

@@ -176,7 +176,7 @@ export default function LeadRegister({
 			) : (
 				<>
 					<div
-						className="overflow-x-auto"
+						className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 						role="region"
 						aria-label="Lead register table. Scroll horizontally for more columns."
 						tabIndex={0}

@@ -183,7 +183,7 @@ function NarrativeDetail({
 			) : null}
 			{narrative.changes.length > 0 ? (
 				<div
-					className="mt-3 overflow-x-auto"
+					className="mt-3 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 					role="region"
 					tabIndex={0}
 					aria-label="Correction changes. Scroll horizontally for more columns."
@@ -284,7 +284,7 @@ function EvidenceTable({
 	}
 	return (
 		<div
-			className="overflow-x-auto"
+			className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 			role="region"
 			tabIndex={0}
 			aria-label="Audit evidence table. Scroll horizontally for more columns."
@@ -446,7 +446,7 @@ function DeletedTable({
 	}
 	return (
 		<div
-			className="overflow-x-auto"
+			className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 			role="region"
 			tabIndex={0}
 			aria-label="Retained deleted evidence table. Scroll horizontally for more columns."

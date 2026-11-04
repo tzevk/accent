@@ -394,7 +394,7 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 					) : (
 						<>
 							<div
-								className="mt-3 overflow-x-auto"
+								className="mt-3 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 								role="region"
 								aria-label="Timing cohort evidence"
 								tabIndex={0}

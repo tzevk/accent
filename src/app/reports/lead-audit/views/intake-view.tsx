@@ -179,7 +179,7 @@ export default function IntakeView({
 					</p>
 				) : (
 					<div
-						className="mt-3 overflow-x-auto"
+						className="mt-3 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 						role="region"
 						aria-label="Source volume table. Scroll horizontally for more columns."
 						tabIndex={0}

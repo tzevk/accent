@@ -78,7 +78,7 @@ export default function CoverageView({ report }: CoverageViewProps) {
 					filters, counted by its recording time.
 				</p>
 				<div
-					className="mt-2 overflow-x-auto"
+					className="mt-2 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 					role="region"
 					tabIndex={0}
 					aria-label="Audit evidence coverage table. Scroll horizontally for more columns."
@@ -125,7 +125,7 @@ export default function CoverageView({ report }: CoverageViewProps) {
 					inspectable elsewhere in the report; they are not silent zeroes.
 				</p>
 				<div
-					className="mt-2 overflow-x-auto"
+					className="mt-2 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 					role="region"
 					tabIndex={0}
 					aria-label="Metric exclusions table. Scroll horizontally for more columns."

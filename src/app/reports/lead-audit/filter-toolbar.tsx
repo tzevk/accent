@@ -32,13 +32,15 @@ function Field({
 	label,
 	htmlFor,
 	children,
+	className = '',
 }: {
 	label: string;
 	htmlFor: string;
 	children: ReactNode;
+	className?: string;
 }) {
 	return (
-		<div className="min-w-0">
+		<div className={`min-w-0 ${className}`}>
 			<label
 				htmlFor={htmlFor}
 				className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-700"
@@ -89,8 +91,12 @@ export default function FilterToolbar({
 			}}
 			aria-label="Lead Audit filters"
 		>
-			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-				<Field label="Period" htmlFor="lead-audit-preset">
+			<div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+				<Field
+					label="Period"
+					htmlFor="lead-audit-preset"
+					className="col-span-2"
+				>
 					<select
 						id="lead-audit-preset"
 						value={draft.preset}
@@ -105,7 +111,11 @@ export default function FilterToolbar({
 					</select>
 				</Field>
 
-				<Field label="From" htmlFor="lead-audit-from">
+				<Field
+					label="From"
+					htmlFor="lead-audit-from"
+					className="col-span-2 sm:col-span-1"
+				>
 					<div className="relative">
 						<CalendarDaysIcon
 							className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
@@ -126,7 +136,11 @@ export default function FilterToolbar({
 					</div>
 				</Field>
 
-				<Field label="To" htmlFor="lead-audit-to">
+				<Field
+					label="To"
+					htmlFor="lead-audit-to"
+					className="col-span-2 sm:col-span-1"
+				>
 					<div className="relative">
 						<CalendarDaysIcon
 							className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
@@ -237,7 +251,11 @@ export default function FilterToolbar({
 					</select>
 				</Field>
 
-				<Field label="Search" htmlFor="lead-audit-search">
+				<Field
+					label="Search"
+					htmlFor="lead-audit-search"
+					className="col-span-2 xl:col-span-4"
+				>
 					<div className="relative">
 						<MagnifyingGlassIcon
 							className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"

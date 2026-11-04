@@ -193,7 +193,7 @@ function EvidenceTable({
 	}
 	return (
 		<div
-			className="mt-3 overflow-x-auto"
+			className="mt-3 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 			role="region"
 			aria-label="Conversion evidence table. Scroll horizontally for more columns."
 			tabIndex={0}
@@ -403,7 +403,7 @@ export default function ConversionView({
 								</p>
 							) : (
 								<div
-									className="mt-3 overflow-x-auto"
+									className="mt-3 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 									role="region"
 									aria-label="Source conversion table. Scroll horizontally for more columns."
 									tabIndex={0}
