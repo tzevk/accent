@@ -14,6 +14,7 @@ import {
 	TableRow,
 } from '@/components/ui/table';
 import { apiGet, apiPut } from '@/lib/api-client';
+import { formatDateTime } from '@/lib/format';
 import {
 	SECTION_LABELS,
 	WORK_SECTION_IDS,
@@ -94,7 +95,7 @@ export default function ProjectLeadPolicyPage() {
 	};
 
 	const updatedLabel = loaded?.updated_at
-		? new Date(loaded.updated_at).toLocaleString('en-IN')
+		? formatDateTime(loaded.updated_at)
 		: 'Never saved';
 
 	return (

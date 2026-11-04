@@ -36,6 +36,7 @@ export type ProjectAccessOk = {
 	user: ProjectRightsUser;
 	project: Record<string, unknown>;
 	rights: ProjectRights;
+	leadPolicy: LeadPolicy;
 	db: DbConnection;
 	ownsDb: boolean;
 };
@@ -269,7 +270,7 @@ export async function resolveProjectAccess(
 			return denied();
 		}
 
-		return { user, project, rights, db, ownsDb };
+		return { user, project, rights, leadPolicy, db, ownsDb };
 	} catch (error) {
 		console.error('[project-rights] access resolution failed', error);
 		if (ownsDb) db?.release?.();
