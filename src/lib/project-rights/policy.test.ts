@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DEFAULT_LEAD_POLICY,
+	normalizeLeadPolicy,
 	resolveProjectRights,
 	type ProjectRightsUser,
 } from './policy';
@@ -15,7 +16,7 @@ import {
 	type ProjectAction,
 	type ProjectScope,
 } from './grants';
-import { WORK_SECTION_IDS } from './sections';
+import { MEMBER_READ_SECTIONS, WORK_SECTION_IDS } from './sections';
 
 const TEAM = [
 	{ id: 42, name: 'Member', email: 'member@example.com', role: 'Team Member' },
@@ -821,4 +822,97 @@ describe('every configurable work section is enforced', () => {
 			});
 		}
 	);
+});
+
+describe('one shared lead policy across projects', () => {
+	const lead = user({ id: 43, email: 'lead@example.com' });
+	const storedPolicy = normalizeLeadPolicy({
+		sections: {
+			project_details: 'hidden',
+			scope: 'view',
+			documents_issued: 'edit',
+		},
+	});
+
+	it('resolves identical rights for every project the actor leads', () => {
+		const first = resolveProjectRights({
+			user: lead,
+			project: { project_team: TEAM },
+			leadPolicy: storedPolicy,
+		});
+		// A second project stores the team as a JSON string, as the column does.
+		const second = resolveProjectRights({
+			user: lead,
+			project: { project_team: JSON.stringify(TEAM) },
+			leadPolicy: storedPolicy,
+		});
+
+		expect(second.sections).toEqual(first.sections);
+		expect(second.readableSections).toEqual(first.readableSections);
+		expect(second.editableSections).toEqual(first.editableSections);
+		expect(first.sections.project_details).toEqual({
+			read: false,
+			edit: false,
+		});
+		expect(first.sections.scope).toEqual({ read: true, edit: false });
+		expect(first.sections.documents_issued).toEqual({
+			read: true,
+			edit: true,
+		});
+	});
+
+	it('applies the one stored policy to a lead of a different project', () => {
+		const policy = normalizeLeadPolicy({ sections: { scope: 'hidden' } });
+		const otherLead = user({ id: 44, email: 'other-lead@example.com' });
+		const otherTeam = [
+			{ id: 44, email: 'other-lead@example.com', role: 'Project Lead' },
+		];
+
+		const first = resolveProjectRights({
+			user: lead,
+			project: { project_team: TEAM },
+			leadPolicy: policy,
+		});
+		const second = resolveProjectRights({
+			user: otherLead,
+			project: { project_team: otherTeam },
+			leadPolicy: policy,
+		});
+
+		expect(first.sections.scope).toEqual({ read: false, edit: false });
+		expect(second.sections.scope).toEqual({ read: false, edit: false });
+		expect(second.sections.documents_issued).toEqual({
+			read: true,
+			edit: true,
+		});
+	});
+});
+
+describe('lead policy leaves the ordinary member section set unchanged', () => {
+	const member = user();
+	const allHidden = normalizeLeadPolicy({
+		sections: Object.fromEntries(
+			WORK_SECTION_IDS.map((section) => [section, 'hidden'])
+		),
+	});
+
+	it('keeps the ten baseline readable sections and no edit rights', () => {
+		const open = resolveProjectRights({
+			user: member,
+			project: { project_team: TEAM },
+			leadPolicy: DEFAULT_LEAD_POLICY,
+		});
+		const hidden = resolveProjectRights({
+			user: member,
+			project: { project_team: TEAM },
+			leadPolicy: allHidden,
+		});
+
+		expect([...open.readableSections].sort()).toEqual(
+			[...MEMBER_READ_SECTIONS].sort()
+		);
+		expect(open.editableSections).toEqual([]);
+		expect(hidden.readableSections).toEqual(open.readableSections);
+		expect(hidden.editableSections).toEqual(open.editableSections);
+	});
 });

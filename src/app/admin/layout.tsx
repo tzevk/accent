@@ -25,7 +25,11 @@ export default async function AdminLayout({
 	// carries no data.
 	if (
 		auth.user &&
-		hasPermission(auth.user, RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ)
+		(hasPermission(auth.user, RESOURCES.OTHER_EXPENSES, PERMISSIONS.READ) ||
+			// Project administrators maintain the shared lead policy, which
+			// lives under /admin. The shell carries no data; every API still
+			// authorizes each request.
+			hasPermission(auth.user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE))
 	) {
 		return children;
 	}
