@@ -32,13 +32,17 @@ export async function PUT(request, { params }) {
 		}
 
 		// Close and reopen are lifecycle transitions with their own grants.
-		// Every other board column (NEW, planning, in-progress, on-hold,
-		// cancelled) is an ordinary project-details edit; it must not use a
-		// lifecycle grant to bypass the lifecycle boundary.
+		// The current stored status decides which boundary applies: leaving
+		// completed requires reopen, entering completed requires close, and
+		// only a non-completed -> non-completed board move is an ordinary
+		// project-details edit.
 		const normalizedStatus = status.toLowerCase();
+		const currentStatus = String(
+			project.status ?? project.project_status ?? ''
+		).toLowerCase();
+		const wasCompleted = currentStatus.includes('complet');
 		const isClose = normalizedStatus === 'completed';
-		const isReopen =
-			normalizedStatus === 'active' || normalizedStatus === 'reopened';
+		const isReopen = wasCompleted && !isClose;
 		const permitted = isClose
 			? rights.canPerform.close
 			: isReopen
