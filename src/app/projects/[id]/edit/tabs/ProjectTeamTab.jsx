@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
 	UserIcon,
 	PlusIcon,
@@ -5,6 +6,99 @@ import {
 	TrashIcon,
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
+
+const TEAM_ROLES = [
+	'Team Member',
+	'Project Lead',
+	'Designer',
+	'Engineer',
+	'Drafter',
+	'Coordinator',
+	'QA/QC',
+	'Site Supervisor',
+];
+
+function memberName(member) {
+	return member?.name || member?.email || 'This team member';
+}
+
+function LeadReplacementPrompt({
+	leadReplacement,
+	projectTeamMembers,
+	teamSaving,
+	onCancel,
+	onConfirm,
+}) {
+	const [replacementId, setReplacementId] = useState('');
+	const target = projectTeamMembers.find(
+		(member) => String(member.id) === String(leadReplacement.memberId)
+	);
+	const candidates = projectTeamMembers.filter(
+		(member) => String(member.id) !== String(leadReplacement.memberId)
+	);
+	const action =
+		leadReplacement.operation === 'remove_member' ? 'removing' : 'demoting';
+
+	return (
+		<div
+			role="alertdialog"
+			aria-labelledby="lead-replacement-title"
+			className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+		>
+			<p id="lead-replacement-title" className="font-semibold">
+				A project must keep at least one Project Lead
+			</p>
+			<p className="mt-1 text-xs">
+				{memberName(target)} is the last Project Lead. Choose a replacement
+				lead from the current team before {action} them.
+			</p>
+			<label
+				htmlFor="replacement-lead"
+				className="mt-3 block text-xs font-semibold text-amber-900"
+			>
+				Replacement lead
+			</label>
+			<select
+				id="replacement-lead"
+				value={replacementId}
+				onChange={(event) => setReplacementId(event.target.value)}
+				disabled={teamSaving}
+				className="mt-1 w-full rounded border border-amber-300 bg-white px-2 py-1 text-sm"
+			>
+				<option value="">Select a team member</option>
+				{candidates.map((member) => (
+					<option key={member.id} value={String(member.id)}>
+						{memberName(member)}
+						{member.role ? ` — ${member.role}` : ''}
+					</option>
+				))}
+			</select>
+			{leadReplacement.error ? (
+				<p role="alert" className="mt-2 text-xs font-medium text-red-700">
+					{leadReplacement.error}
+				</p>
+			) : null}
+			<div className="mt-3 flex items-center gap-2">
+				<button
+					type="button"
+					onClick={() => onConfirm(replacementId)}
+					disabled={teamSaving || !replacementId}
+					className="rounded bg-[#64126D] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#52105a] disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					Save replacement
+				</button>
+				<button
+					type="button"
+					onClick={onCancel}
+					disabled={teamSaving}
+					className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					Cancel
+				</button>
+			</div>
+		</div>
+	);
+}
 
 export default function ProjectTeamTab({
 	toggleSection,
@@ -18,7 +112,15 @@ export default function ProjectTeamTab({
 	removeTeamMember,
 	teamError,
 	teamSaving,
+	canManageTeam = false,
+	leadReplacement = null,
+	onCancelLeadReplacement,
+	onConfirmLeadReplacement,
 }) {
+	const showReplacementPrompt = Boolean(
+		canManageTeam && leadReplacement && onConfirmLeadReplacement
+	);
+
 	return (
 		<section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
 			<div className="px-6 py-3 bg-gradient-to-r from-purple-25 to-white border-b border-purple-100">
@@ -27,7 +129,9 @@ export default function ProjectTeamTab({
 					<h2 className="text-sm font-bold text-gray-900">Project Team</h2>
 				</div>
 				<p className="text-xs text-gray-500 mt-0.5">
-					Select team members from user master for this project
+					{canManageTeam
+						? 'Select team members from user master for this project'
+						: 'You can view the project team. Only a project lead or team manager can change it.'}
 				</p>
 			</div>
 
@@ -40,59 +144,73 @@ export default function ProjectTeamTab({
 						{teamError}
 					</div>
 				) : null}
+				{showReplacementPrompt ? (
+					<LeadReplacementPrompt
+						key={`${leadReplacement.operation}-${leadReplacement.memberId}`}
+						leadReplacement={leadReplacement}
+						projectTeamMembers={projectTeamMembers}
+						teamSaving={teamSaving}
+						onCancel={onCancelLeadReplacement}
+						onConfirm={onConfirmLeadReplacement}
+					/>
+				) : null}
 				{/* Add Team Member Section - Collapsible */}
-				<div className="border border-purple-100 rounded-lg overflow-hidden">
-					<button
-						type="button"
-						onClick={() => toggleSection('teamMemberAdd')}
-						className="w-full bg-gradient-to-br from-purple-25 via-white to-purple-25 px-4 py-3 flex items-center justify-between hover:bg-purple-50 transition-colors"
-					>
-						<div className="flex items-center gap-2">
-							<PlusIcon className="h-4 w-4 text-[#7F2487]" />
-							<h4 className="text-sm font-semibold text-gray-700">
-								Add Team Member
-							</h4>
-						</div>
-						<ChevronDownIcon
-							className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.teamMemberAdd ? 'transform rotate-180' : ''}`}
-						/>
-					</button>
-
-					{openSections.teamMemberAdd && (
-						<div className="p-4 border-t border-purple-100">
-							<label className="mb-1 block text-xs font-semibold text-gray-700">
-								Search users by name, email, or department
-							</label>
-							<SearchableSelect
-								options={availableUsers.map((user) => ({
-									id: user.id,
-									value: String(user.id),
-									label: [
-										user.employee_name || user.full_name || user.username,
-										user.email,
-										user.employee_department || user.department,
-									]
-										.filter(Boolean)
-										.join(' — '),
-								}))}
-								placeholder="Search users..."
-								onChange={(val) => {
-									const user = availableUsers.find((u) => String(u.id) === val);
-									if (user) addTeamMember(user);
-								}}
+				{canManageTeam ? (
+					<div className="border border-purple-100 rounded-lg overflow-hidden">
+						<button
+							type="button"
+							onClick={() => toggleSection('teamMemberAdd')}
+							className="w-full bg-gradient-to-br from-purple-25 via-white to-purple-25 px-4 py-3 flex items-center justify-between hover:bg-purple-50 transition-colors"
+						>
+							<div className="flex items-center gap-2">
+								<PlusIcon className="h-4 w-4 text-[#7F2487]" />
+								<h4 className="text-sm font-semibold text-gray-700">
+									Add Team Member
+								</h4>
+							</div>
+							<ChevronDownIcon
+								className={`h-4 w-4 text-gray-500 transition-transform duration-200 ${openSections.teamMemberAdd ? 'transform rotate-180' : ''}`}
 							/>
-							{usersLoading ? (
-								<p className="mt-2 text-xs text-gray-500">Loading users...</p>
-							) : availableUsers.length === 0 ? (
-								<p className="mt-2 text-xs text-gray-500">
-									{allUsers.length === 0
-										? 'No users loaded. Please refresh the page.'
-										: 'All users have been added to the team'}
-								</p>
-							) : null}
-						</div>
-					)}
-				</div>
+						</button>
+
+						{openSections.teamMemberAdd && (
+							<div className="p-4 border-t border-purple-100">
+								<label className="mb-1 block text-xs font-semibold text-gray-700">
+									Search users by name, email, or department
+								</label>
+								<SearchableSelect
+									options={availableUsers.map((user) => ({
+										id: user.id,
+										value: String(user.id),
+										label: [
+											user.employee_name || user.full_name || user.username,
+											user.email,
+											user.employee_department || user.department,
+										]
+											.filter(Boolean)
+											.join(' — '),
+									}))}
+									placeholder="Search users..."
+									onChange={(val) => {
+										const user = availableUsers.find(
+											(u) => String(u.id) === val
+										);
+										if (user) addTeamMember(user);
+									}}
+								/>
+								{usersLoading ? (
+									<p className="mt-2 text-xs text-gray-500">Loading users...</p>
+								) : availableUsers.length === 0 ? (
+									<p className="mt-2 text-xs text-gray-500">
+										{allUsers.length === 0
+											? 'No users loaded. Please refresh the page.'
+											: 'All users have been added to the team'}
+									</p>
+								) : null}
+							</div>
+						)}
+					</div>
+				) : null}
 
 				{/* Current Team Members - Collapsible */}
 				<div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -140,9 +258,11 @@ export default function ProjectTeamTab({
 												<th className="px-3 py-2 text-left font-semibold text-gray-700">
 													Project Role
 												</th>
-												<th className="px-3 py-2 text-center font-semibold text-gray-700">
-													Actions
-												</th>
+												{canManageTeam ? (
+													<th className="px-3 py-2 text-center font-semibold text-gray-700">
+														Actions
+													</th>
+												) : null}
 											</tr>
 										</thead>
 										<tbody className="divide-y divide-gray-100">
@@ -170,37 +290,45 @@ export default function ProjectTeamTab({
 														{member.position || '-'}
 													</td>
 													<td className="px-3 py-2">
-														<select
-															value={member.role}
-															disabled={teamSaving}
-															onChange={(e) =>
-																updateTeamMemberRole(member.id, e.target.value)
-															}
-															className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white hover:border-blue-400 focus:border-blue-500 focus:outline-none cursor-pointer"
-														>
-															<option value="Team Member">Team Member</option>
-															<option value="Project Lead">Project Lead</option>
-															<option value="Designer">Designer</option>
-															<option value="Engineer">Engineer</option>
-															<option value="Drafter">Drafter</option>
-															<option value="Coordinator">Coordinator</option>
-															<option value="QA/QC">QA/QC</option>
-															<option value="Site Supervisor">
-																Site Supervisor
-															</option>
-														</select>
+														{canManageTeam ? (
+															<select
+																aria-label={`Project role for ${memberName(member)}`}
+																value={member.role}
+																disabled={teamSaving}
+																onChange={(e) =>
+																	updateTeamMemberRole(
+																		member.id,
+																		e.target.value
+																	)
+																}
+																className="w-full px-2 py-1 border border-gray-300 rounded text-xs bg-white hover:border-blue-400 focus:border-blue-500 focus:outline-none cursor-pointer"
+															>
+																{TEAM_ROLES.map((role) => (
+																	<option key={role} value={role}>
+																		{role}
+																	</option>
+																))}
+															</select>
+														) : (
+															<span className="text-gray-700">
+																{member.role}
+															</span>
+														)}
 													</td>
-													<td className="px-3 py-2 text-center">
-														<button
-															type="button"
-															onClick={() => removeTeamMember(member.id)}
-															disabled={teamSaving}
-															className="text-red-500 hover:text-red-700 p-1"
-															title="Remove from team"
-														>
-															<TrashIcon className="h-4 w-4" />
-														</button>
-													</td>
+													{canManageTeam ? (
+														<td className="px-3 py-2 text-center">
+															<button
+																type="button"
+																onClick={() => removeTeamMember(member.id)}
+																disabled={teamSaving}
+																className="text-red-500 hover:text-red-700 p-1"
+																title="Remove from team"
+																aria-label={`Remove ${memberName(member)} from team`}
+															>
+																<TrashIcon className="h-4 w-4" />
+															</button>
+														</td>
+													) : null}
 												</tr>
 											))}
 										</tbody>
@@ -213,7 +341,9 @@ export default function ProjectTeamTab({
 										No team members added yet
 									</p>
 									<p className="text-xs mt-1">
-										Add team members from the user list above
+										{canManageTeam
+											? 'Add team members from the user list above'
+											: 'No team members are assigned to this project yet'}
 									</p>
 								</div>
 							)}

@@ -35,6 +35,7 @@ const ALLOWED_FIELDS: Record<string, true> = {
 	member: true,
 	memberId: true,
 	role: true,
+	replacementLeadId: true,
 };
 
 function badRequest(error: string): Response {
@@ -60,9 +61,13 @@ function applyOperation(
 	operation: TeamOperation,
 	storedTeam: unknown,
 	body: Record<string, unknown>,
-	canChangeLeadDesignation: boolean
+	rights: { canChangeLeadDesignation: boolean; canClearFinalLead: boolean }
 ): TeamOperationResult {
-	const options = { canChangeLeadDesignation };
+	const options = {
+		canChangeLeadDesignation: rights.canChangeLeadDesignation,
+		canClearFinalLead: rights.canClearFinalLead,
+		replacementLeadId: body.replacementLeadId,
+	};
 	if (operation === 'add_member') {
 		return addProjectTeamMember(storedTeam, body.member, options);
 	}
@@ -185,7 +190,7 @@ export async function POST(
 				namedOperation,
 				storedTeam,
 				body,
-				rights.canChangeLeadDesignation
+				rights
 			);
 			if (!result.ok) {
 				await teamDb.rollback();

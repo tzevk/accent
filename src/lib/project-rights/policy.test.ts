@@ -346,6 +346,41 @@ describe('resolveProjectRights scopes', () => {
 		expect(rights.editableSections).toHaveLength(16);
 		expect(rights.canManageTeam).toBe(false);
 		expect(rights.canChangeLeadDesignation).toBe(false);
+		expect(rights.canClearFinalLead).toBe(false);
+	});
+
+	it('does not let lead-only authority clear the final lead', () => {
+		const rights = resolveProjectRights({
+			user: user({ id: 43, email: 'lead@example.com' }),
+			project: { project_team: JSON.stringify(TEAM) },
+		});
+
+		expect(rights.isLead).toBe(true);
+		expect(rights.canManageTeam).toBe(true);
+		expect(rights.canChangeLeadDesignation).toBe(true);
+		expect(rights.canClearFinalLead).toBe(false);
+	});
+
+	it('lets an explicit assign scope clear the final lead', () => {
+		const rights = resolveProjectRights({
+			user: user({
+				merged_permissions: ['projects:assign'],
+				field_permissions: withScopes({ assign: 'assigned' }),
+			}),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.canManageTeam).toBe(true);
+		expect(rights.canClearFinalLead).toBe(true);
+	});
+
+	it('lets a super admin clear the final lead', () => {
+		const rights = resolveProjectRights({
+			user: user({ is_super_admin: true }),
+			project: { project_team: TEAM },
+		});
+
+		expect(rights.canClearFinalLead).toBe(true);
 	});
 
 	it('keeps the team section readable for a manager who hides it', () => {

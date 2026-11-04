@@ -207,12 +207,12 @@ describe('removeProjectTeamMember', () => {
 		});
 	});
 
-	it('removes a lead when the actor may change the designation', () => {
-		const result = removeProjectTeamMember(TEAM, 43, LEAD_AUTHORITY);
+	it('removes a lead when the actor may change the designation and a lead remains', () => {
+		const result = removeProjectTeamMember(TWO_LEADS, 43, LEAD_AUTHORITY);
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.team).toEqual([TEAM[0]]);
+		expect(result.team).toEqual([TEAM[0], SECOND_LEAD]);
 	});
 });
 
@@ -302,7 +302,7 @@ describe('updateProjectTeamMemberRole', () => {
 			LEAD_AUTHORITY
 		);
 		const demoted = updateProjectTeamMemberRole(
-			TEAM,
+			TWO_LEADS,
 			43,
 			'Coordinator',
 			LEAD_AUTHORITY
@@ -315,3 +315,164 @@ describe('updateProjectTeamMemberRole', () => {
 		expect(demoted.team[1].role).toBe('Coordinator');
 	});
 });
+
+const CLEAR_AUTHORITY: TeamOperationOptions = {
+	canChangeLeadDesignation: true,
+	canClearFinalLead: true,
+};
+
+const SECOND_LEAD = {
+	id: 45,
+	employee_id: 'E45',
+	name: 'Second Lead',
+	email: 'lead2@example.com',
+	role: 'Project Lead',
+};
+
+const TWO_LEADS = [TEAM[0], TEAM[1], SECOND_LEAD];
+
+describe('last-lead rule', () => {
+	it('lets several leads coexist', () => {
+		const result = updateProjectTeamMemberRole(
+			TWO_LEADS,
+			43,
+			'Team Member',
+			LEAD_AUTHORITY
+		);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(
+			result.team.filter((member) => member.role === 'Project Lead')
+		).toEqual([SECOND_LEAD]);
+	});
+
+	it('refuses removing the final lead without a replacement', () => {
+		const result = removeProjectTeamMember(TEAM, 43, LEAD_AUTHORITY);
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'LAST_LEAD_REQUIRES_REPLACEMENT',
+		});
+		if (result.ok) return;
+		expect(result.error).toContain('at least one Project Lead');
+	});
+
+	it('refuses removing a lead when a second lead exists', () => {
+		const result = removeProjectTeamMember(TWO_LEADS, 43, LEAD_AUTHORITY);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(
+			result.team.filter((member) => member.role === 'Project Lead')
+		).toHaveLength(1);
+	});
+
+	it('refuses demoting the final lead, including by that lead themselves', () => {
+		const result = updateProjectTeamMemberRole(
+			TEAM,
+			43,
+			'Team Member',
+			LEAD_AUTHORITY
+		);
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'LAST_LEAD_REQUIRES_REPLACEMENT',
+		});
+	});
+
+	it('promotes the named replacement and keeps exactly the intended lead', () => {
+		const result = removeProjectTeamMember(TEAM, 43, {
+			...LEAD_AUTHORITY,
+			replacementLeadId: 42,
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.team).toHaveLength(1);
+		expect(result.team[0]).toEqual({ ...TEAM[0], role: 'Project Lead' });
+	});
+
+	it('promotes a replacement when demoting the final lead', () => {
+		const result = updateProjectTeamMemberRole(TEAM, 43, 'Site Supervisor', {
+			...LEAD_AUTHORITY,
+			replacementLeadId: '42',
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.team[0].role).toBe('Project Lead');
+		expect(result.team[1].role).toBe('Site Supervisor');
+	});
+
+	it('lets explicit clear authority leave the project without a lead', () => {
+		const removed = removeProjectTeamMember(TEAM, 43, CLEAR_AUTHORITY);
+		const demoted = updateProjectTeamMemberRole(
+			TEAM,
+			43,
+			'Team Member',
+			CLEAR_AUTHORITY
+		);
+
+		expect(removed.ok).toBe(true);
+		expect(demoted.ok).toBe(true);
+		if (!removed.ok || !demoted.ok) return;
+		expect(
+			removed.team.some((member) => member.role === 'Project Lead')
+		).toBe(false);
+		expect(
+			demoted.team.some((member) => member.role === 'Project Lead')
+		).toBe(false);
+	});
+
+	it('refuses a replacement who is not another current member', () => {
+		const unknown = removeProjectTeamMember(TEAM, 43, {
+			...LEAD_AUTHORITY,
+			replacementLeadId: 999,
+		});
+		const unusable = removeProjectTeamMember(TEAM, 43, {
+			...LEAD_AUTHORITY,
+			replacementLeadId: '   ',
+		});
+
+		expect(unknown).toMatchObject({
+			ok: false,
+			code: 'REPLACEMENT_NOT_IN_TEAM',
+		});
+		expect(unusable).toMatchObject({
+			ok: false,
+			code: 'LAST_LEAD_REQUIRES_REPLACEMENT',
+		});
+	});
+
+	it('never accepts the removed or demoted person as their own replacement', () => {
+		const removed = removeProjectTeamMember(TEAM, 43, {
+			...LEAD_AUTHORITY,
+			replacementLeadId: 43,
+		});
+		const demoted = updateProjectTeamMemberRole(TEAM, 43, 'Team Member', {
+			...LEAD_AUTHORITY,
+			replacementLeadId: 43,
+		});
+
+		expect(removed).toMatchObject({
+			ok: false,
+			code: 'REPLACEMENT_NOT_IN_TEAM',
+		});
+		expect(demoted).toMatchObject({
+			ok: false,
+			code: 'REPLACEMENT_NOT_IN_TEAM',
+		});
+	});
+
+	it('does not apply the rule to a project with no lead or on creation', () => {
+		const noLead = [TEAM[0]];
+		const removal = removeProjectTeamMember(noLead, 42, LEAD_AUTHORITY);
+
+		expect(removal.ok).toBe(true);
+		if (!removal.ok) return;
+		expect(removal.team).toEqual([]);
+	});
+});
+

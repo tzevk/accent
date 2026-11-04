@@ -50,6 +50,8 @@ export type ProjectRights = {
 	editableSections: SectionId[];
 	canManageTeam: boolean;
 	canChangeLeadDesignation: boolean;
+	/** Explicit authority to leave a project without any Project Lead. */
+	canClearFinalLead: boolean;
 	canPerform: {
 		create: boolean;
 		delete: boolean;
@@ -219,6 +221,10 @@ export function resolveProjectRights({
 		// Any team manager may change the lead designation; update-only
 		// authority still cannot manage the team at all.
 		canChangeLeadDesignation: canManageTeam,
+		// Only an explicit `assign` grant in scope (or a super admin) may
+		// deliberately leave the project without a lead. A lead acting alone
+		// must name a replacement in the same operation.
+		canClearFinalLead: isSuperAdmin || assignCovers,
 		canPerform: {
 			create: isSuperAdmin || hasProjectAction(user, 'create'),
 			delete: isSuperAdmin || deleteCovers,
