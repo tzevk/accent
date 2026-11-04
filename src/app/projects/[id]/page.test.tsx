@@ -31,30 +31,41 @@ const memberSections = [
 	'upload_documents',
 ];
 
-function memberRights() {
+const ALL_SECTIONS = [
+	'project_details',
+	'scope',
+	'project_activity',
+	'project_schedule',
+	'project_team',
+	'documents_received',
+	'documents_issued',
+	'minutes_internal_meet',
+	'project_handover',
+	'project_manhours',
+	'software',
+	'query_log',
+	'assumption',
+	'lessons_learnt',
+	'discussion',
+	'upload_documents',
+];
+
+function financialAreas(overrides = {}) {
+	return {
+		quotation: false,
+		purchase_order: false,
+		invoice: false,
+		...overrides,
+	};
+}
+
+function memberRights(areas = {}) {
 	return {
 		canOpen: true,
 		isMember: true,
 		isLead: false,
 		sections: Object.fromEntries(
-			[
-				'project_details',
-				'scope',
-				'project_activity',
-				'project_schedule',
-				'project_team',
-				'documents_received',
-				'documents_issued',
-				'minutes_internal_meet',
-				'project_handover',
-				'project_manhours',
-				'software',
-				'query_log',
-				'assumption',
-				'lessons_learnt',
-				'discussion',
-				'upload_documents',
-			].map((section) => [
+			ALL_SECTIONS.map((section) => [
 				section,
 				{
 					read: memberSections.includes(section),
@@ -73,12 +84,22 @@ function memberRights() {
 			reopen: false,
 		},
 		directScopes: {},
-		financialAreas: {
-			quotation: false,
-			purchase_order: false,
-			invoice: false,
-		},
+		financialAreas: financialAreas(areas),
 		commercial: { view: [], edit: [] },
+	};
+}
+
+function managerRights(areas = {}) {
+	return {
+		...memberRights(areas),
+		isLead: true,
+		sections: Object.fromEntries(
+			ALL_SECTIONS.map((section) => [section, { read: true, edit: true }])
+		),
+		readableSections: ALL_SECTIONS,
+		editableSections: ALL_SECTIONS,
+		canManageTeam: true,
+		canChangeLeadDesignation: true,
 	};
 }
 
@@ -213,6 +234,105 @@ describe('employee project workspace', () => {
 	});
 });
 
+describe('financial document areas', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		useParams.mockReturnValue({ id: 'PRJ-10' });
+		useSession.mockReturnValue({
+			user: { id: 42, full_name: 'Employee', is_super_admin: '0' },
+			can: vi.fn(() => false),
+			RESOURCES: { PROJECTS: 'projects' },
+			PERMISSIONS: { UPDATE: 'update' },
+		});
+		fetchJSON.mockResolvedValue({
+			success: true,
+			data: {
+				assumptions: [],
+				discussions: [],
+				queryLog: [],
+				lessonsLearnt: [],
+			},
+		});
+	});
+
+	it('shows no financial tab to an employee without financial rights', async () => {
+		useSWR.mockReturnValue({
+			data: { success: true, data: project, rights: memberRights() },
+			isLoading: false,
+			error: null,
+		});
+		render(<ProjectViewPage />);
+
+		await screen.findByRole('tab', { name: 'Scope' });
+		expect(screen.queryByRole('tab', { name: 'Quotation' })).toBeNull();
+		expect(screen.queryByRole('tab', { name: 'Purchase Order' })).toBeNull();
+		expect(screen.queryByRole('tab', { name: 'Invoice' })).toBeNull();
+	});
+
+	it('shows every granted financial area to an employee holding the permission', async () => {
+		useSWR.mockReturnValue({
+			data: {
+				success: true,
+				data: project,
+				rights: memberRights({
+					quotation: true,
+					purchase_order: true,
+					invoice: true,
+				}),
+			},
+			isLoading: false,
+			error: null,
+		});
+		render(<ProjectViewPage />);
+
+		await screen.findByRole('tab', { name: 'Quotation' });
+		expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+			...employeeTabs,
+			'Quotation',
+			'Purchase Order',
+			'Invoice',
+		]);
+
+		await userEvent.click(screen.getByRole('tab', { name: 'Quotation' }));
+		expect(
+			screen.getByText(/Quotation details are managed in the edit view/)
+		).toBeInTheDocument();
+	});
+
+	it('hides financial tabs from a lead without financial rights', async () => {
+		useSWR.mockReturnValue({
+			data: {
+				success: true,
+				data: project,
+				rights: managerRights({ quotation: false }),
+			},
+			isLoading: false,
+			error: null,
+		});
+		render(<ProjectViewPage />);
+
+		await screen.findByRole('tab', { name: 'Project Details' });
+		expect(screen.queryByRole('tab', { name: 'Quotation' })).toBeNull();
+		expect(screen.queryByRole('tab', { name: 'Purchase Order' })).toBeNull();
+		expect(screen.queryByRole('tab', { name: 'Invoice' })).toBeNull();
+	});
+
+	it('shows a granted financial area to a lead who can open the project', async () => {
+		useSWR.mockReturnValue({
+			data: {
+				success: true,
+				data: project,
+				rights: managerRights({ quotation: true }),
+			},
+			isLoading: false,
+			error: null,
+		});
+		render(<ProjectViewPage />);
+
+		await screen.findByRole('tab', { name: 'Quotation' });
+		expect(screen.queryByRole('tab', { name: 'Invoice' })).toBeNull();
+	});
+});
 
 describe('project workspace denial', () => {
 	beforeEach(() => {

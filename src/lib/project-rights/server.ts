@@ -53,13 +53,20 @@ export type ProjectAccessOptions = {
 	};
 };
 
+/**
+ * The single denial body for project authority. Financial document areas
+ * reuse it so a denied project and a denied financial area are
+ * indistinguishable — neither discloses that the project exists.
+ */
+export function projectAccessDeniedResponse(): Response {
+	return Response.json(
+		{ success: false, error: PROJECT_ACCESS_DENIED },
+		{ status: 403 }
+	);
+}
+
 function denied() {
-	return {
-		response: Response.json(
-			{ success: false, error: PROJECT_ACCESS_DENIED },
-			{ status: 403 }
-		),
-	};
+	return { response: projectAccessDeniedResponse() };
 }
 
 /**
@@ -92,7 +99,8 @@ export async function findProjectRow(
 	);
 	if (Array.isArray(rows) && rows.length > 0) return rows[0];
 
-	const numeric = typeof identifier === 'number' ? identifier : Number(identifier);
+	const numeric =
+		typeof identifier === 'number' ? identifier : Number(identifier);
 	if (
 		Number.isFinite(numeric) &&
 		candidates.includes('project_id') &&
@@ -140,10 +148,7 @@ function hasAnyGrant(user: ProjectRightsUser, keys: string[]): boolean {
 
 function financialAreasFromUser(user: ProjectRightsUser) {
 	return {
-		quotation: hasAnyGrant(user, [
-			'quotations:read',
-			'quotations:update',
-		]),
+		quotation: hasAnyGrant(user, ['quotations:read', 'quotations:update']),
 		purchase_order: hasAnyGrant(user, [
 			'purchase_orders:read',
 			'purchase_orders:update',
