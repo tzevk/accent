@@ -53,6 +53,12 @@ import {
 	isFinancialAreaAllowed,
 } from '@/lib/project-tabs';
 import { WORK_SECTION_IDS } from '@/lib/project-rights/sections';
+import {
+	collectProjectSnapshot,
+	collectSectionSnapshot,
+	diffSectionSaves,
+	prepareSectionValues,
+} from '@/lib/project-rights/section-save';
 import { getExportSheetPayloads } from './excel/export/buildPayloads';
 import {
 	exportProjectWorkbook,
@@ -307,13 +313,13 @@ export default function EditProjectForm() {
 	const canEditProjectContent = projectRights
 		? (projectRights.editableSections || []).length > 0
 		: isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	// Team management only — granted via projects:assign (or full update / super admin).
-	// Lets a user edit the Project Team tab without full project edit rights.
-	const canManageTeam = projectRights
-		? projectRights.canManageTeam === true
-		: isSuperAdmin ||
-			can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
-			can(RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
+	// Per-section editability: the server's editableSections decides which
+	// rendered section accepts edits. Legacy payloads fall back to the
+	// whole-project check.
+	const canEditSection = (sectionId) => {
+		if (!projectRights) return canEditProjectContent;
+		return (projectRights.editableSections || []).includes(sectionId);
+	};
 	const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
 	// Signature-authorisation toggles for the Documents Issued tab
@@ -344,6 +350,9 @@ export default function EditProjectForm() {
 	const [activities, setActivities] = useState([]); // Standalone activities list
 	const [subActivities, setSubActivities] = useState([]); // Standalone subactivities list
 	const [form, setForm] = useState(INITIAL_FORM);
+	// Section values as loaded from the server. Saves diff against this so a
+	// screen only writes the sections the actor changed.
+	const initialSectionsRef = useRef(null);
 	const [projectActivities, setProjectActivities] = useState([]);
 	const [newScopeActivityName, setNewScopeActivityName] = useState('');
 	const [teamMembers, setTeamMembers] = useState([]);
@@ -591,8 +600,9 @@ export default function EditProjectForm() {
 		[generateScheduleRowId]
 	);
 
-	const canEditSchedule = canEditProjectContent && !scheduleLocked;
-	const scheduleEffectivelyLocked = scheduleLocked || !canEditProjectContent;
+	const canEditSchedule = canEditSection('project_schedule') && !scheduleLocked;
+	const scheduleEffectivelyLocked =
+		scheduleLocked || !canEditSection('project_schedule');
 
 	const [selectedScheduleLegend, setSelectedScheduleLegend] =
 		useState('accent_activities');
@@ -1024,6 +1034,7 @@ export default function EditProjectForm() {
 				if (result.success && result.data) {
 					setProjectRights(result.rights || null);
 					const project = result.data;
+					initialSectionsRef.current = collectProjectSnapshot(project);
 					console.log(
 						'[fetchProject] Project data keys:',
 						Object.keys(project)
@@ -1106,7 +1117,9 @@ export default function EditProjectForm() {
 						internal_meeting_no: project.internal_meeting_no || '',
 						internal_meeting_client_name:
 							project.internal_meeting_client_name || '',
-						internal_meeting_date: project.internal_meeting_date || '',
+						internal_meeting_date: formatDateForInput(
+							project.internal_meeting_date
+						),
 						internal_meeting_organizer:
 							project.internal_meeting_organizer || '',
 						internal_minutes_drafted: project.internal_minutes_drafted || '',
@@ -1119,8 +1132,22 @@ export default function EditProjectForm() {
 						// kickoff mapping will be set below if present
 						kickoff_meeting_no:
 							project.kickoff_meeting_no || project.kickoff_meeting || '',
+						kickoff_meeting: project.kickoff_meeting || '',
+						in_house_meeting: project.in_house_meeting || '',
+						project_start_milestone: project.project_start_milestone || '',
+						project_review_milestone: project.project_review_milestone || '',
+						project_end_milestone: project.project_end_milestone || '',
+						kickoff_followup_date: formatDateForInput(
+							project.kickoff_followup_date
+						),
+						next_internal_meeting: formatDateForInput(
+							project.next_internal_meeting
+						),
+						project_schedule: project.project_schedule || '',
 						kickoff_client_name: project.kickoff_client_name || '',
-						kickoff_meeting_date: project.kickoff_meeting_date || '',
+						kickoff_meeting_date: formatDateForInput(
+							project.kickoff_meeting_date
+						),
 						kickoff_meeting_organizer: project.kickoff_meeting_organizer || '',
 						kickoff_minutes_drafted: project.kickoff_minutes_drafted || '',
 						kickoff_meeting_location: project.kickoff_meeting_location || '',
@@ -4103,12 +4130,48 @@ export default function EditProjectForm() {
 	const handleSubmit = async (event) => {
 		event.preventDefault();
 
-		if (!canEditProjectContent && !canManageTeam) {
+		if (!canEditProjectContent) {
 			alert('You do not have permission to update this project.');
 			return;
 		}
 
-		if (!form.name.trim()) {
+		const currentSnapshot = collectSectionSnapshot({
+			...form,
+			team_members: teamMembers,
+			project_activities_list: projectActivities,
+			planning_activities_list: planningActivities,
+			project_schedule_list: {
+				locked: scheduleLocked,
+				rows: projectSchedule,
+			},
+			documents_received_list: documentsReceived,
+			input_documents_list: inputDocumentsList,
+			documents_issued_list: documentsIssued,
+			kickoff_meetings_list: kickoffMeetings,
+			internal_meetings_list: internalMeetings,
+			project_handover_list: projectHandover,
+			project_manhours_list: projectManhours || [],
+			software_items: softwareItems,
+			project_query_log_list: queryLog,
+			project_assumption_list: assumptions,
+			project_lessons_learnt_list: lessonsLearnt,
+		});
+
+		const changes = diffSectionSaves(
+			initialSectionsRef.current,
+			currentSnapshot,
+			projectRights?.editableSections || []
+		);
+
+		if (changes.length === 0) {
+			alert('No changes to save.');
+			return;
+		}
+
+		if (
+			changes.some((change) => change.section === 'project_details') &&
+			!form.name.trim()
+		) {
 			alert('Project name is required');
 			return;
 		}
@@ -4116,101 +4179,52 @@ export default function EditProjectForm() {
 		setSubmitting(true);
 
 		try {
-			const payload = {
-				...form,
-				project_duration_planned: form.project_duration_planned
-					? Number(form.project_duration_planned)
-					: null,
-				project_duration_actual: form.project_duration_actual
-					? Number(form.project_duration_actual)
-					: null,
-				project_value: form.project_value ? Number(form.project_value) : null,
-				cost_to_company: form.cost_to_company
-					? Number(form.cost_to_company)
-					: null,
-				profitability_estimate: form.profitability_estimate
-					? Number(form.profitability_estimate)
-					: null,
-				budget: form.budget ? Number(form.budget) : null,
-				actual_profit_loss: form.actual_profit_loss
-					? Number(form.actual_profit_loss)
-					: null,
-				progress: Number(form.progress) || 0,
-				project_team: JSON.stringify(projectTeamMembers),
-				team_members: JSON.stringify(teamMembers),
-				software_items: JSON.stringify(softwareItems),
-				project_activities_list: JSON.stringify(projectActivities),
-				planning_activities_list: JSON.stringify(planningActivities),
-				documents_list: JSON.stringify(documentsList),
-				input_documents_list: JSON.stringify(inputDocumentsList),
-				kickoff_meetings_list: JSON.stringify(kickoffMeetings),
-				internal_meetings_list: JSON.stringify(internalMeetings),
-				documents_received_list: JSON.stringify(documentsReceived),
-				documents_issued_list: JSON.stringify(documentsIssued),
-				project_handover_list: JSON.stringify(projectHandover),
-				project_manhours_list: JSON.stringify(projectManhours || []),
-				project_query_log_list: JSON.stringify(queryLog),
-				project_assumption_list: JSON.stringify(assumptions),
-				project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
-				project_schedule_list: JSON.stringify({
-					locked: scheduleLocked,
-					rows: projectSchedule,
-				}),
-			};
+			const failures = [];
+			let saved = 0;
+			const nextInitial = { ...(initialSectionsRef.current || {}) };
 
-			console.log('[SUBMIT] Sending update for project:', id);
-			console.log(
-				'[TEAM DEBUG submit] projectTeamMembers count:',
-				projectTeamMembers.length,
-				'| first 300 chars:',
-				JSON.stringify(projectTeamMembers).substring(0, 300)
-			);
-			console.log(
-				'[TEAM DEBUG submit] payload.project_team type:',
-				typeof payload.project_team,
-				'| first 300 chars:',
-				(payload.project_team || '').substring(0, 300)
-			);
-			console.log(
-				'[SUBMIT] Payload size:',
-				JSON.stringify(payload).length,
-				'bytes'
-			);
-			console.log('[SUBMIT] List field counts:', {
-				inputDocumentsList: inputDocumentsList.length,
-				documentsReceived: documentsReceived.length,
-				documentsIssued: documentsIssued.length,
-				projectHandover: projectHandover.length,
-				projectManhours: projectManhours.length,
-				queryLog: queryLog.length,
-				assumptions: assumptions.length,
-				lessonsLearnt: lessonsLearnt.length,
-				projectSchedule: projectSchedule.length,
-			});
-			console.log(
-				'[SUBMIT] Sample data - documentsIssued:',
-				JSON.stringify(documentsIssued).substring(0, 200)
-			);
-
-			const result = await fetchJSON(`/api/projects/${id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
-			});
-
-			if (result.success) {
-				alert('Project updated successfully!');
-			} else {
-				alert(
-					`Failed to update project: ${result.error || result.message || 'Unknown error'}`
-				);
+			for (const change of changes) {
+				try {
+					const result = await fetchJSON(`/api/projects/${id}`, {
+						method: 'PUT',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							section: change.section,
+							values: prepareSectionValues(change.section, change.values),
+						}),
+					});
+					if (result?.success) {
+						saved += 1;
+						nextInitial[change.section] = currentSnapshot[change.section];
+					} else {
+						failures.push(
+							`${change.section}: ${result?.error || 'Unknown error'}`
+						);
+					}
+				} catch (error) {
+					failures.push(
+						`${change.section}: ${error?.message || 'Unknown error'}`
+					);
+				}
 			}
-		} catch (error) {
-			alert(`Failed to update project: ${error?.message || 'Unknown error'}`);
+
+			initialSectionsRef.current = nextInitial;
+			if (failures.length > 0) {
+				alert(
+					`Saved ${saved} of ${changes.length} changed sections.\n${failures.join('\n')}`
+				);
+			} else {
+				alert('Project updated successfully!');
+			}
 		} finally {
 			setSubmitting(false);
 		}
 	};
+
+	const activeSectionId = resolveTabIdLocal(activeTab);
+	const activeSectionEditable = WORK_SECTION_IDS.includes(activeSectionId)
+		? canEditSection(activeSectionId)
+		: canEditProjectContent;
 
 	if (loading) return <LoadingFallback />;
 
@@ -4372,9 +4386,7 @@ export default function EditProjectForm() {
 									</button>
 									<button
 										type="submit"
-										disabled={
-											submitting || (!canEditProjectContent && !canManageTeam)
-										}
+										disabled={submitting || !canEditProjectContent}
 										aria-busy={submitting}
 										className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors transition-shadow transition-transform hover:bg-purple-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
 									>
@@ -4386,7 +4398,7 @@ export default function EditProjectForm() {
 										)}
 										{submitting
 											? 'Saving…'
-											: canEditProjectContent || canManageTeam
+											: canEditProjectContent
 												? 'Update Project'
 												: 'View Only'}
 									</button>
@@ -4430,7 +4442,7 @@ export default function EditProjectForm() {
 							aria-label={`${visibleTabs.find((tab) => tab.id === activeTab)?.label || 'Project'} section`}
 						>
 							<fieldset
-								disabled={!canEditProjectContent}
+								disabled={!activeSectionEditable}
 								className="m-0 min-w-0 border-0 p-0"
 							>
 								{/* Enhanced Project Details Tab */}
@@ -4813,14 +4825,11 @@ export default function EditProjectForm() {
 								)}
 							</fieldset>
 
-							{/* Project Team Tab — rendered outside the global fieldset so it honors
-							    canManageTeam (projects:assign) independently of full project edit rights. */}
+							{/* Project Team Tab — read-only in #414. Team mutations land in
+							    #415 and must not be submitted through the project save. */}
 							{(activeTab === 'project_team' ||
 								activeTab === 'project_team_tab') && (
-								<fieldset
-									disabled={!canManageTeam}
-									className="m-0 min-w-0 border-0 p-0"
-								>
+								<fieldset disabled className="m-0 min-w-0 border-0 p-0">
 									<ProjectTeamTab
 										toggleSection={toggleSection}
 										openSections={openSections}

@@ -118,8 +118,8 @@ export const COMMERCIAL_COLUMN_ALIASES: Record<string, string> = {
 };
 
 /**
- * Minimal section -> project column map. #414 fills the writable maps; this
- * map is already sufficient to omit unreadable sections from read payloads.
+ * Section -> readable project columns. Used to omit unreadable sections from
+ * read payloads; `SECTION_WRITES` below owns the write map.
  */
 export const SECTION_COLUMNS: Record<SectionId, readonly string[]> = {
 	project_details: [
@@ -186,6 +186,184 @@ export const SECTION_COLUMNS: Record<SectionId, readonly string[]> = {
 };
 
 /**
+ * How a section is saved.
+ *
+ * `project_columns` sections are written by `PUT /api/projects/[id]` through
+ * `{ section, values }`: every key must be one of the section's direct
+ * columns or JSON/list columns. Sections that are not saved through the
+ * project row say so explicitly so a handcrafted request cannot write here.
+ */
+export type SectionWriteMode = 'project_columns' | 'sub_resource';
+
+export type SectionWriteDefinition = {
+	mode: SectionWriteMode;
+	/** Direct `projects` columns. */
+	columns: readonly string[];
+	/** JSON/list `projects` columns serialized on write. */
+	listColumns: readonly string[];
+	/** Where a sub-resource section is mutated instead. */
+	writePath?: string;
+};
+
+/**
+ * Writable project columns per section, derived from the former whole-form
+ * PUT field list and the tab components. Protected commercial columns never
+ * appear here: they belong to the `commercial` pseudo-section only.
+ */
+export const SECTION_WRITES: Record<SectionId, SectionWriteDefinition> = {
+	project_details: {
+		mode: 'project_columns',
+		columns: [
+			'name',
+			'project_code',
+			'client_name',
+			'client_contact_details',
+			'project_location_country',
+			'project_location_city',
+			'project_location_site',
+			'industry',
+			'contract_type',
+			'company_id',
+			'project_manager',
+			'type',
+			'start_date',
+			'end_date',
+			'target_date',
+			'project_duration_planned',
+			'project_duration_actual',
+			'priority',
+			'assigned_to',
+			'description',
+			'notes',
+			'proposal_id',
+			'estimated_manhours',
+			'unit_qty',
+			'duration',
+			'list_of_deliverables',
+		],
+		listColumns: [],
+	},
+	scope: {
+		mode: 'project_columns',
+		columns: ['scope_of_work', 'additional_scope'],
+		listColumns: [],
+	},
+	project_activity: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: [
+			'project_activities_list',
+			'planning_activities_list',
+			'team_members',
+		],
+	},
+	project_schedule: {
+		mode: 'project_columns',
+		columns: [
+			'project_start_milestone',
+			'project_review_milestone',
+			'project_end_milestone',
+		],
+		listColumns: ['project_schedule_list'],
+	},
+	project_team: {
+		mode: 'sub_resource',
+		columns: [],
+		listColumns: [],
+		writePath: '/api/projects/[id]/team',
+	},
+	documents_received: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: [
+			'documents_received_list',
+			'input_documents_list',
+			'input_document',
+		],
+	},
+	documents_issued: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: ['documents_issued_list'],
+	},
+	minutes_internal_meet: {
+		mode: 'project_columns',
+		columns: [
+			'kickoff_meeting',
+			'in_house_meeting',
+			'kickoff_meeting_date',
+			'kickoff_followup_date',
+			'internal_meeting_date',
+			'next_internal_meeting',
+		],
+		listColumns: ['kickoff_meetings_list', 'internal_meetings_list'],
+	},
+	project_handover: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: ['project_handover_list'],
+	},
+	project_manhours: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: ['project_manhours_list'],
+	},
+	software: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: ['software_items'],
+	},
+	query_log: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: ['project_query_log_list'],
+	},
+	assumption: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: ['project_assumption_list'],
+	},
+	lessons_learnt: {
+		mode: 'project_columns',
+		columns: [],
+		listColumns: ['project_lessons_learnt_list'],
+	},
+	discussion: {
+		mode: 'sub_resource',
+		columns: [],
+		listColumns: [],
+		writePath: '/api/projects/[id]/followups',
+	},
+	upload_documents: {
+		mode: 'sub_resource',
+		columns: [],
+		listColumns: [],
+		writePath: '/api/document-upload',
+	},
+};
+
+/** Writable project columns for sections saved through the project row. */
+export const SECTION_WRITE_COLUMNS: Record<SectionId, readonly string[]> =
+	Object.fromEntries(
+		WORK_SECTION_IDS.map((section) => [
+			section,
+			SECTION_WRITES[section].columns,
+		])
+	) as Record<SectionId, readonly string[]>;
+
+/** JSON/list project columns for sections saved through the project row. */
+export const SECTION_LIST_COLUMNS: Record<SectionId, readonly string[]> =
+	Object.fromEntries(
+		WORK_SECTION_IDS.map((section) => [
+			section,
+			SECTION_WRITES[section].listColumns,
+		])
+	) as Record<SectionId, readonly string[]>;
+
+/** The only columns a `commercial` save may write, each needing edit rights. */
+export const COMMERCIAL_WRITE_COLUMNS = PROTECTED_COMMERCIAL_COLUMNS;
+
+/**
  * Identity and list-safe fields that stay visible for any project the actor
  * may open. A section filter never removes them.
  */
@@ -212,4 +390,9 @@ export function isProtectedCommercialColumn(
 	value: string
 ): value is ProtectedCommercialColumn {
 	return (PROTECTED_COMMERCIAL_COLUMNS as readonly string[]).includes(value);
+}
+
+/** True when the section is saved through the project row itself. */
+export function isProjectWritableSection(section: SectionId): boolean {
+	return SECTION_WRITES[section]?.mode === 'project_columns';
 }

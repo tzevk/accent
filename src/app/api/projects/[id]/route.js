@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import { dbConnect } from '@/utils/database';
 import {
 	RESOURCES,
@@ -7,20 +6,19 @@ import {
 } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import {
-	getTableColumns,
-	getPrimaryKeyColumn,
-	invalidateCache,
-} from '@/utils/schema-cache';
-
-import {
-	requireProjectAccess,
+	COMMERCIAL_SECTION,
+	PROJECT_ACCESS_DENIED,
+	buildSectionUpdate,
 	filterProjectForRights,
+	isSectionId,
+	requireProjectAccess,
+	validateSectionWrite,
 } from '@/lib/project-rights';
 import { isUserInProjectTeam } from '@/utils/project-access';
-import {
-	sanitizeJsonStrings,
-	sanitizeOptionalRichText,
-} from '@/lib/sanitize-fields';
+import { sanitizeOptionalRichText } from '@/lib/sanitize-fields';
+
+// Rich-text columns keep the previous write-path sanitization.
+const RICH_TEXT_COLUMNS = ['description', 'additional_scope', 'scope_of_work'];
 
 // GET specific project
 export async function GET(request, { params }) {
@@ -151,904 +149,146 @@ export async function GET(request, { params }) {
 	}
 }
 
-// PUT - Update project
+// PUT - Update one project section
 export async function PUT(request, context) {
-	// Get current user first
-	const user = await getCurrentUser(request);
-	if (!user) {
-		return Response.json(
-			{ success: false, error: 'Unauthorized' },
-			{ status: 401 }
-		);
-	}
-
-	let db = null;
-	let retries = 0;
-	const maxRetries = 2;
-
-	// Parse request data once outside the loop
 	const { id } = await context.params;
-	const data = await request.json();
+	const access = await requireProjectAccess(request, id);
+	if ('response' in access) return access.response;
 
-	// Close/activate actions send a status-only payload and should be allowed via projects:close.
-	const payloadKeys = Object.keys(data || {}).filter(
-		(key) => data[key] !== undefined
-	);
-	const isStatusOnlyUpdate =
-		payloadKeys.length > 0 &&
-		payloadKeys.every((key) => key === 'status' || key === 'progress');
-	const hasCloseAccess =
-		user.is_super_admin ||
-		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.CLOSE);
-	// projects:update OR projects:assign permits updating the project.
-	// `assign` is the granular "team management" grant — it lets a user (e.g. a
-	// sub-admin not on the team) manage project_team members. The client UI
-	// restricts an assign-only user to the Project Team tab, so only team
-	// changes are submitted; this mirrors the existing isUserInProjectTeam
-	// fallback which already allows any team member to PUT the whole project.
-	const hasUpdateAccess =
-		user.is_super_admin ||
-		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
-		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
-	const hasFullAccess =
-		hasUpdateAccess || (hasCloseAccess && isStatusOnlyUpdate);
+	const { project, rights, db, ownsDb } = access;
 
-	while (retries <= maxRetries) {
+	try {
+		let body;
 		try {
-			// Get fresh connection for retry attempts
-			if (db) {
-				try {
-					await db.release();
-				} catch (e) {
-					console.warn('Error releasing old connection:', e.message);
-				}
-				db = null;
-			}
+			body = await request.json();
+		} catch {
+			body = null;
+		}
 
-			db = await dbConnect();
-
-			// Detect primary key column using cached schema
-			let pkCol = 'project_id'; // default fallback
-			try {
-				const cachedPk = await getPrimaryKeyColumn(db, 'projects');
-				if (cachedPk) pkCol = cachedPk;
-			} catch (schemaErr) {
-				// Fallback to default primary key
-			}
-
-			// Resolve the project: URL param is the numeric primary key
-			let projectId = null;
-			if (/^\d+$/.test(id)) {
-				projectId = parseInt(id, 10);
-			} else {
-				// If non-numeric ID provided, it might be a project_code lookup
-				try {
-					const [lookup] = await db.execute(
-						`SELECT ${pkCol} FROM projects WHERE project_code = ? AND isDelete = 0`,
-						[id]
-					);
-					if (lookup && lookup.length > 0) {
-						projectId = lookup[0][pkCol];
-					}
-				} catch (lookupErr) {
-					console.warn(
-						'Project lookup by project_code failed:',
-						lookupErr.message || lookupErr
-					);
-				}
-			}
-
-			if (projectId === null) {
-				// ensure DB connection closed before returning
-				try {
-					await db.release();
-				} catch {}
-				return Response.json(
-					{ success: false, error: 'Project not found' },
-					{ status: 404 }
-				);
-			}
-
-			// If user doesn't have full access, check if they're in the project team
-			if (!hasFullAccess) {
-				try {
-					const [projectRows] = await db.execute(
-						`SELECT project_team FROM projects WHERE ${pkCol} = ? AND isDelete = 0`,
-						[projectId]
-					);
-					if (projectRows && projectRows.length > 0) {
-						const isTeamMember = isUserInProjectTeam(
-							projectRows[0].project_team,
-							user.id,
-							user.email
-						);
-						if (!isTeamMember) {
-							console.log(
-								`[Projects API PUT] User ${user.email} denied update access to project ${id} - not a team member`
-							);
-							try {
-								await db.release();
-							} catch {}
-							return Response.json(
-								{
-									success: false,
-									error: 'You do not have permission to update this project',
-								},
-								{ status: 403 }
-							);
-						}
-						console.log(
-							`[Projects API PUT] User ${user.email} granted update access to project ${id} as team member`
-						);
-					}
-				} catch (teamCheckErr) {
-					console.warn(
-						'Error checking team membership for PUT:',
-						teamCheckErr.message
-					);
-				}
-			}
-
-			const {
-				name,
-				project_id,
-				project_code,
-				client_name,
-				client_contact_details,
-				project_location_country,
-				project_location_city,
-				project_location_site,
-				industry,
-				contract_type,
-				company_id,
-				project_manager,
-				type,
-				start_date,
-				end_date,
-				target_date,
-				project_duration_planned,
-				project_duration_actual,
-				budget,
-				progress,
-				status,
-				priority,
-				assigned_to,
-				description,
-				additional_scope,
-				notes,
-				proposal_id,
-				// Commercial Details
-				project_value,
-				currency,
-				payment_terms,
-				invoicing_status,
-				cost_to_company,
-				profitability_estimate,
-				subcontractors_vendors,
-				// Procurement & Material
-				procurement_status,
-				material_delivery_schedule,
-				vendor_management,
-				// Construction / Site
-				mobilization_date,
-				site_readiness,
-				construction_progress,
-				// Risk & Issues
-				major_risks,
-				mitigation_plans,
-				change_orders,
-				claims_disputes,
-				// Project Closeout
-				final_documentation_status,
-				lessons_learned,
-				client_feedback,
-				actual_profit_loss,
-				// Meeting and Document Fields
-				project_schedule,
-				input_document,
-				list_of_deliverables,
-				kickoff_meeting,
-				in_house_meeting,
-				// Enhanced Planning & Meeting Fields
-				project_start_milestone,
-				project_review_milestone,
-				project_end_milestone,
-				kickoff_meeting_date,
-				kickoff_followup_date,
-				internal_meeting_date,
-				next_internal_meeting,
-				project_team,
-				// Manhours fields
-				estimated_manhours,
-				unit_qty,
-				scope_of_work,
-				deliverables,
-				software_included,
-				duration,
-				mode_of_delivery,
-				revision,
-				site_visit,
-				quotation_validity,
-				exclusion,
-				billing_and_payment_terms,
-				other_terms_and_conditions,
-			} = data;
-
-			console.log('[TEAM DEBUG PUT] Received project_team:', {
-				type: typeof project_team,
-				isUndefined: project_team === undefined,
-				preview:
-					typeof project_team === 'string'
-						? project_team.substring(0, 300)
-						: project_team,
-			});
-
-			// Helper function to normalize decimal/numeric fields (convert empty strings to null)
-			const normalizeDecimal = (value) => {
-				if (value === undefined || value === null || value === '') return null;
-				return value;
-			};
-
-			// Helper function to normalize date fields (convert empty strings to null, objects to strings)
-			const normalizeDate = (value) => {
-				if (
-					value === undefined ||
-					value === null ||
-					(typeof value === 'string' && value.trim() === '')
-				)
-					return null;
-				// If it's a Date object, convert to YYYY-MM-DD string
-				if (value instanceof Date) {
-					return value.toISOString().split('T')[0];
-				}
-				// If it's an object (but not Date), try to extract a date string
-				if (typeof value === 'object' && value !== null) {
-					console.warn('normalizeDate received object:', value);
-					return null;
-				}
-				return value;
-			};
-
-			// Update all provided fields using COALESCE
-			// If proposal_id provided in payload, prefer company info from the linked proposal
-			let companyParamValue =
-				company_id === undefined || company_id === null || company_id === ''
-					? null
-					: company_id;
-			let clientNameParam = client_name === undefined ? null : client_name;
-			if (
-				proposal_id !== undefined &&
-				proposal_id !== null &&
-				proposal_id !== ''
-			) {
-				try {
-					const [proposalRows] = await db.execute(
-						'SELECT company_id, client_name FROM proposals WHERE (id = ? OR proposal_id = ?) AND isDelete = 0',
-						[proposal_id, proposal_id]
-					);
-					if (proposalRows && proposalRows.length > 0) {
-						if (proposalRows[0].company_id)
-							companyParamValue = proposalRows[0].company_id;
-						if (proposalRows[0].client_name)
-							clientNameParam = proposalRows[0].client_name;
-					}
-				} catch (e) {
-					console.warn(
-						'Failed to lookup proposal for company override in project update:',
-						e?.message || e
-					);
-				}
-			}
-
-			// Build UPDATE query - use cached column list
-			invalidateCache('projects');
-			let existingCols = await getTableColumns(db, 'projects');
-
-			const normalizeLongText = (value) => {
-				if (value === undefined || value === null || value === '') return null;
-				if (typeof value === 'string') return value;
-				return JSON.stringify(value);
-			};
-
-			const fieldValues = [
-				['name', name],
-				// project_code stores the human-readable "Project Number" that can be edited
-				[
-					'project_code',
-					project_code !== undefined ? project_code : project_id,
-				],
-				['client_name', clientNameParam],
-				['client_contact_details', client_contact_details],
-				['project_location_country', project_location_country],
-				['project_location_city', project_location_city],
-				['project_location_site', project_location_site],
-				['industry', industry],
-				['contract_type', contract_type],
-				['company_id', companyParamValue],
-				['project_manager', project_manager],
-				['type', type],
-				['start_date', normalizeDate(start_date)],
-				['end_date', normalizeDate(end_date)],
-				['target_date', normalizeDate(target_date)],
-				[
-					'project_duration_planned',
-					normalizeDecimal(project_duration_planned),
-				],
-				['project_duration_actual', normalizeDecimal(project_duration_actual)],
-				['budget', normalizeDecimal(budget)],
-				['progress', progress],
-				['status', status],
-				['priority', priority],
-				['assigned_to', assigned_to],
-				['description', sanitizeOptionalRichText(description)],
-				['additional_scope', sanitizeOptionalRichText(additional_scope)],
-				['notes', notes],
-				[
-					'proposal_id',
-					proposal_id === undefined ||
-					proposal_id === null ||
-					proposal_id === ''
-						? null
-						: proposal_id,
-				],
-				['project_value', normalizeDecimal(project_value)],
-				['currency', currency],
-				['payment_terms', payment_terms],
-				['invoicing_status', invoicing_status],
-				['cost_to_company', normalizeDecimal(cost_to_company)],
-				['profitability_estimate', normalizeDecimal(profitability_estimate)],
-				['subcontractors_vendors', subcontractors_vendors],
-				['procurement_status', procurement_status],
-				['material_delivery_schedule', material_delivery_schedule],
-				['vendor_management', vendor_management],
-				['mobilization_date', normalizeDate(mobilization_date)],
-				['site_readiness', site_readiness],
-				['construction_progress', construction_progress],
-				['major_risks', major_risks],
-				['mitigation_plans', mitigation_plans],
-				['change_orders', change_orders],
-				['claims_disputes', claims_disputes],
-				['final_documentation_status', final_documentation_status],
-				['lessons_learned', lessons_learned],
-				['client_feedback', client_feedback],
-				['actual_profit_loss', normalizeDecimal(actual_profit_loss)],
-				['project_schedule', project_schedule],
-				['input_document', normalizeLongText(input_document)],
-				['list_of_deliverables', list_of_deliverables],
-				['kickoff_meeting', kickoff_meeting],
-				['in_house_meeting', in_house_meeting],
-				['project_start_milestone', project_start_milestone],
-				['project_review_milestone', project_review_milestone],
-				['project_end_milestone', project_end_milestone],
-				['kickoff_meeting_date', normalizeDate(kickoff_meeting_date)],
-				['kickoff_followup_date', normalizeDate(kickoff_followup_date)],
-				['internal_meeting_date', normalizeDate(internal_meeting_date)],
-				['next_internal_meeting', normalizeDate(next_internal_meeting)],
-				[
-					'project_team',
-					project_team === undefined
-						? null
-						: typeof project_team === 'object' && project_team !== null
-							? JSON.stringify(project_team)
-							: project_team,
-				],
-				['estimated_manhours', normalizeDecimal(estimated_manhours)],
-				['unit_qty', normalizeDecimal(unit_qty)],
-				['scope_of_work', sanitizeOptionalRichText(scope_of_work ?? null)],
-				['deliverables', deliverables === undefined ? null : deliverables],
-				[
-					'software_included',
-					software_included === undefined ? null : software_included,
-				],
-				['duration', duration === undefined ? null : duration],
-				[
-					'mode_of_delivery',
-					mode_of_delivery === undefined ? null : mode_of_delivery,
-				],
-				['revision', revision === undefined ? null : revision],
-				['site_visit', site_visit === undefined ? null : site_visit],
-				[
-					'quotation_validity',
-					quotation_validity === undefined ? null : quotation_validity,
-				],
-				['exclusion', exclusion === undefined ? null : exclusion],
-				[
-					'billing_and_payment_terms',
-					billing_and_payment_terms === undefined
-						? null
-						: billing_and_payment_terms,
-				],
-				['other_terms_and_conditions', other_terms_and_conditions],
-			];
-
-			// Add list fields to main UPDATE (avoid second query race condition)
-			const assignedDisciplines = data.disciplines
-				? JSON.stringify(data.disciplines)
-				: undefined;
-			const assignedActivities = data.activities
-				? JSON.stringify(data.activities)
-				: undefined;
-			const disciplineDescriptions = data.discipline_descriptions
-				? JSON.stringify(sanitizeJsonStrings(data.discipline_descriptions))
-				: undefined;
-			const assignments = data.assignments
-				? JSON.stringify(data.assignments)
-				: undefined;
-			const teamMembers = data.team_members
-				? typeof data.team_members === 'string'
-					? data.team_members
-					: JSON.stringify(data.team_members)
-				: undefined;
-			const softwareItems = data.software_items
-				? typeof data.software_items === 'string'
-					? data.software_items
-					: JSON.stringify(data.software_items)
-				: undefined;
-			const projectActivitiesList = data.project_activities_list
-				? typeof data.project_activities_list === 'string'
-					? data.project_activities_list
-					: JSON.stringify(data.project_activities_list)
-				: undefined;
-			const planningActivitiesList = data.planning_activities_list
-				? typeof data.planning_activities_list === 'string'
-					? data.planning_activities_list
-					: JSON.stringify(data.planning_activities_list)
-				: undefined;
-			const documentsList = data.documents_list
-				? typeof data.documents_list === 'string'
-					? data.documents_list
-					: JSON.stringify(data.documents_list)
-				: undefined;
-			const inputDocumentsList =
-				data.input_documents_list === undefined
-					? undefined
-					: normalizeLongText(data.input_documents_list);
-			const kickoffMeetingsList = data.kickoff_meetings_list || undefined;
-			const internalMeetingsList = data.internal_meetings_list || undefined;
-			const documentsReceivedList = data.documents_received_list || undefined;
-			const documentsIssuedList = data.documents_issued_list || undefined;
-			const projectHandoverList = data.project_handover_list || undefined;
-			const projectManhoursList = data.project_manhours_list || undefined;
-			const projectQueryLogList = data.project_query_log_list || undefined;
-			const projectAssumptionList = data.project_assumption_list || undefined;
-			const projectLessonsLearntList =
-				data.project_lessons_learnt_list || undefined;
-			const projectScheduleList = data.project_schedule_list || undefined;
-
-			const listFields = [
-				[
-					'assigned_disciplines',
-					assignedDisciplines === undefined ? null : assignedDisciplines,
-				],
-				[
-					'assigned_activities',
-					assignedActivities === undefined ? null : assignedActivities,
-				],
-				[
-					'discipline_descriptions',
-					disciplineDescriptions === undefined ? null : disciplineDescriptions,
-				],
-				['assignments', assignments === undefined ? null : assignments],
-				['team_members', teamMembers === undefined ? null : teamMembers],
-				['software_items', softwareItems === undefined ? null : softwareItems],
-				[
-					'project_activities_list',
-					projectActivitiesList === undefined ? null : projectActivitiesList,
-				],
-				[
-					'planning_activities_list',
-					planningActivitiesList === undefined ? null : planningActivitiesList,
-				],
-				['documents_list', documentsList === undefined ? null : documentsList],
-				[
-					'input_documents_list',
-					inputDocumentsList === undefined ? null : inputDocumentsList,
-				],
-				[
-					'kickoff_meetings_list',
-					kickoffMeetingsList === undefined ? null : kickoffMeetingsList,
-				],
-				[
-					'internal_meetings_list',
-					internalMeetingsList === undefined ? null : internalMeetingsList,
-				],
-				[
-					'documents_received_list',
-					documentsReceivedList === undefined ? null : documentsReceivedList,
-				],
-				[
-					'documents_issued_list',
-					documentsIssuedList === undefined ? null : documentsIssuedList,
-				],
-				[
-					'project_handover_list',
-					projectHandoverList === undefined ? null : projectHandoverList,
-				],
-				[
-					'project_manhours_list',
-					projectManhoursList === undefined ? null : projectManhoursList,
-				],
-				[
-					'project_query_log_list',
-					projectQueryLogList === undefined ? null : projectQueryLogList,
-				],
-				[
-					'project_assumption_list',
-					projectAssumptionList === undefined ? null : projectAssumptionList,
-				],
-				[
-					'project_lessons_learnt_list',
-					projectLessonsLearntList === undefined
-						? null
-						: projectLessonsLearntList,
-				],
-				[
-					'project_schedule_list',
-					projectScheduleList === undefined ? null : projectScheduleList,
-				],
-			];
-
-			// Merge list fields into main field values
-			fieldValues.push(...listFields);
-
-			const setParts = [];
-			const queryParams = [];
-			const paramFieldMap = []; // Track which field each param corresponds to
-
-			// Only update fields that: 1) exist in schema, 2) were explicitly provided (not undefined)
-			for (const [col, val] of fieldValues) {
-				// Skip if column doesn't exist in database
-				if (!existingCols.has(col)) {
-					continue;
-				}
-				// Skip undefined values (field not in request) but allow null (intentional clear)
-				if (val !== undefined) {
-					setParts.push(`${col} = ?`);
-					queryParams.push(val);
-					paramFieldMap.push({
-						col,
-						type: val === null ? 'null' : typeof val,
-						isObject: typeof val === 'object' && val !== null,
-					});
-				}
-			}
-
-			// Always update updated_at
-			setParts.push('updated_at = CURRENT_TIMESTAMP');
-
-			const sql = `UPDATE projects SET ${setParts.join(', ')} WHERE ${pkCol} = ? AND isDelete = 0`;
-			queryParams.push(projectId);
-
-			// Validate all parameters are not undefined
-			const invalidParams = queryParams
-				.map((p, i) => ({
-					index: i,
-					field: paramFieldMap[i]?.col,
-					value: p,
-					isUndefined: p === undefined,
-				}))
-				.filter((p) => p.isUndefined);
-			if (invalidParams.length > 0) {
-				throw new Error(
-					'Invalid parameters: undefined values found at indices ' +
-						invalidParams.map((p) => p.index).join(', ')
-				);
-			}
-
-			let result;
-			await db.beginTransaction();
-			try {
-				const ptParam = paramFieldMap.find((p) => p.col === 'project_team');
-				if (ptParam) {
-					console.log(
-						'[TEAM DEBUG PUT] Writing project_team to DB — type:',
-						ptParam.type,
-						'| preview:',
-						typeof queryParams[paramFieldMap.indexOf(ptParam)] === 'string'
-							? queryParams[paramFieldMap.indexOf(ptParam)].substring(0, 300)
-							: queryParams[paramFieldMap.indexOf(ptParam)]
-					);
-				} else {
-					console.log(
-						'[TEAM DEBUG PUT] project_team NOT in field values (skipping update)'
-					);
-				}
-				try {
-					[result] = await db.execute(sql, queryParams);
-					console.log(
-						'[TEAM DEBUG PUT] Update result — affectedRows:',
-						result?.affectedRows
-					);
-				} catch (execError) {
-					console.error(
-						'PUT /api/projects/[id] - Execute error:',
-						execError.message
-					);
-					throw execError;
-				}
-
-				// Force-update project_team directly (bypasses schema cache which may not include it)
-				if (data.project_team !== undefined) {
-					const ptValue =
-						typeof data.project_team === 'object' && data.project_team !== null
-							? JSON.stringify(data.project_team)
-							: data.project_team;
-					console.log(
-						'[TEAM DEBUG PUT] Direct project_team update — value preview:',
-						typeof ptValue === 'string' ? ptValue.substring(0, 300) : ptValue
-					);
-					const [ptResult] = await db.execute(
-						`UPDATE projects SET project_team = ?, updated_at = CURRENT_TIMESTAMP WHERE ${pkCol} = ? AND isDelete = 0`,
-						[ptValue, projectId]
-					);
-					console.log(
-						'[TEAM DEBUG PUT] Direct project_team update — affectedRows:',
-						ptResult?.affectedRows
-					);
-				}
-
-				// Sync activity assignments to user_activity_assignments table — atomic within project transaction
-				if (data.project_activities_list) {
-					const activities =
-						typeof data.project_activities_list === 'string'
-							? JSON.parse(data.project_activities_list)
-							: data.project_activities_list;
-
-					if (Array.isArray(activities)) {
-						// Build a map of incoming assignments: key = `${userId}-${activityId}`
-						const incomingMap = new Map();
-						const allUserIds = new Set();
-
-						for (const activity of activities) {
-							const actId = String(activity.id || '');
-
-							// Multi-user format
-							if (Array.isArray(activity.assigned_users)) {
-								for (const u of activity.assigned_users) {
-									const uid = parseInt(typeof u === 'object' ? u.user_id : u);
-									if (!isNaN(uid) && uid > 0) {
-										allUserIds.add(uid);
-										const userData = typeof u === 'object' ? u : {};
-										const activityName =
-											activity.activity_name || activity.name || '';
-										const subActivityName = activity.sub_activity_name || '';
-										const fullActivityName = subActivityName
-											? `${activityName} - ${subActivityName}`
-											: activityName;
-
-										const priorityMap = {
-											LOW: 'Low',
-											MEDIUM: 'Medium',
-											HIGH: 'High',
-											URGENT: 'Critical',
-										};
-										const statusMap = {
-											NOT_STARTED: 'Not Started',
-											IN_PROGRESS: 'In Progress',
-											ON_HOLD: 'On Hold',
-											COMPLETED: 'Completed',
-											CANCELLED: 'Cancelled',
-										};
-										const priority =
-											priorityMap[activity.priority] ||
-											activity.priority ||
-											'Medium';
-										const status =
-											statusMap[userData.status || activity.status_completed] ||
-											userData.status ||
-											'Not Started';
-
-										incomingMap.set(`${uid}-${actId}`, {
-											user_id: uid,
-											project_id: projectId,
-											activity_id: actId,
-											activity_name: fullActivityName,
-											discipline_name:
-												activity.function_name || activity.discipline || '',
-											description: userData.description || '',
-											due_date: userData.due_date || activity.due_date || null,
-											start_date: userData.start_date || null,
-											priority,
-											estimated_hours:
-												parseFloat(
-													userData.planned_hours || activity.planned_hours
-												) || 0,
-											actual_hours: parseFloat(userData.actual_hours) || 0,
-											qty_assigned: parseFloat(userData.qty_assigned) || 0,
-											qty_completed: parseFloat(userData.qty_completed) || 0,
-											status,
-											notes:
-												userData.remarks ||
-												activity.deliverables ||
-												activity.remarks ||
-												'',
-											daily_entries: userData.daily_entries
-												? JSON.stringify(userData.daily_entries)
-												: null,
-										});
-									}
-								}
-							}
-
-							// Old single-user format
-							if (activity.assigned_user && activity.assigned_user !== '') {
-								const uid = parseInt(activity.assigned_user);
-								if (
-									!isNaN(uid) &&
-									uid > 0 &&
-									!incomingMap.has(`${uid}-${actId}`)
-								) {
-									allUserIds.add(uid);
-									const activityName =
-										activity.activity_name || activity.name || '';
-									const priorityMap = {
-										LOW: 'Low',
-										MEDIUM: 'Medium',
-										HIGH: 'High',
-										URGENT: 'Critical',
-									};
-									const priority = priorityMap[activity.priority] || 'Medium';
-
-									incomingMap.set(`${uid}-${actId}`, {
-										user_id: uid,
-										project_id: projectId,
-										activity_id: actId,
-										activity_name: activityName,
-										discipline_name:
-											activity.function_name || activity.discipline || '',
-										description: '',
-										due_date: activity.due_date || null,
-										start_date: null,
-										priority,
-										estimated_hours: parseFloat(activity.planned_hours) || 0,
-										actual_hours: 0,
-										qty_assigned: 0,
-										qty_completed: 0,
-										status: 'Not Started',
-										notes: activity.deliverables || activity.remarks || '',
-										daily_entries: null,
-									});
-								}
-							}
-						}
-
-						// Batch verify which user IDs exist
-						const validUserIds = new Set();
-						if (allUserIds.size > 0) {
-							const placeholders = [...allUserIds].map(() => '?').join(',');
-							const [existingUsers] = await db.execute(
-								`SELECT id FROM users WHERE id IN (${placeholders})`,
-								[...allUserIds]
-							);
-							for (const row of existingUsers) validUserIds.add(row.id);
-						}
-
-						// UPSERT each assignment — preserves user data (daily_entries, remarks, etc.)
-						// that may have been entered through the user dashboard
-						const UPSERT_SQL = `
-              INSERT INTO user_activity_assignments
-                (id, user_id, project_id, activity_id, activity_name, discipline_name,
-                 description, due_date, start_date, priority,
-                 estimated_hours, actual_hours, qty_assigned, qty_completed,
-                 status, notes, daily_entries,
-                 assigned_date, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
-              ON DUPLICATE KEY UPDATE
-                activity_name = VALUES(activity_name),
-                discipline_name = VALUES(discipline_name),
-                description = VALUES(description),
-                due_date = VALUES(due_date),
-                start_date = VALUES(start_date),
-                priority = VALUES(priority),
-                estimated_hours = VALUES(estimated_hours),
-                actual_hours = VALUES(actual_hours),
-                qty_assigned = VALUES(qty_assigned),
-                qty_completed = VALUES(qty_completed),
-                status = VALUES(status),
-                notes = VALUES(notes),
-                daily_entries = VALUES(daily_entries),
-                updated_at = NOW()
-            `;
-
-						for (const [, row] of incomingMap) {
-							if (!validUserIds.has(row.user_id)) continue;
-							await db.execute(UPSERT_SQL, [
-								randomUUID(),
-								row.user_id,
-								row.project_id,
-								row.activity_id,
-								row.activity_name,
-								row.discipline_name,
-								row.description,
-								row.due_date,
-								row.start_date,
-								row.priority,
-								row.estimated_hours,
-								row.actual_hours,
-								row.qty_assigned,
-								row.qty_completed,
-								row.status,
-								row.notes,
-								row.daily_entries,
-							]);
-						}
-					}
-				}
-
-				if (result.affectedRows === 0) {
-					await db.rollback();
-					await db.release();
-					db = null;
-					return Response.json(
-						{
-							success: false,
-							error: 'Project not found',
-						},
-						{ status: 404 }
-					);
-				}
-
-				await db.commit();
-			} catch (txError) {
-				try {
-					await db.rollback();
-				} catch (_) {}
-				throw txError;
-			}
-
-			await db.release();
-			db = null;
-
-			return Response.json({
-				success: true,
-				message: 'Project updated successfully',
-			});
-		} catch (error) {
-			// Check if it's a retryable error (connection issues)
-			const isRetryable =
-				error.code === 'ETIMEDOUT' ||
-				error.code === 'ECONNRESET' ||
-				error.code === 'PROTOCOL_CONNECTION_LOST' ||
-				error.message?.includes('connection is in closed state');
-
-			// Ensure DB connection is closed before retry
-			if (db) {
-				try {
-					await db.release();
-				} catch (closeErr) {
-					// Ignore close errors
-				}
-				db = null;
-			}
-
-			// Retry for connection errors
-			if (isRetryable && retries < maxRetries) {
-				retries++;
-				await new Promise((resolve) => setTimeout(resolve, 500 * retries)); // Exponential backoff
-				continue; // Retry the while loop
-			}
-
-			// Non-retryable error or max retries reached
+		const section =
+			typeof body?.section === 'string' ? body.section.trim() : '';
+		if (!section) {
 			return Response.json(
-				{
-					success: false,
-					error: 'Failed to update project',
-					details: error.message || 'Unknown error',
-					sqlMessage: error.sqlMessage || null,
-				},
-				{ status: 500 }
+				{ success: false, error: 'A project section is required' },
+				{ status: 400 }
 			);
 		}
-	} // End of while loop
 
-	// Should never reach here, but just in case
-	return Response.json(
-		{
-			success: false,
-			error: 'Failed to update project after retries',
-		},
-		{ status: 500 }
-	);
+		const values = body?.values;
+		if (!values || typeof values !== 'object' || Array.isArray(values)) {
+			return Response.json(
+				{ success: false, error: 'values must be an object' },
+				{ status: 400 }
+			);
+		}
+
+		const isCommercial = section === COMMERCIAL_SECTION;
+		if (!isCommercial && !isSectionId(section)) {
+			return Response.json(
+				{ success: false, error: `Unknown project section "${section}"` },
+				{ status: 400 }
+			);
+		}
+
+		// Sanitize rich text before validation so only the sanitized value is
+		// ever persisted or echoed back.
+		const preparedValues = { ...values };
+		for (const column of RICH_TEXT_COLUMNS) {
+			if (column in preparedValues) {
+				preparedValues[column] = sanitizeOptionalRichText(
+					preparedValues[column]
+				);
+			}
+		}
+
+		const options = isCommercial
+			? { commercialEdit: rights.commercial?.edit || [] }
+			: {};
+
+		if (!isCommercial) {
+			if (!(rights.editableSections || []).includes(section)) {
+				return Response.json(
+					{ success: false, error: PROJECT_ACCESS_DENIED },
+					{ status: 403 }
+				);
+			}
+		}
+
+		const validation = validateSectionWrite(section, preparedValues, options);
+		if (!validation.ok) {
+			const status =
+				isCommercial && validation.code === 'PROTECTED_FIELD' ? 403 : 400;
+			return Response.json(
+				{ success: false, error: validation.error, code: validation.code },
+				{ status }
+			);
+		}
+
+		const built = buildSectionUpdate(section, preparedValues, options);
+		if (!built.ok) {
+			return Response.json(
+				{ success: false, error: built.error, code: built.code },
+				{ status: 400 }
+			);
+		}
+
+		const { columns, params } = built.update;
+		if (columns.length === 0) {
+			return Response.json(
+				{ success: false, error: 'values must contain at least one field' },
+				{ status: 400 }
+			);
+		}
+
+		// Resolve the real key of the row the access helper already resolved.
+		// The runtime schema uses numeric `id` as PK; the baseline uses
+		// `project_id`.
+		const keyColumn =
+			project.id !== undefined && project.id !== null ? 'id' : 'project_id';
+		const keyValue = project[keyColumn];
+		if (keyValue === undefined || keyValue === null) {
+			return Response.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
+			);
+		}
+
+		const setParts = columns.map((column) => `${column} = ?`);
+		const sql = `UPDATE projects SET ${setParts.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE ${keyColumn} = ? AND isDelete = 0`;
+
+		const [result] = await db.execute(sql, [...params, keyValue]);
+		if (!result || (result.affectedRows ?? 0) === 0) {
+			return Response.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
+			);
+		}
+
+		return Response.json({
+			success: true,
+			section,
+			updated: columns,
+			message: 'Project updated successfully',
+		});
+	} catch (error) {
+		console.error('Project section update error:', error);
+		return Response.json(
+			{
+				success: false,
+				error: 'Failed to update project',
+				details: error?.message || 'Unknown error',
+			},
+			{ status: 500 }
+		);
+	} finally {
+		if (ownsDb) {
+			try {
+				db.release?.();
+			} catch (error) {
+				console.warn('Error releasing DB connection in PUT:', error?.message);
+			}
+		}
+	}
 }
 
 // DELETE project
