@@ -448,6 +448,8 @@ export default function EditProjectForm() {
 	const [projectTeamMembers, setProjectTeamMembers] = useState([]);
 	const [teamSaving, setTeamSaving] = useState(false);
 	const [teamError, setTeamError] = useState('');
+	// Pending final-lead change that still needs a replacement lead.
+	const [leadReplacement, setLeadReplacement] = useState(null);
 	const [allUsers, setAllUsers] = useState([]);
 	const [usersLoading, setUsersLoading] = useState(true);
 
@@ -2508,8 +2510,9 @@ export default function EditProjectForm() {
 				body: JSON.stringify({ operation, ...payload }),
 			});
 			if (!result?.success) {
-				setTeamError(result?.error || 'Could not update the project team');
-				return false;
+				const message = result?.error || 'Could not update the project team';
+				setTeamError(message);
+				return { ok: false, error: message };
 			}
 			const team = Array.isArray(result.data?.project_team)
 				? result.data.project_team
@@ -2517,11 +2520,12 @@ export default function EditProjectForm() {
 			setForm((prev) => ({ ...prev, project_team: team }));
 			setProjectTeamMembers(team);
 			if (result.data?.rights) setProjectRights(result.data.rights);
-			return true;
+			return { ok: true };
 		} catch (error) {
 			// fetchJSON rejects with the server message on a typed refusal.
-			setTeamError(error?.message || 'Could not update the project team');
-			return false;
+			const message = error?.message || 'Could not update the project team';
+			setTeamError(message);
+			return { ok: false, error: message };
 		} finally {
 			setTeamSaving(false);
 		}
@@ -2551,12 +2555,83 @@ export default function EditProjectForm() {
 		await submitTeamOperation('add_member', { member: teamMember });
 	};
 
+	// The stored team decides whether a replacement is required. This check
+	// only decides whether to ask; the server enforces the rule on the locked
+	// stored team and returns the typed refusal.
+	const needsReplacementLead = (memberId, nextRole) => {
+		if (projectRights?.canClearFinalLead) return false;
+		if (nextRole === 'Project Lead') return false;
+		const target = projectTeamMembers.find(
+			(member) => String(member.id) === String(memberId)
+		);
+		if (!target || target.role !== 'Project Lead') return false;
+		const leadCount = projectTeamMembers.filter(
+			(member) => member.role === 'Project Lead'
+		).length;
+		return leadCount === 1;
+	};
+
 	const removeTeamMember = async (memberId) => {
+		if (needsReplacementLead(memberId, null)) {
+			setLeadReplacement({
+				operation: 'remove_member',
+				memberId,
+				role: null,
+				error: '',
+			});
+			return;
+		}
 		await submitTeamOperation('remove_member', { memberId });
 	};
 
 	const updateTeamMemberRole = async (memberId, newRole) => {
+		if (needsReplacementLead(memberId, newRole)) {
+			setLeadReplacement({
+				operation: 'update_role',
+				memberId,
+				role: newRole,
+				error: '',
+			});
+			return;
+		}
 		await submitTeamOperation('update_role', { memberId, role: newRole });
+	};
+
+	const cancelLeadReplacement = () => setLeadReplacement(null);
+
+	const confirmLeadReplacement = async (replacementLeadId) => {
+		const pending = leadReplacement;
+		if (!pending) return;
+		const replacement = projectTeamMembers.find(
+			(member) => String(member.id) === String(replacementLeadId)
+		);
+		if (!replacement) {
+			setLeadReplacement({
+				...pending,
+				error: 'Select a replacement lead from the current team.',
+			});
+			return;
+		}
+		if (String(replacement.id) === String(pending.memberId)) {
+			setLeadReplacement({
+				...pending,
+				error: 'The replacement lead must be a different team member.',
+			});
+			return;
+		}
+
+		const payload = {
+			memberId: pending.memberId,
+			replacementLeadId: replacement.id,
+		};
+		if (pending.operation === 'update_role') payload.role = pending.role;
+
+		const outcome = await submitTeamOperation(pending.operation, payload);
+		if (outcome.ok) {
+			setLeadReplacement(null);
+			return;
+		}
+		setLeadReplacement({ ...pending, error: outcome.error });
 	};
 
 	// Get filtered users for team selection (only show those not already in team)
@@ -4786,6 +4861,10 @@ export default function EditProjectForm() {
 									removeTeamMember={removeTeamMember}
 									teamError={teamError}
 									teamSaving={teamSaving}
+									canManageTeam={projectRights?.canManageTeam === true}
+									leadReplacement={leadReplacement}
+									onCancelLeadReplacement={cancelLeadReplacement}
+									onConfirmLeadReplacement={confirmLeadReplacement}
 								/>
 							)}
 						</div>

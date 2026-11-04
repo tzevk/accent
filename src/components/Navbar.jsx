@@ -403,6 +403,21 @@ const adminMenuGroups = [
 		],
 	},
 	{
+		key: 'project-access',
+		name: 'Project Access',
+		icon: ShieldCheckIcon,
+		items: [
+			{
+				// One shared policy for every project; gated on projects:update
+				// at the API and the admin shell.
+				name: 'Lead Policy',
+				href: '/admin/project-lead-policy',
+				icon: ShieldCheckIcon,
+				resource: 'projects',
+			},
+		],
+	},
+	{
 		key: 'monitoring',
 		name: 'Monitoring',
 		icon: ChartBarIcon,
@@ -520,6 +535,9 @@ export default function Navbar() {
 	const showAdminMenu = useMemo(() => {
 		if (userLoading || !user) return false; // Hide admin while loading
 		if (user.is_super_admin) return true;
+		// Project administrators maintain the shared lead policy, which lives
+		// under /admin; the admin shell itself carries no data.
+		if (can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE)) return true;
 		return can(RESOURCES.ADMIN, PERMISSIONS.READ) || can('admin', 'read');
 	}, [user, userLoading, can, RESOURCES, PERMISSIONS]);
 

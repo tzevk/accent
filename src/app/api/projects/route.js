@@ -11,9 +11,9 @@ import {
 	hasColumn,
 } from '@/utils/schema-cache';
 import {
-	DEFAULT_LEAD_POLICY,
 	PROJECT_ACCESS_DENIED,
 	filterProjectForRights,
+	loadLeadPolicy,
 	requireProjectAccess,
 	resolveProjectRights,
 } from '@/lib/project-rights';
@@ -89,12 +89,15 @@ export async function GET(request) {
 		}
 
 		// Every row is resolved through the shared project-rights policy.
+		// One policy read per request, shared by every row.
+		const leadPolicy = await loadLeadPolicy(db);
+
 		const projects = [];
 		for (const project of rows) {
 			const rights = resolveProjectRights({
 				user,
 				project,
-				leadPolicy: DEFAULT_LEAD_POLICY,
+				leadPolicy,
 			});
 			if (!rights.canOpen) continue;
 			projects.push({

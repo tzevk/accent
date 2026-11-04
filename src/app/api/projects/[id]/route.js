@@ -4,6 +4,7 @@ import {
 	buildSectionUpdate,
 	filterProjectForRights,
 	isSectionId,
+	loadLeadPolicy,
 	requireProjectAccess,
 	validateSectionWrite,
 } from '@/lib/project-rights';
@@ -15,7 +16,9 @@ const RICH_TEXT_COLUMNS = ['description', 'additional_scope', 'scope_of_work'];
 // GET specific project
 export async function GET(request, { params }) {
 	const { id } = await params;
-	const access = await requireProjectAccess(request, id);
+	const access = await requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+	});
 	if ('response' in access) return access.response;
 
 	const { project, rights, db, ownsDb } = access;
@@ -144,7 +147,9 @@ export async function GET(request, { params }) {
 // PUT - Update one project section
 export async function PUT(request, context) {
 	const { id } = await context.params;
-	const access = await requireProjectAccess(request, id);
+	const access = await requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+	});
 	if ('response' in access) return access.response;
 
 	const { project, rights, db, ownsDb } = access;

@@ -15,9 +15,9 @@ import {
 	MEMBER_READ_SECTIONS,
 	PROTECTED_COMMERCIAL_COLUMNS,
 	WORK_SECTION_IDS,
-	type LeadSectionSetting,
 	type SectionId,
 } from './sections';
+import { DEFAULT_LEAD_POLICY, type LeadPolicy } from './lead-policy';
 import {
 	hasProjectAction,
 	parseCommercialFieldRights,
@@ -29,16 +29,9 @@ import {
 	type ProjectScope,
 } from './grants';
 
-export type LeadPolicy = {
-	sections: Partial<Record<SectionId, LeadSectionSetting>>;
-};
-
-/** The approved starting policy: every work section editable. */
-export const DEFAULT_LEAD_POLICY: LeadPolicy = {
-	sections: Object.fromEntries(
-		WORK_SECTION_IDS.map((section) => [section, 'edit'])
-	) as Partial<Record<SectionId, LeadSectionSetting>>,
-};
+// The shared lead policy lives in `lead-policy.ts`; re-exported here so
+// existing `./policy` imports keep working.
+export * from './lead-policy';
 
 export type SectionRight = { read: boolean; edit: boolean };
 
@@ -57,6 +50,8 @@ export type ProjectRights = {
 	editableSections: SectionId[];
 	canManageTeam: boolean;
 	canChangeLeadDesignation: boolean;
+	/** Explicit authority to leave a project without any Project Lead. */
+	canClearFinalLead: boolean;
 	canPerform: {
 		create: boolean;
 		delete: boolean;
@@ -164,7 +159,10 @@ export function resolveProjectRights({
 				}
 			}
 
-			if (isMember && MEMBER_READ_SECTIONS.includes(section)) {
+			// The shared lead policy owns a lead's access. An ordinary member
+			// keeps the baseline readable sections; a lead's policy may hide
+			// them (hiding removes read as well as edit).
+			if (isMember && !isLead && MEMBER_READ_SECTIONS.includes(section)) {
 				right.read = true;
 			}
 
@@ -223,6 +221,10 @@ export function resolveProjectRights({
 		// Any team manager may change the lead designation; update-only
 		// authority still cannot manage the team at all.
 		canChangeLeadDesignation: canManageTeam,
+		// Only an explicit `assign` grant in scope (or a super admin) may
+		// deliberately leave the project without a lead. A lead acting alone
+		// must name a replacement in the same operation.
+		canClearFinalLead: isSuperAdmin || assignCovers,
 		canPerform: {
 			create: isSuperAdmin || hasProjectAction(user, 'create'),
 			delete: isSuperAdmin || deleteCovers,

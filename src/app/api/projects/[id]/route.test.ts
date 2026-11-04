@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ProjectAccessModule from '@/utils/project-access';
+import type * as ProjectRightsModule from '@/lib/project-rights';
 
 const mockExecute = vi.fn();
 const mockRelease = vi.fn();
@@ -7,6 +8,7 @@ const mockDbConnect = vi.fn();
 const mockGetCurrentUser = vi.fn();
 const mockGetTableColumns = vi.fn();
 const mockHasUserProjectAssignment = vi.fn();
+const mockLoadLeadPolicy = vi.fn();
 
 const mockDb = {
 	execute: mockExecute,
@@ -16,6 +18,11 @@ const mockDb = {
 vi.mock('@/utils/database', () => ({
 	dbConnect: mockDbConnect,
 }));
+
+vi.mock('@/lib/project-rights', async (importOriginal) => {
+	const actual = await importOriginal<typeof ProjectRightsModule>();
+	return { ...actual, loadLeadPolicy: mockLoadLeadPolicy };
+});
 
 vi.mock('@/utils/api-permissions', () => ({
 	getCurrentUser: mockGetCurrentUser,
@@ -81,6 +88,7 @@ describe('GET /api/projects/[id] project-rights sweep', () => {
 			new Set(['project_id', 'id', 'project_code', 'project_team'])
 		);
 		mockExecute.mockResolvedValue([[project], []]);
+		mockLoadLeadPolicy.mockResolvedValue({ sections: {} });
 	});
 
 	it('returns 401 without a session', async () => {
@@ -145,6 +153,27 @@ describe('GET /api/projects/[id] project-rights sweep', () => {
 		expect(body.data).not.toHaveProperty('project_activities');
 		expect(body.data).not.toHaveProperty('project_activities_list');
 	});
+
+	it('removes read for a hidden section and edit for a view-only section', async () => {
+		mockGetCurrentUser.mockResolvedValue(lead);
+		mockLoadLeadPolicy.mockResolvedValue({
+			sections: { project_details: 'hidden', scope: 'view' },
+		});
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.rights.sections.project_details).toEqual({
+			read: false,
+			edit: false,
+		});
+		expect(body.rights.readableSections).not.toContain('project_details');
+		expect(body.rights.sections.scope).toEqual({ read: true, edit: false });
+		expect(body.rights.editableSections).not.toContain('scope');
+		expect(body.data.description).toBeUndefined();
+	});
 });
 
 const lead = {
@@ -194,6 +223,7 @@ describe('PUT /api/projects/[id] section-scoped saves', () => {
 		mockGetTableColumns.mockResolvedValue(
 			new Set(['project_id', 'id', 'project_code', 'project_team'])
 		);
+		mockLoadLeadPolicy.mockResolvedValue({ sections: {} });
 	});
 
 	it('returns 401 without a session', async () => {
@@ -483,6 +513,36 @@ describe('PUT /api/projects/[id] section-scoped saves', () => {
 		expect(sql).toMatch(/^UPDATE projects SET documents_issued_list = \?/);
 		expect(queryParams[0]).toBe('[{"document_number":"D-1"}]');
 		expect(queryParams[1]).toBe(10);
+	});
+
+	it('refuses a direct section save the shared policy hides', async () => {
+		mockLoadLeadPolicy.mockResolvedValue({
+			sections: { scope: 'hidden' },
+		});
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({ section: 'scope', values: { scope_of_work: 'x' } }),
+			params()
+		);
+
+		expect(response.status).toBe(403);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
+	it('refuses a direct section save the shared policy makes read-only', async () => {
+		mockLoadLeadPolicy.mockResolvedValue({
+			sections: { project_details: 'view' },
+		});
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({ section: 'project_details', values: { name: 'Renamed' } }),
+			params()
+		);
+
+		expect(response.status).toBe(403);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
 	});
 });
 

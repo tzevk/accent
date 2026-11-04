@@ -2,8 +2,8 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import {
-	DEFAULT_LEAD_POLICY,
 	filterProjectForRights,
+	loadLeadPolicy,
 	resolveProjectRights,
 } from '@/lib/project-rights';
 
@@ -66,12 +66,15 @@ export async function GET(request) {
 			sourceProjects = [];
 		}
 
+		// One policy read per request, shared by every row.
+		const leadPolicy = await loadLeadPolicy(db);
+
 		let projects = [];
 		for (const project of sourceProjects) {
 			const rights = resolveProjectRights({
 				user,
 				project,
-				leadPolicy: DEFAULT_LEAD_POLICY,
+				leadPolicy,
 			});
 			if (!rights.canOpen) continue;
 			projects.push({

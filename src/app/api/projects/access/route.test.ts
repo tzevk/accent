@@ -37,6 +37,11 @@ describe('GET /api/projects/access', () => {
 			release: mockRelease,
 		});
 		mockGetCurrentUser.mockResolvedValue(member);
+		mockExecute.mockImplementation(async (sql: string) =>
+			sql.includes('FROM project_lead_policy')
+				? [[{ sections: '{}' }], []]
+				: [[], []]
+		);
 	});
 
 	it('returns 401 without a session', async () => {
