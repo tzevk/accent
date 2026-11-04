@@ -446,6 +446,8 @@ export default function EditProjectForm() {
 
 	// Project Team Management
 	const [projectTeamMembers, setProjectTeamMembers] = useState([]);
+	const [teamSaving, setTeamSaving] = useState(false);
+	const [teamError, setTeamError] = useState('');
 	const [allUsers, setAllUsers] = useState([]);
 	const [usersLoading, setUsersLoading] = useState(true);
 
@@ -2494,18 +2496,41 @@ export default function EditProjectForm() {
 	};
 
 	// Project Team Management Functions
-	const addTeamMember = (user) => {
-		console.log(
-			'[TEAM DEBUG addTeamMember] START — projectTeamMembers count:',
-			projectTeamMembers.length,
-			'| user:',
-			user.id,
-			user.full_name || user.username
-		);
-		// Check if already added
+	// Team changes are their own operation. They never ride the project save
+	// and never write project content.
+	const submitTeamOperation = async (operation, payload) => {
+		setTeamSaving(true);
+		setTeamError('');
+		try {
+			const result = await fetchJSON(`/api/projects/${id}/team`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ operation, ...payload }),
+			});
+			if (!result?.success) {
+				setTeamError(result?.error || 'Could not update the project team');
+				return false;
+			}
+			const team = Array.isArray(result.data?.project_team)
+				? result.data.project_team
+				: [];
+			setForm((prev) => ({ ...prev, project_team: team }));
+			setProjectTeamMembers(team);
+			if (result.data?.rights) setProjectRights(result.data.rights);
+			return true;
+		} catch (error) {
+			// fetchJSON rejects with the server message on a typed refusal.
+			setTeamError(error?.message || 'Could not update the project team');
+			return false;
+		} finally {
+			setTeamSaving(false);
+		}
+	};
+
+	const addTeamMember = async (user) => {
 		const exists = projectTeamMembers.some((member) => member.id === user.id);
 		if (exists) {
-			alert('This user is already in the team');
+			setTeamError('This user is already in the team');
 			return;
 		}
 
@@ -2520,105 +2545,18 @@ export default function EditProjectForm() {
 			email: user.email,
 			department: user.employee_department || user.department || '',
 			position: user.employee_position || user.role_name || '',
-			role: 'Team Member', // Default role, can be changed
+			role: 'Team Member',
 		};
 
-		setProjectTeamMembers((prev) => {
-			console.log(
-				'[TEAM DEBUG addTeamMember] setProjectTeamMembers — prev count:',
-				prev.length,
-				'new count:',
-				prev.length + 1
-			);
-			return [...prev, teamMember];
-		});
-
-		// Update form data — derive from prev to avoid stale-closure bugs
-		setForm((prev) => {
-			const currentTeam = Array.isArray(prev.project_team)
-				? prev.project_team
-				: typeof prev.project_team === 'string'
-					? (() => {
-							try {
-								return JSON.parse(prev.project_team);
-							} catch {
-								return [];
-							}
-						})()
-					: [];
-			console.log(
-				'[TEAM DEBUG addTeamMember] setForm — prev.project_team type:',
-				typeof prev.project_team,
-				'| isArray:',
-				Array.isArray(prev.project_team),
-				'| parsed currentTeam count:',
-				currentTeam.length
-			);
-			const newTeam = [...currentTeam, teamMember];
-			const serialized = JSON.stringify(newTeam);
-			console.log(
-				'[TEAM DEBUG addTeamMember] setForm — new team count:',
-				newTeam.length,
-				'| serialized length:',
-				serialized.length
-			);
-			return {
-				...prev,
-				project_team: serialized,
-			};
-		});
+		await submitTeamOperation('add_member', { member: teamMember });
 	};
 
-	const removeTeamMember = (memberId) => {
-		setProjectTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
-
-		setForm((prev) => {
-			const currentTeam = Array.isArray(prev.project_team)
-				? prev.project_team
-				: typeof prev.project_team === 'string'
-					? (() => {
-							try {
-								return JSON.parse(prev.project_team);
-							} catch {
-								return [];
-							}
-						})()
-					: [];
-			return {
-				...prev,
-				project_team: JSON.stringify(
-					currentTeam.filter((m) => m.id !== memberId)
-				),
-			};
-		});
+	const removeTeamMember = async (memberId) => {
+		await submitTeamOperation('remove_member', { memberId });
 	};
 
-	const updateTeamMemberRole = (memberId, newRole) => {
-		setProjectTeamMembers((prev) =>
-			prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
-		);
-
-		setForm((prev) => {
-			const currentTeam = Array.isArray(prev.project_team)
-				? prev.project_team
-				: typeof prev.project_team === 'string'
-					? (() => {
-							try {
-								return JSON.parse(prev.project_team);
-							} catch {
-								return [];
-							}
-						})()
-					: [];
-			return {
-				...prev,
-				project_team: JSON.stringify(
-					currentTeam.map((m) =>
-						m.id === memberId ? { ...m, role: newRole } : m
-					)
-				),
-			};
-		});
+	const updateTeamMemberRole = async (memberId, newRole) => {
+		await submitTeamOperation('update_role', { memberId, role: newRole });
 	};
 
 	// Get filtered users for team selection (only show those not already in team)
@@ -4222,9 +4160,16 @@ export default function EditProjectForm() {
 	};
 
 	const activeSectionId = resolveTabIdLocal(activeTab);
+	// Financial tabs carry their own resource permission; project content
+	// editability must not disable a finance user who can open the project.
+	const financialTabEditable = {
+		quotation: canEditQuotations,
+		purchase_order: canEditPurchaseOrders,
+		invoice: canEditInvoices,
+	};
 	const activeSectionEditable = WORK_SECTION_IDS.includes(activeSectionId)
 		? canEditSection(activeSectionId)
-		: canEditProjectContent;
+		: (financialTabEditable[activeSectionId] ?? canEditProjectContent);
 
 	if (loading) return <LoadingFallback />;
 
@@ -4825,23 +4770,23 @@ export default function EditProjectForm() {
 								)}
 							</fieldset>
 
-							{/* Project Team Tab — read-only in #414. Team mutations land in
-							    #415 and must not be submitted through the project save. */}
+							{/* Project Team Tab — mutations use the team endpoint and
+							    never submit project content. */}
 							{(activeTab === 'project_team' ||
 								activeTab === 'project_team_tab') && (
-								<fieldset disabled className="m-0 min-w-0 border-0 p-0">
-									<ProjectTeamTab
-										toggleSection={toggleSection}
-										openSections={openSections}
-										usersLoading={usersLoading}
-										availableUsers={availableUsers}
-										allUsers={allUsers}
-										addTeamMember={addTeamMember}
-										projectTeamMembers={projectTeamMembers}
-										updateTeamMemberRole={updateTeamMemberRole}
-										removeTeamMember={removeTeamMember}
-									/>
-								</fieldset>
+								<ProjectTeamTab
+									toggleSection={toggleSection}
+									openSections={openSections}
+									usersLoading={usersLoading}
+									availableUsers={availableUsers}
+									allUsers={allUsers}
+									addTeamMember={addTeamMember}
+									projectTeamMembers={projectTeamMembers}
+									updateTeamMemberRole={updateTeamMemberRole}
+									removeTeamMember={removeTeamMember}
+									teamError={teamError}
+									teamSaving={teamSaving}
+								/>
 							)}
 						</div>
 					</form>

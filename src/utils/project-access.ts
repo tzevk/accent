@@ -4,10 +4,17 @@ function normalizeText(value: unknown): string {
 	return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-type ProjectTeamRecord = Record<string, unknown>;
+/** One stored member in a project's JSON team list. */
+export type ProjectTeamMember = Record<string, unknown>;
+type ProjectTeamRecord = ProjectTeamMember;
 
-/** Parse the stored JSON team list without trusting malformed data. */
-function parseProjectTeam(projectTeam: unknown): ProjectTeamRecord[] {
+/**
+ * Parse the stored JSON team list without trusting malformed data.
+ * Exported so team mutations read the same records as membership checks.
+ */
+export function parseProjectTeam(
+	projectTeam: unknown
+): ProjectTeamRecord[] {
 	if (projectTeam === null || projectTeam === undefined) return [];
 
 	let team: unknown = projectTeam;

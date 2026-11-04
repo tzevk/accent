@@ -16,6 +16,8 @@ export default function ProjectTeamTab({
 	projectTeamMembers,
 	updateTeamMemberRole,
 	removeTeamMember,
+	teamError,
+	teamSaving,
 }) {
 	return (
 		<section className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
@@ -30,6 +32,14 @@ export default function ProjectTeamTab({
 			</div>
 
 			<div className="px-6 py-5 space-y-4">
+				{teamError ? (
+					<div
+						role="alert"
+						className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+					>
+						{teamError}
+					</div>
+				) : null}
 				{/* Add Team Member Section - Collapsible */}
 				<div className="border border-purple-100 rounded-lg overflow-hidden">
 					<button
@@ -162,6 +172,7 @@ export default function ProjectTeamTab({
 													<td className="px-3 py-2">
 														<select
 															value={member.role}
+															disabled={teamSaving}
 															onChange={(e) =>
 																updateTeamMemberRole(member.id, e.target.value)
 															}
@@ -183,6 +194,7 @@ export default function ProjectTeamTab({
 														<button
 															type="button"
 															onClick={() => removeTeamMember(member.id)}
+															disabled={teamSaving}
 															className="text-red-500 hover:text-red-700 p-1"
 															title="Remove from team"
 														>

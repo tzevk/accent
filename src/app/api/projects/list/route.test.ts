@@ -79,6 +79,11 @@ describe('GET /api/projects/list project-rights sweep', () => {
 		expect(body.data[0].rights.isMember).toBe(true);
 		expect(body.data[0].description).toBeUndefined();
 		expect(body.data[0].budget).toBeUndefined();
+		expect(Object.hasOwn(body.data[0], 'budget')).toBe(false);
+		expect(Object.hasOwn(body.data[0], 'project_value')).toBe(false);
+		expect(Object.hasOwn(body.data[0], 'cost_to_company')).toBe(false);
+		expect(Object.hasOwn(body.data[0], 'profitability_estimate')).toBe(false);
+		expect(Object.hasOwn(body.data[0], 'actual_profit_loss')).toBe(false);
 		expect(body.stats.total).toBe(1);
 		expect(body.stats.completed).toBe(0);
 	});
@@ -90,5 +95,35 @@ describe('GET /api/projects/list project-rights sweep', () => {
 
 		expect(response.status).toBe(401);
 		expect(mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('returns every commercial column unchanged to a super admin', async () => {
+		mockGetCurrentUser.mockResolvedValue({
+			...member,
+			is_super_admin: 1,
+		});
+		mockExecute.mockReset();
+		mockExecute.mockResolvedValueOnce([
+			[
+				{
+					...rows[0],
+					project_value: '5000',
+					cost_to_company: '4000',
+					profitability_estimate: '20',
+					actual_profit_loss: '500',
+				},
+			],
+			[],
+		]);
+
+		const response = await GET(request());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data[0].budget).toBe('100');
+		expect(body.data[0].project_value).toBe('5000');
+		expect(body.data[0].cost_to_company).toBe('4000');
+		expect(body.data[0].profitability_estimate).toBe('20');
+		expect(body.data[0].actual_profit_loss).toBe('500');
 	});
 });

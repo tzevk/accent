@@ -180,6 +180,12 @@ export function resolveProjectRights({
 		}
 	}
 
+	// Team managers may open the team tab even when no read/update grant
+	// covers it, so an assign-only manager can see what they manage.
+	const canManageTeam = isSuperAdmin || isLead || assignCovers;
+	if (canManageTeam) {
+		sections.project_team.read = true;
+	}
 	const readableSections = WORK_SECTION_IDS.filter(
 		(section) => sections[section].read
 	);
@@ -209,8 +215,10 @@ export function resolveProjectRights({
 		sections,
 		readableSections,
 		editableSections,
-		canManageTeam: isSuperAdmin || isLead || assignCovers,
-		canChangeLeadDesignation: isSuperAdmin || isLead,
+		canManageTeam,
+		// Any team manager may change the lead designation; update-only
+		// authority still cannot manage the team at all.
+		canChangeLeadDesignation: canManageTeam,
 		canPerform: {
 			create: isSuperAdmin || hasProjectAction(user, 'create'),
 			delete: isSuperAdmin || deleteCovers,
