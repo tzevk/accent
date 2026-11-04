@@ -56,6 +56,7 @@ export type ProjectRights = {
 	editableSections: SectionId[];
 	canManageTeam: boolean;
 	canChangeLeadDesignation: boolean;
+	canAssignActivity: boolean;
 	/** Explicit authority to leave a project without any Project Lead. */
 	canClearFinalLead: boolean;
 	canPerform: {
@@ -191,6 +192,13 @@ export function resolveProjectRights({
 	// Team managers may open the team tab even when no read/update grant
 	// covers it, so an assign-only manager can see what they manage.
 	const canManageTeam = isSuperAdmin || isLead || assignCovers;
+
+	// Activity assignment is its own authority. An ordinary member or an
+	// unrelated authenticated user cannot assign work; a lead can because the
+	// lead policy gives the activity section. The assignee must separately be
+	// a current team member (checked by the route).
+	const canAssignActivity =
+		isSuperAdmin || assignCovers || updateCovers || isLead;
 	if (canManageTeam) {
 		sections.project_team.read = true;
 	}
@@ -232,6 +240,7 @@ export function resolveProjectRights({
 		// Any team manager may change the lead designation; update-only
 		// authority still cannot manage the team at all.
 		canChangeLeadDesignation: canManageTeam,
+		canAssignActivity,
 		// Only an explicit `assign` grant in scope (or a super admin) may
 		// deliberately leave the project without a lead. A lead acting alone
 		// must name a replacement in the same operation.

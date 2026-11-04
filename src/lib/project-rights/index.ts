@@ -1,4 +1,5 @@
 export * from './sections';
+export * from './assignments';
 export * from './grants';
 export * from './permission-config';
 export * from './policy';

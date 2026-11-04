@@ -622,7 +622,10 @@ export default function ProjectActivityAssignments({
 			}
 		} catch (err) {
 			console.error('Failed to add activity:', err);
-			alert('Failed to add activity');
+			// The server names the missing prerequisite (project team
+			// membership); show it instead of a generic failure. The
+			// dashboard never adds the actor to the team itself.
+			alert(err?.message || 'Failed to add activity');
 		} finally {
 			setSaving(false);
 		}
