@@ -10,6 +10,7 @@ import {
 	OrderError,
 } from '@/lib/company-expenditure';
 import {
+	loadLeadPolicy,
 	projectAccessDeniedResponse,
 	requireProjectAccess,
 } from '@/lib/project-rights';
@@ -52,7 +53,9 @@ export async function GET(request, { params }) {
 
 	try {
 		const { id } = await params;
-		const access = await requireProjectAccess(request, id);
+		const access = await requireProjectAccess(request, id, {
+			getLeadPolicy: loadLeadPolicy,
+		});
 		if ('response' in access) return access.response;
 		try {
 			if (!access.rights.financialAreas.purchase_order) {
@@ -88,7 +91,9 @@ export async function POST(request, { params }) {
 
 	try {
 		const { id } = await params;
-		const access = await requireProjectAccess(request, id);
+		const access = await requireProjectAccess(request, id, {
+			getLeadPolicy: loadLeadPolicy,
+		});
 		if ('response' in access) return access.response;
 		try {
 			if (!access.rights.financialAreas.purchase_order) {

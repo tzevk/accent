@@ -66,7 +66,11 @@ describe('GET /api/projects/[id]/detail commercial omission', () => {
 		mockGetTableColumns.mockResolvedValue(
 			new Set(['project_id', 'id', 'project_code', 'project_team'])
 		);
-		mockExecute.mockResolvedValue([[project], []]);
+		mockExecute.mockImplementation(async (sql: string) =>
+			sql.includes('FROM project_lead_policy')
+				? [[{ sections: '{}' }], []]
+				: [[project], []]
+		);
 	});
 
 	it('returns 401 without a session', async () => {

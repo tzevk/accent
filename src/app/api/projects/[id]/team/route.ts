@@ -9,9 +9,9 @@
 import { logActivity } from '@/utils/activity-logger';
 import { parseProjectTeam } from '@/utils/project-access';
 import {
-	DEFAULT_LEAD_POLICY,
 	PROJECT_ACCESS_DENIED,
 	addProjectTeamMember,
+	loadLeadPolicy,
 	removeProjectTeamMember,
 	requireProjectAccess,
 	resolveProjectRights,
@@ -87,10 +87,12 @@ export async function POST(
 	context: { params: Promise<{ id: string }> }
 ) {
 	const { id } = await context.params;
-	const access = await requireProjectAccess(request, id);
+	const access = await requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+	});
 	if ('response' in access) return access.response;
 
-	const { user, project, rights, db, ownsDb } = access;
+	const { user, project, rights, leadPolicy, db, ownsDb } = access;
 	const teamDb = db as TeamDbConnection;
 
 	try {
@@ -237,7 +239,7 @@ export async function POST(
 			const nextRights = resolveProjectRights({
 				user,
 				project: { ...project, project_team: JSON.stringify(result.team) },
-				leadPolicy: DEFAULT_LEAD_POLICY,
+				leadPolicy,
 				financialPermissions: rights.financialAreas,
 			});
 

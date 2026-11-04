@@ -7,6 +7,7 @@ import {
 } from '@/utils/api-permissions';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import {
+	loadLeadPolicy,
 	projectAccessDeniedResponse,
 	requireProjectAccess,
 } from '@/lib/project-rights';
@@ -62,6 +63,7 @@ export async function GET(request, { params }) {
 
 		const access = await requireProjectAccess(request, id, {
 			db: connection,
+			getLeadPolicy: loadLeadPolicy,
 		});
 		if ('response' in access) return access.response;
 		if (!access.rights.financialAreas.invoice) {
@@ -117,6 +119,7 @@ export async function POST(request, { params }) {
 
 		const access = await requireProjectAccess(request, id, {
 			db: connection,
+			getLeadPolicy: loadLeadPolicy,
 		});
 		if ('response' in access) return access.response;
 		if (!access.rights.financialAreas.invoice) {
@@ -252,6 +255,7 @@ export async function PUT(request, { params }) {
 
 		const access = await requireProjectAccess(request, id, {
 			db: connection,
+			getLeadPolicy: loadLeadPolicy,
 		});
 		if ('response' in access) return access.response;
 		if (!access.rights.financialAreas.invoice) {
@@ -356,6 +360,7 @@ export async function DELETE(request, { params }) {
 
 		const access = await requireProjectAccess(request, id, {
 			db: connection,
+			getLeadPolicy: loadLeadPolicy,
 		});
 		if ('response' in access) return access.response;
 		if (!access.rights.financialAreas.invoice) {

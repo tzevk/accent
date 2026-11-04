@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ProjectRightsModule from '@/lib/project-rights';
 import type {
 	ProjectRights,
 	ResolveProjectRightsInput,
@@ -13,6 +14,9 @@ const mockDbConnect = vi.fn();
 const mockGetCurrentUser = vi.fn();
 const mockGetTableColumns = vi.fn();
 const mockLogActivity = vi.fn();
+const { mockLoadLeadPolicy } = vi.hoisted(() => ({
+	mockLoadLeadPolicy: vi.fn(),
+}));
 
 const mockDb = {
 	execute: mockExecute,
@@ -37,6 +41,14 @@ vi.mock('@/utils/schema-cache', () => ({
 vi.mock('@/utils/activity-logger', () => ({
 	logActivity: mockLogActivity,
 }));
+
+// The stored policy is exercised by the admin route and the loader's own
+// tests; here the loader seam returns the default so the DB double can stay
+// focused on the team row.
+vi.mock('@/lib/project-rights', async (importOriginal) => {
+	const actual = await importOriginal<typeof ProjectRightsModule>();
+	return { ...actual, loadLeadPolicy: mockLoadLeadPolicy };
+});
 
 // Policy decisions stay real; only the lead-designation authority can be
 // narrowed for the refusal test, mirroring a policy that separates the two.
@@ -137,6 +149,7 @@ describe('POST /api/projects/[id]/team', () => {
 		mockCommit.mockResolvedValue(undefined);
 		mockRollback.mockResolvedValue(undefined);
 		mockLogActivity.mockResolvedValue(undefined);
+		mockLoadLeadPolicy.mockResolvedValue({ sections: {} });
 	});
 
 	it('returns 401 without a session', async () => {

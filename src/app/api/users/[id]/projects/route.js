@@ -2,8 +2,8 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import {
-	DEFAULT_LEAD_POLICY,
 	filterProjectForRights,
+	loadLeadPolicy,
 	resolveProjectRights,
 } from '@/lib/project-rights';
 
@@ -125,11 +125,12 @@ export async function GET(request, { params }) {
 		// commercial columns. `project_team` is membership evidence, never part
 		// of this endpoint's row shape.
 		const permittedProjects = [];
+		const leadPolicy = await loadLeadPolicy(db);
 		for (const project of projects) {
 			const rights = resolveProjectRights({
 				user: currentUser,
 				project,
-				leadPolicy: DEFAULT_LEAD_POLICY,
+				leadPolicy,
 			});
 			if (!rights.canOpen) continue;
 			const filtered = filterProjectForRights({ ...project }, rights);
