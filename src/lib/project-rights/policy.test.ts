@@ -822,3 +822,82 @@ describe('every configurable work section is enforced', () => {
 		}
 	);
 });
+
+describe('canAssignActivity authority', () => {
+	const member = { id: 42, email: 'member@example.com' };
+	const lead = { id: 43, email: 'lead@example.com' };
+	const stranger = { id: 99, email: 'stranger@example.com' };
+
+	function rightsFor(
+		actor: { id: number; email: string },
+		granted: ProjectAction[] = [],
+		scopes: Partial<Record<ProjectAction, ProjectScope>> = {}
+	) {
+		return resolveProjectRights({
+			user: user({
+				...actor,
+				merged_permissions: granted.map((action) => `projects:${action}`),
+				field_permissions: withScopes(scopes),
+			}),
+			project: { project_team: TEAM },
+		});
+	}
+
+	it('grants a super admin assignment authority', () => {
+		const rights = resolveProjectRights({
+			user: user({ id: 1, email: 'root@example.com', is_super_admin: 1 }),
+			project: { project_team: [] },
+		});
+
+		expect(rights.canAssignActivity).toBe(true);
+	});
+
+	it('grants a lead assignment authority through the lead policy', () => {
+		expect(rightsFor(lead).canAssignActivity).toBe(true);
+	});
+
+	it('does not let a non-lead member assign without a grant', () => {
+		expect(rightsFor(member).canAssignActivity).toBe(false);
+	});
+
+	it('does not let an unrelated authenticated user assign', () => {
+		const rights = rightsFor(stranger);
+		expect(rights.canOpen).toBe(false);
+		expect(rights.canAssignActivity).toBe(false);
+	});
+
+	it('does not let a read grant assign', () => {
+		expect(
+			rightsFor(member, ['read'], { read: 'assigned' }).canAssignActivity
+		).toBe(false);
+		expect(
+			rightsFor(stranger, ['read'], { read: 'all' }).canAssignActivity
+		).toBe(false);
+	});
+
+	it('grants explicit assign scope to a member', () => {
+		expect(
+			rightsFor(member, ['assign'], { assign: 'assigned' }).canAssignActivity
+		).toBe(true);
+	});
+
+	it('grants explicit assign scope to a non-member when the scope is all', () => {
+		expect(
+			rightsFor(stranger, ['assign'], { assign: 'all' }).canAssignActivity
+		).toBe(true);
+	});
+
+	it('grants an update grant in scope', () => {
+		expect(
+			rightsFor(member, ['update'], { update: 'assigned' }).canAssignActivity
+		).toBe(true);
+		expect(
+			rightsFor(lead, ['update'], { update: 'led' }).canAssignActivity
+		).toBe(true);
+	});
+
+	it('refuses an update grant whose scope does not cover the actor', () => {
+		const rights = rightsFor(member, ['update'], { update: 'led' });
+		expect(rights.canAssignActivity).toBe(false);
+	});
+});
