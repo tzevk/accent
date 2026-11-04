@@ -68,26 +68,23 @@ export const TAB_ALIASES = {
 	manhours: 'project_manhours',
 };
 
+/**
+ * Financial document areas are not work sections. Their visibility comes only
+ * from the server-resolved `rights.financialAreas`; a client permission check
+ * must never be the deciding input.
+ */
+export const FINANCIAL_AREA_BY_TAB = {
+	quotation: 'quotation',
+	purchase_order: 'purchase_order',
+	invoice: 'invoice',
+};
+
+export function isFinancialAreaAllowed(tabId, financialAreas) {
+	const area = FINANCIAL_AREA_BY_TAB[tabId];
+	return Boolean(area) && financialAreas?.[area] === true;
+}
+
 export function resolveTabId(id) {
 	if (!id) return id;
 	return TAB_ALIASES[id] || id;
-}
-
-export function isTabVisible(
-	tab,
-	{ can, RESOURCES, PERMISSIONS, isSuperAdmin }
-) {
-	if (tab.requiresPermission) {
-		if (isSuperAdmin) return true;
-		// quotations/purchase_orders/invoices use dedicated resource checks
-		const map = {
-			quotations: RESOURCES?.QUOTATIONS,
-			purchase_orders: RESOURCES?.PURCHASE_ORDERS,
-			invoices: RESOURCES?.INVOICES,
-		};
-		const res = map[tab.requiresPermission];
-		if (!res) return true;
-		return can?.(res, PERMISSIONS?.READ) || can?.(res, PERMISSIONS?.UPDATE);
-	}
-	return true;
 }
