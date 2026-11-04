@@ -379,7 +379,7 @@ export const SECTION_COLUMNS: Record<SectionId, readonly string[]> =
 				]),
 			],
 		])
-	) as Record<SectionId, readonly string[]>;
+	) as unknown as Record<SectionId, readonly string[]>;
 
 /** The only columns a `commercial` save may write, each needing edit rights. */
 export const COMMERCIAL_WRITE_COLUMNS = PROTECTED_COMMERCIAL_COLUMNS;
