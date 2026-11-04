@@ -37,7 +37,7 @@ vi.mock('@/utils/schema-cache', () => ({
 	hasColumn: vi.fn().mockResolvedValue(true),
 }));
 
-const { GET, PUT } = await import('@/app/api/projects/[id]/route');
+const { GET, PUT, DELETE } = await import('@/app/api/projects/[id]/route');
 
 const project = {
 	id: 10,
@@ -303,6 +303,43 @@ describe('PUT /api/projects/[id] section-scoped saves', () => {
 		expect(mockExecute).toHaveBeenCalledTimes(1);
 	});
 
+	it('cannot transition status through a status-only payload', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({ status: 'completed', progress: 100 }),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(400);
+		expect(body.error).toBe('A project section is required');
+		const updates = mockExecute.mock.calls.filter(([sql]) =>
+			String(sql).startsWith('UPDATE projects')
+		);
+		expect(updates).toHaveLength(0);
+	});
+
+	it('cannot transition status through a section payload', async () => {
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(
+			putRequest({
+				section: 'project_details',
+				values: { status: 'completed' },
+			}),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(400);
+		expect(body.code).toBe('UNKNOWN_FIELD');
+		const updates = mockExecute.mock.calls.filter(([sql]) =>
+			String(sql).startsWith('UPDATE projects')
+		);
+		expect(updates).toHaveLength(0);
+	});
+
 	it('never writes the team column through a project save', async () => {
 		mockExecute.mockResolvedValueOnce([[leadProject], []]);
 
@@ -446,5 +483,139 @@ describe('PUT /api/projects/[id] section-scoped saves', () => {
 		expect(sql).toMatch(/^UPDATE projects SET documents_issued_list = \?/);
 		expect(queryParams[0]).toBe('[{"document_number":"D-1"}]');
 		expect(queryParams[1]).toBe(10);
+	});
+});
+
+const withDelete = {
+	...lead,
+	merged_permissions: ['projects:delete'],
+	field_permissions: {
+		projectScopes: { projects: { delete: 'all' } },
+	},
+};
+
+const superAdmin = {
+	...member,
+	id: 1,
+	email: 'admin@example.com',
+	is_super_admin: 1,
+};
+
+// Baseline schema: only `project_id` exists.
+const baselineProject = {
+	project_id: 10,
+	project_code: 'CODE-10',
+	name: 'Alpha Project',
+	status: 'Ongoing',
+	project_team: JSON.stringify([{ user_id: 7, role: 'Project Lead' }]),
+};
+
+function deleteRequest(): Request {
+	return new Request('http://localhost/api/projects/PRJ-10', {
+		method: 'DELETE',
+	});
+}
+
+describe('DELETE /api/projects/[id] lifecycle authority', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockDbConnect.mockResolvedValue(mockDb);
+		mockGetCurrentUser.mockResolvedValue(lead);
+		mockGetTableColumns.mockResolvedValue(
+			new Set(['project_id', 'project_code', 'project_team'])
+		);
+	});
+
+	it('returns 401 without a session', async () => {
+		mockGetCurrentUser.mockResolvedValueOnce(null);
+
+		const response = await DELETE(deleteRequest(), params());
+
+		expect(response.status).toBe(401);
+		expect(mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('denies a lead-only user and mutates nothing', async () => {
+		mockExecute.mockResolvedValueOnce([[baselineProject], []]);
+
+		const response = await DELETE(deleteRequest(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(403);
+		expect(body.error).toBe(
+			'You do not have permission to access this project'
+		);
+		const updates = mockExecute.mock.calls.filter(([sql]) =>
+			String(sql).startsWith('UPDATE projects')
+		);
+		expect(updates).toHaveLength(0);
+	});
+
+	it('soft-deletes the baseline row by project_id', async () => {
+		mockGetCurrentUser.mockResolvedValue(withDelete);
+		mockExecute
+			.mockResolvedValueOnce([[baselineProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await DELETE(deleteRequest(), params());
+
+		expect(response.status).toBe(200);
+		const [sql, queryParams] = mockExecute.mock.calls[1];
+		expect(sql).toBe(
+			'UPDATE projects SET isDelete = 1 WHERE project_id = ? AND isDelete = 0'
+		);
+		expect(queryParams).toEqual([10]);
+	});
+
+	it('soft-deletes the runtime variant row by id', async () => {
+		mockGetCurrentUser.mockResolvedValue(withDelete);
+		mockGetTableColumns.mockResolvedValue(
+			new Set(['id', 'project_id', 'project_code'])
+		);
+		mockExecute
+			.mockResolvedValueOnce([[{ ...baselineProject, id: 77 }], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await DELETE(deleteRequest(), params());
+
+		expect(response.status).toBe(200);
+		const [sql, queryParams] = mockExecute.mock.calls[1];
+		expect(sql).toBe(
+			'UPDATE projects SET isDelete = 1 WHERE id = ? AND isDelete = 0'
+		);
+		expect(queryParams).toEqual([77]);
+	});
+
+	it('denies an unknown project with the generic 403', async () => {
+		mockExecute.mockResolvedValueOnce([[], []]);
+
+		const response = await DELETE(deleteRequest(), params('missing'));
+
+		expect(response.status).toBe(403);
+		const updates = mockExecute.mock.calls.filter(([sql]) =>
+			String(sql).startsWith('UPDATE projects')
+		);
+		expect(updates).toHaveLength(0);
+	});
+
+	it('allows a super-admin delete', async () => {
+		mockGetCurrentUser.mockResolvedValue(superAdmin);
+		mockExecute
+			.mockResolvedValueOnce([[baselineProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await DELETE(deleteRequest(), params());
+
+		expect(response.status).toBe(200);
+	});
+
+	it('resolves reads through the same non-deleted row lookup', async () => {
+		mockGetCurrentUser.mockResolvedValue(member);
+		mockExecute.mockResolvedValue([[project], []]);
+
+		await GET(request(), params());
+
+		const [sql] = mockExecute.mock.calls[0];
+		expect(String(sql)).toContain('p.isDelete = 0');
 	});
 });
