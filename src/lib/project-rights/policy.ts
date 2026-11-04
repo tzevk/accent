@@ -49,6 +49,8 @@ export type ProjectRights = {
 	 * Membership itself is enough; a read-only grant is not.
 	 */
 	canContribute: boolean;
+	/** The existing super-admin bypass; reads keep the full project row. */
+	isSuperAdmin?: boolean;
 	isMember: boolean;
 	isLead: boolean;
 	sections: Record<SectionId, SectionRight>;
@@ -234,6 +236,7 @@ export function resolveProjectRights({
 	return {
 		canOpen,
 		canContribute,
+		isSuperAdmin,
 		isMember,
 		isLead,
 		sections,

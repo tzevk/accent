@@ -24,6 +24,9 @@ export function filterProjectForRights<T extends ProjectPayload>(
 	rights: ProjectRights
 ): T {
 	if (!project || !rights) return project;
+	// The super-admin bypass keeps the existing full-row read, including
+	// columns that have not been mapped to a work section yet.
+	if (rights.isSuperAdmin) return project;
 
 	const filtered: ProjectPayload = {};
 

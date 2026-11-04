@@ -272,6 +272,20 @@ describe('filterProjectForRights allowlist', () => {
 		}
 	});
 
+	it('keeps the full row for the super-admin bypass', () => {
+		const superRights = resolveProjectRights({
+			user: { id: 1, email: 'root@example.com', is_super_admin: true },
+			project: { project_team: '[]' },
+		});
+		const filtered = filterProjectForRights(realisticRow, superRights);
+
+		expect(superRights.isSuperAdmin).toBe(true);
+		expect(filtered.payment_terms).toBe('Net 30');
+		expect(filtered.currency).toBe('USD');
+		expect(filtered.documents_list).toBe('[]');
+		expect(filtered.project_value).toBe('5000');
+	});
+
 	it('keeps an unmapped column absent even when the whole payload is edited in place', () => {
 		const filtered = filterProjectForRights(realisticRow, memberRights);
 
