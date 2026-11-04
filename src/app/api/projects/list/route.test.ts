@@ -61,6 +61,11 @@ describe('GET /api/projects/list project-rights sweep', () => {
 		});
 		mockGetCurrentUser.mockResolvedValue(member);
 		mockExecute.mockResolvedValueOnce([rows, []]);
+		mockExecute.mockImplementation(async (sql: string) =>
+			sql.includes('FROM project_lead_policy')
+				? [[{ sections: '{}' }], []]
+				: [[], []]
+		);
 	});
 
 	it('returns only openable projects with rights and filtered fields', async () => {
@@ -90,6 +95,13 @@ describe('GET /api/projects/list project-rights sweep', () => {
 
 		expect(response.status).toBe(401);
 		expect(mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('reads only non-deleted projects so a deleted row leaves the list', async () => {
+		await GET(request());
+
+		const [sql] = mockExecute.mock.calls[0];
+		expect(String(sql)).toContain('isDelete = 0');
 	});
 
 	it('returns every commercial column unchanged to a super admin', async () => {

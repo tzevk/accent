@@ -5,7 +5,9 @@
  * list: add a member, remove a member, or change one member's role. Each
  * operation reads membership through the shared identity layer, never rewrites
  * unrelated members, and refuses a lead designation change without lead
- * authority. The last-lead replacement rule is not part of this module.
+ * authority. Once a project has a lead, removing or demoting the final lead
+ * requires either explicit clear authority or a named replacement who is a
+ * different current member; the replacement is promoted in the same result.
  */
 
 import {
@@ -25,7 +27,9 @@ export type TeamOperationErrorCode =
 	| 'MEMBER_ALREADY_IN_TEAM'
 	| 'INVALID_ROLE'
 	| 'INVALID_MEMBER'
-	| 'LEAD_CHANGE_NOT_ALLOWED';
+	| 'LEAD_CHANGE_NOT_ALLOWED'
+	| 'LAST_LEAD_REQUIRES_REPLACEMENT'
+	| 'REPLACEMENT_NOT_IN_TEAM';
 
 export type TeamOperationFailure = {
 	ok: false;
@@ -46,6 +50,16 @@ export type TeamOperationResult = TeamOperationSuccess | TeamOperationFailure;
 export type TeamOperationOptions = {
 	/** Lead designation authority resolved by the policy module. */
 	canChangeLeadDesignation: boolean;
+	/**
+	 * Explicit authority to leave the project without any Project Lead.
+	 * Lead-only authority must not set this.
+	 */
+	canClearFinalLead?: boolean;
+	/**
+	 * Member promoted to Project Lead when this operation would remove or
+	 * demote the project's final lead.
+	 */
+	replacementLeadId?: unknown;
 };
 
 function failure(
@@ -103,6 +117,85 @@ function resolveRoleInput(
 		return options.allowDefault ? DEFAULT_PROJECT_TEAM_ROLE : null;
 	}
 	return resolveProjectTeamRole(value);
+}
+
+const LAST_LEAD_ERROR =
+	'A project must keep at least one Project Lead. Name a replacement lead from the current team, or use team-management authority to clear the final lead.';
+const REPLACEMENT_ERROR =
+	'The replacement lead must be a different member of the current project team.';
+
+function isLeadMember(member: ProjectTeamMember | undefined): boolean {
+	return Boolean(
+		member && resolveProjectTeamRole(member.role) === PROJECT_LEAD_ROLE
+	);
+}
+
+/** True when both identities resolve to the same stored member. */
+function sameMemberIdentity(
+	left: { userId: string; email: string },
+	right: { userId: string; email: string }
+): boolean {
+	if (left.userId && right.userId) {
+		return left.userId === right.userId;
+	}
+	if (left.email && right.email) {
+		return left.email.toLowerCase() === right.email.toLowerCase();
+	}
+	return false;
+}
+
+/**
+ * Apply the last-lead rule to a proposed team.
+ *
+ * When the stored team has a lead and the proposed team would have none, the
+ * operation is allowed only with explicit clear authority or with a named
+ * replacement who is a different current member. The replacement is promoted
+ * in the same result, so the project keeps exactly one intended lead.
+ */
+function settleFinalLead(
+	teamBefore: readonly ProjectTeamMember[],
+	teamAfter: ProjectTeamMember[],
+	operatedIdentity: { userId: string; email: string },
+	options: TeamOperationOptions
+): { ok: true; team: ProjectTeamMember[] } | TeamOperationFailure {
+	if (!teamBefore.some(isLeadMember) || teamAfter.some(isLeadMember)) {
+		return { ok: true, team: teamAfter };
+	}
+
+	if (options.canClearFinalLead) {
+		return { ok: true, team: teamAfter };
+	}
+
+	const replacementId = options.replacementLeadId;
+	if (
+		replacementId === undefined ||
+		replacementId === null ||
+		(typeof replacementId === 'string' && !replacementId.trim())
+	) {
+		return failure('LAST_LEAD_REQUIRES_REPLACEMENT', LAST_LEAD_ERROR);
+	}
+
+	const replacementIdentity = resolveMemberIdentity(replacementId);
+	if (!replacementIdentity) {
+		return failure('REPLACEMENT_NOT_IN_TEAM', REPLACEMENT_ERROR);
+	}
+	if (sameMemberIdentity(replacementIdentity, operatedIdentity)) {
+		return failure('REPLACEMENT_NOT_IN_TEAM', REPLACEMENT_ERROR);
+	}
+
+	const replacementIndex = memberIndex(teamAfter, replacementIdentity);
+	if (replacementIndex < 0) {
+		return failure('REPLACEMENT_NOT_IN_TEAM', REPLACEMENT_ERROR);
+	}
+
+	return {
+		ok: true,
+		team: teamAfter.map((member, position) =>
+			position === replacementIndex
+				? { ...member, role: PROJECT_LEAD_ROLE }
+				: member
+		),
+	};
 }
 
 /**
@@ -178,9 +271,17 @@ export function removeProjectTeamMember(
 		);
 	}
 
+	const settled = settleFinalLead(
+		team,
+		team.filter((_, position) => position !== index),
+		identity,
+		options
+	);
+	if (!settled.ok) return settled;
+
 	return {
 		ok: true,
-		team: team.filter((_, position) => position !== index),
+		team: settled.team,
 		member: existing,
 	};
 }
@@ -225,11 +326,17 @@ export function updateProjectTeamMemberRole(
 	}
 
 	const updated: ProjectTeamMember = { ...existing, role };
+	const settled = settleFinalLead(
+		team,
+		team.map((member, position) => (position === index ? updated : member)),
+		identity,
+		options
+	);
+	if (!settled.ok) return settled;
+
 	return {
 		ok: true,
-		team: team.map((member, position) =>
-			position === index ? updated : member
-		),
+		team: settled.team,
 		member: updated,
 	};
 }

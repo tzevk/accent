@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ProjectAccessModule from '@/utils/project-access';
+import type * as ProjectRightsModule from '@/lib/project-rights';
 
 const mockExecute = vi.fn();
 const mockBeginTransaction = vi.fn();
@@ -11,6 +12,7 @@ const mockGetCurrentUser = vi.fn();
 const mockLogActivity = vi.fn();
 const mockGetTableColumns = vi.fn();
 const mockHasUserProjectAssignment = vi.fn();
+const mockLoadLeadPolicy = vi.fn();
 
 const mockDb = {
 	execute: mockExecute,
@@ -23,6 +25,11 @@ const mockDb = {
 vi.mock('@/utils/database', () => ({
 	dbConnect: mockDbConnect,
 }));
+
+vi.mock('@/lib/project-rights', async (importOriginal) => {
+	const actual = await importOriginal<typeof ProjectRightsModule>();
+	return { ...actual, loadLeadPolicy: mockLoadLeadPolicy };
+});
 
 vi.mock('@/utils/api-permissions', () => ({
 	getCurrentUser: mockGetCurrentUser,
@@ -97,6 +104,7 @@ describe('member project details API', () => {
 		mockExecute.mockResolvedValue([[project]]);
 		mockHasUserProjectAssignment.mockResolvedValue(true);
 		mockLogActivity.mockResolvedValue(undefined);
+		mockLoadLeadPolicy.mockResolvedValue({ sections: {} });
 	});
 
 	it('returns 401 without a session', async () => {

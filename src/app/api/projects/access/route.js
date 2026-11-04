@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getCurrentUser } from '@/utils/api-permissions';
 import {
-	DEFAULT_LEAD_POLICY,
 	hasAllProjectScope,
+	loadLeadPolicy,
 	resolveProjectRights,
 } from '@/lib/project-rights';
 
@@ -39,12 +39,15 @@ export async function GET(request) {
 			'SELECT project_id, project_team FROM projects WHERE isDelete = 0'
 		);
 
+		// One policy read per request, shared by every project.
+		const leadPolicy = await loadLeadPolicy(db);
+
 		const hasAccess = (rows || []).some((project) => {
 			try {
 				return resolveProjectRights({
 					user,
 					project,
-					leadPolicy: DEFAULT_LEAD_POLICY,
+					leadPolicy,
 				}).canOpen;
 			} catch (error) {
 				console.warn('[projects/access] rights resolution failed', error);

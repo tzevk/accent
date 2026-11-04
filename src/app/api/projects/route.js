@@ -9,12 +9,12 @@ import {
 } from '@/utils/api-permissions';
 import {
 	hasColumn,
-	getTableColumns,
-	getPrimaryKeyColumn,
 } from '@/utils/schema-cache';
 import {
-	DEFAULT_LEAD_POLICY,
+	PROJECT_ACCESS_DENIED,
 	filterProjectForRights,
+	loadLeadPolicy,
+	requireProjectAccess,
 	resolveProjectRights,
 } from '@/lib/project-rights';
 import {
@@ -89,12 +89,15 @@ export async function GET(request) {
 		}
 
 		// Every row is resolved through the shared project-rights policy.
+		// One policy read per request, shared by every row.
+		const leadPolicy = await loadLeadPolicy(db);
+
 		const projects = [];
 		for (const project of rows) {
 			const rights = resolveProjectRights({
 				user,
 				project,
-				leadPolicy: DEFAULT_LEAD_POLICY,
+				leadPolicy,
 			});
 			if (!rights.canOpen) continue;
 			projects.push({
@@ -351,311 +354,69 @@ export async function POST(request) {
 	}
 }
 
-// PUT - Update project
-export async function PUT(request) {
-	let db;
-	try {
-		// RBAC: update projects
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.UPDATE
-		);
-		if (auth instanceof Response) return auth;
+// DELETE - Delete project
+export async function DELETE(request) {
+	const { searchParams } = new URL(request.url);
+	const id = searchParams.get('id');
 
-		const data = await request.json();
-		const {
-			id,
-			project_id,
-			name,
-			description,
-			company_id,
-			project_manager,
-			start_date,
-			end_date,
-			target_date,
-			status,
-			assigned_to,
-			type,
-			proposal_id,
-			// New fields
-			project_schedule,
-			input_document,
-			list_of_deliverables,
-			kickoff_meeting,
-			in_house_meeting,
-			project_team,
-		} = data;
-
-		// Support both id and project_id for backward compatibility
-		const projectId = project_id || id;
-
-		if (!projectId || !name) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: 'ID and project name are required',
-				},
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		// If a proposal_id is provided, prefer company information from that proposal
-		let effectiveCompanyId = company_id || null;
-		let effectiveClientName = null;
-
-		if (proposal_id) {
-			try {
-				const [proposalRows] = await db.execute(
-					'SELECT company_id, client_name FROM proposals WHERE (id = ? OR proposal_id = ?) AND isDelete = 0',
-					[proposal_id, proposal_id]
-				);
-				if (proposalRows && proposalRows.length > 0) {
-					if (proposalRows[0].company_id)
-						effectiveCompanyId = proposalRows[0].company_id;
-					if (proposalRows[0].client_name)
-						effectiveClientName = proposalRows[0].client_name;
-				}
-			} catch (e) {
-				console.warn(
-					'Failed to lookup proposal for company override:',
-					e?.message || e
-				);
-			}
-		}
-
-		// Fetch company name from effectiveCompanyId if we have it
-		let client_name = effectiveClientName;
-		if (effectiveCompanyId) {
-			const [companyRows] = await db.execute(
-				'SELECT company_name FROM companies WHERE id = ?',
-				[effectiveCompanyId]
-			);
-
-			if (companyRows.length > 0) {
-				client_name = client_name || companyRows[0].company_name;
-			}
-		}
-
-		// Check if project exists
-		const [existing] = await db.execute(
-			'SELECT project_id FROM projects WHERE project_id = ? AND isDelete = 0',
-			[projectId]
-		);
-
-		if (existing.length === 0) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: 'Project not found',
-				},
-				{ status: 404 }
-			);
-		}
-
-		// Update project - only use columns that exist in the table
-		await db.execute(
-			`UPDATE projects SET 
-        name = ?,
-        description = ?,
-        company_id = ?,
-        client_name = ?,
-        project_manager = ?,
-        start_date = ?,
-        end_date = ?,
-        target_date = ?,
-        status = ?,
-        assigned_to = ?,
-        type = ?,
-        proposal_id = ?,
-        assigned_disciplines = ?,
-        assigned_activities = ?,
-        discipline_descriptions = ?,
-        assignments = ?,
-        project_schedule = ?,
-        input_document = ?,
-        list_of_deliverables = ?,
-        kickoff_meeting = ?,
-        in_house_meeting = ?,
-        project_assumption_list = ?,
-        project_lessons_learnt_list = ?,
-        project_team = ?
-      WHERE project_id = ?`,
-			[
-				name,
-				sanitizeOptionalRichText(description || null),
-				effectiveCompanyId || null,
-				client_name || null,
-				project_manager || null,
-				start_date || null,
-				end_date || null,
-				target_date || null,
-				status || 'planning',
-				assigned_to || null,
-				type || 'ONGOING',
-				proposal_id || null,
-				JSON.stringify(data.disciplines || data.assigned_disciplines || []),
-				JSON.stringify(data.activities || data.assigned_activities || []),
-				JSON.stringify(sanitizeJsonStrings(data.discipline_descriptions || {})),
-				JSON.stringify(data.assignments || []),
-				project_schedule || null,
-				input_document || null,
-				list_of_deliverables || null,
-				kickoff_meeting || null,
-				in_house_meeting || null,
-				data.project_assumption_list
-					? typeof data.project_assumption_list === 'string'
-						? data.project_assumption_list
-						: JSON.stringify(data.project_assumption_list)
-					: null,
-				data.project_lessons_learnt_list
-					? typeof data.project_lessons_learnt_list === 'string'
-						? data.project_lessons_learnt_list
-						: JSON.stringify(data.project_lessons_learnt_list)
-					: null,
-				project_team
-					? typeof project_team === 'string'
-						? project_team
-						: JSON.stringify(project_team)
-					: null,
-				projectId,
-			]
-		);
-
-		// Get the updated project
-		const [updatedProject] = await db.execute(
-			'SELECT * FROM projects WHERE project_id = ? AND isDelete = 0',
-			[projectId]
-		);
-
-		// Log the activity
-		logActivity(
-			{
-				actionType: 'update',
-				resourceType: 'project',
-				resourceId: projectId.toString(),
-				description: `Updated project: ${name}`,
-				details: {
-					project_id: updatedProject[0]?.project_id,
-					project_name: name,
-					status: status,
-					updated_fields: Object.keys(data),
-				},
-			},
-			request
-		).catch((err) => console.error('Failed to log activity:', err));
-
-		return NextResponse.json({
-			success: true,
-			data: updatedProject[0],
-			message: 'Project updated successfully',
-		});
-	} catch (error) {
-		console.error('Projects PUT error:', error);
+	if (!id) {
 		return NextResponse.json(
 			{
 				success: false,
-				error: 'Failed to update project',
-				details: error.message,
+				error: 'Project ID is required',
 			},
-			{ status: 500 }
+			{ status: 400 }
 		);
-	} finally {
-		if (db)
-			try {
-				db.release();
-			} catch {}
 	}
-}
 
-// DELETE - Delete project
-export async function DELETE(request) {
-	let db;
+	// Same policy and key logic as DELETE /api/projects/[id]: resolve the
+	// target through the shared helper, then require an explicit delete
+	// grant in scope.
+	const access = await requireProjectAccess(request, id);
+	if ('response' in access) return access.response;
+
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		// RBAC: delete projects
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.DELETE
+		if (!rights.canPerform.delete) {
+			return NextResponse.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
+			);
+		}
+
+		const keyColumn =
+			project.id !== undefined && project.id !== null ? 'id' : 'project_id';
+		const keyValue = project[keyColumn];
+		if (keyValue === undefined || keyValue === null) {
+			return NextResponse.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
+			);
+		}
+
+		const [result] = await db.execute(
+			`UPDATE projects SET isDelete = 1 WHERE ${keyColumn} = ? AND isDelete = 0`,
+			[keyValue]
 		);
-		if (auth instanceof Response) return auth;
 
-		const { searchParams } = new URL(request.url);
-		const id = searchParams.get('id');
-
-		if (!id) {
+		if (!result || (result.affectedRows ?? 0) === 0) {
 			return NextResponse.json(
-				{
-					success: false,
-					error: 'Project ID is required',
-				},
-				{ status: 400 }
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
 			);
 		}
-
-		db = await dbConnect();
-
-		// Inspect projects columns using cached schema
-		let keyCol = null;
-		try {
-			const existing = await getTableColumns(db, 'projects');
-
-			if (existing.has('id')) keyCol = 'id';
-			else if (existing.has('project_id')) keyCol = 'project_id';
-			else if (existing.has('project_code')) keyCol = 'project_code';
-			else {
-				const pk = await getPrimaryKeyColumn(db, 'projects');
-				keyCol = pk || null;
-			}
-		} catch (inspErr) {
-			console.warn(
-				'Could not inspect projects table schema for DELETE, falling back to id:',
-				inspErr?.message || inspErr
-			);
-			keyCol = 'id';
-		}
-
-		if (!keyCol) {
-			try {
-				db.release();
-			} catch {}
-			return NextResponse.json(
-				{
-					success: false,
-					error: 'Could not determine projects primary key for deletion',
-				},
-				{ status: 500 }
-			);
-		}
-
-		// Check if project exists using resolved key column
-		const query = `SELECT ${keyCol}, name, project_id FROM projects WHERE ${keyCol} = ? AND isDelete = 0`;
-		const [existing] = await db.execute(query, [id]);
-
-		if (!existing || existing.length === 0) {
-			return NextResponse.json(
-				{ success: false, error: 'Project not found' },
-				{ status: 404 }
-			);
-		}
-
-		// Soft delete project using the resolved key
-		await db.execute(`UPDATE projects SET isDelete = 1 WHERE ${keyCol} = ?`, [
-			id,
-		]);
 
 		// Log the activity
 		logActivity(
 			{
 				actionType: 'delete',
 				resourceType: 'project',
-				resourceId: id,
-				description: `Deleted project: ${existing[0].name}`,
+				resourceId: String(keyValue),
+				description: `Deleted project: ${project.name || keyValue}`,
 				details: {
-					project_id: existing[0].project_id,
-					project_name: existing[0].name,
+					project_id: project.project_id,
+					project_name: project.name,
 				},
 			},
 			request
@@ -676,9 +437,12 @@ export async function DELETE(request) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db)
+		if (ownsDb) {
 			try {
-				db.release();
-			} catch {}
+				db.release?.();
+			} catch (e) {
+				console.warn('Error releasing DB connection in DELETE:', e?.message);
+			}
+		}
 	}
 }

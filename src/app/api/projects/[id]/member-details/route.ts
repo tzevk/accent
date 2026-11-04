@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import type { PoolConnection } from 'mysql2/promise';
 import { logActivity } from '@/utils/activity-logger';
-import { requireProjectAccess } from '@/lib/project-rights';
+import { loadLeadPolicy, requireProjectAccess } from '@/lib/project-rights';
 
 type MemberSection =
 	| 'assumption'
@@ -187,7 +187,9 @@ export async function GET(
 		return jsonResponse({ success: false, error: 'Invalid project id' }, 400);
 	}
 
-	const access = await requireProjectAccess(request, routeId);
+	const access = await requireProjectAccess(request, routeId, {
+		getLeadPolicy: loadLeadPolicy,
+	});
 	if ('response' in access) return access.response;
 	const { project, db, ownsDb } = access;
 
@@ -290,6 +292,7 @@ export async function POST(
 
 	const access = await requireProjectAccess(request, routeId, {
 		requireContribution: true,
+		getLeadPolicy: loadLeadPolicy,
 	});
 	if ('response' in access) return access.response;
 	const project = access.project as ProjectRow;

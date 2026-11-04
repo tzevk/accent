@@ -8,6 +8,7 @@ import {
 import { sanitizeOptionalRichText } from '@/lib/sanitize-fields';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
 import {
+	loadLeadPolicy,
 	projectAccessDeniedResponse,
 	requireProjectAccess,
 } from '@/lib/project-rights';
@@ -57,6 +58,7 @@ export async function GET(request, { params }) {
 
 		const access = await requireProjectAccess(request, id, {
 			db: connection,
+			getLeadPolicy: loadLeadPolicy,
 		});
 		if ('response' in access) return access.response;
 		if (!access.rights.financialAreas.quotation) {
@@ -108,6 +110,7 @@ export async function POST(request, { params }) {
 
 		const access = await requireProjectAccess(request, id, {
 			db: connection,
+			getLeadPolicy: loadLeadPolicy,
 		});
 		if ('response' in access) return access.response;
 		if (!access.rights.financialAreas.quotation) {
