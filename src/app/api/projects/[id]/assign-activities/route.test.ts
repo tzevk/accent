@@ -23,7 +23,7 @@ vi.mock('@/utils/api-permissions', () => ({
 }));
 
 // The handler imports after `vi.mock` so the mocks are hoisted first.
-const { POST, PUT, DELETE } = await import(
+const { GET, POST, PUT, DELETE } = await import(
 	'@/app/api/projects/[id]/assign-activities/route'
 );
 
@@ -53,8 +53,13 @@ function team(memberIds: number[]) {
 function access(options: {
 	memberIds?: number[];
 	canAssignActivity?: boolean;
+	projectActivityRead?: boolean;
 } = {}) {
-	const { memberIds = [42], canAssignActivity = true } = options;
+	const {
+		memberIds = [42],
+		canAssignActivity = true,
+		projectActivityRead = true,
+	} = options;
 	return {
 		user: { id: 1, email: 'manager@example.com', is_super_admin: 0 },
 		project: {
@@ -62,7 +67,10 @@ function access(options: {
 			title: 'Project One',
 			project_team: team(memberIds),
 		},
-		rights: { canAssignActivity },
+		rights: {
+			canAssignActivity,
+			sections: { project_activity: { read: projectActivityRead } },
+		},
 		db,
 		ownsDb: false,
 	};
@@ -310,6 +318,49 @@ describe('DELETE project activity assignments', () => {
 			),
 			params()
 		);
+
+		expect(response.status).toBe(403);
+		expect(mocks.mockExecute).not.toHaveBeenCalled();
+	});
+});
+
+
+describe('GET project activity assignments', () => {
+	function getRequest() {
+		return new Request('http://localhost/api/projects/1/assign-activities', {
+			method: 'GET',
+		});
+	}
+
+	it('lets a project lead list assignments without the assign grant', async () => {
+		mocks.mockRequireProjectAccess.mockResolvedValue(
+			access({ canAssignActivity: false, projectActivityRead: true })
+		);
+		mocks.mockExecute.mockResolvedValueOnce([
+			[
+				{
+					user_id: 42,
+					full_name: 'Member One',
+					username: 'member',
+					position: 'Engineer',
+				},
+			],
+		]);
+
+		const response = await GET(getRequest(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.total).toBe(1);
+		expect(mocks.mockExecute.mock.calls[0][1]).toEqual([1]);
+	});
+
+	it('refuses an actor with neither assignment nor activity read', async () => {
+		mocks.mockRequireProjectAccess.mockResolvedValue(
+			access({ canAssignActivity: false, projectActivityRead: false })
+		);
+
+		const response = await GET(getRequest(), params());
 
 		expect(response.status).toBe(403);
 		expect(mocks.mockExecute).not.toHaveBeenCalled();

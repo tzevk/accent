@@ -1,10 +1,5 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import {
-	ensurePermission,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
 import {
 	ASSIGNEE_NOT_PROJECT_MEMBER,
@@ -329,22 +324,23 @@ export async function POST(request, { params }) {
  */
 export async function GET(request, { params }) {
 	let db;
+	let ownsDb = false;
 	try {
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.READ
-		);
-		if (!auth.authorized)
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-
 		const { id } = await params;
-		const projectId = parseInt(id);
+		const access = await requireProjectAccess(request, id);
+		if ('response' in access) return access.response;
 
-		db = await dbConnect();
+		const { project, rights } = access;
+		db = access.db;
+		ownsDb = access.ownsDb;
+		if (!rights.sections.project_activity.read && !rights.canAssignActivity) {
+			return NextResponse.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
+			);
+		}
+
+		const projectId = project.project_id ?? project.id;
 
 		const [assignments] = await db.execute(
 			`
@@ -401,7 +397,7 @@ export async function GET(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		releaseQuietly(db);
+		if (ownsDb) releaseQuietly(db);
 	}
 }
 
