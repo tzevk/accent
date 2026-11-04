@@ -66,6 +66,12 @@ const reopener = {
 	},
 };
 
+const reopenOnly = {
+	...reopener,
+	id: 99,
+	email: 'reopen@example.com',
+};
+
 const statusEditor = {
 	...lead,
 	field_permissions: {
@@ -203,6 +209,42 @@ describe('PUT /api/projects/[id]/status lifecycle authority', () => {
 
 		expect(response.status).toBe(403);
 		expect(updateCalls()).toHaveLength(0);
+	});
+
+	it('does not let a lifecycle grant move an ordinary board column', async () => {
+		mockGetCurrentUser.mockResolvedValue(reopenOnly);
+		mockExecute.mockResolvedValueOnce([[leadProject], []]);
+
+		const response = await PUT(statusRequest('cancelled'), params());
+
+		expect(response.status).toBe(403);
+		expect(updateCalls()).toHaveLength(0);
+	});
+
+	it('moves an ordinary board column with project-details edit authority', async () => {
+		mockGetCurrentUser.mockResolvedValue(statusEditor);
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(statusRequest('planning'), params());
+
+		expect(response.status).toBe(200);
+		const [sql, queryParams] = updateCalls()[0];
+		expect(sql).toContain('status = ?');
+		expect(queryParams).toEqual(['planning', 10]);
+	});
+
+	it('lets a lead move an ordinary board column without a lifecycle grant', async () => {
+		mockGetCurrentUser.mockResolvedValue(lead);
+		mockExecute
+			.mockResolvedValueOnce([[leadProject], []])
+			.mockResolvedValueOnce([{ affectedRows: 1 }, []]);
+
+		const response = await PUT(statusRequest('in-progress'), params());
+
+		expect(response.status).toBe(200);
+		expect(updateCalls()[0][1]).toEqual(['in-progress', 10]);
 	});
 
 	it('updates the runtime variant row by id', async () => {

@@ -31,10 +31,19 @@ export async function PUT(request, { params }) {
 			);
 		}
 
-		const isClose = status.toLowerCase() === 'completed';
+		// Close and reopen are lifecycle transitions with their own grants.
+		// Every other board column (NEW, planning, in-progress, on-hold,
+		// cancelled) is an ordinary project-details edit; it must not use a
+		// lifecycle grant to bypass the lifecycle boundary.
+		const normalizedStatus = status.toLowerCase();
+		const isClose = normalizedStatus === 'completed';
+		const isReopen =
+			normalizedStatus === 'active' || normalizedStatus === 'reopened';
 		const permitted = isClose
 			? rights.canPerform.close
-			: rights.canPerform.reopen;
+			: isReopen
+				? rights.canPerform.reopen
+				: rights.sections?.project_details?.edit === true;
 		if (!permitted) {
 			return NextResponse.json(
 				{ success: false, error: PROJECT_ACCESS_DENIED },
