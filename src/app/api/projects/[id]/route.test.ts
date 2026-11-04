@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ProjectAccessModule from '@/utils/project-access';
 
 const mockExecute = vi.fn();
 const mockRelease = vi.fn();
 const mockDbConnect = vi.fn();
 const mockGetCurrentUser = vi.fn();
 const mockGetTableColumns = vi.fn();
+const mockHasUserProjectAssignment = vi.fn();
 
 const mockDb = {
 	execute: mockExecute,
@@ -20,6 +22,13 @@ vi.mock('@/utils/api-permissions', () => ({
 	RESOURCES: { PROJECTS: 'projects' },
 	PERMISSIONS: { READ: 'read', UPDATE: 'update', CLOSE: 'close' },
 }));
+
+// Activity assignment remains available to reporting code, but workspace
+// entry must never consult it.
+vi.mock('@/utils/project-access', async (importOriginal) => {
+	const actual = await importOriginal<typeof ProjectAccessModule>();
+	return { ...actual, hasUserProjectAssignment: mockHasUserProjectAssignment };
+});
 
 vi.mock('@/utils/schema-cache', () => ({
 	getTableColumns: mockGetTableColumns,
@@ -89,6 +98,8 @@ describe('GET /api/projects/[id] project-rights sweep', () => {
 			id: 99,
 			email: 'outsider@example.com',
 		});
+		// The assignment table would report this user as assigned if asked.
+		mockHasUserProjectAssignment.mockResolvedValue(true);
 		const denied = await GET(request(), params());
 		const deniedBody = await denied.json();
 
@@ -100,9 +111,11 @@ describe('GET /api/projects/[id] project-rights sweep', () => {
 		expect(missing.status).toBe(403);
 		expect(deniedBody).toEqual(missingBody);
 		expect(deniedBody.success).toBe(false);
+		expect(deniedBody).not.toHaveProperty('data');
 		expect(missingBody.error).toBe(
 			'You do not have permission to access this project'
 		);
+		expect(mockHasUserProjectAssignment).not.toHaveBeenCalled();
 	});
 
 	it('allows a team member and returns filtered data plus rights', async () => {
