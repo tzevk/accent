@@ -43,6 +43,12 @@ export type FinancialAreas = {
 
 export type ProjectRights = {
 	canOpen: boolean;
+	/**
+	 * Member-contribution right for the child workflows: query log,
+	 * assumption, discussion, lessons learnt, and the member's own activity.
+	 * Membership itself is enough; a read-only grant is not.
+	 */
+	canContribute: boolean;
 	isMember: boolean;
 	isLead: boolean;
 	sections: Record<SectionId, SectionRight>;
@@ -210,8 +216,13 @@ export function resolveProjectRights({
 				invoice: Boolean(financialPermissions?.invoice),
 			};
 
+	// Membership and the update action both allow contributions; a read,
+	// assign, financial, or lifecycle grant alone does not.
+	const canContribute = isSuperAdmin || isMember || isLead || updateCovers;
+
 	return {
 		canOpen,
+		canContribute,
 		isMember,
 		isLead,
 		sections,

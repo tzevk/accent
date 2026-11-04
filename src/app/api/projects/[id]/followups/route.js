@@ -1,4 +1,5 @@
 import { dbConnect } from '@/utils/database';
+import { requireProjectAccess } from '@/lib/project-rights';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -102,6 +103,13 @@ export async function POST(request, { params }) {
 
 		db = await dbConnect();
 
+		// A removed member loses contribution rights on their next request.
+		const access = await requireProjectAccess(request, id, {
+			db,
+			requireContribution: true,
+		});
+		if ('response' in access) return access.response;
+
 		const [result] = await db.execute(
 			`INSERT INTO project_followups 
         (project_id, follow_up_date, follow_up_type, description, status, priority, milestone, 
@@ -176,6 +184,13 @@ export async function PUT(request, { params }) {
 		}
 
 		db = await dbConnect();
+
+		// A removed member loses contribution rights on their next request.
+		const access = await requireProjectAccess(request, projectId, {
+			db,
+			requireContribution: true,
+		});
+		if ('response' in access) return access.response;
 
 		// Build dynamic update query
 		const allowedFields = [
@@ -266,6 +281,13 @@ export async function DELETE(request, { params }) {
 		}
 
 		db = await dbConnect();
+
+		// A removed member loses contribution rights on their next request.
+		const access = await requireProjectAccess(request, projectId, {
+			db,
+			requireContribution: true,
+		});
+		if ('response' in access) return access.response;
 
 		// Soft delete the follow-up
 		await db.execute(

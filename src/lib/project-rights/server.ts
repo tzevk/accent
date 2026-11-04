@@ -48,6 +48,11 @@ export type ProjectAccessResult = ProjectAccessOk | ProjectAccessFailure;
 export type ProjectAccessOptions = {
 	db?: DbConnection;
 	getLeadPolicy?: (db: DbConnection) => Promise<LeadPolicy>;
+	/**
+	 * Also require the member-contribution right, not just workspace entry.
+	 * A read-only non-member opens the workspace but cannot contribute.
+	 */
+	requireContribution?: boolean;
 	financialPermissions?: {
 		quotation?: boolean;
 		purchase_order?: boolean;
@@ -263,6 +268,15 @@ export async function resolveProjectAccess(
 
 		if (!rights.canOpen) {
 			console.warn('[project-rights] access denied', {
+				projectId,
+				userId: user.id,
+			});
+			if (ownsDb) db.release?.();
+			return denied();
+		}
+
+		if (opts.requireContribution && !rights.canContribute) {
+			console.warn('[project-rights] contribution denied', {
 				projectId,
 				userId: user.id,
 			});
