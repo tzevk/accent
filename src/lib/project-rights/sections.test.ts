@@ -11,6 +11,7 @@ import {
 	isSectionId,
 } from '@/lib/project-rights/sections';
 import { workSectionCommercialViolations } from '@/lib/project-rights/writes';
+import { PROJECT_PERMISSION_SECTIONS } from '@/lib/project-rights/permission-config';
 import { PROJECT_TABS } from '@/lib/project-tabs';
 
 describe('project section vocabulary', () => {
@@ -23,6 +24,10 @@ describe('project section vocabulary', () => {
 			expect(tabIds.has(SECTION_TABS[section]), `${section} tab exists`).toBe(
 				true
 			);
+			expect(
+				PROJECT_PERMISSION_SECTIONS[section],
+				`${section} permission config`
+			).toBeTruthy();
 			expect(Array.isArray(SECTION_COLUMNS[section])).toBe(true);
 			expect(Array.isArray(SECTION_WRITE_COLUMNS[section])).toBe(true);
 			expect(Array.isArray(SECTION_LIST_COLUMNS[section])).toBe(true);
