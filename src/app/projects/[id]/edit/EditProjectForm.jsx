@@ -48,6 +48,7 @@ import {
 } from '@/utils/project-weeks';
 import LoadingFallback from '@/components/LoadingFallback';
 import { PROJECT_TABS, TAB_ALIASES } from '@/lib/project-tabs';
+import { WORK_SECTION_IDS } from '@/lib/project-rights/sections';
 import { getExportSheetPayloads } from './excel/export/buildPayloads';
 import {
 	exportProjectWorkbook,
@@ -290,18 +291,25 @@ export default function EditProjectForm() {
 		can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
 	const canEditInvoices =
 		isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
-	const canViewProjectContent =
-		isSuperAdmin ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.READ) ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	const canEditProjectContent =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	// Project entry, readable tabs, and editability come from the server's
+	// resolved rights. The legacy permission checks remain only as a fallback
+	// for payloads that predate the rights contract.
+	const [projectRights, setProjectRights] = useState(null);
+	const canViewProjectContent = projectRights
+		? projectRights.canOpen === true
+		: isSuperAdmin ||
+			can(RESOURCES.PROJECTS, PERMISSIONS.READ) ||
+			can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	const canEditProjectContent = projectRights
+		? (projectRights.editableSections || []).length > 0
+		: isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
 	// Team management only — granted via projects:assign (or full update / super admin).
 	// Lets a user edit the Project Team tab without full project edit rights.
-	const canManageTeam =
-		isSuperAdmin ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
+	const canManageTeam = projectRights
+		? projectRights.canManageTeam === true
+		: isSuperAdmin ||
+			can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
+			can(RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
 	const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
 	// Signature-authorisation toggles for the Documents Issued tab
@@ -1005,7 +1013,12 @@ export default function EditProjectForm() {
 				});
 				console.log('[fetchProject] API response success:', result.success);
 
+				if (result.success && result.rights && !result.rights.canOpen) {
+					setError('You do not have permission to access this project.');
+					return;
+				}
 				if (result.success && result.data) {
+					setProjectRights(result.rights || null);
 					const project = result.data;
 					console.log(
 						'[fetchProject] Project data keys:',
@@ -3924,44 +3937,18 @@ export default function EditProjectForm() {
 	};
 
 	const visibleTabs = useMemo(() => {
-		const projectModule = sessionUser?.field_permissions?.modules?.projects;
-		const sectionAccess = projectModule?.sections || {};
-
 		return TABS.filter((tab) => {
 			if (isSuperAdmin) return true;
 
-			const hasActivitiesPermission =
-				can('activities', PERMISSIONS.READ) ||
-				can('activities', PERMISSIONS.ASSIGN);
-			if (tab.adminOnly && !isAdminUser) return false;
-			// For project-level views, allow users with project view permission to see these tabs.
-			if (
-				tab.adminOrActivities &&
-				!isAdminUser &&
-				!hasActivitiesPermission &&
-				!canViewProjectContent
-			)
-				return false;
-			if (tab.userOnly && isAdminUser) return false;
-			// "requiresUpdate" means the tab contains edit controls, but view-only users should still be able to see it.
-			// The Project Team tab is also shown to users granted projects:assign (team management only),
-			// even though they lack projects:read/update.
-			if (
-				tab.requiresUpdate &&
-				!canViewProjectContent &&
-				!(tab.projectSectionKey === 'project_team' && canManageTeam)
-			)
-				return false;
-
-			if (tab.projectSectionKey) {
-				if (projectModule?.enabled === false && !canViewProjectContent)
-					return false;
-				// When project sections are configured, show only explicitly enabled sections.
-				if (projectModule && Object.keys(sectionAccess).length > 0) {
-					if (sectionAccess?.[tab.projectSectionKey]?.enabled !== true)
-						return false;
-				}
+			// Work-section tabs render only when the server says the section is
+			// readable. Editability is a separate, section-independent gate.
+			if (WORK_SECTION_IDS.includes(tab.id)) {
+				if (!projectRights) return false;
+				return projectRights.readableSections?.includes(tab.id) === true;
 			}
+
+			if (tab.adminOnly && !isAdminUser) return false;
+			if (tab.userOnly && isAdminUser) return false;
 
 			if (tab.requiresPermission) {
 				const hasAnyPermission =
@@ -3972,15 +3959,7 @@ export default function EditProjectForm() {
 
 			return true;
 		});
-	}, [
-		can,
-		isAdminUser,
-		isSuperAdmin,
-		PERMISSIONS,
-		canViewProjectContent,
-		canManageTeam,
-		sessionUser,
-	]);
+	}, [can, isAdminUser, isSuperAdmin, PERMISSIONS, projectRights]);
 
 	useEffect(() => {
 		const resolved = resolveTabIdLocal(activeTab);

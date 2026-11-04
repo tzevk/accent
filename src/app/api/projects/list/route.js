@@ -1,43 +1,28 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-
-// Helper to check if user is in project team
-function isUserInProjectTeam(projectTeam, userId, userEmail) {
-	if (!projectTeam) return false;
-	try {
-		const team =
-			typeof projectTeam === 'string' ? JSON.parse(projectTeam) : projectTeam;
-		if (!Array.isArray(team)) return false;
-		return team.some(
-			(member) =>
-				String(member.user_id) === String(userId) ||
-				String(member.id) === String(userId) ||
-				member.email === userEmail
-		);
-	} catch {
-		return false;
-	}
-}
+import {
+	DEFAULT_LEAD_POLICY,
+	filterProjectForRights,
+	resolveProjectRights,
+} from '@/lib/project-rights';
 
 /**
  * GET /api/projects/list
  *
- * Optimized endpoint for projects list page.
+ * Optimized endpoint for the projects list page.
  *
- * Performance optimizations:
- * 1. Single DB connection for all queries
- * 2. Parallel query execution using Promise.all
- * 3. No schema checks (tables should exist already)
- * 4. Only fetches fields needed for list view
- * 5. Cache-Control headers for client-side caching
+ * Every row is resolved through the shared project-rights policy: only
+ * projects the actor may open are returned, unreadable sections and
+ * protected commercial columns are omitted, and each row carries the
+ * resolved `rights` so the client renders from server truth. Stats are
+ * computed from the filtered set.
  */
 export async function GET(request) {
 	const startTime = Date.now();
 	let db;
 
 	try {
-		// Auth check - wrap in try-catch since getCurrentUser can throw on DB errors
 		let user;
 		try {
 			user = await getCurrentUser(request);
@@ -56,15 +41,12 @@ export async function GET(request) {
 			);
 		}
 
-		// Permission check - ensure user object is valid before checking permissions
 		if (!user.id) {
 			return NextResponse.json(
 				{ success: false, error: 'Invalid user session' },
 				{ status: 401 }
 			);
 		}
-
-		const isSuperAdmin = !!user.is_super_admin;
 
 		const { searchParams } = new URL(request.url);
 		const search = searchParams.get('search') || '';
@@ -73,100 +55,96 @@ export async function GET(request) {
 
 		db = await dbConnect();
 
+		let sourceProjects = [];
 		try {
-			// Execute queries with full error handling
-			let projects = [];
-			let stats = {
-				total: 0,
-				in_progress: 0,
-				completed: 0,
-				new_projects: 0,
-				on_hold: 0,
-				total_budget: 0,
-			};
-
-			try {
-				// Use SELECT * to adapt to whatever columns exist
-				const [projectsResult] = await db.execute(`
-          SELECT * FROM projects WHERE isDelete = 0 ORDER BY created_at DESC
-        `);
-				projects = projectsResult || [];
-			} catch (queryErr) {
-				console.warn('Projects query failed:', queryErr?.message);
-				// Table might not exist - return empty
-				projects = [];
-			}
-
-			try {
-				// Stats query - only use status
-				const [statsResult] = await db.execute(`
-          SELECT 
-            COUNT(*) as total,
-            SUM(CASE WHEN LOWER(COALESCE(status,'')) LIKE '%progress%' THEN 1 ELSE 0 END) as in_progress,
-            SUM(CASE WHEN LOWER(COALESCE(status,'')) LIKE '%complete%' THEN 1 ELSE 0 END) as completed,
-            SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'new' THEN 1 ELSE 0 END) as new_projects,
-            SUM(CASE WHEN LOWER(COALESCE(status,'')) LIKE '%hold%' THEN 1 ELSE 0 END) as on_hold
-          FROM projects WHERE isDelete = 0
-        `);
-				const statsRow = statsResult?.[0] || {};
-				stats = {
-					total: Number(statsRow.total) || 0,
-					in_progress: Number(statsRow.in_progress) || 0,
-					completed: Number(statsRow.completed) || 0,
-					new_projects: Number(statsRow.new_projects) || 0,
-					on_hold: Number(statsRow.on_hold) || 0,
-					total_budget: 0,
-				};
-			} catch (statsErr) {
-				console.warn('Stats query failed:', statsErr?.message);
-			}
-
-			// Non-super-admin users should only see projects assigned to them via project_team.
-			if (!isSuperAdmin) {
-				projects = projects.filter((project) =>
-					isUserInProjectTeam(project.project_team, user.id, user.email)
-				);
-			}
-
-			// Apply filters client-side for simplicity (data is already fetched)
-			if (search) {
-				const s = search.toLowerCase();
-				projects = projects.filter(
-					(p) =>
-						(p.name || '').toLowerCase().includes(s) ||
-						(p.project_id || '').toLowerCase().includes(s) ||
-						(p.client_name || '').toLowerCase().includes(s)
-				);
-			}
-
-			if (status) {
-				projects = projects.filter(
-					(p) => (p.status || '').toLowerCase() === status.toLowerCase()
-				);
-			}
-
-			if (priority) {
-				projects = projects.filter(
-					(p) => (p.priority || '').toLowerCase() === priority.toLowerCase()
-				);
-			}
-
-			const queryTime = Date.now() - startTime;
-
-			const response = NextResponse.json({
-				success: true,
-				data: projects,
-				stats,
-				_meta: {
-					queryTimeMs: queryTime,
-					filtered: projects.length,
-				},
-			});
-
-			return response;
-		} finally {
-			// Release handled in outer finally
+			const [projectsResult] = await db.execute(`
+        SELECT * FROM projects WHERE isDelete = 0 ORDER BY created_at DESC
+      `);
+			sourceProjects = projectsResult || [];
+		} catch (queryErr) {
+			console.warn('Projects query failed:', queryErr?.message);
+			sourceProjects = [];
 		}
+
+		let projects = [];
+		for (const project of sourceProjects) {
+			const rights = resolveProjectRights({
+				user,
+				project,
+				leadPolicy: DEFAULT_LEAD_POLICY,
+			});
+			if (!rights.canOpen) continue;
+			projects.push({
+				...filterProjectForRights(project, rights),
+				rights,
+			});
+		}
+
+		if (search) {
+			const s = search.toLowerCase();
+			projects = projects.filter(
+				(p) =>
+					String(p.name || '')
+						.toLowerCase()
+						.includes(s) ||
+					String(p.project_id || '')
+						.toLowerCase()
+						.includes(s) ||
+					String(p.client_name || '')
+						.toLowerCase()
+						.includes(s)
+			);
+		}
+
+		if (status) {
+			projects = projects.filter(
+				(p) => String(p.status || '').toLowerCase() === status.toLowerCase()
+			);
+		}
+
+		if (priority) {
+			projects = projects.filter(
+				(p) => String(p.priority || '').toLowerCase() === priority.toLowerCase()
+			);
+		}
+
+		const stats = {
+			total: projects.length,
+			in_progress: projects.filter((project) =>
+				String(project.status || '')
+					.toLowerCase()
+					.includes('progress')
+			).length,
+			completed: projects.filter((project) =>
+				String(project.status || '')
+					.toLowerCase()
+					.includes('complete')
+			).length,
+			new_projects: projects.filter(
+				(project) => String(project.status || '').toLowerCase() === 'new'
+			).length,
+			on_hold: projects.filter((project) =>
+				String(project.status || '')
+					.toLowerCase()
+					.includes('hold')
+			).length,
+			total_budget: projects.reduce((sum, project) => {
+				const value = Number(project.budget);
+				return sum + (Number.isFinite(value) ? value : 0);
+			}, 0),
+		};
+
+		const queryTime = Date.now() - startTime;
+
+		return NextResponse.json({
+			success: true,
+			data: projects,
+			stats,
+			_meta: {
+				queryTimeMs: queryTime,
+				filtered: projects.length,
+			},
+		});
 	} catch (error) {
 		console.error('Projects list error:', error?.message, error?.stack);
 		return NextResponse.json(
@@ -180,7 +158,6 @@ export async function GET(request) {
 			{ status: 500 }
 		);
 	} finally {
-		// Always release DB connection
 		if (db && typeof db.release === 'function') {
 			try {
 				db.release();

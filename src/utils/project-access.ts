@@ -4,6 +4,74 @@ function normalizeText(value: unknown): string {
 	return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
+type ProjectTeamRecord = Record<string, unknown>;
+
+/** Parse the stored JSON team list without trusting malformed data. */
+function parseProjectTeam(projectTeam: unknown): ProjectTeamRecord[] {
+	if (projectTeam === null || projectTeam === undefined) return [];
+
+	let team: unknown = projectTeam;
+	if (typeof projectTeam === 'string') {
+		try {
+			team = JSON.parse(projectTeam);
+		} catch {
+			return [];
+		}
+	}
+
+	if (!Array.isArray(team)) return [];
+	return team.filter(
+		(member): member is ProjectTeamRecord =>
+			Boolean(member) && typeof member === 'object'
+	);
+}
+
+/**
+ * Lead identity is the team member's role value exactly `Project Lead`
+ * after trimming and case folding. Designation, position, and account role
+ * never establish lead authority.
+ */
+export function isProjectLeadRole(role: unknown): boolean {
+	return normalizeText(role) === 'project lead';
+}
+
+/**
+ * Resolve a user's relationship to one project from the stored team list.
+ * Identity matching keeps the existing tolerance for user id, legacy id, and
+ * email (case-insensitive).
+ */
+export function getProjectTeamMembership(
+	projectTeam: unknown,
+	userId: number | string,
+	userEmail?: string | null
+): {
+	isMember: boolean;
+	isLead: boolean;
+	member: ProjectTeamRecord | null;
+} {
+	const normalizedUserId = String(userId ?? '').trim();
+	const normalizedEmail = normalizeText(userEmail);
+
+	const member =
+		parseProjectTeam(projectTeam).find((record) => {
+			const memberIds = [record.user_id, record.id]
+				.filter((value) => value !== null && value !== undefined)
+				.map((value) => String(value).trim());
+			const memberEmail = normalizeText(record.email);
+
+			return (
+				(Boolean(normalizedUserId) && memberIds.includes(normalizedUserId)) ||
+				(Boolean(normalizedEmail) && memberEmail === normalizedEmail)
+			);
+		}) ?? null;
+
+	return {
+		isMember: member !== null,
+		isLead: member !== null && isProjectLeadRole(member.role),
+		member,
+	};
+}
+
 /**
  * Check whether a user is represented in a project's JSON team list.
  * The stored list has appeared with both user IDs and employee-like IDs,
@@ -14,35 +82,7 @@ export function isUserInProjectTeam(
 	userId: number | string,
 	userEmail?: string | null
 ): boolean {
-	if (projectTeam === null || projectTeam === undefined) return false;
-
-	let team: unknown = projectTeam;
-	if (typeof projectTeam === 'string') {
-		try {
-			team = JSON.parse(projectTeam);
-		} catch {
-			return false;
-		}
-	}
-
-	if (!Array.isArray(team)) return false;
-
-	const normalizedUserId = String(userId).trim();
-	const normalizedEmail = normalizeText(userEmail);
-
-	return team.some((member) => {
-		if (!member || typeof member !== 'object') return false;
-		const record = member as Record<string, unknown>;
-		const memberIds = [record.user_id, record.id]
-			.filter((value) => value !== null && value !== undefined)
-			.map((value) => String(value).trim());
-		const memberEmail = normalizeText(record.email);
-
-		return (
-			memberIds.includes(normalizedUserId) ||
-			(Boolean(normalizedEmail) && memberEmail === normalizedEmail)
-		);
-	});
+	return getProjectTeamMembership(projectTeam, userId, userEmail).isMember;
 }
 
 /**

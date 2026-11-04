@@ -1,0 +1,89 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockExecute = vi.fn();
+const mockRelease = vi.fn();
+const mockDbConnect = vi.fn();
+const mockGetCurrentUser = vi.fn();
+
+vi.mock('@/utils/database', () => ({
+	dbConnect: mockDbConnect,
+}));
+
+vi.mock('@/utils/api-permissions', () => ({
+	getCurrentUser: mockGetCurrentUser,
+}));
+
+const { GET } = await import('@/app/api/projects/list/route');
+
+const member = {
+	id: 42,
+	email: 'member@example.com',
+	is_super_admin: 0,
+	permissions: [],
+	role_permissions: [],
+	merged_permissions: [],
+	field_permissions: {},
+};
+
+const rows = [
+	{
+		project_id: 'PRJ-1',
+		id: 1,
+		name: 'Mine',
+		status: 'Ongoing',
+		priority: 'HIGH',
+		project_team: JSON.stringify([{ user_id: 42 }]),
+		scope_of_work: 'Scope',
+		description: 'Private',
+		budget: '100',
+	},
+	{
+		project_id: 'PRJ-2',
+		id: 2,
+		name: 'Not mine',
+		status: 'Completed',
+		priority: 'LOW',
+		project_team: JSON.stringify([{ user_id: 7 }]),
+		budget: '999',
+	},
+];
+
+function request(): Request {
+	return new Request('http://localhost/api/projects/list');
+}
+
+describe('GET /api/projects/list project-rights sweep', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockDbConnect.mockResolvedValue({
+			execute: mockExecute,
+			release: mockRelease,
+		});
+		mockGetCurrentUser.mockResolvedValue(member);
+		mockExecute.mockResolvedValueOnce([rows, []]);
+	});
+
+	it('returns only openable projects with rights and filtered fields', async () => {
+		const response = await GET(request());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data).toHaveLength(1);
+		expect(body.data[0].name).toBe('Mine');
+		expect(body.data[0].rights.canOpen).toBe(true);
+		expect(body.data[0].rights.isMember).toBe(true);
+		expect(body.data[0].description).toBeUndefined();
+		expect(body.data[0].budget).toBeUndefined();
+		expect(body.stats.total).toBe(1);
+		expect(body.stats.completed).toBe(0);
+	});
+
+	it('returns 401 without a session', async () => {
+		mockGetCurrentUser.mockResolvedValueOnce(null);
+
+		const response = await GET(request());
+
+		expect(response.status).toBe(401);
+		expect(mockDbConnect).not.toHaveBeenCalled();
+	});
+});

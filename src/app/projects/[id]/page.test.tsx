@@ -18,6 +18,70 @@ const project = {
 	documents_issued_list: '[]',
 };
 
+const memberSections = [
+	'scope',
+	'project_schedule',
+	'documents_received',
+	'documents_issued',
+	'project_team',
+	'query_log',
+	'assumption',
+	'lessons_learnt',
+	'discussion',
+	'upload_documents',
+];
+
+function memberRights() {
+	return {
+		canOpen: true,
+		isMember: true,
+		isLead: false,
+		sections: Object.fromEntries(
+			[
+				'project_details',
+				'scope',
+				'project_activity',
+				'project_schedule',
+				'project_team',
+				'documents_received',
+				'documents_issued',
+				'minutes_internal_meet',
+				'project_handover',
+				'project_manhours',
+				'software',
+				'query_log',
+				'assumption',
+				'lessons_learnt',
+				'discussion',
+				'upload_documents',
+			].map((section) => [
+				section,
+				{
+					read: memberSections.includes(section),
+					edit: false,
+				},
+			])
+		),
+		readableSections: memberSections,
+		editableSections: [],
+		canManageTeam: false,
+		canChangeLeadDesignation: false,
+		canPerform: {
+			create: false,
+			delete: false,
+			close: false,
+			reopen: false,
+		},
+		directScopes: {},
+		financialAreas: {
+			quotation: false,
+			purchase_order: false,
+			invoice: false,
+		},
+		commercial: { view: [], edit: [] },
+	};
+}
+
 const useSession = vi.fn();
 const useSWR = vi.fn();
 const useParams = vi.fn();
@@ -63,7 +127,7 @@ describe('employee project workspace', () => {
 			PERMISSIONS: { UPDATE: 'update' },
 		});
 		useSWR.mockReturnValue({
-			data: { success: true, data: project },
+			data: { success: true, data: project, rights: memberRights() },
 			isLoading: false,
 			error: null,
 		});
@@ -87,6 +151,7 @@ describe('employee project workspace', () => {
 					description: 'Private project summary',
 					scope_of_work: 'Visible scope',
 				},
+				rights: memberRights(),
 			},
 			isLoading: false,
 			error: null,
@@ -145,5 +210,47 @@ describe('employee project workspace', () => {
 		).toBeInTheDocument();
 		await user.click(screen.getByRole('tab', { name: 'Deliverables' }));
 		expect(screen.getByText('No deliverables recorded.')).toBeInTheDocument();
+	});
+});
+
+
+describe('project workspace denial', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		useParams.mockReturnValue({ id: 'PRJ-10' });
+		useSession.mockReturnValue({
+			user: { id: 99, full_name: 'Outsider', is_super_admin: '0' },
+			can: vi.fn(() => false),
+			RESOURCES: { PROJECTS: 'projects' },
+			PERMISSIONS: { UPDATE: 'update' },
+		});
+	});
+
+	it('renders an explicit denial for a project the actor may not open', () => {
+		useSWR.mockReturnValue({
+			data: undefined,
+			isLoading: false,
+			error: new Error('You do not have permission to access this project'),
+		});
+		render(<ProjectViewPage />);
+
+		expect(
+			screen.getByText('You do not have permission to access this project')
+		).toBeVisible();
+		expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+	});
+
+	it('renders a denial when the payload carries no rights', () => {
+		useSWR.mockReturnValue({
+			data: { success: true, data: project },
+			isLoading: false,
+			error: null,
+		});
+		render(<ProjectViewPage />);
+
+		expect(
+			screen.getByText('You do not have permission to access this project.')
+		).toBeVisible();
+		expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
 	});
 });

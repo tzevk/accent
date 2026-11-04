@@ -13,9 +13,10 @@ import {
 } from '@/utils/schema-cache';
 
 import {
-	hasUserProjectAssignment,
-	isUserInProjectTeam,
-} from '@/utils/project-access';
+	requireProjectAccess,
+	filterProjectForRights,
+} from '@/lib/project-rights';
+import { isUserInProjectTeam } from '@/utils/project-access';
 import {
 	sanitizeJsonStrings,
 	sanitizeOptionalRichText,
@@ -23,422 +24,89 @@ import {
 
 // GET specific project
 export async function GET(request, { params }) {
-	// Get current user first
-	const user = await getCurrentUser(request);
-	if (!user) {
-		return Response.json(
-			{ success: false, error: 'Unauthorized' },
-			{ status: 401 }
-		);
-	}
-
-	// Only super admins can see all projects; everyone else must be in project team
-	const canSeeAllProjects = user.is_super_admin;
-
 	const { id } = await params;
-	// Defensive: sometimes client may pass the literal string 'undefined' (e.g. bad useParams handling).
-	// Treat that as a missing id and return a 400 early to avoid spurious schema lookups.
-	if (!id || id === 'undefined') {
-		return Response.json(
-			{ success: false, error: 'Invalid project id parameter' },
-			{ status: 400 }
-		);
-	}
+	const access = await requireProjectAccess(request, id);
+	if ('response' in access) return access.response;
 
-	const projectIdInt = parseInt(id, 10);
-	let db = null;
-
+	const { project, rights, db, ownsDb } = access;
 	try {
-		db = await dbConnect();
-
-		// Use cached schema inspection instead of INFORMATION_SCHEMA per request
-		let pkCol = null;
-		try {
-			pkCol = await getPrimaryKeyColumn(db, 'projects');
-		} catch (schemaErr) {
-			console.warn(
-				'Could not inspect primary key for projects table:',
-				schemaErr.message || schemaErr
-			);
-		}
-
-		// Also check for presence of human-readable id columns
-		let hasProjectIdCol = false;
-		let hasProjectCodeCol = false;
-		try {
-			const cols = await getTableColumns(db, 'projects');
-			hasProjectIdCol = cols.has('project_id');
-			hasProjectCodeCol = cols.has('project_code');
-		} catch (colErr) {
-			console.warn(
-				'Could not inspect projects columns:',
-				colErr.message || colErr
-			);
-		}
-
-		// Build a dynamic OR-based lookup using columns that actually exist in the table.
-		// This reduces the chance of missing a match when callers pass project_id or project_code.
-		let candidates = [];
-		let rows = [];
-		try {
-			candidates = [];
-			if (pkCol) candidates.push(pkCol);
-			if (hasProjectIdCol && !candidates.includes('project_id'))
-				candidates.push('project_id');
-			if (hasProjectCodeCol && !candidates.includes('project_code'))
-				candidates.push('project_code');
-
-			if (candidates.length > 0) {
-				const whereParts = candidates.map((c) => `p.${c} = ?`).join(' OR ');
-				const params = candidates.map(() => id);
-				try {
-					const [r] = await db.execute(
-						`SELECT p.* FROM projects p WHERE (${whereParts}) AND p.isDelete = 0 LIMIT 1`,
-						params
-					);
-					rows = r || [];
-				} catch (orErr) {
-					console.warn(
-						'OR-based lookup failed, will try fallbacks individually:',
-						orErr?.message || orErr
-					);
-					rows = [];
-				}
-			}
-
-			// Fallback: if not found and id parses numeric, try numeric match against pkCol specifically
-			if (
-				(!rows || rows.length === 0) &&
-				!Number.isNaN(projectIdInt) &&
-				pkCol
-			) {
-				try {
-					const [rNum] = await db.execute(
-						`SELECT p.* FROM projects p WHERE p.${pkCol} = ? AND p.isDelete = 0 LIMIT 1`,
-						[projectIdInt]
-					);
-					rows = rNum || [];
-				} catch (numErr) {
-					console.warn(
-						'Numeric PK lookup failed as last resort:',
-						numErr.message || numErr
-					);
-					rows = [];
-				}
-			}
-		} catch (lookupErr) {
-			console.warn(
-				'Project lookup attempts failed:',
-				lookupErr?.message || lookupErr
-			);
-			rows = [];
-		}
-
-		if (!rows || rows.length === 0) {
-			console.warn('Project lookup did not find a match', {
-				id,
-				pkCol,
-				candidates,
-			});
-			return Response.json(
-				{
-					success: false,
-					error: 'Project not found',
-					details: { id, pkCol, candidates },
-				},
-				{ status: 404 }
-			);
-		}
-
-		const project = rows[0];
-
-		// Check team and normalized activity-assignment access (unless super admin)
-		if (!canSeeAllProjects) {
-			const isTeamMember = isUserInProjectTeam(
-				project.project_team,
-				user.id,
-				user.email
-			);
-			const hasAssignment =
-				!isTeamMember && (await hasUserProjectAssignment(db, project, user.id));
-			if (!isTeamMember && !hasAssignment) {
-				console.log(
-					`[Projects API] User ${user.email} denied access to project ${id} - not a team member or assignee`
-				);
-				return Response.json(
-					{
-						success: false,
-						error: 'You do not have permission to access this project',
-					},
-					{ status: 403 }
-				);
-			}
-			console.log(
-				`[Projects API] User ${user.email} granted access to project ${id} as ${isTeamMember ? 'team member' : 'activity assignee'}`
-			);
-		}
-
-		// Fetch associated project activities after we have the project row.
-		// Determine which key the activities table expects: prefer primary key value, fallback to project_id or project_code.
 		let projectActivities = [];
-		try {
-			let activityKeyValue = null;
-			if (pkCol && project[pkCol] !== undefined && project[pkCol] !== null) {
-				activityKeyValue = project[pkCol];
-			} else if (
-				project.project_id !== undefined &&
-				project.project_id !== null
-			) {
-				activityKeyValue = project.project_id;
-			} else if (
-				project.project_code !== undefined &&
-				project.project_code !== null
-			) {
-				activityKeyValue = project.project_code;
-			}
-
-			if (activityKeyValue !== null) {
+		const activityKey =
+			project.project_id ?? project.id ?? project.project_code ?? null;
+		if (rights.sections.project_activity.read && activityKey !== null) {
+			try {
 				const [activities] = await db.execute(
 					`SELECT * FROM project_activities WHERE project_id = ? ORDER BY created_at DESC`,
-					[activityKeyValue]
+					[activityKey]
 				);
 				projectActivities = activities || [];
-			} else {
-				// No suitable key to lookup activities; skip silently
+			} catch (actError) {
+				console.warn(
+					'Could not fetch project activities:',
+					actError.message || actError
+				);
 				projectActivities = [];
 			}
-		} catch (actError) {
-			console.warn(
-				'Could not fetch project activities:',
-				actError.message || actError
-			);
-			projectActivities = [];
 		}
 
-		// Parse JSON fields if they exist
+		const jsonListFields = [
+			'planning_activities_list',
+			'documents_list',
+			'input_documents_list',
+			'documents_received_list',
+			'documents_issued_list',
+			'project_handover_list',
+			'project_manhours_list',
+			'project_query_log_list',
+			'project_assumption_list',
+			'project_lessons_learnt_list',
+			'project_schedule_list',
+			'kickoff_meetings_list',
+			'internal_meetings_list',
+			'software_items',
+			'project_activities_list',
+		];
+		for (const field of jsonListFields) {
+			if (typeof project[field] === 'string') {
+				try {
+					project[field] = JSON.parse(project[field]);
+				} catch {
+					project[field] = [];
+				}
+			}
+		}
+
 		if (
-			project.planning_activities_list &&
-			typeof project.planning_activities_list === 'string'
+			rights.sections.project_activity.read &&
+			Array.isArray(project.project_activities_list) &&
+			project.project_activities_list.length > 0 &&
+			activityKey !== null
 		) {
 			try {
-				project.planning_activities_list = JSON.parse(
-					project.planning_activities_list
+				const [assignments] = await db.execute(
+					'SELECT * FROM user_activity_assignments WHERE project_id = ?',
+					[activityKey]
 				);
-			} catch {
-				project.planning_activities_list = [];
-			}
-		}
-
-		if (project.documents_list && typeof project.documents_list === 'string') {
-			try {
-				project.documents_list = JSON.parse(project.documents_list);
-			} catch {
-				project.documents_list = [];
-			}
-		}
-
-		if (
-			project.input_documents_list &&
-			typeof project.input_documents_list === 'string'
-		) {
-			try {
-				project.input_documents_list = JSON.parse(project.input_documents_list);
-			} catch {
-				project.input_documents_list = [];
-			}
-		}
-
-		// Parse all the table list fields
-		if (
-			project.documents_received_list &&
-			typeof project.documents_received_list === 'string'
-		) {
-			try {
-				project.documents_received_list = JSON.parse(
-					project.documents_received_list
-				);
-			} catch {
-				project.documents_received_list = [];
-			}
-		}
-
-		if (
-			project.documents_issued_list &&
-			typeof project.documents_issued_list === 'string'
-		) {
-			try {
-				project.documents_issued_list = JSON.parse(
-					project.documents_issued_list
-				);
-			} catch {
-				project.documents_issued_list = [];
-			}
-		}
-
-		if (
-			project.project_handover_list &&
-			typeof project.project_handover_list === 'string'
-		) {
-			try {
-				project.project_handover_list = JSON.parse(
-					project.project_handover_list
-				);
-			} catch {
-				project.project_handover_list = [];
-			}
-		}
-
-		if (
-			project.project_manhours_list &&
-			typeof project.project_manhours_list === 'string'
-		) {
-			try {
-				project.project_manhours_list = JSON.parse(
-					project.project_manhours_list
-				);
-			} catch {
-				project.project_manhours_list = [];
-			}
-		}
-
-		if (
-			project.project_query_log_list &&
-			typeof project.project_query_log_list === 'string'
-		) {
-			try {
-				project.project_query_log_list = JSON.parse(
-					project.project_query_log_list
-				);
-			} catch {
-				project.project_query_log_list = [];
-			}
-		}
-
-		if (
-			project.project_assumption_list &&
-			typeof project.project_assumption_list === 'string'
-		) {
-			try {
-				project.project_assumption_list = JSON.parse(
-					project.project_assumption_list
-				);
-			} catch {
-				project.project_assumption_list = [];
-			}
-		}
-
-		if (
-			project.project_lessons_learnt_list &&
-			typeof project.project_lessons_learnt_list === 'string'
-		) {
-			try {
-				project.project_lessons_learnt_list = JSON.parse(
-					project.project_lessons_learnt_list
-				);
-			} catch {
-				project.project_lessons_learnt_list = [];
-			}
-		}
-
-		if (
-			project.project_schedule_list &&
-			typeof project.project_schedule_list === 'string'
-		) {
-			try {
-				project.project_schedule_list = JSON.parse(
-					project.project_schedule_list
-				);
-			} catch {
-				project.project_schedule_list = [];
-			}
-		}
-
-		if (
-			project.kickoff_meetings_list &&
-			typeof project.kickoff_meetings_list === 'string'
-		) {
-			try {
-				project.kickoff_meetings_list = JSON.parse(
-					project.kickoff_meetings_list
-				);
-			} catch {
-				project.kickoff_meetings_list = [];
-			}
-		}
-
-		if (
-			project.internal_meetings_list &&
-			typeof project.internal_meetings_list === 'string'
-		) {
-			try {
-				project.internal_meetings_list = JSON.parse(
-					project.internal_meetings_list
-				);
-			} catch {
-				project.internal_meetings_list = [];
-			}
-		}
-
-		if (project.software_items && typeof project.software_items === 'string') {
-			try {
-				project.software_items = JSON.parse(project.software_items);
-			} catch {
-				project.software_items = [];
-			}
-		}
-
-		// Parse project_activities_list and merge with user_activity_assignments
-		if (
-			project.project_activities_list &&
-			typeof project.project_activities_list === 'string'
-		) {
-			try {
-				project.project_activities_list = JSON.parse(
-					project.project_activities_list
-				);
-			} catch {
-				project.project_activities_list = [];
-			}
-		}
-
-		// Load assignments from user_activity_assignments and merge into activities
-		if (
-			project.project_activities_list &&
-			Array.isArray(project.project_activities_list)
-		) {
-			try {
-				const projectKey = project[pkCol] || project.project_id;
-				if (projectKey) {
-					const [assignments] = await db.execute(
-						'SELECT * FROM user_activity_assignments WHERE project_id = ?',
-						[projectKey]
-					);
-
-					if (assignments && assignments.length > 0) {
-						// Create a map of activity name to assignment
-						const assignmentMap = new Map();
-						for (const assignment of assignments) {
-							assignmentMap.set(assignment.activity_name, assignment);
-						}
-
-						// Merge assignments into activities
-						project.project_activities_list =
-							project.project_activities_list.map((activity) => {
-								const assignment = assignmentMap.get(activity.name);
-								if (assignment) {
-									return {
-										...activity,
-										assigned_user: assignment.user_id
-											? String(assignment.user_id)
-											: activity.assigned_user || '',
-										due_date: assignment.due_date || activity.due_date || '',
-										priority:
-											assignment.priority || activity.priority || 'MEDIUM',
-									};
-								}
-								return activity;
-							});
+				if (assignments && assignments.length > 0) {
+					const assignmentMap = new Map();
+					for (const assignment of assignments) {
+						assignmentMap.set(assignment.activity_name, assignment);
 					}
+
+					project.project_activities_list = project.project_activities_list.map(
+						(activity) => {
+							const assignment = assignmentMap.get(activity.name);
+							if (!assignment) return activity;
+							return {
+								...activity,
+								assigned_user: assignment.user_id
+									? String(assignment.user_id)
+									: activity.assigned_user || '',
+								due_date: assignment.due_date || activity.due_date || '',
+								priority: assignment.priority || activity.priority || 'MEDIUM',
+							};
+						}
+					);
 				}
 			} catch (assignErr) {
 				console.warn(
@@ -448,33 +116,31 @@ export async function GET(request, { params }) {
 			}
 		}
 
+		const filtered = filterProjectForRights(
+			{ ...project, project_activities: projectActivities },
+			rights
+		);
+
 		return Response.json({
 			success: true,
-			data: {
-				...project,
-				project_activities: projectActivities,
-			},
+			data: filtered,
+			rights,
 		});
 	} catch (error) {
 		console.error('Database error:', error);
-		// Include error message/short stack in response for easier local debugging
 		const details = error?.message || String(error);
-		const stack = error?.stack
-			? error.stack.split('\n').slice(0, 5).join('\n')
-			: undefined;
 		return Response.json(
 			{
 				success: false,
 				error: 'Failed to fetch project',
 				details,
-				stack,
 			},
 			{ status: 500 }
 		);
 	} finally {
-		if (db) {
+		if (ownsDb) {
 			try {
-				await db.release();
+				db.release?.();
 			} catch (e) {
 				console.warn(
 					'Error releasing DB connection in GET /api/projects/[id]:',

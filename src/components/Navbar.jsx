@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import accentLogo from '@/../public/accent-logo.png';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
 	HomeIcon,
 	DocumentTextIcon,
@@ -441,6 +441,46 @@ export default function Navbar() {
 		RESOURCES,
 		PERMISSIONS,
 	} = useSessionRBAC();
+	// Projects visibility also comes from project relationships (team
+	// membership, lead designation, or scoped explicit grants). Ask the server
+	// once per session instead of re-deriving that policy in the client.
+	const [hasProjectAccess, setHasProjectAccess] = useState(false);
+	const projectAccessUserIdRef = useRef(null);
+	useEffect(() => {
+		if (userLoading) return;
+		if (!user) {
+			projectAccessUserIdRef.current = null;
+			setHasProjectAccess(false);
+			return;
+		}
+		if (user.is_super_admin) {
+			setHasProjectAccess(true);
+			return;
+		}
+		if (projectAccessUserIdRef.current === user.id) return;
+		projectAccessUserIdRef.current = user.id;
+
+		let cancelled = false;
+		const loadProjectAccess = async () => {
+			try {
+				const response = await fetch('/api/projects/access', {
+					cache: 'no-store',
+				});
+				if (!response.ok) throw new Error(`HTTP ${response.status}`);
+				const body = await response.json();
+				if (!cancelled) {
+					setHasProjectAccess(Boolean(body?.data?.hasAccess));
+				}
+			} catch {
+				if (!cancelled) setHasProjectAccess(false);
+			}
+		};
+		loadProjectAccess();
+		return () => {
+			cancelled = true;
+		};
+	}, [user, userLoading]);
+
 	const displayName =
 		user?.full_name || user?.username || (userLoading ? '' : 'Account');
 	const displayEmail = user?.email || '';
@@ -452,9 +492,12 @@ export default function Navbar() {
 		if (user.is_super_admin) return navigationConfig; // Super admin sees all
 
 		return navigationConfig.filter((item) => {
+			if (item.href === '/projects') {
+				return hasProjectAccess || can(item.resource, PERMISSIONS.READ);
+			}
 			return can(item.resource, PERMISSIONS.READ);
 		});
-	}, [user, userLoading, can, PERMISSIONS]);
+	}, [user, userLoading, can, PERMISSIONS, hasProjectAccess]);
 
 	// Mobile-only page list — mirrors the sidebar, which is hidden below 640px
 	const mobilePageItems = useMemo(() => {
