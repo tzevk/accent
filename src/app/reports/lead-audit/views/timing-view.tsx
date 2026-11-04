@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
 	ArrowPathIcon,
-	ChartBarIcon,
-	ClockIcon,
 	ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { leadAuditGet } from '../api';
@@ -67,7 +65,6 @@ function MetricCard({
 	label,
 	value,
 	detail,
-	icon,
 	onClick,
 	disabled = false,
 	tone = 'default',
@@ -75,7 +72,6 @@ function MetricCard({
 	label: string;
 	value: string;
 	detail: string;
-	icon: ReactNode;
 	onClick: () => void;
 	disabled?: boolean;
 	tone?: 'default' | 'warning';
@@ -98,7 +94,7 @@ function MetricCard({
 				className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2 disabled:cursor-default"
 			/>
 			<div className="pointer-events-none relative">
-				<div className="flex min-w-0 items-center justify-between gap-2">
+				<div className="flex min-w-0 items-center gap-2">
 					<span className="flex min-w-0 items-center gap-1.5">
 						<span className="min-w-0 text-xs font-semibold uppercase tracking-wide text-gray-600">
 							{label}
@@ -107,12 +103,13 @@ function MetricCard({
 							{detail}
 						</HelpTip>
 					</span>
-					{icon}
 				</div>
 				<p className="mt-2 text-2xl font-bold tabular-nums">{value}</p>
-				<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
-					{disabled ? 'No matching evidence' : 'View evidence'}
-				</span>
+				{disabled ? (
+					<span className="mt-2 inline-block text-xs font-semibold text-gray-500">
+						No matching evidence
+					</span>
+				) : null}
 			</div>
 		</div>
 	);
@@ -177,11 +174,6 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 							client response time.
 						</HelpTip>
 					</div>
-					<p className="mt-1 max-w-prose text-xs text-gray-600">
-						Generated at {section.meta.generated_at} (
-						{section.meta.time_zone.label}). Clock and observation are defined
-						under How to read this figure.
-					</p>
 				</div>
 
 				{!hasSamples ? (
@@ -230,12 +222,6 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 								? `Middle observed duration across ${formatCount(section.valid_samples)} valid sample(s); an even sample averages the two middle durations.`
 								: 'Unavailable without a valid sample.'
 						}
-						icon={
-							<ClockIcon
-								className="h-5 w-5 text-[#64126D]"
-								aria-hidden="true"
-							/>
-						}
 						onClick={() => selectPopulation('sampled')}
 						disabled={!hasSamples}
 					/>
@@ -247,12 +233,6 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 								? 'Nearest-rank 90th: the ordered sample at the rounded-up rank among the valid samples.'
 								: 'Unavailable without a valid sample.'
 						}
-						icon={
-							<ChartBarIcon
-								className="h-5 w-5 text-[#64126D]"
-								aria-hidden="true"
-							/>
-						}
 						onClick={() => selectPopulation('sampled')}
 						disabled={!hasSamples}
 					/>
@@ -260,12 +240,6 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 						label="Timing samples"
 						value={formatCount(section.valid_samples)}
 						detail={`Cohort Leads with a known, non-negative interval from system entry to their earliest evidenced outreach; ${formatCount(section.cohort_leads)} cohort Leads in total.`}
-						icon={
-							<ChartBarIcon
-								className="h-5 w-5 text-[#64126D]"
-								aria-hidden="true"
-							/>
-						}
 						onClick={() => selectPopulation('sampled')}
 						disabled={!hasSamples}
 					/>
@@ -273,61 +247,52 @@ export default function TimingView({ section, appliedQuery }: TimingViewProps) {
 						label="Without evidenced outreach"
 						value={`${formatCount(section.without_outreach)} (${formatShare(section.without_outreach_share)})`}
 						detail="Cohort Leads with no completed Call, Email, or Meeting. They are not hidden by the timing samples."
-						icon={
-							<ExclamationTriangleIcon
-								className="h-5 w-5 text-amber-700"
-								aria-hidden="true"
-							/>
-						}
 						onClick={() => selectPopulation('no_outreach')}
 						disabled={section.without_outreach === 0}
 						tone="warning"
 					/>
 				</div>
 
-				<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-					<MetricCard
-						label="Unknown occurrence times"
-						value={formatCount(exclusions.missing_timestamp)}
-						detail="Completed outreach exists, but no occurrence time is recorded. Excluded from durations; no timestamp is substituted."
-						icon={
-							<ClockIcon
-								className="h-5 w-5 text-amber-700"
-								aria-hidden="true"
-							/>
-						}
-						onClick={() => selectPopulation('missing_timestamp')}
-						disabled={exclusions.missing_timestamp === 0}
-						tone="warning"
-					/>
-					<MetricCard
-						label="Incomplete earlier evidence"
-						value={formatCount(exclusions.incomplete_earlier)}
-						detail="A known outreach time sits beside an unknown earlier row, so the earliest outreach cannot be established. Excluded rather than overstated."
-						icon={
-							<ExclamationTriangleIcon
-								className="h-5 w-5 text-amber-700"
-								aria-hidden="true"
-							/>
-						}
-						onClick={() => selectPopulation('incomplete_earlier')}
-						disabled={exclusions.incomplete_earlier === 0}
-						tone="warning"
-					/>
-					<MetricCard
-						label="Negative intervals"
-						value={formatCount(exclusions.negative)}
-						detail="Outreach evidenced before system entry, usually imported prehistory. Disclosed and excluded, never clamped to zero."
-						icon={
-							<ExclamationTriangleIcon
-								className="h-5 w-5 text-red-700"
-								aria-hidden="true"
-							/>
-						}
-						onClick={() => selectPopulation('negative')}
-						disabled={exclusions.negative === 0}
-						tone="warning"
-					/>
+				<div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
+					<span className="flex items-center gap-1.5 font-semibold text-gray-800">
+						Excluded
+						<HelpTip label="About timing exclusions">
+							Unknown occurrence: completed outreach with no recorded time.
+							Incomplete earlier evidence: the earliest outreach cannot be
+							established. Negative interval: outreach evidenced before system
+							entry, usually imported prehistory. No value is substituted.
+						</HelpTip>
+					</span>
+					{[
+						{
+							key: 'missing_timestamp' as const,
+							label: 'Unknown occurrence',
+							count: exclusions.missing_timestamp,
+						},
+						{
+							key: 'incomplete_earlier' as const,
+							label: 'Incomplete earlier',
+							count: exclusions.incomplete_earlier,
+						},
+						{
+							key: 'negative' as const,
+							label: 'Negative interval',
+							count: exclusions.negative,
+						},
+					].map((row) => (
+						<button
+							key={row.key}
+							type="button"
+							onClick={() => {
+								if (row.count === 0) return;
+								selectPopulation(row.key);
+							}}
+							aria-disabled={row.count === 0}
+							className="rounded text-xs font-semibold text-[#64126D] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] aria-disabled:cursor-default aria-disabled:text-gray-500 aria-disabled:no-underline"
+						>
+							{row.label} {formatCount(row.count)}
+						</button>
+					))}
 				</div>
 			</section>
 

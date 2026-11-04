@@ -165,14 +165,10 @@ export default function IntakeView({
 							Source volumes
 						</h2>
 						<HelpTip label="About sources">
-							Stored source labels are preserved exactly. Labels are never
-							merged by case or spacing, and missing labels appear as Unknown
-							source.
-						</HelpTip>
-						<HelpTip label="About source labels">
-							These volumes count Leads recorded in the period. They are not
-							advertising efficiency or return, because the report has no spend
-							data.
+							Stored source labels are preserved exactly; missing labels appear
+							as Unknown source. These volumes count Leads recorded in the
+							period. They are not advertising efficiency or return, because the
+							report has no spend data.
 						</HelpTip>
 					</div>
 				</div>

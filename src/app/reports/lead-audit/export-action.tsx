@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { HelpTip } from './help-tip';
 
 interface LeadAuditExportActionProps {
 	/** The applied report query, exactly as the page sent it. */
@@ -111,19 +112,20 @@ export function LeadAuditExportAction({
 					checked={includeNarrative}
 					onChange={(event) => setIncludeNarrative(event.target.checked)}
 					disabled={!canExport || pending}
-					aria-describedby={`${checkboxId}-hint`}
 					className="h-4 w-4 rounded border-gray-400 bg-white accent-[#64126D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]"
 				/>
 				<label htmlFor={checkboxId}>Include detailed evidence</label>
-			</span>
-			<span id={`${checkboxId}-hint`} className="text-xs text-gray-600">
-				Off by default. Notes and reasons appear only when selected.
+				<HelpTip label="About detailed evidence">
+					Off by default. Notes and reasons appear only when selected.
+				</HelpTip>
 			</span>
 			<span
 				id={statusId}
 				role="status"
 				aria-live="polite"
-				className="text-xs text-gray-700"
+				className={
+					message !== '' || !canExport ? 'text-xs text-gray-700' : 'sr-only'
+				}
 			>
 				{message !== ''
 					? message

@@ -113,20 +113,20 @@ function DownstreamCell({
 function SelectButton({
 	onSelect,
 	evidence,
-	children,
 }: {
 	onSelect?: (evidence: LeadAuditConversionEvidenceFilter) => void;
 	evidence: LeadAuditConversionEvidenceFilter;
-	children: ReactNode;
 }) {
 	if (!onSelect) return null;
+	const label = EVIDENCE_LABELS[evidence] ?? evidence;
 	return (
 		<button
 			type="button"
 			onClick={() => onSelect(evidence)}
+			aria-label={`View ${label} evidence`}
 			className="mt-2 text-left text-xs font-semibold text-[#64126D] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D] focus-visible:ring-offset-2"
 		>
-			{children}
+			Evidence
 		</button>
 	);
 }
@@ -308,7 +308,8 @@ export default function ConversionView({
 							Lead Cohort Conversion Rate uses the whole intake cohort observed
 							at the generation time. Handoffs after the intake period count; a
 							Converted label alone does not. Period handoffs are a separate
-							population and are never divided by period intake.
+							population and are never divided by period intake. Recent cohorts
+							have had less time to progress.
 						</HelpTip>
 					</div>
 				</div>
@@ -323,9 +324,7 @@ export default function ConversionView({
 						value={formatCount(cohort.handoffs_evidenced)}
 						hint="Cohort Leads with a recorded conversion event or a resolved canonical Proposal link."
 					>
-						<SelectButton onSelect={onSelectEvidence} evidence="handoff">
-							View evidenced handoff evidence
-						</SelectButton>
+						<SelectButton onSelect={onSelectEvidence} evidence="handoff" />
 					</CohortCard>
 					<CohortCard
 						label="Lead Cohort Conversion Rate"
@@ -341,9 +340,7 @@ export default function ConversionView({
 						value={formatCount(period.handoffs)}
 						hint="Distinct Leads with an authoritative recorded conversion time inside the period, including Leads recorded earlier."
 					>
-						<SelectButton onSelect={onSelectEvidence} evidence="period">
-							View dated period handoffs
-						</SelectButton>
+						<SelectButton onSelect={onSelectEvidence} evidence="period" />
 					</CohortCard>
 					<CohortCard
 						label="Unresolved links"
@@ -351,18 +348,14 @@ export default function ConversionView({
 						hint="Linked Proposals without one canonical choice. An evidence gap, not a confirmed failure."
 						tone={cohort.unresolved_evidence > 0 ? 'warn' : 'plain'}
 					>
-						<SelectButton onSelect={onSelectEvidence} evidence="unresolved">
-							View unresolved links
-						</SelectButton>
+						<SelectButton onSelect={onSelectEvidence} evidence="unresolved" />
 					</CohortCard>
 					<CohortCard
 						label="Undated canonical links"
 						value={formatCount(cohort.undated_links)}
 						hint={`A resolved canonical link supports cohort evidence but never a dated period handoff. ${formatCount(period.undated_canonical_links)} undated link(s) in the filtered Lead population stay out of the period count.`}
 					>
-						<SelectButton onSelect={onSelectEvidence} evidence="undated">
-							View undated links
-						</SelectButton>
+						<SelectButton onSelect={onSelectEvidence} evidence="undated" />
 					</CohortCard>
 					<CohortCard
 						label="Converted labels without evidence"
@@ -370,9 +363,7 @@ export default function ConversionView({
 						hint="Stage labels that claim Converted with no conversion event and no resolved canonical link."
 						tone={cohort.stage_only_claims > 0 ? 'warn' : 'plain'}
 					>
-						<SelectButton onSelect={onSelectEvidence} evidence="stage_only">
-							View stage-label evidence
-						</SelectButton>
+						<SelectButton onSelect={onSelectEvidence} evidence="stage_only" />
 					</CohortCard>
 					<CohortCard
 						label="No handoff evidence"
@@ -380,237 +371,249 @@ export default function ConversionView({
 						hint="Remaining cohort Leads with no recorded handoff evidence. This is not presented as failure."
 					/>
 				</div>
-				<p className="mt-2 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600">
-					Recent cohorts have had less time to progress. Compare the rate with
-					the observation time ({time(cohort.observed_through, true)}) and the
-					selected period before drawing conclusions.
+				<p className="mt-2 text-xs text-gray-600">
+					Observed through {time(cohort.observed_through, true)}.
 				</p>
 			</section>
 
-			<div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-				<section
-					aria-labelledby="lead-audit-source-conversion-heading"
-					className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-				>
-					<div className="flex min-w-0 items-center gap-1.5">
-						<h2
-							id="lead-audit-source-conversion-heading"
-							className="text-base font-bold text-gray-900"
+			{variant === 'detail' ? (
+				<>
+					<div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+						<section
+							aria-labelledby="lead-audit-source-conversion-heading"
+							className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 						>
-							Source conversion
-						</h2>
-						<HelpTip label="About source conversion">
-							Stored source labels are shown exactly as recorded. Labels are not
-							merged by case or spacing, and missing labels appear as Unknown
-							source.
-						</HelpTip>
-					</div>
-					{section.source_conversion.length === 0 ? (
-						<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
-							No cohort Leads were recorded for the applied filters, so no
-							source conversion is shown.
-						</p>
-					) : (
-						<div
-							className="mt-3 overflow-x-auto"
-							role="region"
-							aria-label="Source conversion table. Scroll horizontally for more columns."
-							tabIndex={0}
+							<div className="flex min-w-0 items-center gap-1.5">
+								<h2
+									id="lead-audit-source-conversion-heading"
+									className="text-base font-bold text-gray-900"
+								>
+									Source conversion
+								</h2>
+								<HelpTip label="About source conversion">
+									Stored source labels are shown exactly as recorded. Labels are
+									not merged by case or spacing, and missing labels appear as
+									Unknown source.
+								</HelpTip>
+							</div>
+							{section.source_conversion.length === 0 ? (
+								<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
+									No cohort Leads were recorded for the applied filters, so no
+									source conversion is shown.
+								</p>
+							) : (
+								<div
+									className="mt-3 overflow-x-auto"
+									role="region"
+									aria-label="Source conversion table. Scroll horizontally for more columns."
+									tabIndex={0}
+								>
+									<table className="w-full min-w-[440px] border-collapse text-sm">
+										<caption className="sr-only">
+											Cohort intake and evidenced conversion by stored source
+											label
+										</caption>
+										<thead>
+											<tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-600">
+												<th scope="col" className="py-1.5 pr-3 font-semibold">
+													Source label
+												</th>
+												<th
+													scope="col"
+													className="py-1.5 pr-3 text-right font-semibold"
+												>
+													Cohort
+												</th>
+												<th
+													scope="col"
+													className="py-1.5 pr-3 text-right font-semibold"
+												>
+													Handoffs
+												</th>
+												<th
+													scope="col"
+													className="py-1.5 text-right font-semibold"
+												>
+													Rate
+												</th>
+											</tr>
+										</thead>
+										<tbody>
+											{section.source_conversion.map((source) => (
+												<tr
+													key={
+														source.is_unknown
+															? '__unknown__'
+															: (source.label ?? '')
+													}
+													className="border-b border-gray-50"
+												>
+													<th
+														scope="row"
+														className="whitespace-pre-wrap py-1.5 pr-3 text-left font-medium text-gray-800"
+													>
+														{source.is_unknown ? (
+															<span className="italic text-gray-600">
+																Unknown source
+															</span>
+														) : (
+															source.label
+														)}
+													</th>
+													<td className="py-1.5 pr-3 text-right tabular-nums text-gray-900">
+														{formatCount(source.cohort_size)}
+													</td>
+													<td className="py-1.5 pr-3 text-right tabular-nums text-gray-900">
+														{formatCount(source.handoffs_evidenced)}
+													</td>
+													<td className="py-1.5 text-right tabular-nums text-gray-900">
+														{formatRate(source.conversion_rate)}
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								</div>
+							)}
+							<p className="mt-2 text-xs text-gray-600">
+								The rate is cohort handoffs divided by that label&apos;s cohort
+								size. A label with no handoffs can be a measured zero; an empty
+								cohort is Not applicable.
+							</p>
+						</section>
+
+						<section
+							aria-labelledby="lead-audit-current-stage-heading"
+							className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 						>
-							<table className="w-full min-w-[440px] border-collapse text-sm">
-								<caption className="sr-only">
-									Cohort intake and evidenced conversion by stored source label
-								</caption>
-								<thead>
-									<tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-600">
-										<th scope="col" className="py-1.5 pr-3 font-semibold">
-											Source label
-										</th>
-										<th
-											scope="col"
-											className="py-1.5 pr-3 text-right font-semibold"
-										>
-											Cohort
-										</th>
-										<th
-											scope="col"
-											className="py-1.5 pr-3 text-right font-semibold"
-										>
-											Handoffs
-										</th>
-										<th scope="col" className="py-1.5 text-right font-semibold">
-											Rate
-										</th>
-									</tr>
-								</thead>
-								<tbody>
-									{section.source_conversion.map((source) => (
-										<tr
-											key={
-												source.is_unknown ? '__unknown__' : (source.label ?? '')
-											}
-											className="border-b border-gray-50"
-										>
-											<th
-												scope="row"
-												className="whitespace-pre-wrap py-1.5 pr-3 text-left font-medium text-gray-800"
-											>
-												{source.is_unknown ? (
-													<span className="italic text-gray-600">
-														Unknown source
-													</span>
-												) : (
-													source.label
-												)}
+							<div className="flex min-w-0 items-center gap-1.5">
+								<h2
+									id="lead-audit-current-stage-heading"
+									className="text-base font-bold text-gray-900"
+								>
+									Current stage distribution
+								</h2>
+								<HelpTip label="About current stage distribution">
+									Present state of the cohort at the generation time. This is
+									not a sequential funnel and does not prove historical stage
+									transitions.
+								</HelpTip>
+							</div>
+							{section.stage_distribution.length === 0 ? (
+								<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
+									The cohort is empty for the applied filters, so there is no
+									current stage distribution.
+								</p>
+							) : (
+								<table className="mt-3 w-full border-collapse text-sm">
+									<caption className="sr-only">
+										Current Lead stage counts for the intake cohort
+									</caption>
+									<thead>
+										<tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-600">
+											<th scope="col" className="py-1.5 pr-3 font-semibold">
+												Current stage
 											</th>
-											<td className="py-1.5 pr-3 text-right tabular-nums text-gray-900">
-												{formatCount(source.cohort_size)}
-											</td>
-											<td className="py-1.5 pr-3 text-right tabular-nums text-gray-900">
-												{formatCount(source.handoffs_evidenced)}
-											</td>
-											<td className="py-1.5 text-right tabular-nums text-gray-900">
-												{formatRate(source.conversion_rate)}
-											</td>
+											<th
+												scope="col"
+												className="py-1.5 text-right font-semibold"
+											>
+												Cohort Leads
+											</th>
 										</tr>
-									))}
-								</tbody>
-							</table>
-						</div>
-					)}
-					<p className="mt-2 text-xs text-gray-600">
-						The rate is cohort handoffs divided by that label&apos;s cohort
-						size. A label with no handoffs can be a measured zero; an empty
-						cohort is Not applicable.
-					</p>
-				</section>
-
-				<section
-					aria-labelledby="lead-audit-current-stage-heading"
-					className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-				>
-					<div className="flex min-w-0 items-center gap-1.5">
-						<h2
-							id="lead-audit-current-stage-heading"
-							className="text-base font-bold text-gray-900"
-						>
-							Current stage distribution
-						</h2>
-						<HelpTip label="About current stage distribution">
-							Present state of the cohort at the generation time. This is not a
-							sequential funnel and does not prove historical stage transitions.
-						</HelpTip>
+									</thead>
+									<tbody>
+										{section.stage_distribution.map((row) => (
+											<tr
+												key={row.stage.value ?? '__unresolved__'}
+												className="border-b border-gray-50"
+											>
+												<th
+													scope="row"
+													className="py-1.5 pr-3 text-left font-medium text-gray-800"
+												>
+													{row.stage.label}
+												</th>
+												<td className="py-1.5 text-right tabular-nums text-gray-900">
+													{formatCount(row.count)}
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							)}
+						</section>
 					</div>
-					{section.stage_distribution.length === 0 ? (
-						<p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
-							The cohort is empty for the applied filters, so there is no
-							current stage distribution.
-						</p>
-					) : (
-						<table className="mt-3 w-full border-collapse text-sm">
-							<caption className="sr-only">
-								Current Lead stage counts for the intake cohort
-							</caption>
-							<thead>
-								<tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-600">
-									<th scope="col" className="py-1.5 pr-3 font-semibold">
-										Current stage
-									</th>
-									<th scope="col" className="py-1.5 text-right font-semibold">
-										Cohort Leads
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{section.stage_distribution.map((row) => (
-									<tr
-										key={row.stage.value ?? '__unresolved__'}
-										className="border-b border-gray-50"
-									>
-										<th
-											scope="row"
-											className="py-1.5 pr-3 text-left font-medium text-gray-800"
-										>
-											{row.stage.label}
-										</th>
-										<td className="py-1.5 text-right tabular-nums text-gray-900">
-											{formatCount(row.count)}
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					)}
-				</section>
-			</div>
 
-			<section
-				aria-labelledby="lead-audit-downstream-heading"
-				className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-			>
-				<div className="flex min-w-0 items-center gap-1.5">
-					<h2
-						id="lead-audit-downstream-heading"
-						className="text-base font-bold text-gray-900"
+					<section
+						aria-labelledby="lead-audit-downstream-heading"
+						className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
 					>
-						Downstream context of evidenced handoffs
-					</h2>
-					<HelpTip label="About downstream context">
-						Canonical Proposal status and progress need the proposal read
-						permission; Project details need the project read permission.
-						Restricted is not the same as no downstream record, and denied
-						fields are removed on the server.
-					</HelpTip>
-				</div>
-				<div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-					<div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-						<h3 className="text-xs font-bold uppercase tracking-wide text-gray-700">
-							Proposal context
-						</h3>
-						<dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-							<dt className="text-gray-600">Available</dt>
-							<dd className="text-right tabular-nums text-gray-900">
-								{formatCount(downstream.proposal_states.available)}
-							</dd>
-							<dt className="text-gray-600">Restricted</dt>
-							<dd className="text-right tabular-nums text-gray-900">
-								{formatCount(downstream.proposal_states.restricted)}
-							</dd>
-							<dt className="text-gray-600">Unresolved</dt>
-							<dd className="text-right tabular-nums text-gray-900">
-								{formatCount(downstream.proposal_states.unresolved)}
-							</dd>
-							<dt className="text-gray-600">No Proposal</dt>
-							<dd className="text-right tabular-nums text-gray-900">
-								{formatCount(downstream.proposal_states.none)}
-							</dd>
-						</dl>
-					</div>
-					<div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-						<h3 className="text-xs font-bold uppercase tracking-wide text-gray-700">
-							Project context
-						</h3>
-						<dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-							<dt className="text-gray-600">Available</dt>
-							<dd className="text-right tabular-nums text-gray-900">
-								{formatCount(downstream.project_states.available)}
-							</dd>
-							<dt className="text-gray-600">Restricted</dt>
-							<dd className="text-right tabular-nums text-gray-900">
-								{formatCount(downstream.project_states.restricted)}
-							</dd>
-							<dt className="text-gray-600">No Project</dt>
-							<dd className="text-right tabular-nums text-gray-900">
-								{formatCount(downstream.project_states.none)}
-							</dd>
-						</dl>
-						<p className="mt-2 text-xs text-gray-600">
-							Project states are counted only where the Proposal details are
-							available.
-						</p>
-					</div>
-				</div>
-			</section>
+						<div className="flex min-w-0 items-center gap-1.5">
+							<h2
+								id="lead-audit-downstream-heading"
+								className="text-base font-bold text-gray-900"
+							>
+								Downstream context of evidenced handoffs
+							</h2>
+							<HelpTip label="About downstream context">
+								Canonical Proposal status and progress need the proposal read
+								permission; Project details need the project read permission.
+								Restricted is not the same as no downstream record, and denied
+								fields are removed on the server.
+							</HelpTip>
+						</div>
+						<div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+							<div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+								<h3 className="text-xs font-bold uppercase tracking-wide text-gray-700">
+									Proposal context
+								</h3>
+								<dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+									<dt className="text-gray-600">Available</dt>
+									<dd className="text-right tabular-nums text-gray-900">
+										{formatCount(downstream.proposal_states.available)}
+									</dd>
+									<dt className="text-gray-600">Restricted</dt>
+									<dd className="text-right tabular-nums text-gray-900">
+										{formatCount(downstream.proposal_states.restricted)}
+									</dd>
+									<dt className="text-gray-600">Unresolved</dt>
+									<dd className="text-right tabular-nums text-gray-900">
+										{formatCount(downstream.proposal_states.unresolved)}
+									</dd>
+									<dt className="text-gray-600">No Proposal</dt>
+									<dd className="text-right tabular-nums text-gray-900">
+										{formatCount(downstream.proposal_states.none)}
+									</dd>
+								</dl>
+							</div>
+							<div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+								<h3 className="text-xs font-bold uppercase tracking-wide text-gray-700">
+									Project context
+								</h3>
+								<dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+									<dt className="text-gray-600">Available</dt>
+									<dd className="text-right tabular-nums text-gray-900">
+										{formatCount(downstream.project_states.available)}
+									</dd>
+									<dt className="text-gray-600">Restricted</dt>
+									<dd className="text-right tabular-nums text-gray-900">
+										{formatCount(downstream.project_states.restricted)}
+									</dd>
+									<dt className="text-gray-600">No Project</dt>
+									<dd className="text-right tabular-nums text-gray-900">
+										{formatCount(downstream.project_states.none)}
+									</dd>
+								</dl>
+								<p className="mt-2 text-xs text-gray-600">
+									Project states are counted only where the Proposal details are
+									available.
+								</p>
+							</div>
+						</div>
+					</section>
+				</>
+			) : null}
 
 			{variant === 'detail' ? (
 				<section
@@ -729,40 +732,44 @@ export default function ConversionView({
 				</section>
 			) : null}
 
-			<MethodNote
-				title="How to read these figures"
-				summary="Definitions, cohort limits, and filters not applied"
-			>
-				<dl className="grid grid-cols-1 gap-2 md:grid-cols-2">
-					{section.disclosures.map((disclosure) => (
-						<div
-							key={disclosure.code}
-							className="rounded-lg border border-gray-100 bg-gray-50 p-3"
-						>
-							<dt className="text-xs font-bold uppercase tracking-wide text-gray-700">
-								{disclosure.code.replace(/_/g, ' ')}
-							</dt>
-							<dd className="mt-1 text-sm text-gray-700">{disclosure.text}</dd>
+			{variant === 'detail' ? (
+				<MethodNote
+					title="How to read these figures"
+					summary="Definitions, cohort limits, and filters not applied"
+				>
+					<dl className="grid grid-cols-1 gap-2 md:grid-cols-2">
+						{section.disclosures.map((disclosure) => (
+							<div
+								key={disclosure.code}
+								className="rounded-lg border border-gray-100 bg-gray-50 p-3"
+							>
+								<dt className="text-xs font-bold uppercase tracking-wide text-gray-700">
+									{disclosure.code.replace(/_/g, ' ')}
+								</dt>
+								<dd className="mt-1 text-sm text-gray-700">
+									{disclosure.text}
+								</dd>
+							</div>
+						))}
+					</dl>
+					{section.evidence_filters.ignored.length > 0 ? (
+						<div className="mt-3 rounded-lg border border-gray-100 bg-white p-3">
+							<h3 className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-gray-700">
+								<LinkSlashIcon className="h-4 w-4" aria-hidden="true" />
+								Filters not applied to this section
+							</h3>
+							<ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
+								{section.evidence_filters.ignored.map((filter) => (
+									<li key={filter.key}>
+										<span className="font-semibold">{filter.key}</span>:{' '}
+										{filter.reason}
+									</li>
+								))}
+							</ul>
 						</div>
-					))}
-				</dl>
-				{section.evidence_filters.ignored.length > 0 ? (
-					<div className="mt-3 rounded-lg border border-gray-100 bg-white p-3">
-						<h3 className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-gray-700">
-							<LinkSlashIcon className="h-4 w-4" aria-hidden="true" />
-							Filters not applied to this section
-						</h3>
-						<ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-gray-700">
-							{section.evidence_filters.ignored.map((filter) => (
-								<li key={filter.key}>
-									<span className="font-semibold">{filter.key}</span>:{' '}
-									{filter.reason}
-								</li>
-							))}
-						</ul>
-					</div>
-				) : null}
-			</MethodNote>
+					) : null}
+				</MethodNote>
+			) : null}
 		</div>
 	);
 }

@@ -9,6 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { leadAuditGet } from '../api';
 import { MethodNote } from '../method-note';
+import { HelpTip } from '../help-tip';
 import type {
 	LeadAuditWorkCoverage,
 	LeadAuditWorkEvidenceSection,
@@ -143,7 +144,7 @@ function FigureCard({
 	title: string;
 	value: number;
 	unit: string;
-	children: ReactNode;
+	children?: ReactNode;
 	onClick: () => void;
 }) {
 	return (
@@ -159,7 +160,9 @@ function FigureCard({
 				{count(value)}
 			</span>
 			<span className="text-xs text-gray-600">{unit}</span>
-			<span className="mt-2 block text-sm text-gray-700">{children}</span>
+			{children ? (
+				<span className="mt-2 block text-sm text-gray-700">{children}</span>
+			) : null}
 		</button>
 	);
 }
@@ -219,18 +222,20 @@ export default function WorkView({
 			<section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
 				<div className="flex flex-wrap items-start justify-between gap-2">
 					<div>
-						<h2 className="text-lg font-bold text-gray-900">
-							Work and accountability
-						</h2>
-						<p className="mt-0.5 max-w-3xl text-sm text-gray-600">
-							{work.scope.from_date} to {work.scope.to_date}. Completed work is
-							dated by when the activity occurred, independently of when the
-							Lead was recorded or the activity was entered.
+						<div className="flex min-w-0 items-center gap-1.5">
+							<h2 className="text-lg font-bold text-gray-900">
+								Work and accountability
+							</h2>
+							<HelpTip label="About completed work">
+								Completed work is dated by when the activity occurred,
+								independently of when the Lead was recorded or the activity was
+								entered.
+							</HelpTip>
+						</div>
+						<p className="mt-0.5 text-xs text-gray-600">
+							{work.scope.from_date} to {work.scope.to_date}
 						</p>
 					</div>
-					<p className="text-xs text-gray-600">
-						Generated {work.meta.generated_at} · {work.meta.time_zone.label}
-					</p>
 				</div>
 				<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 					<FigureCard
@@ -251,7 +256,7 @@ export default function WorkView({
 					>
 						{count(summary.distinct_leads_with_outreach)} distinct Lead
 						{summary.distinct_leads_with_outreach === 1 ? '' : 's'} with
-						outreach. Notes are not outreach.
+						outreach
 					</FigureCard>
 					<FigureCard
 						title="Successful contact"
@@ -261,18 +266,14 @@ export default function WorkView({
 					>
 						{count(summary.distinct_leads_with_successful_contact)} distinct
 						Lead
-						{summary.distinct_leads_with_successful_contact === 1 ? '' : 's'}.
-						Failed calls and unconfirmed emails never count.
+						{summary.distinct_leads_with_successful_contact === 1 ? '' : 's'}
 					</FigureCard>
 					<FigureCard
 						title="Leads worked"
 						value={summary.distinct_leads_worked}
 						unit="distinct Leads with completed work"
 						onClick={() => selectMetric('completed')}
-					>
-						Includes work on Leads recorded before this period. Authorship is
-						not current ownership.
-					</FigureCard>
+					/>
 				</div>
 			</section>
 
@@ -287,16 +288,18 @@ export default function WorkView({
 							aria-hidden="true"
 						/>
 						<div>
-							<h3
-								id="lead-audit-work-types-heading"
-								className="text-base font-bold text-gray-900"
-							>
-								Completed work by type
-							</h3>
-							<p className="text-sm text-gray-600">
-								Scheduled and cancelled work is never completed work. An unknown
-								stored type stays unknown.
-							</p>
+							<div className="flex min-w-0 items-center gap-1.5">
+								<h3
+									id="lead-audit-work-types-heading"
+									className="text-base font-bold text-gray-900"
+								>
+									Completed work by type
+								</h3>
+								<HelpTip label="About completed work by type">
+									Scheduled and cancelled work is never completed work. An
+									unknown stored type stays unknown.
+								</HelpTip>
+							</div>
 						</div>
 					</div>
 					<table className="mt-3 w-full border-collapse text-sm">
@@ -359,9 +362,16 @@ export default function WorkView({
 						</tfoot>
 					</table>
 
-					<h4 className="mt-4 text-sm font-bold text-gray-900">
-						Outcome evidence
-					</h4>
+					<div className="mt-4 flex min-w-0 items-center gap-1.5">
+						<h4 className="text-sm font-bold text-gray-900">
+							Outcome evidence
+						</h4>
+						<HelpTip label="About successful contact">
+							A failed call is completed work and outreach without successful
+							contact. A meeting is outreach without establishing successful
+							contact by itself.
+						</HelpTip>
+					</div>
 					<dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
 						{[
 							{ label: 'Connected calls', value: summary.calls_connected },
@@ -394,11 +404,6 @@ export default function WorkView({
 							</div>
 						))}
 					</dl>
-					<p className="mt-2 text-xs text-gray-600" role="note">
-						A failed call is completed work and outreach without successful
-						contact. A meeting is outreach without establishing successful
-						contact by itself.
-					</p>
 				</section>
 
 				<MethodNote

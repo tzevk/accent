@@ -98,10 +98,9 @@ function RiskCard({
 			<p className="mt-1 text-xs font-medium text-gray-700">
 				{risk.count === 1 ? 'distinct Lead' : 'distinct Leads'}
 			</p>
-			<p className="mt-2 text-[11px] text-gray-500">As of {risk.as_of}.</p>
 			{onSelectGroup ? (
 				<span className="mt-2 inline-block text-xs font-semibold text-[#64126D] group-hover:underline">
-					View {risk.label} evidence
+					Evidence
 				</span>
 			) : null}
 		</>
@@ -291,16 +290,24 @@ export default function CurrentStateView({
 }: CurrentStateViewProps) {
 	const risks = (
 		<section aria-labelledby={`lead-audit-current-risks-${variant}`}>
-			<div className="mb-2 flex min-w-0 items-center gap-1.5">
-				<h2
-					id={`lead-audit-current-risks-${variant}`}
-					className="text-lg font-bold text-gray-900"
-				>
-					Current operational risks
-				</h2>
-				<HelpTip label="About current risks">
-					Five Lead queues at the observation time; counters are distinct Leads.
-				</HelpTip>
+			<div className="mb-2">
+				<div className="flex min-w-0 items-center gap-1.5">
+					<h2
+						id={`lead-audit-current-risks-${variant}`}
+						className="text-lg font-bold text-gray-900"
+					>
+						Current operational risks
+					</h2>
+					<HelpTip label="About current risks">
+						Five Lead queues at the observation time; counters are distinct
+						Leads.
+					</HelpTip>
+				</div>
+				{section.risks[0]?.as_of ? (
+					<p className="mt-0.5 text-xs text-gray-600">
+						As of {section.risks[0].as_of}
+					</p>
+				) : null}
 			</div>
 			<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
 				{section.risks.map((risk) => (
@@ -360,19 +367,16 @@ export default function CurrentStateView({
 
 	return (
 		<div className="space-y-4">
-			<Observation section={section} />
+			{variant === 'work' ? <Observation section={section} /> : null}
 			{variant === 'work' ? (
 				<>
 					{workload}
 					{risks}
+					{disclosures}
 				</>
 			) : (
-				<>
-					{risks}
-					{workload}
-				</>
+				risks
 			)}
-			{disclosures}
 		</div>
 	);
 }

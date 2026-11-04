@@ -117,7 +117,10 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 		evidenceFilters.push({ label: 'Work outcome', value: applied.outcome });
 	}
 	if (applied.eventType) {
-		evidenceFilters.push({ label: 'Audit event type', value: applied.eventType });
+		evidenceFilters.push({
+			label: 'Audit event type',
+			value: applied.eventType,
+		});
 	}
 	if (applied.undated) {
 		evidenceFilters.push({
@@ -547,7 +550,8 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 					</p>
 					<table className="mt-2 w-full border-collapse text-sm">
 						<caption className="lead-audit-print-note text-left text-xs">
-							Cohort outcomes with the full denominator beside the evidence gaps.
+							Cohort outcomes with the full denominator beside the evidence
+							gaps.
 						</caption>
 						<thead>
 							<tr>
@@ -566,7 +570,9 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 								<td className="lead-audit-print-numeric text-right tabular-nums">
 									{formatCount(cohort.cohort_size)}
 								</td>
-								<td>Distinct non-deleted Leads first recorded in the period.</td>
+								<td>
+									Distinct non-deleted Leads first recorded in the period.
+								</td>
 							</tr>
 							<tr>
 								<th scope="row" className="text-left font-medium">
@@ -650,7 +656,9 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 								<td className="lead-audit-print-numeric text-right tabular-nums">
 									{formatCount(cohort.no_handoff_evidence)}
 								</td>
-								<td>Remaining cohort Leads; this is not presented as failure.</td>
+								<td>
+									Remaining cohort Leads; this is not presented as failure.
+								</td>
 							</tr>
 						</tbody>
 					</table>
@@ -660,7 +668,9 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 						period handoff count.
 						{cohortMaturity ? ` ${cohortMaturity.text}` : ''}
 					</p>
-					<h3 className="text-sm font-bold">Downstream context (permission states)</h3>
+					<h3 className="text-sm font-bold">
+						Downstream context (permission states)
+					</h3>
 					<p className="mt-1 text-xs">
 						Proposal and Project values are not printed. Restricted means the
 						reader lacks that downstream read grant; it never means no Proposal
@@ -698,7 +708,9 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 									Restricted
 								</th>
 								<td className="lead-audit-print-numeric text-right tabular-nums">
-									{formatCount(conversion.downstream.proposal_states.restricted)}
+									{formatCount(
+										conversion.downstream.proposal_states.restricted
+									)}
 								</td>
 								<td className="lead-audit-print-numeric text-right tabular-nums">
 									{formatCount(conversion.downstream.project_states.restricted)}
@@ -709,7 +721,9 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 									Unresolved canonical choice
 								</th>
 								<td className="lead-audit-print-numeric text-right tabular-nums">
-									{formatCount(conversion.downstream.proposal_states.unresolved)}
+									{formatCount(
+										conversion.downstream.proposal_states.unresolved
+									)}
 								</td>
 								<td className="text-right">—</td>
 							</tr>
@@ -741,7 +755,8 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 						response time, and no service target applies.
 					</p>
 					<p className="lead-audit-print-note mt-1 text-xs">
-						Clock: {timing.metric.clock} Observation: {timing.metric.observation}
+						Clock: {timing.metric.clock} Observation:{' '}
+						{timing.metric.observation}
 					</p>
 					{!timing.available ? (
 						<p className="mt-1 rounded border border-gray-400 p-2 text-sm">
@@ -804,9 +819,7 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 									{formatCount(timing.without_outreach)} (
 									{formatShare(timing.without_outreach_share)})
 								</td>
-								<td>
-									Cohort Leads with no completed Call, Email, or Meeting.
-								</td>
+								<td>Cohort Leads with no completed Call, Email, or Meeting.</td>
 							</tr>
 							<tr>
 								<th scope="row" className="text-left font-medium">
@@ -824,9 +837,7 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 								<td className="lead-audit-print-numeric text-right tabular-nums">
 									{formatCount(timingExclusions.incomplete_earlier)}
 								</td>
-								<td>
-									A known outreach time beside unknown earlier evidence.
-								</td>
+								<td>A known outreach time beside unknown earlier evidence.</td>
 							</tr>
 							<tr>
 								<th scope="row" className="text-left font-medium">
@@ -881,7 +892,9 @@ export default function PrintSummary({ report, applied }: PrintSummaryProps) {
 							</thead>
 							<tbody>
 								{current_state.workload.owners.map((group) => (
-									<tr key={`${group.owner.id ?? 'unassigned'}-${group.owner.name}`}>
+									<tr
+										key={`${group.owner.id ?? 'unassigned'}-${group.owner.name}`}
+									>
 										<th scope="row" className="text-left font-medium">
 											{`${group.owner.id === null ? 'Unassigned' : group.owner.name}${
 												group.owner.is_inactive ? ' (inactive account)' : ''
