@@ -14,6 +14,22 @@ vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
 vi.mock('@/utils/api-permissions', () => ({
 	getCurrentUser: mocks.mockGetCurrentUser,
 }));
+vi.mock('@/utils/schema-cache', () => ({
+	getTableColumns: vi
+		.fn()
+		.mockResolvedValue(
+			new Set([
+				'project_id',
+				'id',
+				'project_code',
+				'project_team',
+				'project_activities_list',
+			])
+		),
+	getPrimaryKeyColumn: vi.fn().mockResolvedValue('project_id'),
+	hasColumn: vi.fn().mockResolvedValue(true),
+	invalidateCache: vi.fn(),
+}));
 
 const { GET, PUT, PATCH, DELETE } =
 	await import('@/app/api/users/[id]/activity-assignments/route');
@@ -32,6 +48,28 @@ function request() {
 
 function params() {
 	return { params: Promise.resolve({ id: '42' }) };
+}
+
+/** The stored team contains the acting member, id 42. */
+const PROJECT_TEAM = JSON.stringify([
+	{ id: 42, email: 'member@example.com', role: 'Team Member' },
+]);
+
+function projectLookup(
+	overrides: Record<string, unknown> = {}
+): [Record<string, unknown>[]] {
+	return [
+		[
+			{
+				id: 1,
+				project_id: '1',
+				project_code: 'P-1',
+				project_team: PROJECT_TEAM,
+				project_activities_list: '[]',
+				...overrides,
+			},
+		],
+	];
 }
 
 describe('user activity assignments project discovery', () => {
@@ -270,6 +308,7 @@ describe('user activity assignments PUT', () => {
 
 	it('preserves extra daily_entries fields (isLocked) when updating', async () => {
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([[{ id: 'row-1' }]]) // existing assignment
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE
 			.mockResolvedValueOnce([{ insertId: 7 }]); // save marker
@@ -312,6 +351,7 @@ describe('user activity assignments PUT', () => {
 
 	it('records a self-save marker when the user updates their own assignment', async () => {
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([[{ id: 'row-1' }]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
 			.mockResolvedValueOnce([{ insertId: 9 }]);
@@ -347,6 +387,7 @@ describe('user activity assignments PUT', () => {
 			is_super_admin: 1,
 		});
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([[{ id: 'row-1' }]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
@@ -365,7 +406,9 @@ describe('user activity assignments PUT', () => {
 	});
 
 	it('writes no marker on a no-op update', async () => {
-		mocks.mockExecute.mockResolvedValueOnce([[{ id: 'row-1' }]]);
+		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
+			.mockResolvedValueOnce([[{ id: 'row-1' }]]);
 
 		const response = await PUT(
 			putRequest({ project_id: '1', activity_id: 'a1' }),
@@ -382,6 +425,7 @@ describe('user activity assignments PUT', () => {
 
 	it('writes no marker when the update touches no rows', async () => {
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([[{ id: 'row-1' }]])
 			.mockResolvedValueOnce([{ affectedRows: 0 }]);
 
@@ -399,6 +443,7 @@ describe('user activity assignments PUT', () => {
 
 	it('rolls back the assignment write when the marker insert fails', async () => {
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([[{ id: 'row-1' }]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
 			.mockRejectedValueOnce(new Error('marker insert down'));
@@ -418,6 +463,7 @@ describe('user activity assignments PUT', () => {
 
 	it('rolls back when the commit fails', async () => {
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([[{ id: 'row-1' }]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
 			.mockResolvedValueOnce([{ insertId: 9 }]);
@@ -475,9 +521,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 
 	it('logs the entered manhours as the day entry and links employee_id', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_activities_list: '[]' }],
-			]) // project lookup
+			.mockResolvedValueOnce(projectLookup()) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: 87 }]]) // login link
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
@@ -527,9 +571,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 
 	it('keeps the daily entry date when no due date is given', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_activities_list: '[]' }],
-			]) // project lookup
+			.mockResolvedValueOnce(projectLookup()) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: null }]]) // no login link
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
@@ -565,9 +607,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 		// The self-service add records PLANNED manhours for a whole activity;
 		// multi-day tasks routinely exceed a single day's hours.
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_activities_list: '[]' }],
-			]) // project lookup
+			.mockResolvedValueOnce(projectLookup()) // project lookup
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
 			.mockResolvedValueOnce([[{ employee_id: null }]]) // login link
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
@@ -612,9 +652,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 			is_super_admin: 1,
 		});
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_activities_list: '[]' }],
-			])
+			.mockResolvedValueOnce(projectLookup())
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
 			.mockResolvedValueOnce([[{ employee_id: 87 }]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }]);
@@ -631,9 +669,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 
 	it('rolls back the save when the marker insert fails', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_activities_list: '[]' }],
-			])
+			.mockResolvedValueOnce(projectLookup())
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
 			.mockResolvedValueOnce([[{ employee_id: 87 }]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
@@ -651,9 +687,7 @@ describe('user activity assignments PATCH (self-service add)', () => {
 
 	it('rolls back when the commit fails after a save', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_activities_list: '[]' }],
-			])
+			.mockResolvedValueOnce(projectLookup())
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
 			.mockResolvedValueOnce([[{ employee_id: 87 }]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
@@ -691,6 +725,7 @@ describe('user activity assignments DELETE', () => {
 
 	it('removes the user from the project blob so saves do not resurrect it', async () => {
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // DELETE row
 			.mockResolvedValueOnce([
 				[
@@ -726,6 +761,7 @@ describe('user activity assignments DELETE', () => {
 
 	it('drops an activity whose last assignee is deleted', async () => {
 		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
 			.mockResolvedValueOnce([{ affectedRows: 1 }]) // DELETE row
 			.mockResolvedValueOnce([
 				[
@@ -757,7 +793,9 @@ describe('user activity assignments DELETE', () => {
 	});
 
 	it('returns 404 and leaves the blob untouched when no row exists', async () => {
-		mocks.mockExecute.mockResolvedValueOnce([{ affectedRows: 0 }]);
+		mocks.mockExecute
+			.mockResolvedValueOnce([...projectLookup()]) // project access
+			.mockResolvedValueOnce([{ affectedRows: 0 }]);
 
 		const response = await DELETE(
 			deleteRequest({ project_id: '1', activity_id: 'a1' }),
@@ -767,7 +805,66 @@ describe('user activity assignments DELETE', () => {
 
 		expect(response.status).toBe(404);
 		expect(body.success).toBe(false);
-		// Only the DELETE was issued — no blob SELECT/UPDATE.
-		expect(mocks.mockExecute.mock.calls).toHaveLength(1);
+		// The access lookup and the DELETE only — no blob SELECT/UPDATE.
+		expect(mocks.mockExecute.mock.calls).toHaveLength(2);
 	});
+});
+
+describe('user activity assignments after team removal', () => {
+	// The actor still owns the assignment rows, but the stored team no
+	// longer contains them. Removal wins on the next request.
+	const REMOVED_TEAM = JSON.stringify([
+		{ id: 7, email: 'lead@example.com', role: 'Project Lead' },
+	]);
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.mockDbConnect.mockResolvedValue(db);
+		mocks.mockGetCurrentUser.mockResolvedValue({
+			id: 42,
+			email: 'member@example.com',
+			is_super_admin: 0,
+		});
+		mocks.mockExecute
+			.mockReset()
+			.mockResolvedValueOnce([
+				...projectLookup({ project_team: REMOVED_TEAM }),
+			]);
+	});
+
+	it.each(['PATCH', 'PUT', 'DELETE'] as const)(
+		'denies %s without touching assignment or project rows',
+		async (method) => {
+			const writeBody = {
+				project_id: '1',
+				activity_id: 'a1',
+				discipline_name: 'Structural',
+				activity_name: 'RCC Check',
+				status: 'In Progress',
+			};
+			const response = await (
+				method === 'PATCH' ? PATCH : method === 'PUT' ? PUT : DELETE
+			)(
+				new Request('http://localhost/api/users/42/activity-assignments', {
+					method,
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(writeBody),
+				}),
+				params()
+			);
+			const body = await response.json();
+
+			expect(response.status).toBe(403);
+			expect(body).toEqual({
+				success: false,
+				error: 'You do not have permission to access this project',
+			});
+			expect(
+				mocks.mockExecute.mock.calls.some(([sql]) =>
+					/^(UPDATE|INSERT|DELETE)/i.test(String(sql))
+				)
+			).toBe(false);
+			expect(mocks.mockBeginTransaction).not.toHaveBeenCalled();
+		}
+	);
 });

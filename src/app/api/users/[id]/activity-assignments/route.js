@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
 import { isUserInProjectTeam } from '@/utils/project-access';
+import { requireProjectAccess } from '@/lib/project-rights';
 
 async function generateTicketNumber(connection) {
 	const year = new Date().getFullYear();
@@ -577,6 +578,19 @@ export async function PUT(request, { params }) {
 
 		db = await dbConnect();
 
+		// Self-service activity is a member contribution: a removed member is
+		// denied on the next request even when a stale assignment row exists.
+		const access = await requireProjectAccess(request, project_id, {
+			db,
+			requireContribution: true,
+		});
+		if ('response' in access) {
+			try {
+				db.release();
+			} catch {}
+			return access.response;
+		}
+
 		// Find the existing assignment row
 		const [existing] = await db.execute(
 			'SELECT * FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
@@ -950,20 +964,20 @@ export async function PATCH(request, { params }) {
 
 		db = await dbConnect();
 
-		const [projects] = await db.execute(
-			'SELECT project_id, project_activities_list FROM projects WHERE project_id = ?',
-			[project_id]
-		);
-
-		if (projects.length === 0) {
-			db.release();
-			return NextResponse.json(
-				{ success: false, error: 'Project not found' },
-				{ status: 404 }
-			);
+		// Self-service activity is a member contribution: a removed member is
+		// denied on the next request even when a stale assignment row exists.
+		const access = await requireProjectAccess(request, project_id, {
+			db,
+			requireContribution: true,
+		});
+		if ('response' in access) {
+			try {
+				db.release();
+			} catch {}
+			return access.response;
 		}
 
-		const project = projects[0];
+		const project = access.project;
 		let activitiesList = project.project_activities_list;
 		if (typeof activitiesList === 'string') {
 			try {
@@ -1163,6 +1177,19 @@ export async function DELETE(request, { params }) {
 		}
 
 		db = await dbConnect();
+
+		// Self-service activity is a member contribution: a removed member is
+		// denied on the next request even when a stale assignment row exists.
+		const access = await requireProjectAccess(request, project_id, {
+			db,
+			requireContribution: true,
+		});
+		if ('response' in access) {
+			try {
+				db.release();
+			} catch {}
+			return access.response;
+		}
 
 		const [deleteResult] = await db.execute(
 			'DELETE FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',

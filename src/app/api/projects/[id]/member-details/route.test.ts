@@ -265,4 +265,133 @@ describe('member project details API', () => {
 		expect(body.data.entry).toEqual(insertedDiscussion);
 		expect(mockLogActivity).toHaveBeenCalledOnce();
 	});
+
+	it('denies the next request after team removal and restores access on re-add', async () => {
+		const removedTeam = JSON.stringify([
+			{ user_id: 43, email: 'lead@example.com', role: 'Project Lead' },
+		]);
+		mockExecute
+			.mockResolvedValueOnce([[project]]) // member still stored
+			.mockResolvedValueOnce([[]]) // discussions
+			.mockResolvedValueOnce([[{ ...project, project_team: removedTeam }]])
+			.mockResolvedValueOnce([[project]]) // re-added
+			.mockResolvedValueOnce([[]]);
+
+		const beforeRemoval = await GET(request('GET'), params());
+		expect(beforeRemoval.status).toBe(200);
+
+		const afterRemoval = await GET(request('GET'), params());
+		expect(afterRemoval.status).toBe(403);
+		expect(await afterRemoval.json()).toEqual({
+			success: false,
+			error: 'You do not have permission to access this project',
+		});
+
+		const afterReAdd = await GET(request('GET'), params());
+		expect(afterReAdd.status).toBe(200);
+	});
+
+	it('opens the workspace for a read-only grant but refuses contributions', async () => {
+		mockGetCurrentUser.mockResolvedValue({
+			...member,
+			id: 99,
+			email: 'reader@example.com',
+			merged_permissions: ['projects:read'],
+			field_permissions: {
+				projectScopes: { projects: { read: 'all' } },
+			},
+		});
+		mockExecute.mockReset();
+		mockExecute
+			.mockResolvedValueOnce([[project]])
+			.mockResolvedValueOnce([[]])
+			.mockResolvedValueOnce([[project]]);
+
+		const read = await GET(request('GET'), params());
+		expect(read.status).toBe(200);
+
+		const write = await POST(
+			request('POST', {
+				section: 'assumption',
+				entry: { assumption_description: 'Read-only cannot add this' },
+			}),
+			params()
+		);
+
+		expect(write.status).toBe(403);
+		expect(await write.json()).toEqual({
+			success: false,
+			error: 'You do not have permission to access this project',
+		});
+		expect(mockBeginTransaction).not.toHaveBeenCalled();
+		expect(
+			mockExecute.mock.calls.some(([sql]) => String(sql).includes('UPDATE projects'))
+		).toBe(false);
+		expect(mockLogActivity).not.toHaveBeenCalled();
+		expect(mockHasUserProjectAssignment).not.toHaveBeenCalled();
+	});
+
+	it('refuses a removed member contribution and leaves stored entries untouched', async () => {
+		const removedTeam = JSON.stringify([
+			{ user_id: 43, email: 'lead@example.com', role: 'Project Lead' },
+		]);
+		mockExecute.mockReset();
+		mockExecute.mockResolvedValueOnce([
+			[{ ...project, project_team: removedTeam }],
+		]);
+
+		const response = await POST(
+			request('POST', {
+				section: 'assumption',
+				entry: { assumption_description: 'Removed member entry' },
+			}),
+			params()
+		);
+
+		expect(response.status).toBe(403);
+		// No row was appended: the historical list stays exactly as stored.
+		expect(
+			mockExecute.mock.calls.some(([sql]) =>
+				String(sql).startsWith('UPDATE projects')
+			)
+		).toBe(false);
+		expect(mockBeginTransaction).not.toHaveBeenCalled();
+		expect(mockLogActivity).not.toHaveBeenCalled();
+		expect(project.project_assumption_list).toBe(
+			JSON.stringify([{ id: 'old-assumption' }])
+		);
+	});
+
+	it('keeps an independent all-projects update grant after removal', async () => {
+		mockGetCurrentUser.mockResolvedValue({
+			...member,
+			id: 99,
+			email: 'editor@example.com',
+			merged_permissions: ['projects:update'],
+			field_permissions: {
+				projectScopes: { projects: { update: 'all' } },
+			},
+		});
+		const removedTeam = JSON.stringify([
+			{ user_id: 43, email: 'lead@example.com', role: 'Project Lead' },
+		]);
+		const removedProject = { ...project, project_team: removedTeam };
+		mockExecute.mockReset();
+		mockExecute
+			.mockResolvedValueOnce([[removedProject]])
+			.mockResolvedValueOnce([[{ project_assumption_list: project.project_assumption_list }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+		const response = await POST(
+			request('POST', {
+				section: 'assumption',
+				entry: { assumption_description: 'Editor adds this' },
+			}),
+			params()
+		);
+
+		expect(response.status).toBe(200);
+		expect(mockCommit).toHaveBeenCalledOnce();
+		expect(mockLogActivity).toHaveBeenCalledOnce();
+	});
 });

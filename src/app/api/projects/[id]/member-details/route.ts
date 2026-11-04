@@ -288,7 +288,9 @@ export async function POST(
 		);
 	}
 
-	const access = await requireProjectAccess(request, routeId);
+	const access = await requireProjectAccess(request, routeId, {
+		requireContribution: true,
+	});
 	if ('response' in access) return access.response;
 	const project = access.project as ProjectRow;
 	const { ownsDb } = access;
