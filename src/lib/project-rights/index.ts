@@ -6,5 +6,6 @@ export * from './serialize';
 export * from './writes';
 export * from './section-save';
 export * from './server';
+export * from './team';
 export * from './team-roles';
 export * from './lead-access-review';

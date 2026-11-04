@@ -403,6 +403,29 @@ describe('PUT /api/projects/[id] section-scoped saves', () => {
 		expect(queryParams).toEqual([1000, 10]);
 	});
 
+	it('refuses a section save from an assign-only team manager', async () => {
+		// Team-management authority is not project content authority: the
+		// same user who may change the team cannot save a work section.
+		mockGetCurrentUser.mockResolvedValue({
+			...member,
+			id: 99,
+			email: 'assigner@example.com',
+			merged_permissions: ['projects:assign'],
+			field_permissions: {
+				projectScopes: { projects: { assign: 'all' } },
+			},
+		});
+		mockExecute.mockResolvedValueOnce([[project], []]);
+
+		const response = await PUT(
+			putRequest({ section: 'scope', values: { scope_of_work: 'x' } }),
+			params()
+		);
+
+		expect(response.status).toBe(403);
+		expect(mockExecute).toHaveBeenCalledTimes(1);
+	});
+
 	it('serializes list columns for the named section only', async () => {
 		mockExecute
 			.mockResolvedValueOnce([[leadProject], []])
