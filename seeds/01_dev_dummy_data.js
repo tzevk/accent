@@ -270,7 +270,7 @@ async function ensureProjects(
 				email: 'admin@accent.test',
 				department: 'Management',
 				position: 'Super Administrator',
-				role: 'Project Manager',
+				role: 'Project Lead',
 			},
 			{
 				id: rId,
