@@ -25,7 +25,12 @@ import {
 	CheckCircleIcon,
 	ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
-import { PROJECT_TABS, TAB_ALIASES, resolveTabId } from '@/lib/project-tabs';
+import {
+	PROJECT_TABS,
+	TAB_ALIASES,
+	resolveTabId,
+	isFinancialAreaAllowed,
+} from '@/lib/project-tabs';
 import { sanitizeHtml } from '@/lib/sanitize';
 import dynamic from 'next/dynamic';
 const ProjectActivityTab = dynamic(
@@ -309,16 +314,23 @@ export default function ProjectViewPage() {
 	const visibleTabs = useMemo(() => {
 		if (!rights) return [];
 		const readableSections = rights.readableSections || [];
+		const financialAreas = rights.financialAreas;
 		if (isEmployeeWorkspace) {
-			return EMPLOYEE_TAB_IDS.filter((tabId) =>
+			const sectionTabs = EMPLOYEE_TAB_IDS.filter((tabId) =>
 				readableSections.includes(tabId)
 			)
 				.map((tabId) => EMPLOYEE_TAB_CONFIG.find((tab) => tab.id === tabId))
 				.filter(Boolean);
+			const financialTabs = TAB_CONFIG.filter(
+				(tab) =>
+					tab.requiresPermission &&
+					isFinancialAreaAllowed(tab.id, financialAreas)
+			);
+			return [...sectionTabs, ...financialTabs];
 		}
 		return TAB_CONFIG.filter((tab) => {
 			if (tab.requiresPermission) {
-				return Boolean(rights.financialAreas?.[tab.requiresPermission]);
+				return isFinancialAreaAllowed(tab.id, financialAreas);
 			}
 			return readableSections.includes(tab.id);
 		});
@@ -2528,7 +2540,7 @@ export default function ProjectViewPage() {
 					)}
 
 					{/* Quotation Tab (read-only) */}
-					{activeTab === 'quotation' && (
+					{rights.financialAreas?.quotation && activeTab === 'quotation' && (
 						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
 								<div className="flex items-center gap-3">
@@ -2567,17 +2579,18 @@ export default function ProjectViewPage() {
 					)}
 
 					{/* Purchase Order Tab (read-only) */}
-					{activeTab === 'purchase_order' && (
-						<ProjectOrdersPanel
-							projectId={
-								project.id ?? project.project_id ?? project.project_code
-							}
-							canManageOrders={canEditProjectContent}
-						/>
-					)}
+					{rights.financialAreas?.purchase_order &&
+						activeTab === 'purchase_order' && (
+							<ProjectOrdersPanel
+								projectId={
+									project.id ?? project.project_id ?? project.project_code
+								}
+								canManageOrders={canEditProjectContent}
+							/>
+						)}
 
 					{/* Invoice Tab (read-only) */}
-					{activeTab === 'invoice' && (
+					{rights.financialAreas?.invoice && activeTab === 'invoice' && (
 						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
 								<div className="flex items-center gap-3">
