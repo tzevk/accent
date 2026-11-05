@@ -375,6 +375,14 @@ times; Punches feed Time Present and the Attendance Record's times instead.
 _Avoid_: Attendance Record (the daily cell), Logged Hours (the project effort it
 includes), Payable OT (the paid variant)
 
+**Project Team Member**:
+A person explicitly included in a Project's team. Assignment to a Project Activity alone does not establish team membership.
+_Avoid_: Activity assignee, Project Lead (when meaning every team member)
+
+**Project Lead**:
+A Project Team Member designated to lead a particular Project. This responsibility belongs to that Project and does not grant authority over other Projects.
+_Avoid_: Lead (the project enquiry), System role, Project administrator
+
 **Project Document**:
 A document belonging to a Project, held in one of three stores: an uploaded file, a
 planning-library document chosen from a master list, or a received/issued document
@@ -393,3 +401,11 @@ _Avoid_: Latest proposal, Preferred proposal, Duplicate cleanup
 **Stored-Value Inventory**:
 The record of what legacy Leads actually stored before mapping: every distinct stage label and owner name, how many Leads carry it, and whether it was auto-resolved, ambiguous, or unresolved. It exists so no value is classified without evidence (ADR-0031).
 _Avoid_: Migration log, Import report
+
+**Ticket Handler**:
+A member of a Ticket Department's designated role who shares responsibility for its support requests. This responsibility does not grant system administration rights.
+_Avoid_: Super-admin, System administrator, Sole assignee
+
+**Ticket Department**:
+A support team, such as IT, HR, or Admin, that receives employee support requests. It has one designated role whose members handle its tickets.
+_Avoid_: Employee department, System role, Individual assignee

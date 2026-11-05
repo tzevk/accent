@@ -23,6 +23,7 @@ export declare const Select: ForwardRefExoticComponent<
 
 interface FieldGroupProps {
 	label?: string;
+	htmlFor?: string;
 	hint?: string;
 	error?: string;
 	required?: boolean;
