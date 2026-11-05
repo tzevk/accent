@@ -17,6 +17,8 @@ import {
 	buildProjectScopesPayload,
 	buildSectionPayload,
 } from '@/lib/project-rights/permission-config';
+import RolePermissionPanel from './RolePermissionPanel';
+import RolePermissionDialog from './RolePermissionDialog';
 import {
 	ArrowLeftIcon,
 	CheckIcon,
@@ -1331,7 +1333,16 @@ export default function UserPermissionsPage() {
 		(currentUser?.is_super_admin ||
 			can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.UPDATE));
 
+	const canManageRolePermissions =
+		!rbacLoading &&
+		(currentUser?.is_super_admin ||
+			can(RBAC_RESOURCES.SETTINGS, RBAC_PERMISSIONS.UPDATE));
+
 	const [user, setUser] = useState(null);
+	const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+	const [roleSaving, setRoleSaving] = useState(false);
+	const [roleError, setRoleError] = useState(null);
+	const [roleNotice, setRoleNotice] = useState('');
 	const [fieldPermissions, setFieldPermissions] = useState({});
 	const [modulePermissions, setModulePermissions] = useState({}); // module-level CRUD
 	const [enabledModules, setEnabledModules] = useState({}); // which modules are enabled
@@ -1969,6 +1980,53 @@ export default function UserPermissionsPage() {
 		}
 	};
 
+	const handleSaveRolePermissions = async (permissions) => {
+		if (!user?.role_id) {
+			setRoleError('This user has no role to edit.');
+			return;
+		}
+		setRoleSaving(true);
+		setRoleError(null);
+		setRoleNotice('');
+		try {
+			const response = await fetch('/api/roles-master', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: user.role_id, permissions }),
+			});
+			const result = await response.json().catch(() => null);
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || 'Failed to update role permissions');
+			}
+
+			const savedPermissions = result.data?.permissions ?? permissions;
+			setUser((previous) =>
+				previous
+					? { ...previous, role_permissions: savedPermissions }
+					: previous
+			);
+			queryClient.setQueryData(['user-permissions', userId], (cached) =>
+				cached?.data
+					? {
+							...cached,
+							data: {
+								...cached.data,
+								role_permissions: savedPermissions,
+							},
+						}
+					: cached
+			);
+			setRoleDialogOpen(false);
+			setRoleNotice(
+				'Role permissions updated. They apply to every user with this role.'
+			);
+		} catch (error) {
+			setRoleError(error?.message || 'Failed to update role permissions');
+		} finally {
+			setRoleSaving(false);
+		}
+	};
+
 	const handleCancel = () => {
 		if (hasChanges) {
 			if (
@@ -2207,6 +2265,29 @@ export default function UserPermissionsPage() {
 						</div>
 					</div>
 				</div>
+
+				{user?.role_id !== null && user?.role_id !== undefined && (
+					<RolePermissionPanel
+						roleName={user.role_name}
+						roleId={user.role_id}
+						rolePermissions={user.role_permissions}
+						canManage={canManageRolePermissions}
+						onManageAction={() => {
+							setRoleError(null);
+							setRoleNotice('');
+							setRoleDialogOpen(true);
+						}}
+					/>
+				)}
+
+				{roleNotice && (
+					<div
+						role="status"
+						className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800"
+					>
+						{roleNotice}
+					</div>
+				)}
 
 				<div className="flex flex-col xl:flex-row gap-6 lg:h-[calc(100vh-200px)]">
 					{/* Module List - Left Side */}
@@ -2519,8 +2600,7 @@ export default function UserPermissionsPage() {
 															);
 														})}
 														{PROJECT_SCOPED_ACTIONS.every(
-															(action) =>
-																!modulePermissions.projects?.[action]
+															(action) => !modulePermissions.projects?.[action]
 														) && (
 															<p className="text-xs text-gray-500">
 																Grant read, update, assign, close, delete or
@@ -2553,9 +2633,7 @@ export default function UserPermissionsPage() {
 												const fields = section.fields || {};
 												const enabledFieldCount = Object.keys(fields).filter(
 													(f) =>
-														fieldPermissions[activeModule]?.[
-															sectionKey
-														]?.[f] &&
+														fieldPermissions[activeModule]?.[sectionKey]?.[f] &&
 														fieldPermissions[activeModule][sectionKey][f] !==
 															'hidden'
 												).length;
@@ -2799,6 +2877,18 @@ export default function UserPermissionsPage() {
 					</div>
 				</div>
 			</div>
+
+			<RolePermissionDialog
+				open={roleDialogOpen}
+				roleName={user?.role_name}
+				initialPermissions={user?.role_permissions}
+				saving={roleSaving}
+				error={roleError}
+				onCloseAction={() => {
+					if (!roleSaving) setRoleDialogOpen(false);
+				}}
+				onSaveAction={handleSaveRolePermissions}
+			/>
 		</div>
 	);
 }
