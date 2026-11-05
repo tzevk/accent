@@ -2,7 +2,83 @@ import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
-import { isUserInProjectTeam } from '@/utils/project-access';
+import {
+	getProjectTeamMembership,
+	isUserInProjectTeam,
+} from '@/utils/project-access';
+import {
+	ASSIGNEE_NOT_PROJECT_MEMBER,
+	assigneeNotMemberMessage,
+} from '@/lib/project-rights';
+
+/** The one 409 body shared with the project assignment route. */
+function membershipConflict(name) {
+	return NextResponse.json(
+		{
+			success: false,
+			code: ASSIGNEE_NOT_PROJECT_MEMBER,
+			error: assigneeNotMemberMessage(name),
+		},
+		{ status: 409 }
+	);
+}
+
+function userLabel(user) {
+	return (
+		user?.full_name ||
+		user?.username ||
+		user?.email ||
+		'This person'
+	);
+}
+
+/**
+ * Every self-service mutation requires the acting user, and the target user
+ * when different, to be a current member of the target project's team. The
+ * stored `project_team` list is the only membership source, so an assignment
+ * can never attach a person to a project.
+ */
+async function requireAssignmentMembership(
+	db,
+	project,
+	currentUser,
+	targetUserId
+) {
+	const actorIsMember = getProjectTeamMembership(
+		project.project_team,
+		currentUser.id,
+		currentUser.email
+	).isMember;
+	if (!actorIsMember) {
+		return membershipConflict(userLabel(currentUser));
+	}
+
+	if (String(targetUserId) === String(currentUser.id)) return null;
+
+	const [rows] = await db.execute(
+		'SELECT id, full_name, username, email FROM users WHERE id = ? LIMIT 1',
+		[targetUserId]
+	);
+	const target = rows?.[0] || null;
+	const targetIsMember = getProjectTeamMembership(
+		project.project_team,
+		targetUserId,
+		target?.email
+	).isMember;
+	if (!targetIsMember) {
+		return membershipConflict(userLabel(target));
+	}
+
+	return null;
+}
+
+async function loadAssignmentProject(db, projectId) {
+	const [rows] = await db.execute(
+		'SELECT project_id, project_team FROM projects WHERE project_id = ? AND isDelete = 0 LIMIT 1',
+		[projectId]
+	);
+	return rows?.[0] || null;
+}
 
 async function generateTicketNumber(connection) {
 	const year = new Date().getFullYear();
@@ -577,6 +653,27 @@ export async function PUT(request, { params }) {
 
 		db = await dbConnect();
 
+		// Assignment writes require both the acting user and the target user
+		// to already be on the project team. A non-member changes nothing.
+		const project = await loadAssignmentProject(db, project_id);
+		if (!project) {
+			db.release();
+			return NextResponse.json(
+				{ success: false, error: 'Project not found' },
+				{ status: 404 }
+			);
+		}
+		const membershipFailure = await requireAssignmentMembership(
+			db,
+			project,
+			currentUser,
+			requestedUserId
+		);
+		if (membershipFailure) {
+			db.release();
+			return membershipFailure;
+		}
+
 		// Find the existing assignment row
 		const [existing] = await db.execute(
 			'SELECT * FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
@@ -789,9 +886,9 @@ export async function POST(request, { params }) {
 		db = await dbConnect();
 
 		const [projectRows] = await db.execute(
-			`SELECT project_id, name, project_code, project_manager
+			`SELECT project_id, name, project_code, project_manager, project_team
        FROM projects
-       WHERE project_id = ?
+       WHERE project_id = ? AND isDelete = 0
        LIMIT 1`,
 			[project_id]
 		);
@@ -805,6 +902,17 @@ export async function POST(request, { params }) {
 		}
 
 		const project = projectRows[0];
+
+		const membershipFailure = await requireAssignmentMembership(
+			db,
+			project,
+			currentUser,
+			requestedUserId
+		);
+		if (membershipFailure) {
+			db.release();
+			return membershipFailure;
+		}
 		// Check assignment via normalized table instead of JSON blob
 		const [assignments] = await db.execute(
 			'SELECT id FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
@@ -951,7 +1059,7 @@ export async function PATCH(request, { params }) {
 		db = await dbConnect();
 
 		const [projects] = await db.execute(
-			'SELECT project_id, project_activities_list FROM projects WHERE project_id = ?',
+			'SELECT project_id, project_team, project_activities_list FROM projects WHERE project_id = ? AND isDelete = 0',
 			[project_id]
 		);
 
@@ -964,6 +1072,17 @@ export async function PATCH(request, { params }) {
 		}
 
 		const project = projects[0];
+
+		const membershipFailure = await requireAssignmentMembership(
+			db,
+			project,
+			currentUser,
+			requestedUserId
+		);
+		if (membershipFailure) {
+			db.release();
+			return membershipFailure;
+		}
 		let activitiesList = project.project_activities_list;
 		if (typeof activitiesList === 'string') {
 			try {
@@ -1163,6 +1282,25 @@ export async function DELETE(request, { params }) {
 		}
 
 		db = await dbConnect();
+
+		const project = await loadAssignmentProject(db, project_id);
+		if (!project) {
+			db.release();
+			return NextResponse.json(
+				{ success: false, error: 'Project not found' },
+				{ status: 404 }
+			);
+		}
+		const membershipFailure = await requireAssignmentMembership(
+			db,
+			project,
+			currentUser,
+			requestedUserId
+		);
+		if (membershipFailure) {
+			db.release();
+			return membershipFailure;
+		}
 
 		const [deleteResult] = await db.execute(
 			'DELETE FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',

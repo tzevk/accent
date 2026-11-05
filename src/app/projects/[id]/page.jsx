@@ -25,7 +25,12 @@ import {
 	CheckCircleIcon,
 	ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
-import { PROJECT_TABS, TAB_ALIASES, resolveTabId } from '@/lib/project-tabs';
+import {
+	PROJECT_TABS,
+	TAB_ALIASES,
+	resolveTabId,
+	isFinancialAreaAllowed,
+} from '@/lib/project-tabs';
 import { sanitizeHtml } from '@/lib/sanitize';
 import dynamic from 'next/dynamic';
 const ProjectActivityTab = dynamic(
@@ -290,6 +295,7 @@ export default function ProjectViewPage() {
 		data: projectData,
 		error: fetchError,
 		isLoading: loading,
+		mutate: refreshProject,
 	} = useSWR(id ? `/api/projects/${id}` : null, fetchJSON);
 	const project = projectData?.success ? projectData.data : null;
 	const error =
@@ -298,25 +304,38 @@ export default function ProjectViewPage() {
 			? projectData.error || 'Failed to load project'
 			: null);
 
-	const isSuperAdmin =
-		sessionUser?.is_super_admin === true ||
-		sessionUser?.is_super_admin === 1 ||
-		sessionUser?.is_super_admin === '1';
-	const canEditProjectContent =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	const isEmployeeWorkspace = !isSuperAdmin && !canEditProjectContent;
+	// Server-resolved rights are the only source of tab visibility and
+	// read-only state. The client never re-derives project authority.
+	const rights = projectData?.rights ?? null;
+	const isEmployeeWorkspace = rights
+		? !rights.sections?.project_details?.read
+		: false;
+	const canEditProjectContent = Boolean(rights?.editableSections?.length);
 
-	const visibleTabs = useMemo(
-		() =>
-			isEmployeeWorkspace
-				? EMPLOYEE_TAB_IDS.map((tabId) =>
-						EMPLOYEE_TAB_CONFIG.find((tab) => tab.id === tabId)
-					).filter(Boolean)
-				: TAB_CONFIG.filter(
-						(tab) => !tab.requiresUpdate || canEditProjectContent
-					),
-		[canEditProjectContent, isEmployeeWorkspace]
-	);
+	const visibleTabs = useMemo(() => {
+		if (!rights) return [];
+		const readableSections = rights.readableSections || [];
+		const financialAreas = rights.financialAreas;
+		if (isEmployeeWorkspace) {
+			const sectionTabs = EMPLOYEE_TAB_IDS.filter((tabId) =>
+				readableSections.includes(tabId)
+			)
+				.map((tabId) => EMPLOYEE_TAB_CONFIG.find((tab) => tab.id === tabId))
+				.filter(Boolean);
+			const financialTabs = TAB_CONFIG.filter(
+				(tab) =>
+					tab.requiresPermission &&
+					isFinancialAreaAllowed(tab.id, financialAreas)
+			);
+			return [...sectionTabs, ...financialTabs];
+		}
+		return TAB_CONFIG.filter((tab) => {
+			if (tab.requiresPermission) {
+				return isFinancialAreaAllowed(tab.id, financialAreas);
+			}
+			return readableSections.includes(tab.id);
+		});
+	}, [rights, isEmployeeWorkspace]);
 
 	const focusTab = useCallback(
 		(index) => {
@@ -742,16 +761,19 @@ export default function ProjectViewPage() {
 		);
 	}
 
-	if (error || !project) {
+	if (error || !project || !rights) {
+		const denialMessage =
+			typeof error === 'string' && error
+				? error
+				: (error?.message ??
+					(!rights && project
+						? 'You do not have permission to access this project.'
+						: 'Project not found'));
 		return (
 			<div className="min-h-screen bg-gray-50 flex flex-col">
 				<Navbar />
 				<div className="flex-1 flex flex-col items-center justify-center text-sm text-gray-500 space-y-3 pt-16">
-					<p>
-						{typeof error === 'string' && error
-							? error
-							: (error?.message ?? 'Project not found')}
-					</p>
+					<p>{denialMessage}</p>
 					<Link
 						href="/projects"
 						className="px-4 py-2 text-xs rounded-md bg-[#7F2487] text-white hover:bg-[#6b1e72] transition-colors"
@@ -2387,7 +2409,11 @@ export default function ProjectViewPage() {
 
 					{/* Project Activity Tab — shows all team members' activity assignments */}
 					{activeTab === 'project_activity' && (
-						<ProjectActivityTab projectId={project.id ?? project.project_id} />
+						<ProjectActivityTab
+							projectId={project.id ?? project.project_id}
+							canAssignActivity={rights?.canAssignActivity === true}
+							onAssignmentChange={() => refreshProject()}
+						/>
 					)}
 
 					{/* Upload Documents Tab */}
@@ -2519,7 +2545,7 @@ export default function ProjectViewPage() {
 					)}
 
 					{/* Quotation Tab (read-only) */}
-					{activeTab === 'quotation' && (
+					{rights.financialAreas?.quotation && activeTab === 'quotation' && (
 						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
 								<div className="flex items-center gap-3">
@@ -2558,17 +2584,18 @@ export default function ProjectViewPage() {
 					)}
 
 					{/* Purchase Order Tab (read-only) */}
-					{activeTab === 'purchase_order' && (
-						<ProjectOrdersPanel
-							projectId={
-								project.id ?? project.project_id ?? project.project_code
-							}
-							canManageOrders={canEditProjectContent}
-						/>
-					)}
+					{rights.financialAreas?.purchase_order &&
+						activeTab === 'purchase_order' && (
+							<ProjectOrdersPanel
+								projectId={
+									project.id ?? project.project_id ?? project.project_code
+								}
+								canManageOrders={canEditProjectContent}
+							/>
+						)}
 
 					{/* Invoice Tab (read-only) */}
-					{activeTab === 'invoice' && (
+					{rights.financialAreas?.invoice && activeTab === 'invoice' && (
 						<section className="bg-white border border-gray-200/60 rounded-xl shadow-sm overflow-hidden">
 							<div className="border-b border-gray-200 bg-gray-50/80 px-6 py-4">
 								<div className="flex items-center gap-3">

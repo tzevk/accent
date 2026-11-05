@@ -1,36 +1,54 @@
-import { dbConnect } from '@/utils/database';
 import { randomUUID } from 'crypto';
 import {
-	ensurePermission,
-	getCurrentUser,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
-import { hasPermission } from '@/utils/rbac';
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
+
+function denied() {
+	return projectAccessDeniedResponse();
+}
+
+function releaseQuietly(db, ownsDb) {
+	if (!ownsDb) return;
+	try {
+		db?.release?.();
+	} catch {}
+}
+
+function projectKey(project) {
+	return project.project_id ?? project.id;
+}
+
+async function requireActivityAccess(request, id, options) {
+	return requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+		...options,
+	});
+}
 
 // GET - Fetch all activities for a project
 export async function GET(request, { params }) {
-	// RBAC check
-	const authResult = await ensurePermission(
-		request,
-		RESOURCES.PROJECTS,
-		PERMISSIONS.READ
-	);
-	if (authResult instanceof Response) return authResult;
-	if (!authResult.authorized) return authResult.response;
+	const { id } = await params;
+	if (!id) {
+		return Response.json(
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
+		);
+	}
 
-	let db;
+	const access = await requireActivityAccess(request, id);
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		const { id } = await params;
-		const projectId = parseInt(id);
-
-		db = await dbConnect();
+		if (!rights.sections.project_activity.read) return denied();
 
 		const [activities] = await db.execute(
 			`SELECT * FROM project_activities 
        WHERE project_id = ? 
        ORDER BY created_at DESC`,
-			[projectId]
+			[projectKey(project)]
 		);
 
 		return Response.json({
@@ -47,39 +65,27 @@ export async function GET(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) db.release();
+		releaseQuietly(db, ownsDb);
 	}
 }
 
 // POST - Add new activity to project
 export async function POST(request, { params }) {
-	// Check permission to edit project activities
-	const user = await getCurrentUser(request);
-	if (!user) {
+	const { id } = await params;
+	if (!id) {
 		return Response.json(
-			{ success: false, error: 'Unauthorized' },
-			{ status: 401 }
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
 		);
 	}
 
-	const hasUpdatePermission =
-		user.is_super_admin ||
-		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	const access = await requireActivityAccess(request, id);
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
 
-	if (!hasUpdatePermission) {
-		return Response.json(
-			{
-				success: false,
-				error: 'You do not have permission to add project activities',
-			},
-			{ status: 403 }
-		);
-	}
-
-	let db;
 	try {
-		const { id } = await params;
-		const projectId = parseInt(id);
+		if (!rights.sections.project_activity.edit) return denied();
+
 		const data = await request.json();
 
 		const {
@@ -107,8 +113,6 @@ export async function POST(request, { params }) {
 			);
 		}
 
-		db = await dbConnect();
-
 		let finalActivityId = activity_id;
 		let finalDisciplineId = discipline_id;
 
@@ -130,8 +134,6 @@ export async function POST(request, { params }) {
 					masterError
 				);
 				// Continue anyway - we'll still save to project_activities
-			} finally {
-				if (db) db.release();
 			}
 		}
 
@@ -147,7 +149,7 @@ export async function POST(request, { params }) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[
 				projectActivityId,
-				projectId,
+				projectKey(project),
 				finalActivityId || null,
 				activity_name,
 				finalDisciplineId || null,
@@ -181,38 +183,28 @@ export async function POST(request, { params }) {
 			},
 			{ status: 500 }
 		);
+	} finally {
+		releaseQuietly(db, ownsDb);
 	}
 }
 
 // PUT - Update existing project activity
 export async function PUT(request, { params }) {
-	// Check permission to edit project activities
-	const user = await getCurrentUser(request);
-	if (!user) {
+	const { id } = await params;
+	if (!id) {
 		return Response.json(
-			{ success: false, error: 'Unauthorized' },
-			{ status: 401 }
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
 		);
 	}
 
-	const hasUpdatePermission =
-		user.is_super_admin ||
-		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	const access = await requireActivityAccess(request, id);
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
 
-	if (!hasUpdatePermission) {
-		return Response.json(
-			{
-				success: false,
-				error: 'You do not have permission to update project activities',
-			},
-			{ status: 403 }
-		);
-	}
-
-	let db;
 	try {
-		const { id } = await params;
-		const projectId = parseInt(id);
+		if (!rights.sections.project_activity.edit) return denied();
+
 		const data = await request.json();
 
 		const {
@@ -237,8 +229,6 @@ export async function PUT(request, { params }) {
 			);
 		}
 
-		db = await dbConnect();
-
 		await db.execute(
 			`UPDATE project_activities SET 
         activity_name = COALESCE(?, activity_name),
@@ -261,7 +251,7 @@ export async function PUT(request, { params }) {
 				progress_percentage !== undefined ? progress_percentage : null,
 				notes || null,
 				activity_record_id,
-				projectId,
+				projectKey(project),
 			]
 		);
 
@@ -280,57 +270,42 @@ export async function PUT(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) db.release();
+		releaseQuietly(db, ownsDb);
 	}
 }
 
 // DELETE - Remove activity from project
 export async function DELETE(request, { params }) {
-	// Check permission to edit project activities
-	const user = await getCurrentUser(request);
-	if (!user) {
+	const { id } = await params;
+	const { searchParams } = new URL(request.url);
+	const activityRecordId = searchParams.get('activity_record_id');
+
+	if (!id) {
 		return Response.json(
-			{ success: false, error: 'Unauthorized' },
-			{ status: 401 }
+			{ success: false, error: 'Project ID is required' },
+			{ status: 400 }
 		);
 	}
-
-	const hasUpdatePermission =
-		user.is_super_admin ||
-		hasPermission(user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-
-	if (!hasUpdatePermission) {
+	if (!activityRecordId) {
 		return Response.json(
 			{
 				success: false,
-				error: 'You do not have permission to delete project activities',
+				error: 'Activity record ID is required',
 			},
-			{ status: 403 }
+			{ status: 400 }
 		);
 	}
 
-	let db;
+	const access = await requireActivityAccess(request, id);
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		const { id } = await params;
-		const projectId = parseInt(id);
-		const { searchParams } = new URL(request.url);
-		const activityRecordId = searchParams.get('activity_record_id');
-
-		if (!activityRecordId) {
-			return Response.json(
-				{
-					success: false,
-					error: 'Activity record ID is required',
-				},
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
+		if (!rights.sections.project_activity.edit) return denied();
 
 		await db.execute(
 			'DELETE FROM project_activities WHERE id = ? AND project_id = ?',
-			[activityRecordId, projectId]
+			[activityRecordId, projectKey(project)]
 		);
 
 		return Response.json({
@@ -348,6 +323,6 @@ export async function DELETE(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) db.release();
+		releaseQuietly(db, ownsDb);
 	}
 }

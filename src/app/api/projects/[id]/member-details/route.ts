@@ -1,13 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/utils/database';
 import type { PoolConnection } from 'mysql2/promise';
-import { getCurrentUser } from '@/utils/api-permissions';
 import { logActivity } from '@/utils/activity-logger';
 import {
-	hasUserProjectAssignment,
-	isUserInProjectTeam,
-} from '@/utils/project-access';
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 type MemberSection =
 	| 'assumption'
@@ -50,14 +49,6 @@ function jsonResponse(
 	status = 200
 ): NextResponse {
 	return NextResponse.json(body, { status });
-}
-
-function isSuperAdmin(user: RequestUser): boolean {
-	return (
-		user.is_super_admin === true ||
-		user.is_super_admin === 1 ||
-		user.is_super_admin === '1'
-	);
 }
 
 function userLabel(user: RequestUser): string {
@@ -108,90 +99,12 @@ function projectKeyColumn(project: ProjectRow): 'id' | 'project_id' {
 	return project.id !== undefined && project.id !== null ? 'id' : 'project_id';
 }
 
-async function findProject(
-	db: PoolConnection,
-	routeId: string
-): Promise<ProjectRow | null> {
-	try {
-		const [rows] = await db.execute(
-			`SELECT * FROM projects
-             WHERE (id = ? OR project_id = ? OR project_code = ?)
-               AND (isDelete = 0 OR isDelete IS NULL)
-             LIMIT 1`,
-			[routeId, routeId, routeId]
-		);
-		return (rows as ProjectRow[] | undefined)?.[0] || null;
-	} catch {
-		// Older installations use project_id as the numeric primary key and do
-		// not expose an id column. Keep the member endpoint compatible with both.
-		const [rows] = await db.execute(
-			`SELECT * FROM projects
-             WHERE (project_id = ? OR project_code = ?)
-               AND (isDelete = 0 OR isDelete IS NULL)
-             LIMIT 1`,
-			[routeId, routeId]
-		);
-		return (rows as ProjectRow[] | undefined)?.[0] || null;
-	}
-}
-
-async function getRequestContext(
-	request: Request,
+async function resolveRouteId(
 	params: Promise<{ id?: string }> | { id?: string }
-): Promise<
-	{ user: RequestUser; routeId: string } | { response: NextResponse }
-> {
-	const user = (await getCurrentUser(request)) as RequestUser | null;
-	if (!user) {
-		return {
-			response: jsonResponse({ success: false, error: 'Unauthorized' }, 401),
-		};
-	}
-
+): Promise<string | null> {
 	const { id } = await params;
 	const routeId = typeof id === 'string' ? id.trim() : '';
-	if (!routeId || routeId === 'undefined') {
-		return {
-			response: jsonResponse(
-				{ success: false, error: 'Invalid project id' },
-				400
-			),
-		};
-	}
-
-	return { user, routeId };
-}
-
-async function authorizeProject(
-	db: PoolConnection,
-	project: ProjectRow,
-	user: RequestUser
-): Promise<NextResponse | null> {
-	if (isSuperAdmin(user)) return null;
-
-	const isTeamMember = isUserInProjectTeam(
-		project.project_team,
-		user.id,
-		user.email
-	);
-	const assignmentProject = {
-		id: project.id ?? undefined,
-		project_id: project.project_id ?? undefined,
-		project_code: project.project_code ?? undefined,
-	};
-	const hasAssignment =
-		!isTeamMember &&
-		(await hasUserProjectAssignment(db, assignmentProject, user.id));
-	if (!isTeamMember && !hasAssignment) {
-		return jsonResponse(
-			{
-				success: false,
-				error: 'You do not have permission to access this project',
-			},
-			403
-		);
-	}
-	return null;
+	return routeId && routeId !== 'undefined' ? routeId : null;
 }
 
 function serverMetadata(user: RequestUser): {
@@ -273,26 +186,19 @@ export async function GET(
 	request: Request,
 	{ params }: { params: Promise<{ id?: string }> }
 ) {
-	const context = await getRequestContext(request, params);
-	if ('response' in context) return context.response;
+	const routeId = await resolveRouteId(params);
+	if (!routeId) {
+		return jsonResponse({ success: false, error: 'Invalid project id' }, 400);
+	}
 
-	let db: PoolConnection | null = null;
+	const access = await requireProjectAccess(request, routeId, {
+		getLeadPolicy: loadLeadPolicy,
+	});
+	if ('response' in access) return access.response;
+	const { project, rights, db, ownsDb } = access;
+
 	try {
-		db = await dbConnect();
-		if (!db) throw new Error('Database connection unavailable');
-		const project = await findProject(db, context.routeId);
-		if (!project) {
-			return jsonResponse({ success: false, error: 'Project not found' }, 404);
-		}
-
-		const authorizationError = await authorizeProject(
-			db,
-			project,
-			context.user
-		);
-		if (authorizationError) return authorizationError;
-
-		const numericProjectId = projectRowId(project);
+		const numericProjectId = projectRowId(project as ProjectRow);
 		if (numericProjectId === null) {
 			return jsonResponse(
 				{ success: false, error: 'Member project details are unavailable' },
@@ -300,20 +206,30 @@ export async function GET(
 			);
 		}
 
-		const [discussionRows] = await db.execute(
-			`SELECT * FROM project_followups
+		let discussions: unknown[] = [];
+		if (rights.sections.discussion.read) {
+			const [discussionRows] = await db.execute(
+				`SELECT * FROM project_followups
              WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)
              ORDER BY follow_up_date DESC, created_at DESC`,
-			[numericProjectId]
-		);
+				[numericProjectId]
+			);
+			discussions = Array.isArray(discussionRows) ? discussionRows : [];
+		}
 
 		return jsonResponse({
 			success: true,
 			data: {
-				assumptions: parseList(project.project_assumption_list),
-				discussions: Array.isArray(discussionRows) ? discussionRows : [],
-				queryLog: parseList(project.project_query_log_list),
-				lessonsLearnt: parseList(project.project_lessons_learnt_list),
+				assumptions: rights.sections.assumption.read
+					? parseList(project.project_assumption_list)
+					: [],
+				discussions,
+				queryLog: rights.sections.query_log.read
+					? parseList(project.project_query_log_list)
+					: [],
+				lessonsLearnt: rights.sections.lessons_learnt.read
+					? parseList(project.project_lessons_learnt_list)
+					: [],
 			},
 		});
 	} catch (error) {
@@ -323,7 +239,7 @@ export async function GET(
 			500
 		);
 	} finally {
-		if (db) db.release();
+		if (ownsDb) db.release?.();
 	}
 }
 
@@ -331,8 +247,10 @@ export async function POST(
 	request: Request,
 	{ params }: { params: Promise<{ id?: string }> }
 ) {
-	const context = await getRequestContext(request, params);
-	if ('response' in context) return context.response;
+	const routeId = await resolveRouteId(params);
+	if (!routeId) {
+		return jsonResponse({ success: false, error: 'Invalid project id' }, 400);
+	}
 
 	let body: unknown;
 	try {
@@ -386,22 +304,23 @@ export async function POST(
 		);
 	}
 
-	let db: PoolConnection | null = null;
+	const access = await requireProjectAccess(request, routeId, {
+		requireContribution: true,
+		getLeadPolicy: loadLeadPolicy,
+	});
+	if ('response' in access) return access.response;
+	const project = access.project as ProjectRow;
+	const rights = access.rights;
+	// A lead whose shared policy keeps this section read-only or hidden cannot
+	// append through a direct request. Ordinary members keep contributing.
+	if (rights.isLead && !rights.sections[typedSection].edit) {
+		return projectAccessDeniedResponse();
+	}
+	const { ownsDb } = access;
+	const user = access.user as RequestUser;
+	const db = access.db as unknown as PoolConnection;
+
 	try {
-		db = await dbConnect();
-		if (!db) throw new Error('Database connection unavailable');
-		const project = await findProject(db, context.routeId);
-		if (!project) {
-			return jsonResponse({ success: false, error: 'Project not found' }, 404);
-		}
-
-		const authorizationError = await authorizeProject(
-			db,
-			project,
-			context.user
-		);
-		if (authorizationError) return authorizationError;
-
 		const numericProjectId = projectRowId(project);
 		if (numericProjectId === null) {
 			return jsonResponse(
@@ -420,8 +339,8 @@ export async function POST(
 				status: 'Scheduled',
 				priority: 'Medium',
 				responsible_person: textValue(typedEntry, 'responsible_person'),
-				logged_by: userLabel(context.user),
-				created_by: userLabel(context.user),
+				logged_by: userLabel(user),
+				created_by: userLabel(user),
 			};
 			const [result] = await db.execute(
 				`INSERT INTO project_followups
@@ -488,7 +407,7 @@ export async function POST(
 					);
 				}
 
-				createdEntry = buildJsonEntry(typedSection, typedEntry, context.user);
+				createdEntry = buildJsonEntry(typedSection, typedEntry, user);
 				const nextEntries = [...parseList(lockedProject[column]), createdEntry];
 				await db.execute(
 					`UPDATE projects SET ${column} = ? WHERE ${projectKey} = ?
@@ -508,7 +427,7 @@ export async function POST(
 
 		await recordActivity(
 			request,
-			context.user,
+			user,
 			numericProjectId,
 			typedSection,
 			createdEntry
@@ -524,6 +443,6 @@ export async function POST(
 			500
 		);
 	} finally {
-		if (db) db.release();
+		if (ownsDb) db.release();
 	}
 }

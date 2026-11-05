@@ -14,6 +14,33 @@ import {
 	resolveAccessState,
 } from '@/utils/account-links';
 
+/**
+ * Normalize the role permission column to the flat array the permission
+ * screen consumes. MySQL may return a JSON string, an array, or a legacy
+ * comma-separated value.
+ */
+function parseRolePermissions(value) {
+	if (Array.isArray(value)) {
+		return value.filter((item) => typeof item === 'string');
+	}
+	if (typeof value === 'string') {
+		const text = value.trim();
+		if (!text) return [];
+		try {
+			const parsed = JSON.parse(text);
+			if (Array.isArray(parsed)) {
+				return parsed.filter((item) => typeof item === 'string');
+			}
+		} catch {
+			return text
+				.split(',')
+				.map((item) => item.trim())
+				.filter(Boolean);
+		}
+	}
+	return [];
+}
+
 // GET - fetch single user by ID
 export async function GET(request, { params }) {
 	let db;
@@ -45,6 +72,7 @@ export async function GET(request, { params }) {
              u.created_at, u.last_login, u.last_password_change,
              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
              e.first_name, e.last_name, e.email as employee_email, e.department as employee_department,
+             r.permissions AS role_permissions, r.role_hierarchy,
              r.role_name, r.role_code
       FROM users u
       LEFT JOIN employees e ON u.employee_id = e.id
@@ -63,9 +91,13 @@ export async function GET(request, { params }) {
 			);
 		}
 
+		const user = rows[0];
 		return NextResponse.json({
 			success: true,
-			data: rows[0],
+			data: {
+				...user,
+				role_permissions: parseRolePermissions(user.role_permissions),
+			},
 		});
 	} catch (error) {
 		console.error('Error fetching user:', error);
@@ -234,6 +266,7 @@ export async function PUT(request, { params }) {
              u.permissions, u.field_permissions,
              u.created_at, u.last_login, u.last_password_change,
              CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+             r.permissions AS role_permissions, r.role_hierarchy,
              r.role_name, r.role_code
       FROM users u
       LEFT JOIN employees e ON u.employee_id = e.id
@@ -244,9 +277,13 @@ export async function PUT(request, { params }) {
 
 		await db.release();
 
+		const updatedUser = rows[0];
 		return NextResponse.json({
 			success: true,
-			data: rows[0],
+			data: {
+				...updatedUser,
+				role_permissions: parseRolePermissions(updatedUser.role_permissions),
+			},
 			message: 'User updated successfully',
 		});
 	} catch (error) {

@@ -7,6 +7,11 @@ import {
 } from '@/utils/api-permissions';
 import { sanitizeOptionalRichText } from '@/lib/sanitize-fields';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import {
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 // Quotation numbers are ATSPL/Q/<MM>/<YY-YY>/<NNN>. The sequence is the
 // highest ACTIVE number for the current month/FY (floor 107, the historical
@@ -51,6 +56,15 @@ export async function GET(request, { params }) {
 		const { id } = await params;
 		connection = await dbConnect();
 
+		const access = await requireProjectAccess(request, id, {
+			db: connection,
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		if (!access.rights.financialAreas.quotation) {
+			return projectAccessDeniedResponse();
+		}
+
 		// Fetch quotation for this project
 		const [rows] = await connection.execute(
 			'SELECT * FROM project_quotations WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL)',
@@ -92,6 +106,17 @@ export async function POST(request, { params }) {
 	let connection;
 	try {
 		const { id } = await params;
+		connection = await dbConnect();
+
+		const access = await requireProjectAccess(request, id, {
+			db: connection,
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		if (!access.rights.financialAreas.quotation) {
+			return projectAccessDeniedResponse();
+		}
+
 		const body = await request.json();
 
 		const {
@@ -110,8 +135,6 @@ export async function POST(request, { params }) {
 		// scope_of_work is an HTML-bound column (quotation documents): sanitize
 		// at the write boundary (ADR-0012).
 		const scope_of_work = sanitizeOptionalRichText(rawScopeOfWork);
-
-		connection = await dbConnect();
 
 		// The existence check, number generation and the upsert are one
 		// transaction: the check locks the project's row (FOR UPDATE) so

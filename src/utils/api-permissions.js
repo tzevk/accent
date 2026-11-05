@@ -95,13 +95,15 @@ export async function getCurrentUser(request, options = {}) {
  * with `enabled: false`. All consumers use optional chaining — absence
  * of a key is already treated identically to `enabled: false`.
  */
-function stripDisabledModules(fp) {
+export function stripDisabledModules(fp) {
 	if (!fp?.modules) return fp;
 	const enabled = {};
 	for (const [key, mod] of Object.entries(fp.modules)) {
 		if (mod?.enabled) enabled[key] = mod;
 	}
-	return Object.keys(enabled).length > 0 ? { modules: enabled } : {};
+	// Keep every sibling key (for example projectScopes) even when no module
+	// remains enabled; only the modules tree is pruned.
+	return { ...fp, modules: enabled };
 }
 
 async function _fetchUserFromDb(tokenHash) {

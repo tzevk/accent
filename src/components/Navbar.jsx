@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import accentLogo from '@/../public/accent-logo.png';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
 	HomeIcon,
 	DocumentTextIcon,
@@ -403,6 +403,21 @@ const adminMenuGroups = [
 		],
 	},
 	{
+		key: 'project-access',
+		name: 'Project Access',
+		icon: ShieldCheckIcon,
+		items: [
+			{
+				// One shared policy for every project; gated on projects:update
+				// at the API and the admin shell.
+				name: 'Lead Policy',
+				href: '/admin/project-lead-policy',
+				icon: ShieldCheckIcon,
+				resource: 'projects',
+			},
+		],
+	},
+	{
 		key: 'monitoring',
 		name: 'Monitoring',
 		icon: ChartBarIcon,
@@ -441,6 +456,46 @@ export default function Navbar() {
 		RESOURCES,
 		PERMISSIONS,
 	} = useSessionRBAC();
+	// Projects visibility also comes from project relationships (team
+	// membership, lead designation, or scoped explicit grants). Ask the server
+	// once per session instead of re-deriving that policy in the client.
+	const [hasProjectAccess, setHasProjectAccess] = useState(false);
+	const projectAccessUserIdRef = useRef(null);
+	useEffect(() => {
+		if (userLoading) return;
+		if (!user) {
+			projectAccessUserIdRef.current = null;
+			setHasProjectAccess(false);
+			return;
+		}
+		if (user.is_super_admin) {
+			setHasProjectAccess(true);
+			return;
+		}
+		if (projectAccessUserIdRef.current === user.id) return;
+		projectAccessUserIdRef.current = user.id;
+
+		let cancelled = false;
+		const loadProjectAccess = async () => {
+			try {
+				const response = await fetch('/api/projects/access', {
+					cache: 'no-store',
+				});
+				if (!response.ok) throw new Error(`HTTP ${response.status}`);
+				const body = await response.json();
+				if (!cancelled) {
+					setHasProjectAccess(Boolean(body?.data?.hasAccess));
+				}
+			} catch {
+				if (!cancelled) setHasProjectAccess(false);
+			}
+		};
+		loadProjectAccess();
+		return () => {
+			cancelled = true;
+		};
+	}, [user, userLoading]);
+
 	const displayName =
 		user?.full_name || user?.username || (userLoading ? '' : 'Account');
 	const displayEmail = user?.email || '';
@@ -452,9 +507,16 @@ export default function Navbar() {
 		if (user.is_super_admin) return navigationConfig; // Super admin sees all
 
 		return navigationConfig.filter((item) => {
+			if (item.href === '/projects') {
+				// `/api/projects/access` is authoritative: it includes a
+				// super admin and any scoped action that actually covers a
+				// project. A global `projects:read` string says nothing about
+				// project scope, so it must not reveal the entry.
+				return hasProjectAccess;
+			}
 			return can(item.resource, PERMISSIONS.READ);
 		});
-	}, [user, userLoading, can, PERMISSIONS]);
+	}, [user, userLoading, can, PERMISSIONS, hasProjectAccess]);
 
 	// Mobile-only page list — mirrors the sidebar, which is hidden below 640px
 	const mobilePageItems = useMemo(() => {
@@ -477,6 +539,9 @@ export default function Navbar() {
 	const showAdminMenu = useMemo(() => {
 		if (userLoading || !user) return false; // Hide admin while loading
 		if (user.is_super_admin) return true;
+		// Project administrators maintain the shared lead policy, which lives
+		// under /admin; the admin shell itself carries no data.
+		if (can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE)) return true;
 		return can(RESOURCES.ADMIN, PERMISSIONS.READ) || can('admin', 'read');
 	}, [user, userLoading, can, RESOURCES, PERMISSIONS]);
 

@@ -9,6 +9,11 @@ import {
 	fetchOrders,
 	OrderError,
 } from '@/lib/company-expenditure';
+import {
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 /**
  * The Project tab's order surface (ticket #310).
@@ -48,12 +53,23 @@ export async function GET(request, { params }) {
 
 	try {
 		const { id } = await params;
-		const data = await fetchOrders({
-			projectId: id,
-			limit: 200,
-			includeCancelled: true,
+		const access = await requireProjectAccess(request, id, {
+			getLeadPolicy: loadLeadPolicy,
 		});
-		return NextResponse.json({ success: true, data });
+		if ('response' in access) return access.response;
+		try {
+			if (!access.rights.financialAreas.purchase_order) {
+				return projectAccessDeniedResponse();
+			}
+			const data = await fetchOrders({
+				projectId: id,
+				limit: 200,
+				includeCancelled: true,
+			});
+			return NextResponse.json({ success: true, data });
+		} finally {
+			if (access.ownsDb) access.db.release?.();
+		}
 	} catch (error) {
 		if (error instanceof OrderError) return errorResponse(error);
 		console.error('Error fetching project orders:', error);
@@ -75,28 +91,39 @@ export async function POST(request, { params }) {
 
 	try {
 		const { id } = await params;
-		const body = await request.json();
-		const order = await createOrder(
-			{
-				direction: body.direction,
-				orderNumber: body.order_number,
-				counterpartyName: body.counterparty_name,
-				projectId: id,
-				currency: body.currency,
-				amountBasis: body.amount_basis,
-				grossAmount: body.gross_amount,
-				taxAmount: body.tax_amount,
-				netAmount: body.net_amount,
-				orderDate: body.order_date,
-				status: body.status,
-				firmness: body.firmness,
-				firmnessEvidenceReference: body.firmness_evidence_reference,
-				sourceDocumentReference: body.source_document_reference,
-				remarks: body.remarks,
-			},
-			{ id: auth.user?.id ?? null, name: auth.user?.full_name ?? null }
-		);
-		return NextResponse.json({ success: true, data: order });
+		const access = await requireProjectAccess(request, id, {
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		try {
+			if (!access.rights.financialAreas.purchase_order) {
+				return projectAccessDeniedResponse();
+			}
+			const body = await request.json();
+			const order = await createOrder(
+				{
+					direction: body.direction,
+					orderNumber: body.order_number,
+					counterpartyName: body.counterparty_name,
+					projectId: id,
+					currency: body.currency,
+					amountBasis: body.amount_basis,
+					grossAmount: body.gross_amount,
+					taxAmount: body.tax_amount,
+					netAmount: body.net_amount,
+					orderDate: body.order_date,
+					status: body.status,
+					firmness: body.firmness,
+					firmnessEvidenceReference: body.firmness_evidence_reference,
+					sourceDocumentReference: body.source_document_reference,
+					remarks: body.remarks,
+				},
+				{ id: auth.user?.id ?? null, name: auth.user?.full_name ?? null }
+			);
+			return NextResponse.json({ success: true, data: order });
+		} finally {
+			if (access.ownsDb) access.db.release?.();
+		}
 	} catch (error) {
 		if (error instanceof OrderError) return errorResponse(error);
 		if (error instanceof SyntaxError) {

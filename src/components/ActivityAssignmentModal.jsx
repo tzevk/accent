@@ -9,7 +9,9 @@ import {
 	UserIcon,
 	ClockIcon,
 } from '@heroicons/react/24/outline';
-import { fetchJSON } from '@/utils/http';
+import { fetchJSON, parseJSONSafe } from '@/utils/http';
+
+const ASSIGNEE_NOT_PROJECT_MEMBER = 'ASSIGNEE_NOT_PROJECT_MEMBER';
 
 export default function ActivityAssignmentModal({
 	isOpen,
@@ -88,7 +90,42 @@ export default function ActivityAssignmentModal({
 		}
 	};
 
-	const handleAddAssignment = () => {
+	const submitAssignment = async (assignment) => {
+		const res = await fetch(`/api/projects/${projectId}/assign-activities`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ activities: [assignment] }),
+		});
+		try {
+			return await parseJSONSafe(res);
+		} catch {
+			return { success: false, error: 'Failed to assign activity' };
+		}
+	};
+
+	const addAssigneeToTeam = async (user) => {
+		const res = await fetch(`/api/projects/${projectId}/team`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				operation: 'add_member',
+				member: {
+					user_id: user.id,
+					id: user.id,
+					name: user.full_name || user.username || '',
+					email: user.email || '',
+					role: 'Team Member',
+				},
+			}),
+		});
+		const result = await parseJSONSafe(res);
+		if (!res.ok || result?.success === false) {
+			throw new Error(result?.error || 'Failed to add the team member');
+		}
+		return result;
+	};
+
+	const handleAddAssignment = async () => {
 		if (!newAssignment.user_id || !newAssignment.activity_name) {
 			alert('Please select a user, discipline, and activity');
 			return;
@@ -109,39 +146,61 @@ export default function ActivityAssignmentModal({
 
 		setSaving(true);
 
-		// Save assignment immediately
-		fetchJSON(`/api/projects/${projectId}/assign-activities`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ activities: [assignment] }),
-		})
-			.then((result) => {
-				if (result.success) {
-					// Reload assignments
-					loadData();
-					// Reset form
-					setSelectedDisciplineId('');
-					setNewAssignment({
-						user_id: '',
-						activity_id: '',
-						activity_name: '',
-						activity_description: '',
-						due_date: '',
-						priority: 'MEDIUM',
-						estimated_hours: '',
-					});
-					if (onSuccess) onSuccess();
-				} else {
-					alert(result.error || 'Failed to assign activity');
+		try {
+			let result = await submitAssignment(assignment);
+
+			if (
+				result?.code === ASSIGNEE_NOT_PROJECT_MEMBER &&
+				!result.success
+			) {
+				const user = users.find(
+					(candidate) => String(candidate.id) === String(assignment.user_id)
+				);
+				const name = user?.full_name || user?.username || 'this person';
+				const shouldAdd = window.confirm(
+					`${result.error}\n\nAdd ${name} to the Project Team now and retry this assignment?`
+				);
+				if (!shouldAdd) {
+					alert(
+						`No assignment was created. Add ${name} to the Project Team first, then assign the activity again.`
+					);
+					return;
 				}
-			})
-			.catch((error) => {
-				console.error('Assignment error:', error);
-				alert('Failed to assign activity');
-			})
-			.finally(() => {
-				setSaving(false);
-			});
+
+				try {
+					await addAssigneeToTeam(user || { id: assignment.user_id });
+				} catch (error) {
+					alert(error.message || 'Failed to add the team member');
+					return;
+				}
+
+				result = await submitAssignment(assignment);
+			}
+
+			if (result?.success) {
+				// Reload assignments
+				loadData();
+				// Reset form
+				setSelectedDisciplineId('');
+				setNewAssignment({
+					user_id: '',
+					activity_id: '',
+					activity_name: '',
+					activity_description: '',
+					due_date: '',
+					priority: 'MEDIUM',
+					estimated_hours: '',
+				});
+				if (onSuccess) onSuccess();
+			} else {
+				alert(result?.error || 'Failed to assign activity');
+			}
+		} catch (error) {
+			console.error('Assignment error:', error);
+			alert('Failed to assign activity');
+		} finally {
+			setSaving(false);
+		}
 	};
 
 	const handleRemoveAssignment = async (assignmentId) => {

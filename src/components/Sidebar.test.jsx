@@ -12,7 +12,11 @@ vi.mock('@/utils/client-rbac', () => ({
 		loading: false,
 		user: { is_super_admin: 0, email: 'reader@example.com' },
 		can: () => true,
-		RESOURCES: { EMPLOYEES: 'employees', PAYROLL: 'payroll' },
+		RESOURCES: {
+			EMPLOYEES: 'employees',
+			PAYROLL: 'payroll',
+			SETTINGS: 'settings',
+		},
 		PERMISSIONS: { READ: 'read' },
 	}),
 }));
@@ -51,6 +55,14 @@ describe('Sidebar employee master children', () => {
 		expect(
 			screen.getByRole('link', { name: 'Leave Requests' })
 		).toHaveAttribute('href', '/employees/leaves');
+	});
+
+	it('offers role permission management under the employee master', () => {
+		renderSidebar();
+
+		expect(
+			screen.getByRole('link', { name: 'Edit Role Permissions' })
+		).toHaveAttribute('href', '/employees/role-permissions');
 	});
 
 	it('drops the children that pointed at the merged pay routes', () => {

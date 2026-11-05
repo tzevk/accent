@@ -1,11 +1,99 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
-import {
-	ensurePermission,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
 import { randomUUID } from 'crypto';
+import {
+	ASSIGNEE_NOT_PROJECT_MEMBER,
+	PROJECT_ACCESS_DENIED,
+	assigneeNotMemberMessage,
+	findNonMemberTargets,
+	requireProjectAccess,
+} from '@/lib/project-rights';
+
+/** The one 409 body for a target who is not on the project team. */
+function assigneeConflict(name) {
+	return NextResponse.json(
+		{
+			success: false,
+			code: ASSIGNEE_NOT_PROJECT_MEMBER,
+			error: assigneeNotMemberMessage(name),
+		},
+		{ status: 409 }
+	);
+}
+
+function forbidden() {
+	return NextResponse.json(
+		{ success: false, error: PROJECT_ACCESS_DENIED },
+		{ status: 403 }
+	);
+}
+
+function projectKey(project) {
+	const value = project?.project_id ?? project?.id;
+	return value === null || value === undefined ? null : value;
+}
+
+function releaseQuietly(db) {
+	if (!db) return;
+	try {
+		db.release();
+	} catch {}
+}
+
+/**
+ * Resolve the display identity of every requested assignee in one query so
+ * membership can match id or email. A missing user row is not an error here:
+ * the stored team list is the membership source.
+ */
+async function loadAssignmentTargets(db, userIds) {
+	const ids = [
+		...new Set(
+			(userIds || [])
+				.map((value) => Number(value))
+				.filter((value) => Number.isFinite(value) && value > 0)
+		),
+	];
+	if (ids.length === 0) return [];
+
+	const placeholders = ids.map(() => '?').join(', ');
+	const [rows] = await db.execute(
+		`SELECT id, full_name, username, email FROM users WHERE id IN (${placeholders})`,
+		ids
+	);
+	const byId = new Map((rows || []).map((row) => [String(row.id), row]));
+
+	return ids.map((id) => {
+		const row = byId.get(String(id));
+		return {
+			userId: id,
+			email: row?.email ?? null,
+			name: row?.full_name || row?.username || row?.email || null,
+		};
+	});
+}
+
+/** Membership pre-pass: no write happens when any target is a non-member. */
+async function firstNonMember(db, project, targets) {
+	const identities = await loadAssignmentTargets(
+		db,
+		targets.map((target) => target.userId)
+	);
+	const targetsWithIdentity = targets.map((target) => {
+		const identity = identities.find(
+			(candidate) => String(candidate.userId) === String(target.userId)
+		);
+		return {
+			...target,
+			email: identity?.email ?? target.email ?? null,
+			name: identity?.name ?? target.name ?? null,
+		};
+	});
+	const nonMembers = findNonMemberTargets(
+		project?.project_team,
+		targetsWithIdentity
+	);
+	return nonMembers[0] || null;
+}
 
 /**
  * POST /api/projects/[id]/assign-activities
@@ -13,7 +101,7 @@ import { randomUUID } from 'crypto';
  *
  * Request body:
  * {
- *   assignments: [
+ *   activities: [
  *     {
  *       user_id: number,
  *       employee_id?: number,
@@ -32,23 +120,17 @@ import { randomUUID } from 'crypto';
 export async function POST(request, { params }) {
 	let db;
 	try {
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.ASSIGN
-		);
-		if (!auth.authorized)
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-
+		db = await dbConnect();
 		const { id } = await params;
-		const projectId = parseInt(id);
-		const currentUser = auth.user;
+		const access = await requireProjectAccess(request, id, { db });
+		if ('response' in access) return access.response;
+		if (!access.rights.canAssignActivity) return forbidden();
+
+		const projectId = projectKey(access.project);
+		const currentUser = access.user;
 		const data = await request.json();
 
-		const { assignments } = data;
+		const assignments = data?.activities ?? data?.assignments;
 
 		if (
 			!assignments ||
@@ -64,25 +146,25 @@ export async function POST(request, { params }) {
 			);
 		}
 
-		db = await dbConnect();
-
-		// Verify project exists
-		const [projectCheck] = await db.execute(
-			'SELECT project_id, project_title FROM projects WHERE project_id = ? AND isDelete = 0',
-			[projectId]
+		// Membership is checked for every target before the first write. A
+		// non-member blocks the whole batch and no team row is touched.
+		const targets = assignments
+			.filter(
+				(assignment) =>
+					assignment &&
+					assignment.user_id !== null &&
+					assignment.user_id !== undefined &&
+					assignment.user_id !== ''
+			)
+			.map((assignment) => ({ userId: assignment.user_id }));
+		const nonMember = await firstNonMember(
+			db,
+			access.project,
+			targets
 		);
+		if (nonMember) return assigneeConflict(nonMember.name);
 
-		if (projectCheck.length === 0) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: 'Project not found',
-				},
-				{ status: 404 }
-			);
-		}
-
-		const project = projectCheck[0];
+		const project = access.project;
 		const assignmentIds = [];
 		const errors = [];
 
@@ -191,8 +273,6 @@ export async function POST(request, { params }) {
 					index: i,
 					error: error.message || 'Unknown error occurred',
 				});
-			} finally {
-				if (db) db.release();
 			}
 		}
 
@@ -232,6 +312,8 @@ export async function POST(request, { params }) {
 			},
 			{ status: 500 }
 		);
+	} finally {
+		releaseQuietly(db);
 	}
 }
 
@@ -242,22 +324,23 @@ export async function POST(request, { params }) {
  */
 export async function GET(request, { params }) {
 	let db;
+	let ownsDb = false;
 	try {
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.READ
-		);
-		if (!auth.authorized)
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-
 		const { id } = await params;
-		const projectId = parseInt(id);
+		const access = await requireProjectAccess(request, id);
+		if ('response' in access) return access.response;
 
-		db = await dbConnect();
+		const { project, rights } = access;
+		db = access.db;
+		ownsDb = access.ownsDb;
+		if (!rights.sections.project_activity.read && !rights.canAssignActivity) {
+			return NextResponse.json(
+				{ success: false, error: PROJECT_ACCESS_DENIED },
+				{ status: 403 }
+			);
+		}
+
+		const projectId = project.project_id ?? project.id;
 
 		const [assignments] = await db.execute(
 			`
@@ -314,7 +397,7 @@ export async function GET(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) db.release();
+		if (ownsDb) releaseQuietly(db);
 	}
 }
 
@@ -325,20 +408,14 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
 	let db;
 	try {
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.ASSIGN
-		);
-		if (!auth.authorized)
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-
+		db = await dbConnect();
 		const { id } = await params;
-		const projectId = parseInt(id);
-		const currentUser = auth.user;
+		const access = await requireProjectAccess(request, id, { db });
+		if ('response' in access) return access.response;
+		if (!access.rights.canAssignActivity) return forbidden();
+
+		const projectId = projectKey(access.project);
+		const currentUser = access.user;
 		const data = await request.json();
 
 		const { updates } = data;
@@ -353,7 +430,24 @@ export async function PUT(request, { params }) {
 			);
 		}
 
-		db = await dbConnect();
+		// Every new target assignee must already be on the team before any
+		// assignment changes.
+		const targets = updates
+			.filter(
+				(update) =>
+					update &&
+					update.user_id !== null &&
+					update.user_id !== undefined &&
+					update.user_id !== ''
+			)
+			.map((update) => ({ userId: update.user_id }));
+		const nonMember = await firstNonMember(
+			db,
+			access.project,
+			targets
+		);
+		if (nonMember) return assigneeConflict(nonMember.name);
+
 		const updateCount = [];
 		const errors = [];
 
@@ -432,8 +526,6 @@ export async function PUT(request, { params }) {
 				}
 			} catch (error) {
 				errors.push({ index: i, error: error.message });
-			} finally {
-				if (db) db.release();
 			}
 		}
 
@@ -453,6 +545,8 @@ export async function PUT(request, { params }) {
 			},
 			{ status: 500 }
 		);
+	} finally {
+		releaseQuietly(db);
 	}
 }
 
@@ -463,19 +557,13 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
 	let db;
 	try {
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.ASSIGN
-		);
-		if (!auth.authorized)
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-
+		db = await dbConnect();
 		const { id } = await params;
-		const projectId = parseInt(id);
+		const access = await requireProjectAccess(request, id, { db });
+		if ('response' in access) return access.response;
+		if (!access.rights.canAssignActivity) return forbidden();
+
+		const projectId = projectKey(access.project);
 		const { searchParams } = new URL(request.url);
 		const assignmentId = searchParams.get('assignment_id');
 
@@ -488,8 +576,6 @@ export async function DELETE(request, { params }) {
 				{ status: 400 }
 			);
 		}
-
-		db = await dbConnect();
 
 		const [result] = await db.execute(
 			'DELETE FROM user_activity_assignments WHERE id = ? AND project_id = ?',
@@ -520,6 +606,6 @@ export async function DELETE(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) db.release();
+		releaseQuietly(db);
 	}
 }

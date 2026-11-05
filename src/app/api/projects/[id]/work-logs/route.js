@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/utils/database';
 import {
-	ensurePermission,
-	RESOURCES,
-	PERMISSIONS,
-} from '@/utils/api-permissions';
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 /**
  * GET /api/projects/[id]/work-logs
@@ -18,17 +17,20 @@ import {
  *   user_id     – filter to a single user (optional)
  */
 export async function GET(request, { params }) {
-	let db;
-	try {
-		const auth = await ensurePermission(
-			request,
-			RESOURCES.PROJECTS,
-			PERMISSIONS.READ
-		);
-		if (auth instanceof NextResponse) return auth;
+	const { id } = await params;
+	const access = await requireProjectAccess(request, id, {
+		getLeadPolicy: loadLeadPolicy,
+	});
+	if ('response' in access) return access.response;
 
-		const { id } = await params;
-		const projectId = id;
+	const { project, rights, db, ownsDb } = access;
+
+	try {
+		if (!rights.sections.project_activity.read) {
+			return projectAccessDeniedResponse();
+		}
+
+		const projectId = project.project_id ?? project.id;
 
 		const { searchParams } = new URL(request.url);
 		const endDate =
@@ -37,8 +39,6 @@ export async function GET(request, { params }) {
 			searchParams.get('start_date') ||
 			new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
 		const filterUserId = searchParams.get('user_id');
-
-		db = await dbConnect();
 
 		// Query user_activity_assignments joined with users
 		let query = `
@@ -196,6 +196,10 @@ export async function GET(request, { params }) {
 			{ status: 500 }
 		);
 	} finally {
-		if (db) db.release();
+		if (ownsDb) {
+			try {
+				db.release?.();
+			} catch {}
+		}
 	}
 }

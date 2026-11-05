@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { fetchJSON } from '@/utils/http';
+import ActivityAssignmentModal from '@/components/ActivityAssignmentModal';
 import {
 	ClipboardDocumentListIcon,
 	UserIcon,
@@ -21,7 +22,11 @@ import {
  *
  * Data comes from GET /api/projects/[id]/work-logs (grouped by user → date).
  */
-export default function ProjectActivityTab({ projectId }) {
+export default function ProjectActivityTab({
+	projectId,
+	canAssignActivity = false,
+	onAssignmentChange,
+}) {
 	/* ---- state ---- */
 	const [data, setData] = useState(null);
 	const [loading, setLoading] = useState(true);
@@ -29,6 +34,7 @@ export default function ProjectActivityTab({ projectId }) {
 	const [expandedUsers, setExpandedUsers] = useState({});
 	const [expandedDates, setExpandedDates] = useState({});
 	const [filterUser, setFilterUser] = useState('all');
+	const [assignmentOpen, setAssignmentOpen] = useState(false);
 
 	// date range – default last 30 days
 	const today = new Date().toISOString().split('T')[0];
@@ -188,13 +194,25 @@ export default function ProjectActivityTab({ projectId }) {
 						</span>
 					</div>
 
-					<button
-						onClick={load}
-						className="p-1.5 text-gray-400 hover:text-[#7F2487] hover:bg-gray-100 rounded transition-colors"
-						title="Refresh"
-					>
-						<ArrowPathIcon className="h-4 w-4" />
-					</button>
+					<div className="flex items-center gap-2">
+						{canAssignActivity && (
+							<button
+								onClick={() => setAssignmentOpen(true)}
+								className="inline-flex items-center gap-1 rounded bg-[#7F2487] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#64126D]"
+								title="Assign Activities"
+							>
+								<UserIcon className="h-3.5 w-3.5" />
+								Assign Activities
+							</button>
+						)}
+						<button
+							onClick={load}
+							className="p-1.5 text-gray-400 hover:text-[#7F2487] hover:bg-gray-100 rounded transition-colors"
+							title="Refresh"
+						>
+							<ArrowPathIcon className="h-4 w-4" />
+						</button>
+					</div>
 				</div>
 
 				{/* Filters row */}
@@ -436,6 +454,18 @@ export default function ProjectActivityTab({ projectId }) {
 						)}
 					</div>
 				</div>
+			)}
+
+			{canAssignActivity && (
+				<ActivityAssignmentModal
+					isOpen={assignmentOpen}
+					onClose={() => setAssignmentOpen(false)}
+					projectId={projectId}
+					onSuccess={() => {
+						load();
+						onAssignmentChange?.();
+					}}
+				/>
 			)}
 		</Section>
 	);

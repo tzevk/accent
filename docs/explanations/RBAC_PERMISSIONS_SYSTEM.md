@@ -3,6 +3,14 @@
 > Current reference — last verified 2026-10-06 against the files in “Which file does what”.
 > Part of the [documentation index](../README.md). Security background: ADR-0011 (session
 > validation), ADR-0013 (rate-limit identity), ADR-0014 (public allowlist).
+>
+> Project authorization is implemented by the shared
+> [project-rights policy](../../src/lib/project-rights/policy.ts), following the
+> [project permissions design](../app/projects/permissions-design.md) and
+> [ADR-0034](../adr/0034-project-membership-lead-policy-and-explicit-scopes.md).
+> Team membership, the shared lead policy, per-action project scopes, commercial
+> field rights, and financial document areas are resolved there before a project
+> route reads or writes.
 
 ## Architecture overview
 

@@ -654,7 +654,7 @@ describe('ProjectActivityAssignments', () => {
 		});
 	});
 
-	it('alerts when the PATCH returns a non-ok response (fetchJSON throws)', async () => {
+	it('alerts with the server membership message when the PATCH is refused', async () => {
 		const failingFetch = vi.fn(async (url, options) => {
 			if (typeof url === 'string' && url.includes('/activity-assignments')) {
 				const method = (options?.method || 'GET').toUpperCase();
@@ -665,7 +665,9 @@ describe('ProjectActivityAssignments', () => {
 						headers: { get: () => 'application/json' },
 						json: async () => ({
 							success: false,
-							error: 'Bad request from server',
+							code: 'ASSIGNEE_NOT_PROJECT_MEMBER',
+							error:
+								'Add member@example.com to the Project Team before assigning this activity.',
 						}),
 					};
 				}
@@ -705,7 +707,9 @@ describe('ProjectActivityAssignments', () => {
 		await user.click(screen.getByTitle('Save'));
 
 		await waitFor(() => {
-			expect(alertSpy).toHaveBeenCalledWith('Failed to add activity');
+			expect(alertSpy).toHaveBeenCalledWith(
+				'Add member@example.com to the Project Team before assigning this activity.'
+			);
 		});
 	});
 
@@ -752,7 +756,7 @@ describe('ProjectActivityAssignments', () => {
 		await user.click(screen.getByTitle('Save'));
 
 		await waitFor(() => {
-			expect(alertSpy).toHaveBeenCalledWith('Failed to add activity');
+			expect(alertSpy).toHaveBeenCalledWith('Network down');
 		});
 		// Row is still open (Save failed, didn't close)
 		expect(

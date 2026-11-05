@@ -47,7 +47,18 @@ import {
 	getWeekSpanForProjectRange,
 } from '@/utils/project-weeks';
 import LoadingFallback from '@/components/LoadingFallback';
-import { PROJECT_TABS, TAB_ALIASES } from '@/lib/project-tabs';
+import {
+	PROJECT_TABS,
+	TAB_ALIASES,
+	isFinancialAreaAllowed,
+} from '@/lib/project-tabs';
+import { WORK_SECTION_IDS } from '@/lib/project-rights/sections';
+import {
+	collectProjectSnapshot,
+	collectSectionSnapshot,
+	diffSectionSaves,
+	prepareSectionValues,
+} from '@/lib/project-rights/section-save';
 import { getExportSheetPayloads } from './excel/export/buildPayloads';
 import {
 	exportProjectWorkbook,
@@ -290,18 +301,25 @@ export default function EditProjectForm() {
 		can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
 	const canEditInvoices =
 		isSuperAdmin || can(RESOURCES.INVOICES, PERMISSIONS.UPDATE);
-	const canViewProjectContent =
-		isSuperAdmin ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.READ) ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	const canEditProjectContent =
-		isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
-	// Team management only — granted via projects:assign (or full update / super admin).
-	// Lets a user edit the Project Team tab without full project edit rights.
-	const canManageTeam =
-		isSuperAdmin ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
-		can(RESOURCES.PROJECTS, PERMISSIONS.ASSIGN);
+	// Project entry, readable tabs, and editability come from the server's
+	// resolved rights. The legacy permission checks remain only as a fallback
+	// for payloads that predate the rights contract.
+	const [projectRights, setProjectRights] = useState(null);
+	const canViewProjectContent = projectRights
+		? projectRights.canOpen === true
+		: isSuperAdmin ||
+			can(RESOURCES.PROJECTS, PERMISSIONS.READ) ||
+			can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	const canEditProjectContent = projectRights
+		? (projectRights.editableSections || []).length > 0
+		: isSuperAdmin || can(RESOURCES.PROJECTS, PERMISSIONS.UPDATE);
+	// Per-section editability: the server's editableSections decides which
+	// rendered section accepts edits. Legacy payloads fall back to the
+	// whole-project check.
+	const canEditSection = (sectionId) => {
+		if (!projectRights) return canEditProjectContent;
+		return (projectRights.editableSections || []).includes(sectionId);
+	};
 	const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
 
 	// Signature-authorisation toggles for the Documents Issued tab
@@ -332,6 +350,9 @@ export default function EditProjectForm() {
 	const [activities, setActivities] = useState([]); // Standalone activities list
 	const [subActivities, setSubActivities] = useState([]); // Standalone subactivities list
 	const [form, setForm] = useState(INITIAL_FORM);
+	// Section values as loaded from the server. Saves diff against this so a
+	// screen only writes the sections the actor changed.
+	const initialSectionsRef = useRef(null);
 	const [projectActivities, setProjectActivities] = useState([]);
 	const [newScopeActivityName, setNewScopeActivityName] = useState('');
 	const [teamMembers, setTeamMembers] = useState([]);
@@ -425,6 +446,10 @@ export default function EditProjectForm() {
 
 	// Project Team Management
 	const [projectTeamMembers, setProjectTeamMembers] = useState([]);
+	const [teamSaving, setTeamSaving] = useState(false);
+	const [teamError, setTeamError] = useState('');
+	// Pending final-lead change that still needs a replacement lead.
+	const [leadReplacement, setLeadReplacement] = useState(null);
 	const [allUsers, setAllUsers] = useState([]);
 	const [usersLoading, setUsersLoading] = useState(true);
 
@@ -579,8 +604,9 @@ export default function EditProjectForm() {
 		[generateScheduleRowId]
 	);
 
-	const canEditSchedule = canEditProjectContent && !scheduleLocked;
-	const scheduleEffectivelyLocked = scheduleLocked || !canEditProjectContent;
+	const canEditSchedule = canEditSection('project_schedule') && !scheduleLocked;
+	const scheduleEffectivelyLocked =
+		scheduleLocked || !canEditSection('project_schedule');
 
 	const [selectedScheduleLegend, setSelectedScheduleLegend] =
 		useState('accent_activities');
@@ -1005,8 +1031,14 @@ export default function EditProjectForm() {
 				});
 				console.log('[fetchProject] API response success:', result.success);
 
+				if (result.success && result.rights && !result.rights.canOpen) {
+					setError('You do not have permission to access this project.');
+					return;
+				}
 				if (result.success && result.data) {
+					setProjectRights(result.rights || null);
 					const project = result.data;
+					initialSectionsRef.current = collectProjectSnapshot(project);
 					console.log(
 						'[fetchProject] Project data keys:',
 						Object.keys(project)
@@ -1089,7 +1121,9 @@ export default function EditProjectForm() {
 						internal_meeting_no: project.internal_meeting_no || '',
 						internal_meeting_client_name:
 							project.internal_meeting_client_name || '',
-						internal_meeting_date: project.internal_meeting_date || '',
+						internal_meeting_date: formatDateForInput(
+							project.internal_meeting_date
+						),
 						internal_meeting_organizer:
 							project.internal_meeting_organizer || '',
 						internal_minutes_drafted: project.internal_minutes_drafted || '',
@@ -1102,8 +1136,22 @@ export default function EditProjectForm() {
 						// kickoff mapping will be set below if present
 						kickoff_meeting_no:
 							project.kickoff_meeting_no || project.kickoff_meeting || '',
+						kickoff_meeting: project.kickoff_meeting || '',
+						in_house_meeting: project.in_house_meeting || '',
+						project_start_milestone: project.project_start_milestone || '',
+						project_review_milestone: project.project_review_milestone || '',
+						project_end_milestone: project.project_end_milestone || '',
+						kickoff_followup_date: formatDateForInput(
+							project.kickoff_followup_date
+						),
+						next_internal_meeting: formatDateForInput(
+							project.next_internal_meeting
+						),
+						project_schedule: project.project_schedule || '',
 						kickoff_client_name: project.kickoff_client_name || '',
-						kickoff_meeting_date: project.kickoff_meeting_date || '',
+						kickoff_meeting_date: formatDateForInput(
+							project.kickoff_meeting_date
+						),
 						kickoff_meeting_organizer: project.kickoff_meeting_organizer || '',
 						kickoff_minutes_drafted: project.kickoff_minutes_drafted || '',
 						kickoff_meeting_location: project.kickoff_meeting_location || '',
@@ -2450,18 +2498,43 @@ export default function EditProjectForm() {
 	};
 
 	// Project Team Management Functions
-	const addTeamMember = (user) => {
-		console.log(
-			'[TEAM DEBUG addTeamMember] START — projectTeamMembers count:',
-			projectTeamMembers.length,
-			'| user:',
-			user.id,
-			user.full_name || user.username
-		);
-		// Check if already added
+	// Team changes are their own operation. They never ride the project save
+	// and never write project content.
+	const submitTeamOperation = async (operation, payload) => {
+		setTeamSaving(true);
+		setTeamError('');
+		try {
+			const result = await fetchJSON(`/api/projects/${id}/team`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ operation, ...payload }),
+			});
+			if (!result?.success) {
+				const message = result?.error || 'Could not update the project team';
+				setTeamError(message);
+				return { ok: false, error: message };
+			}
+			const team = Array.isArray(result.data?.project_team)
+				? result.data.project_team
+				: [];
+			setForm((prev) => ({ ...prev, project_team: team }));
+			setProjectTeamMembers(team);
+			if (result.data?.rights) setProjectRights(result.data.rights);
+			return { ok: true };
+		} catch (error) {
+			// fetchJSON rejects with the server message on a typed refusal.
+			const message = error?.message || 'Could not update the project team';
+			setTeamError(message);
+			return { ok: false, error: message };
+		} finally {
+			setTeamSaving(false);
+		}
+	};
+
+	const addTeamMember = async (user) => {
 		const exists = projectTeamMembers.some((member) => member.id === user.id);
 		if (exists) {
-			alert('This user is already in the team');
+			setTeamError('This user is already in the team');
 			return;
 		}
 
@@ -2476,105 +2549,89 @@ export default function EditProjectForm() {
 			email: user.email,
 			department: user.employee_department || user.department || '',
 			position: user.employee_position || user.role_name || '',
-			role: 'Team Member', // Default role, can be changed
+			role: 'Team Member',
 		};
 
-		setProjectTeamMembers((prev) => {
-			console.log(
-				'[TEAM DEBUG addTeamMember] setProjectTeamMembers — prev count:',
-				prev.length,
-				'new count:',
-				prev.length + 1
-			);
-			return [...prev, teamMember];
-		});
-
-		// Update form data — derive from prev to avoid stale-closure bugs
-		setForm((prev) => {
-			const currentTeam = Array.isArray(prev.project_team)
-				? prev.project_team
-				: typeof prev.project_team === 'string'
-					? (() => {
-							try {
-								return JSON.parse(prev.project_team);
-							} catch {
-								return [];
-							}
-						})()
-					: [];
-			console.log(
-				'[TEAM DEBUG addTeamMember] setForm — prev.project_team type:',
-				typeof prev.project_team,
-				'| isArray:',
-				Array.isArray(prev.project_team),
-				'| parsed currentTeam count:',
-				currentTeam.length
-			);
-			const newTeam = [...currentTeam, teamMember];
-			const serialized = JSON.stringify(newTeam);
-			console.log(
-				'[TEAM DEBUG addTeamMember] setForm — new team count:',
-				newTeam.length,
-				'| serialized length:',
-				serialized.length
-			);
-			return {
-				...prev,
-				project_team: serialized,
-			};
-		});
+		await submitTeamOperation('add_member', { member: teamMember });
 	};
 
-	const removeTeamMember = (memberId) => {
-		setProjectTeamMembers((prev) => prev.filter((m) => m.id !== memberId));
-
-		setForm((prev) => {
-			const currentTeam = Array.isArray(prev.project_team)
-				? prev.project_team
-				: typeof prev.project_team === 'string'
-					? (() => {
-							try {
-								return JSON.parse(prev.project_team);
-							} catch {
-								return [];
-							}
-						})()
-					: [];
-			return {
-				...prev,
-				project_team: JSON.stringify(
-					currentTeam.filter((m) => m.id !== memberId)
-				),
-			};
-		});
-	};
-
-	const updateTeamMemberRole = (memberId, newRole) => {
-		setProjectTeamMembers((prev) =>
-			prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
+	// The stored team decides whether a replacement is required. This check
+	// only decides whether to ask; the server enforces the rule on the locked
+	// stored team and returns the typed refusal.
+	const needsReplacementLead = (memberId, nextRole) => {
+		if (projectRights?.canClearFinalLead) return false;
+		if (nextRole === 'Project Lead') return false;
+		const target = projectTeamMembers.find(
+			(member) => String(member.id) === String(memberId)
 		);
+		if (!target || target.role !== 'Project Lead') return false;
+		const leadCount = projectTeamMembers.filter(
+			(member) => member.role === 'Project Lead'
+		).length;
+		return leadCount === 1;
+	};
 
-		setForm((prev) => {
-			const currentTeam = Array.isArray(prev.project_team)
-				? prev.project_team
-				: typeof prev.project_team === 'string'
-					? (() => {
-							try {
-								return JSON.parse(prev.project_team);
-							} catch {
-								return [];
-							}
-						})()
-					: [];
-			return {
-				...prev,
-				project_team: JSON.stringify(
-					currentTeam.map((m) =>
-						m.id === memberId ? { ...m, role: newRole } : m
-					)
-				),
-			};
-		});
+	const removeTeamMember = async (memberId) => {
+		if (needsReplacementLead(memberId, null)) {
+			setLeadReplacement({
+				operation: 'remove_member',
+				memberId,
+				role: null,
+				error: '',
+			});
+			return;
+		}
+		await submitTeamOperation('remove_member', { memberId });
+	};
+
+	const updateTeamMemberRole = async (memberId, newRole) => {
+		if (needsReplacementLead(memberId, newRole)) {
+			setLeadReplacement({
+				operation: 'update_role',
+				memberId,
+				role: newRole,
+				error: '',
+			});
+			return;
+		}
+		await submitTeamOperation('update_role', { memberId, role: newRole });
+	};
+
+	const cancelLeadReplacement = () => setLeadReplacement(null);
+
+	const confirmLeadReplacement = async (replacementLeadId) => {
+		const pending = leadReplacement;
+		if (!pending) return;
+		const replacement = projectTeamMembers.find(
+			(member) => String(member.id) === String(replacementLeadId)
+		);
+		if (!replacement) {
+			setLeadReplacement({
+				...pending,
+				error: 'Select a replacement lead from the current team.',
+			});
+			return;
+		}
+		if (String(replacement.id) === String(pending.memberId)) {
+			setLeadReplacement({
+				...pending,
+				error: 'The replacement lead must be a different team member.',
+			});
+			return;
+		}
+
+		const payload = {
+			memberId: pending.memberId,
+			replacementLeadId: replacement.id,
+		};
+		if (pending.operation === 'update_role') payload.role = pending.role;
+
+		const outcome = await submitTeamOperation(pending.operation, payload);
+		if (outcome.ok) {
+			setLeadReplacement(null);
+			return;
+		}
+		setLeadReplacement({ ...pending, error: outcome.error });
 	};
 
 	// Get filtered users for team selection (only show those not already in team)
@@ -3793,6 +3850,7 @@ export default function EditProjectForm() {
 		try {
 			const formData = new FormData();
 			formData.append('file', file);
+			formData.append('project_id', String(id));
 
 			const res = await fetch('/api/projects/mom-upload', {
 				method: 'POST',
@@ -3924,63 +3982,28 @@ export default function EditProjectForm() {
 	};
 
 	const visibleTabs = useMemo(() => {
-		const projectModule = sessionUser?.field_permissions?.modules?.projects;
-		const sectionAccess = projectModule?.sections || {};
-
 		return TABS.filter((tab) => {
 			if (isSuperAdmin) return true;
 
-			const hasActivitiesPermission =
-				can('activities', PERMISSIONS.READ) ||
-				can('activities', PERMISSIONS.ASSIGN);
-			if (tab.adminOnly && !isAdminUser) return false;
-			// For project-level views, allow users with project view permission to see these tabs.
-			if (
-				tab.adminOrActivities &&
-				!isAdminUser &&
-				!hasActivitiesPermission &&
-				!canViewProjectContent
-			)
-				return false;
-			if (tab.userOnly && isAdminUser) return false;
-			// "requiresUpdate" means the tab contains edit controls, but view-only users should still be able to see it.
-			// The Project Team tab is also shown to users granted projects:assign (team management only),
-			// even though they lack projects:read/update.
-			if (
-				tab.requiresUpdate &&
-				!canViewProjectContent &&
-				!(tab.projectSectionKey === 'project_team' && canManageTeam)
-			)
-				return false;
-
-			if (tab.projectSectionKey) {
-				if (projectModule?.enabled === false && !canViewProjectContent)
-					return false;
-				// When project sections are configured, show only explicitly enabled sections.
-				if (projectModule && Object.keys(sectionAccess).length > 0) {
-					if (sectionAccess?.[tab.projectSectionKey]?.enabled !== true)
-						return false;
-				}
+			// Work-section tabs render only when the server says the section is
+			// readable. Editability is a separate, section-independent gate.
+			if (WORK_SECTION_IDS.includes(tab.id)) {
+				if (!projectRights) return false;
+				return projectRights.readableSections?.includes(tab.id) === true;
 			}
 
+			if (tab.adminOnly && !isAdminUser) return false;
+			if (tab.userOnly && isAdminUser) return false;
+
 			if (tab.requiresPermission) {
-				const hasAnyPermission =
-					can(tab.requiresPermission, PERMISSIONS.READ) ||
-					can(tab.requiresPermission, PERMISSIONS.UPDATE);
-				if (!hasAnyPermission) return false;
+				// Financial areas are projected from the server-resolved rights;
+				// a client permission grant alone never reveals the tab.
+				return isFinancialAreaAllowed(tab.id, projectRights?.financialAreas);
 			}
 
 			return true;
 		});
-	}, [
-		can,
-		isAdminUser,
-		isSuperAdmin,
-		PERMISSIONS,
-		canViewProjectContent,
-		canManageTeam,
-		sessionUser,
-	]);
+	}, [isAdminUser, isSuperAdmin, projectRights]);
 
 	useEffect(() => {
 		const resolved = resolveTabIdLocal(activeTab);
@@ -4121,12 +4144,48 @@ export default function EditProjectForm() {
 	const handleSubmit = async (event) => {
 		event.preventDefault();
 
-		if (!canEditProjectContent && !canManageTeam) {
+		if (!canEditProjectContent) {
 			alert('You do not have permission to update this project.');
 			return;
 		}
 
-		if (!form.name.trim()) {
+		const currentSnapshot = collectSectionSnapshot({
+			...form,
+			team_members: teamMembers,
+			project_activities_list: projectActivities,
+			planning_activities_list: planningActivities,
+			project_schedule_list: {
+				locked: scheduleLocked,
+				rows: projectSchedule,
+			},
+			documents_received_list: documentsReceived,
+			input_documents_list: inputDocumentsList,
+			documents_issued_list: documentsIssued,
+			kickoff_meetings_list: kickoffMeetings,
+			internal_meetings_list: internalMeetings,
+			project_handover_list: projectHandover,
+			project_manhours_list: projectManhours || [],
+			software_items: softwareItems,
+			project_query_log_list: queryLog,
+			project_assumption_list: assumptions,
+			project_lessons_learnt_list: lessonsLearnt,
+		});
+
+		const changes = diffSectionSaves(
+			initialSectionsRef.current,
+			currentSnapshot,
+			projectRights?.editableSections || []
+		);
+
+		if (changes.length === 0) {
+			alert('No changes to save.');
+			return;
+		}
+
+		if (
+			changes.some((change) => change.section === 'project_details') &&
+			!form.name.trim()
+		) {
 			alert('Project name is required');
 			return;
 		}
@@ -4134,101 +4193,59 @@ export default function EditProjectForm() {
 		setSubmitting(true);
 
 		try {
-			const payload = {
-				...form,
-				project_duration_planned: form.project_duration_planned
-					? Number(form.project_duration_planned)
-					: null,
-				project_duration_actual: form.project_duration_actual
-					? Number(form.project_duration_actual)
-					: null,
-				project_value: form.project_value ? Number(form.project_value) : null,
-				cost_to_company: form.cost_to_company
-					? Number(form.cost_to_company)
-					: null,
-				profitability_estimate: form.profitability_estimate
-					? Number(form.profitability_estimate)
-					: null,
-				budget: form.budget ? Number(form.budget) : null,
-				actual_profit_loss: form.actual_profit_loss
-					? Number(form.actual_profit_loss)
-					: null,
-				progress: Number(form.progress) || 0,
-				project_team: JSON.stringify(projectTeamMembers),
-				team_members: JSON.stringify(teamMembers),
-				software_items: JSON.stringify(softwareItems),
-				project_activities_list: JSON.stringify(projectActivities),
-				planning_activities_list: JSON.stringify(planningActivities),
-				documents_list: JSON.stringify(documentsList),
-				input_documents_list: JSON.stringify(inputDocumentsList),
-				kickoff_meetings_list: JSON.stringify(kickoffMeetings),
-				internal_meetings_list: JSON.stringify(internalMeetings),
-				documents_received_list: JSON.stringify(documentsReceived),
-				documents_issued_list: JSON.stringify(documentsIssued),
-				project_handover_list: JSON.stringify(projectHandover),
-				project_manhours_list: JSON.stringify(projectManhours || []),
-				project_query_log_list: JSON.stringify(queryLog),
-				project_assumption_list: JSON.stringify(assumptions),
-				project_lessons_learnt_list: JSON.stringify(lessonsLearnt),
-				project_schedule_list: JSON.stringify({
-					locked: scheduleLocked,
-					rows: projectSchedule,
-				}),
-			};
+			const failures = [];
+			let saved = 0;
+			const nextInitial = { ...(initialSectionsRef.current || {}) };
 
-			console.log('[SUBMIT] Sending update for project:', id);
-			console.log(
-				'[TEAM DEBUG submit] projectTeamMembers count:',
-				projectTeamMembers.length,
-				'| first 300 chars:',
-				JSON.stringify(projectTeamMembers).substring(0, 300)
-			);
-			console.log(
-				'[TEAM DEBUG submit] payload.project_team type:',
-				typeof payload.project_team,
-				'| first 300 chars:',
-				(payload.project_team || '').substring(0, 300)
-			);
-			console.log(
-				'[SUBMIT] Payload size:',
-				JSON.stringify(payload).length,
-				'bytes'
-			);
-			console.log('[SUBMIT] List field counts:', {
-				inputDocumentsList: inputDocumentsList.length,
-				documentsReceived: documentsReceived.length,
-				documentsIssued: documentsIssued.length,
-				projectHandover: projectHandover.length,
-				projectManhours: projectManhours.length,
-				queryLog: queryLog.length,
-				assumptions: assumptions.length,
-				lessonsLearnt: lessonsLearnt.length,
-				projectSchedule: projectSchedule.length,
-			});
-			console.log(
-				'[SUBMIT] Sample data - documentsIssued:',
-				JSON.stringify(documentsIssued).substring(0, 200)
-			);
-
-			const result = await fetchJSON(`/api/projects/${id}`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
-			});
-
-			if (result.success) {
-				alert('Project updated successfully!');
-			} else {
-				alert(
-					`Failed to update project: ${result.error || result.message || 'Unknown error'}`
-				);
+			for (const change of changes) {
+				try {
+					const result = await fetchJSON(`/api/projects/${id}`, {
+						method: 'PUT',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							section: change.section,
+							values: prepareSectionValues(change.section, change.values),
+						}),
+					});
+					if (result?.success) {
+						saved += 1;
+						nextInitial[change.section] = currentSnapshot[change.section];
+					} else {
+						failures.push(
+							`${change.section}: ${result?.error || 'Unknown error'}`
+						);
+					}
+				} catch (error) {
+					failures.push(
+						`${change.section}: ${error?.message || 'Unknown error'}`
+					);
+				}
 			}
-		} catch (error) {
-			alert(`Failed to update project: ${error?.message || 'Unknown error'}`);
+
+			initialSectionsRef.current = nextInitial;
+			if (failures.length > 0) {
+				alert(
+					`Saved ${saved} of ${changes.length} changed sections.\n${failures.join('\n')}`
+				);
+			} else {
+				alert('Project updated successfully!');
+			}
 		} finally {
 			setSubmitting(false);
 		}
 	};
+
+	const activeSectionId = resolveTabIdLocal(activeTab);
+	// Financial tabs carry their own resource permission; project content
+	// editability must not disable a finance user who can open the project.
+	const financialTabEditable = {
+		quotation: canEditQuotations,
+		purchase_order: canEditPurchaseOrders,
+		invoice: canEditInvoices,
+	};
+	const activeSectionEditable = WORK_SECTION_IDS.includes(activeSectionId)
+		? canEditSection(activeSectionId)
+		: (financialTabEditable[activeSectionId] ?? canEditProjectContent);
 
 	if (loading) return <LoadingFallback />;
 
@@ -4390,9 +4407,7 @@ export default function EditProjectForm() {
 									</button>
 									<button
 										type="submit"
-										disabled={
-											submitting || (!canEditProjectContent && !canManageTeam)
-										}
+										disabled={submitting || !canEditProjectContent}
 										aria-busy={submitting}
 										className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors transition-shadow transition-transform hover:bg-purple-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
 									>
@@ -4404,7 +4419,7 @@ export default function EditProjectForm() {
 										)}
 										{submitting
 											? 'Saving…'
-											: canEditProjectContent || canManageTeam
+											: canEditProjectContent
 												? 'Update Project'
 												: 'View Only'}
 									</button>
@@ -4448,7 +4463,7 @@ export default function EditProjectForm() {
 							aria-label={`${visibleTabs.find((tab) => tab.id === activeTab)?.label || 'Project'} section`}
 						>
 							<fieldset
-								disabled={!canEditProjectContent}
+								disabled={!activeSectionEditable}
 								className="m-0 min-w-0 border-0 p-0"
 							>
 								{/* Enhanced Project Details Tab */}
@@ -4831,26 +4846,27 @@ export default function EditProjectForm() {
 								)}
 							</fieldset>
 
-							{/* Project Team Tab — rendered outside the global fieldset so it honors
-							    canManageTeam (projects:assign) independently of full project edit rights. */}
+							{/* Project Team Tab — mutations use the team endpoint and
+							    never submit project content. */}
 							{(activeTab === 'project_team' ||
 								activeTab === 'project_team_tab') && (
-								<fieldset
-									disabled={!canManageTeam}
-									className="m-0 min-w-0 border-0 p-0"
-								>
-									<ProjectTeamTab
-										toggleSection={toggleSection}
-										openSections={openSections}
-										usersLoading={usersLoading}
-										availableUsers={availableUsers}
-										allUsers={allUsers}
-										addTeamMember={addTeamMember}
-										projectTeamMembers={projectTeamMembers}
-										updateTeamMemberRole={updateTeamMemberRole}
-										removeTeamMember={removeTeamMember}
-									/>
-								</fieldset>
+								<ProjectTeamTab
+									toggleSection={toggleSection}
+									openSections={openSections}
+									usersLoading={usersLoading}
+									availableUsers={availableUsers}
+									allUsers={allUsers}
+									addTeamMember={addTeamMember}
+									projectTeamMembers={projectTeamMembers}
+									updateTeamMemberRole={updateTeamMemberRole}
+									removeTeamMember={removeTeamMember}
+									teamError={teamError}
+									teamSaving={teamSaving}
+									canManageTeam={projectRights?.canManageTeam === true}
+									leadReplacement={leadReplacement}
+									onCancelLeadReplacement={cancelLeadReplacement}
+									onConfirmLeadReplacement={confirmLeadReplacement}
+								/>
 							)}
 						</div>
 					</form>

@@ -6,6 +6,11 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { isRetryableNumberError } from '@/utils/db-number-retry';
+import {
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 
 // Invoice numbers are ATS/I/<MM>-<YY>/<NNN>. The sequence is the highest
 // ACTIVE number for the current month (floor 228, the historical start), never
@@ -56,6 +61,15 @@ export async function GET(request, { params }) {
 
 		connection = await dbConnect();
 
+		const access = await requireProjectAccess(request, id, {
+			db: connection,
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		if (!access.rights.financialAreas.invoice) {
+			return projectAccessDeniedResponse();
+		}
+
 		const [invoices] = await connection.execute(
 			`SELECT * FROM project_invoices WHERE project_id = ? AND (isDelete = 0 OR isDelete IS NULL) ORDER BY created_at DESC`,
 			[id]
@@ -93,7 +107,6 @@ export async function POST(request, { params }) {
 	let connection;
 	try {
 		const { id } = await params;
-		const data = await request.json();
 
 		if (!id) {
 			return NextResponse.json(
@@ -101,6 +114,19 @@ export async function POST(request, { params }) {
 				{ status: 400 }
 			);
 		}
+
+		connection = await dbConnect();
+
+		const access = await requireProjectAccess(request, id, {
+			db: connection,
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		if (!access.rights.financialAreas.invoice) {
+			return projectAccessDeniedResponse();
+		}
+
+		const data = await request.json();
 
 		// `tab_type = 'purchase_order'` used to store an order copy inside this
 		// invoice table (ticket #310). Orders now have one canonical store with
@@ -116,8 +142,6 @@ export async function POST(request, { params }) {
 				{ status: 400 }
 			);
 		}
-
-		connection = await dbConnect();
 
 		const {
 			invoice_number: providedInvoiceNumber,
@@ -219,9 +243,8 @@ export async function PUT(request, { params }) {
 	let connection;
 	try {
 		const { id } = await params;
-		const data = await request.json();
 
-		if (!id || !data.invoiceId) {
+		if (!id) {
 			return NextResponse.json(
 				{ success: false, error: 'Project ID and Invoice ID required' },
 				{ status: 400 }
@@ -229,6 +252,24 @@ export async function PUT(request, { params }) {
 		}
 
 		connection = await dbConnect();
+
+		const access = await requireProjectAccess(request, id, {
+			db: connection,
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		if (!access.rights.financialAreas.invoice) {
+			return projectAccessDeniedResponse();
+		}
+
+		const data = await request.json();
+
+		if (!data.invoiceId) {
+			return NextResponse.json(
+				{ success: false, error: 'Project ID and Invoice ID required' },
+				{ status: 400 }
+			);
+		}
 
 		const {
 			invoiceId,
@@ -316,6 +357,15 @@ export async function DELETE(request, { params }) {
 		}
 
 		connection = await dbConnect();
+
+		const access = await requireProjectAccess(request, id, {
+			db: connection,
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		if (!access.rights.financialAreas.invoice) {
+			return projectAccessDeniedResponse();
+		}
 
 		await connection.execute(
 			`UPDATE project_invoices SET isDelete = 1 WHERE id = ? AND project_id = ? AND (isDelete = 0 OR isDelete IS NULL)`,

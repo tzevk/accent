@@ -11,6 +11,16 @@ import {
 	PERMISSIONS as RBAC_PERMISSIONS,
 } from '@/utils/rbac';
 import {
+	PROJECT_PERMISSION_MODULE,
+	PROJECT_SCOPE_OPTIONS,
+	PROJECT_SCOPED_ACTIONS,
+	buildProjectScopesPayload,
+	buildSectionPayload,
+} from '@/lib/project-rights/permission-config';
+import { parseRolePermissions } from '@/lib/role-permissions';
+import RolePermissionPanel from './RolePermissionPanel';
+import RolePermissionDialog from '@/components/permissions/RolePermissionDialog';
+import {
 	ArrowLeftIcon,
 	CheckIcon,
 	EyeIcon,
@@ -241,173 +251,7 @@ const MODULE_FIELDS = {
 			},
 		},
 	},
-	projects: {
-		name: 'Projects',
-		description: 'Project management',
-		category: 'module',
-		sections: {
-			project_details: {
-				name: 'Project Details',
-				fields: {
-					project_id: { label: 'Project ID', type: 'text' },
-					project_code: { label: 'Project Code', type: 'text' },
-					project_name: { label: 'Project Name', type: 'text' },
-					client_name: { label: 'Client Name', type: 'text' },
-					project_type: { label: 'Project Type', type: 'select' },
-					description: { label: 'Description', type: 'textarea' },
-					status: { label: 'Status', type: 'select' },
-					priority: { label: 'Priority', type: 'select' },
-					start_date: { label: 'Start Date', type: 'date' },
-					end_date: { label: 'End Date', type: 'date' },
-					due_date: { label: 'Due Date', type: 'date' },
-					project_manager: { label: 'Project Manager', type: 'select' },
-					team_members: { label: 'Team Members', type: 'multiselect' },
-				},
-			},
-			scope: {
-				name: 'Scope',
-				fields: {
-					original_scope: { label: 'Original Scope', type: 'textarea' },
-					additional_scope: { label: 'Additional Scope', type: 'textarea' },
-					scope_changes: { label: 'Scope Changes', type: 'textarea' },
-					deliverables: { label: 'Deliverables', type: 'textarea' },
-				},
-			},
-			minutes_internal_meet: {
-				name: 'Meetings',
-				fields: {
-					meeting_date: { label: 'Meeting Date', type: 'date' },
-					meeting_type: { label: 'Meeting Type', type: 'select' },
-					attendees: { label: 'Attendees', type: 'multiselect' },
-					minutes: { label: 'Minutes of Meeting', type: 'textarea' },
-					action_items: { label: 'Action Items', type: 'textarea' },
-				},
-			},
-			documents_received: {
-				name: 'Documents Received',
-				fields: {
-					document_name: { label: 'Document Name', type: 'text' },
-					document_type: { label: 'Document Type', type: 'select' },
-					received_date: { label: 'Received Date', type: 'date' },
-					received_from: { label: 'Received From', type: 'text' },
-					document_file: { label: 'Document File', type: 'file' },
-				},
-			},
-			project_schedule: {
-				name: 'Project Schedule',
-				fields: {
-					milestone_name: { label: 'Milestone Name', type: 'text' },
-					planned_start: { label: 'Planned Start', type: 'date' },
-					planned_end: { label: 'Planned End', type: 'date' },
-					actual_start: { label: 'Actual Start', type: 'date' },
-					actual_end: { label: 'Actual End', type: 'date' },
-					progress: { label: 'Progress', type: 'number' },
-				},
-			},
-			project_activity: {
-				name: 'Project Activity',
-				fields: {
-					activity_name: { label: 'Activity Name', type: 'text' },
-					assigned_to: { label: 'Assigned To', type: 'select' },
-					activity_status: { label: 'Activity Status', type: 'select' },
-					estimated_hours: { label: 'Estimated Hours', type: 'number' },
-					actual_hours: { label: 'Actual Hours', type: 'number' },
-					activity_progress: { label: 'Activity Progress', type: 'number' },
-				},
-			},
-			documents_issued: {
-				name: 'Documents Issued',
-				fields: {
-					issued_doc_name: { label: 'Document Name', type: 'text' },
-					issued_doc_type: { label: 'Document Type', type: 'select' },
-					issue_date: { label: 'Issue Date', type: 'date' },
-					issued_to: { label: 'Issued To', type: 'text' },
-					revision: { label: 'Revision', type: 'text' },
-					issued_file: { label: 'Document File', type: 'file' },
-					prepared_by: { label: 'Prepared By', type: 'text' },
-					checked_by: { label: 'Checked By', type: 'text' },
-					approved_by: { label: 'Approved By', type: 'text' },
-					client_approval: { label: 'Client Approval', type: 'text' },
-				},
-			},
-			project_handover: {
-				name: 'Project Handover',
-				fields: {
-					handover_date: { label: 'Handover Date', type: 'date' },
-					handover_to: { label: 'Handover To', type: 'text' },
-					handover_notes: { label: 'Handover Notes', type: 'textarea' },
-					completion_certificate: {
-						label: 'Completion Certificate',
-						type: 'file',
-					},
-					final_deliverables: { label: 'Final Deliverables', type: 'textarea' },
-				},
-			},
-			project_manhours: {
-				name: 'Project Manhours',
-				fields: {
-					budget_hours: { label: 'Budget Hours', type: 'number' },
-					estimated_hours: { label: 'Estimated Hours', type: 'number' },
-					actual_hours: { label: 'Actual Hours', type: 'number' },
-					variance: { label: 'Variance', type: 'number' },
-					manhours_report: { label: 'Manhours Report', type: 'report' },
-				},
-			},
-			commercial: {
-				name: 'Commercial',
-				fields: {
-					budget: { label: 'Budget', type: 'currency', sensitive: true },
-					billing_type: { label: 'Billing Type', type: 'select' },
-					invoice_amount: {
-						label: 'Invoice Amount',
-						type: 'currency',
-						sensitive: true,
-					},
-					payment_status: { label: 'Payment Status', type: 'select' },
-					profitability: {
-						label: 'Profitability',
-						type: 'currency',
-						sensitive: true,
-					},
-				},
-			},
-			query_log: {
-				name: 'Query Log',
-				fields: {
-					query_date: { label: 'Query Date', type: 'date' },
-					query_from: { label: 'Query From', type: 'text' },
-					query_description: { label: 'Query Description', type: 'textarea' },
-					response: { label: 'Response', type: 'textarea' },
-					response_date: { label: 'Response Date', type: 'date' },
-					query_status: { label: 'Status', type: 'select' },
-				},
-			},
-			assumption: {
-				name: 'Assumptions',
-				fields: {
-					assumption_text: { label: 'Assumption', type: 'textarea' },
-					assumption_category: { label: 'Category', type: 'select' },
-					assumption_status: { label: 'Status', type: 'select' },
-					validation_date: { label: 'Validation Date', type: 'date' },
-				},
-			},
-			lessons_learnt: {
-				name: 'Lessons Learnt',
-				fields: {
-					lesson_category: { label: 'Category', type: 'select' },
-					lesson_description: { label: 'Description', type: 'textarea' },
-					recommendations: { label: 'Recommendations', type: 'textarea' },
-					lesson_date: { label: 'Date Recorded', type: 'date' },
-				},
-			},
-			project_team: {
-				name: 'Project Team',
-				fields: {
-					project_team: { label: 'Project Team', type: 'view' },
-				},
-			},
-		},
-	},
+	projects: PROJECT_PERMISSION_MODULE,
 	quotations: {
 		name: 'Quotations',
 		description: 'Project quotation management',
@@ -1392,7 +1236,7 @@ const MODULE_FIELDS = {
 const SPECIAL_PERMS = {
 	leads: ['assign', 'convert'],
 	proposals: ['convert', 'approve'],
-	projects: ['assign', 'close'],
+	projects: ['assign', 'close', 'reopen'],
 	activities: ['assign'],
 };
 
@@ -1490,11 +1334,28 @@ export default function UserPermissionsPage() {
 		(currentUser?.is_super_admin ||
 			can(RBAC_RESOURCES.USERS, RBAC_PERMISSIONS.UPDATE));
 
+	const canManageRolePermissions =
+		!rbacLoading &&
+		(currentUser?.is_super_admin ||
+			can(RBAC_RESOURCES.SETTINGS, RBAC_PERMISSIONS.UPDATE));
+
 	const [user, setUser] = useState(null);
+	const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+	const [roleSaving, setRoleSaving] = useState(false);
+	const [roleError, setRoleError] = useState(null);
+	const [roleNotice, setRoleNotice] = useState('');
 	const [fieldPermissions, setFieldPermissions] = useState({});
 	const [modulePermissions, setModulePermissions] = useState({}); // module-level CRUD
 	const [enabledModules, setEnabledModules] = useState({}); // which modules are enabled
 	const [enabledSections, setEnabledSections] = useState({}); // which sections are enabled within modules
+	// Per-action scope for the Projects module. A missing scope displays as
+	// `led` and is saved explicitly, because the server fails closed to `led`.
+	const [projectScopes, setProjectScopes] = useState(() =>
+		Object.fromEntries(PROJECT_SCOPED_ACTIONS.map((action) => [action, 'led']))
+	);
+	// Loaded field_permissions payload: unknown sibling keys must survive the
+	// projects section tree being written again.
+	const [baseFieldPermissions, setBaseFieldPermissions] = useState({});
 	const [originalPermissions, setOriginalPermissions] = useState({});
 	const [activeModule, setActiveModule] = useState(null); // currently selected module for field editing
 	const [expandedSections, setExpandedSections] = useState({});
@@ -1533,6 +1394,7 @@ export default function UserPermissionsPage() {
 			modulePermissions,
 			enabledModules,
 			enabledSections,
+			projectScopes,
 		});
 		const original = JSON.stringify(originalPermissions);
 		setHasChanges(current !== original);
@@ -1541,6 +1403,7 @@ export default function UserPermissionsPage() {
 		modulePermissions,
 		enabledModules,
 		enabledSections,
+		projectScopes,
 		originalPermissions,
 	]);
 
@@ -1580,6 +1443,18 @@ export default function UserPermissionsPage() {
 			}
 			fieldPerms = fieldPerms || {};
 
+			// Scopes are stored beside the modules tree. A granted action with
+			// no stored scope is shown as `led`, the server's fail-closed default.
+			const savedScopes = fieldPerms.projectScopes?.projects || {};
+			const initialScopes = Object.fromEntries(
+				PROJECT_SCOPED_ACTIONS.map((action) => [
+					action,
+					['led', 'assigned', 'all'].includes(savedScopes[action])
+						? savedScopes[action]
+						: 'led',
+				])
+			);
+
 			// Check if we have the new nested structure
 			const isNestedStructure = fieldPerms.modules !== undefined;
 
@@ -1609,6 +1484,7 @@ export default function UserPermissionsPage() {
 						approve: savedModule.crud?.approve || false,
 						assign: savedModule.crud?.assign || false,
 						close: savedModule.crud?.close || false,
+						reopen: savedModule.crud?.reopen || false,
 					};
 					modulePerms[moduleKey] = permObj;
 
@@ -1620,9 +1496,10 @@ export default function UserPermissionsPage() {
 							savedSection?.enabled || false;
 
 						const fields = sections[sectionKey].fields || {};
+						initialFieldPerms[moduleKey][sectionKey] = {};
 						Object.keys(fields).forEach((fieldKey) => {
 							const savedField = savedSection?.fields?.[fieldKey];
-							initialFieldPerms[moduleKey][fieldKey] =
+							initialFieldPerms[moduleKey][sectionKey][fieldKey] =
 								savedField?.permission ||
 								(SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
 									? 'edit'
@@ -1643,6 +1520,8 @@ export default function UserPermissionsPage() {
 					const hasConvert = existingPerms.includes(`${moduleKey}:convert`);
 					const hasApprove = existingPerms.includes(`${moduleKey}:approve`);
 					const hasAssign = existingPerms.includes(`${moduleKey}:assign`);
+					const hasClose = existingPerms.includes(`${moduleKey}:close`);
+					const hasReopen = existingPerms.includes(`${moduleKey}:reopen`);
 
 					modulePerms[moduleKey] = {
 						read: hasRead,
@@ -1654,6 +1533,8 @@ export default function UserPermissionsPage() {
 						convert: hasConvert,
 						approve: hasApprove,
 						assign: hasAssign,
+						close: hasClose,
+						reopen: hasReopen,
 					};
 
 					enabled[moduleKey] =
@@ -1665,22 +1546,25 @@ export default function UserPermissionsPage() {
 						hasImport ||
 						hasConvert ||
 						hasApprove ||
-						hasAssign;
+						hasAssign ||
+						hasClose ||
+						hasReopen;
 
 					// Load legacy field permissions
 					const sections = moduleDef.sections || {};
 					Object.keys(sections).forEach((sectionKey) => {
 						const fields = sections[sectionKey].fields || {};
 						let hasVisibleField = false;
+						initialFieldPerms[moduleKey][sectionKey] = {};
 
 						Object.keys(fields).forEach((fieldKey) => {
 							// Check legacy format (direct module.field mapping)
 							const legacyPerm = fieldPerms[moduleKey]?.[fieldKey];
 							if (legacyPerm && typeof legacyPerm === 'string') {
-								initialFieldPerms[moduleKey][fieldKey] = legacyPerm;
+								initialFieldPerms[moduleKey][sectionKey][fieldKey] = legacyPerm;
 								if (legacyPerm !== 'hidden') hasVisibleField = true;
 							} else {
-								initialFieldPerms[moduleKey][fieldKey] =
+								initialFieldPerms[moduleKey][sectionKey][fieldKey] =
 									SIGNATURE_FIELD_DEFAULTS.includes(fieldKey)
 										? 'edit'
 										: fields[fieldKey].sensitive
@@ -1700,11 +1584,14 @@ export default function UserPermissionsPage() {
 			setModulePermissions(modulePerms);
 			setEnabledModules(enabled);
 			setEnabledSections(sectionEnabled);
+			setProjectScopes(initialScopes);
+			setBaseFieldPermissions(fieldPerms);
 			setOriginalPermissions({
 				fieldPermissions: initialFieldPerms,
 				modulePermissions: modulePerms,
 				enabledModules: enabled,
 				enabledSections: sectionEnabled,
+				projectScopes: initialScopes,
 			});
 
 			setUser(userData.data);
@@ -1720,12 +1607,15 @@ export default function UserPermissionsPage() {
 		}));
 	};
 
-	const setFieldPerm = (module, field, permission) => {
+	const setFieldPerm = (module, section, field, permission) => {
 		setFieldPermissions((prev) => ({
 			...prev,
 			[module]: {
 				...prev[module],
-				[field]: permission,
+				[section]: {
+					...prev[module]?.[section],
+					[field]: permission,
+				},
 			},
 		}));
 	};
@@ -1751,6 +1641,8 @@ export default function UserPermissionsPage() {
 					convert: false,
 					approve: false,
 					assign: false,
+					close: false,
+					reopen: false,
 				},
 			}));
 			// Disable all sections in this module
@@ -1818,13 +1710,18 @@ export default function UserPermissionsPage() {
 
 	const setAllFieldsInSection = (module, section, permission) => {
 		const fields = MODULE_FIELDS[module]?.sections?.[section]?.fields || {};
-		setFieldPermissions((prev) => {
-			const updated = { ...prev[module] };
-			Object.keys(fields).forEach((field) => {
-				updated[field] = permission;
-			});
-			return { ...prev, [module]: updated };
-		});
+		setFieldPermissions((prev) => ({
+			...prev,
+			[module]: {
+				...prev[module],
+				[section]: {
+					...prev[module]?.[section],
+					...Object.fromEntries(
+						Object.keys(fields).map((field) => [field, permission])
+					),
+				},
+			},
+		}));
 	};
 
 	const setAllFieldsInModule = (module, permission) => {
@@ -1833,9 +1730,12 @@ export default function UserPermissionsPage() {
 			const updated = { ...prev[module] };
 			Object.keys(sections).forEach((section) => {
 				const fields = sections[section].fields || {};
-				Object.keys(fields).forEach((field) => {
-					updated[field] = permission;
-				});
+				updated[section] = {
+					...updated[section],
+					...Object.fromEntries(
+						Object.keys(fields).map((field) => [field, permission])
+					),
+				};
 			});
 			return { ...prev, [module]: updated };
 		});
@@ -1856,6 +1756,7 @@ export default function UserPermissionsPage() {
 				approve: (SPECIAL_PERMS[module] || []).includes('approve'),
 				assign: (SPECIAL_PERMS[module] || []).includes('assign'),
 				close: (SPECIAL_PERMS[module] || []).includes('close'),
+				reopen: (SPECIAL_PERMS[module] || []).includes('reopen'),
 			},
 		}));
 		// Enable all sections
@@ -1885,6 +1786,8 @@ export default function UserPermissionsPage() {
 				convert: false,
 				approve: false,
 				assign: false,
+				close: false,
+				reopen: false,
 			},
 		}));
 		// Disable all sections
@@ -1937,36 +1840,14 @@ export default function UserPermissionsPage() {
 							approve: !!modulePerms.approve,
 							assign: !!modulePerms.assign,
 							close: !!modulePerms.close,
+							reopen: !!modulePerms.reopen,
 						},
-						sections: {},
+						sections: buildSectionPayload(
+							moduleDef.sections || {},
+							fieldPermissions[moduleKey],
+							enabledSections[moduleKey]
+						),
 					};
-
-					// Add sections with their fields
-					const sections = moduleDef.sections || {};
-					Object.keys(sections).forEach((sectionKey) => {
-						const sectionDef = sections[sectionKey];
-						const isSectionEnabled = enabledSections[moduleKey]?.[sectionKey];
-						const fields = sectionDef.fields || {};
-
-						nestedPermissions.modules[moduleKey].sections[sectionKey] = {
-							enabled: isSectionEnabled,
-							name: sectionDef.name,
-							fields: {},
-						};
-
-						// Add field permissions
-						Object.keys(fields).forEach((fieldKey) => {
-							const fieldPerm =
-								fieldPermissions[moduleKey]?.[fieldKey] || 'hidden';
-							nestedPermissions.modules[moduleKey].sections[sectionKey].fields[
-								fieldKey
-							] = {
-								label: fields[fieldKey].label,
-								permission: fieldPerm,
-								sensitive: fields[fieldKey].sensitive || false,
-							};
-						});
-					});
 				}
 
 				// Build flat array for backward compatibility
@@ -1983,6 +1864,7 @@ export default function UserPermissionsPage() {
 						permissionsArray.push(`${moduleKey}:approve`);
 					if (modulePerms.assign) permissionsArray.push(`${moduleKey}:assign`);
 					if (modulePerms.close) permissionsArray.push(`${moduleKey}:close`);
+					if (modulePerms.reopen) permissionsArray.push(`${moduleKey}:reopen`);
 				}
 			});
 
@@ -2000,7 +1882,34 @@ export default function UserPermissionsPage() {
 				if (perms.approve) oldPermissionsArray.push(`${module}:approve`);
 				if (perms.assign) oldPermissionsArray.push(`${module}:assign`);
 				if (perms.close) oldPermissionsArray.push(`${module}:close`);
+				if (perms.reopen) oldPermissionsArray.push(`${module}:reopen`);
 			});
+
+			const grantedProjectActions = PROJECT_SCOPED_ACTIONS.filter(
+				(action) => modulePermissions.projects?.[action]
+			);
+			const savedProjectScopes = buildProjectScopesPayload(
+				projectScopes,
+				grantedProjectActions
+			);
+			const existingProjectScopes =
+				baseFieldPermissions.projectScopes?.projects || {};
+			const fieldPermissionsPayload = {
+				...baseFieldPermissions,
+				modules: nestedPermissions.modules,
+			};
+			if (
+				grantedProjectActions.length > 0 ||
+				Object.keys(existingProjectScopes).length > 0
+			) {
+				fieldPermissionsPayload.projectScopes = {
+					...baseFieldPermissions.projectScopes,
+					projects: {
+						...existingProjectScopes,
+						...savedProjectScopes,
+					},
+				};
+			}
 
 			const res = await fetch('/api/users', {
 				method: 'PUT',
@@ -2008,7 +1917,7 @@ export default function UserPermissionsPage() {
 				body: JSON.stringify({
 					id: user.id,
 					permissions: permissionsArray,
-					field_permissions: nestedPermissions, // Now saves the full nested structure
+					field_permissions: fieldPermissionsPayload,
 				}),
 			});
 
@@ -2019,9 +1928,10 @@ export default function UserPermissionsPage() {
 					data: {
 						...user,
 						permissions: permissionsArray,
-						field_permissions: nestedPermissions,
+						field_permissions: fieldPermissionsPayload,
 					},
 				});
+				setBaseFieldPermissions(fieldPermissionsPayload);
 				// Log the permission change to audit logs
 				try {
 					await fetch('/api/audit-logs', {
@@ -2037,7 +1947,7 @@ export default function UserPermissionsPage() {
 							},
 							new_value: {
 								permissions: permissionsArray,
-								field_permissions: fieldPermissions,
+								field_permissions: fieldPermissionsPayload,
 							},
 						}),
 					});
@@ -2050,6 +1960,7 @@ export default function UserPermissionsPage() {
 					modulePermissions,
 					enabledModules,
 					enabledSections,
+					projectScopes,
 				});
 				setHasChanges(false);
 				// Show success notification
@@ -2070,6 +1981,53 @@ export default function UserPermissionsPage() {
 		}
 	};
 
+	const handleSaveRolePermissions = async (permissions) => {
+		if (!user?.role_id) {
+			setRoleError('This user has no role to edit.');
+			return;
+		}
+		setRoleSaving(true);
+		setRoleError(null);
+		setRoleNotice('');
+		try {
+			const response = await fetch('/api/roles-master', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: user.role_id, permissions }),
+			});
+			const result = await response.json().catch(() => null);
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || 'Failed to update role permissions');
+			}
+
+			const savedPermissions = result.data?.permissions ?? permissions;
+			setUser((previous) =>
+				previous
+					? { ...previous, role_permissions: savedPermissions }
+					: previous
+			);
+			queryClient.setQueryData(['user-permissions', userId], (cached) =>
+				cached?.data
+					? {
+							...cached,
+							data: {
+								...cached.data,
+								role_permissions: savedPermissions,
+							},
+						}
+					: cached
+			);
+			setRoleDialogOpen(false);
+			setRoleNotice(
+				'Role permissions updated. They apply to every user with this role.'
+			);
+		} catch (error) {
+			setRoleError(error?.message || 'Failed to update role permissions');
+		} finally {
+			setRoleSaving(false);
+		}
+	};
+
 	const handleCancel = () => {
 		if (hasChanges) {
 			if (
@@ -2083,10 +2041,12 @@ export default function UserPermissionsPage() {
 	};
 
 	const getFieldPermCount = (module) => {
-		const perms = fieldPermissions[module] || {};
+		const sections = fieldPermissions[module] || {};
 		const counts = { hidden: 0, view: 0, edit: 0 };
-		Object.values(perms).forEach((p) => {
-			if (counts[p] !== undefined) counts[p]++;
+		Object.values(sections).forEach((fields) => {
+			Object.values(fields || {}).forEach((p) => {
+				if (counts[p] !== undefined) counts[p]++;
+			});
 		});
 		return counts;
 	};
@@ -2125,6 +2085,7 @@ export default function UserPermissionsPage() {
 						approve: false,
 						assign: false,
 						close: false,
+						reopen: false,
 					};
 				});
 				return next;
@@ -2241,6 +2202,11 @@ export default function UserPermissionsPage() {
 
 	const currentModule = activeModule ? MODULE_FIELDS[activeModule] : null;
 	const enabledCount = Object.values(enabledModules).filter(Boolean).length;
+	const roleGrantedModules = new Set(
+		parseRolePermissions(user?.role_permissions).map(
+			(permission) => permission.split(':')[0]
+		)
+	);
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -2305,6 +2271,30 @@ export default function UserPermissionsPage() {
 						</div>
 					</div>
 				</div>
+
+				{user?.role_id !== null && user?.role_id !== undefined && (
+					<RolePermissionPanel
+						roleName={user.role_name}
+						roleId={user.role_id}
+						rolePermissions={user.role_permissions}
+						roleCode={user.role_code}
+						canManage={canManageRolePermissions}
+						onManageAction={() => {
+							setRoleError(null);
+							setRoleNotice('');
+							setRoleDialogOpen(true);
+						}}
+					/>
+				)}
+
+				{roleNotice && (
+					<div
+						role="status"
+						className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800"
+					>
+						{roleNotice}
+					</div>
+				)}
 
 				<div className="flex flex-col xl:flex-row gap-6 lg:h-[calc(100vh-200px)]">
 					{/* Module List - Left Side */}
@@ -2431,6 +2421,14 @@ export default function UserPermissionsPage() {
 																	>
 																		{moduleDef.name}
 																	</span>
+																	{roleGrantedModules.has(module) && (
+																		<span
+																			className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700"
+																			title="This role grants permissions for this module"
+																		>
+																			Role
+																		</span>
+																	)}
 																	{isEnabled && (
 																		<span
 																			className={`shrink-0 text-xs px-2 py-0.5 rounded-full tabular-nums ${tone.enabledChip}`}
@@ -2557,6 +2555,76 @@ export default function UserPermissionsPage() {
 													);
 												})}
 											</div>
+											{activeModule === 'projects' && (
+												<div className="mt-4 border-t border-gray-200 pt-4">
+													<div className="flex flex-wrap items-baseline justify-between gap-2">
+														<h4 className="text-sm font-medium text-gray-900">
+															Project scope per action
+														</h4>
+														<span className="text-xs text-gray-500">
+															A granted action with no saved scope is treated as
+															Led projects only.
+														</span>
+													</div>
+													<p className="mt-1 text-xs text-gray-500">
+														Led projects: only where the user is Project Lead.
+														Assigned projects: the whole project team. All
+														projects: any project, with no team relationship.
+													</p>
+													<div className="mt-3 space-y-2">
+														{PROJECT_SCOPED_ACTIONS.map((action) => {
+															const granted =
+																!!modulePermissions.projects?.[action];
+															if (!granted) return null;
+															const value = projectScopes[action] || 'led';
+															const meaning = PROJECT_SCOPE_OPTIONS.find(
+																(option) => option.value === value
+															)?.meaning;
+															return (
+																<div
+																	key={action}
+																	className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2"
+																>
+																	<span className="w-20 text-sm font-medium capitalize text-gray-900">
+																		{action}
+																	</span>
+																	<select
+																		value={value}
+																		onChange={(event) =>
+																			setProjectScopes((prev) => ({
+																				...prev,
+																				[action]: event.target.value,
+																			}))
+																		}
+																		aria-label={`Project scope for ${action}`}
+																		className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+																	>
+																		{PROJECT_SCOPE_OPTIONS.map((option) => (
+																			<option
+																				key={option.value}
+																				value={option.value}
+																			>
+																				{option.label}
+																			</option>
+																		))}
+																	</select>
+																	<span className="text-xs text-gray-500">
+																		{meaning}
+																	</span>
+																</div>
+															);
+														})}
+														{PROJECT_SCOPED_ACTIONS.every(
+															(action) => !modulePermissions.projects?.[action]
+														) && (
+															<p className="text-xs text-gray-500">
+																Grant read, update, assign, close, delete or
+																reopen to choose a project scope.
+															</p>
+														)}
+													</div>
+												</div>
+											)}
 										</div>
 									</div>
 
@@ -2580,8 +2648,9 @@ export default function UserPermissionsPage() {
 												const fields = section.fields || {};
 												const enabledFieldCount = Object.keys(fields).filter(
 													(f) =>
-														fieldPermissions[activeModule]?.[f] &&
-														fieldPermissions[activeModule][f] !== 'hidden'
+														fieldPermissions[activeModule]?.[sectionKey]?.[f] &&
+														fieldPermissions[activeModule][sectionKey][f] !==
+															'hidden'
 												).length;
 
 												return (
@@ -2694,8 +2763,8 @@ export default function UserPermissionsPage() {
 																		([fieldKey, field]) => {
 																			const currentPerm =
 																				fieldPermissions[activeModule]?.[
-																					fieldKey
-																				] || 'view';
+																					sectionKey
+																				]?.[fieldKey] || 'view';
 																			const PermIcon =
 																				FIELD_PERMISSIONS[currentPerm]?.icon ||
 																				EyeIcon;
@@ -2738,6 +2807,7 @@ export default function UserPermissionsPage() {
 																								onClick={() =>
 																									setFieldPerm(
 																										activeModule,
+																										sectionKey,
 																										fieldKey,
 																										permKey
 																									)
@@ -2822,6 +2892,18 @@ export default function UserPermissionsPage() {
 					</div>
 				</div>
 			</div>
+
+			<RolePermissionDialog
+				open={roleDialogOpen}
+				roleName={user?.role_name}
+				initialPermissions={user?.role_permissions}
+				saving={roleSaving}
+				error={roleError}
+				onCloseAction={() => {
+					if (!roleSaving) setRoleDialogOpen(false);
+				}}
+				onSaveAction={handleSaveRolePermissions}
+			/>
 		</div>
 	);
 }

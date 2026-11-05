@@ -1,10 +1,20 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
+import {
+	filterProjectForRights,
+	loadLeadPolicy,
+	resolveProjectRights,
+} from '@/lib/project-rights';
 
 /**
  * GET /api/users/[id]/projects
- * Fetch all projects assigned to a user with their activities
+ * Fetch all projects assigned to a user with their activities.
+ *
+ * Rows flow through the shared project-rights policy for the acting user:
+ * projects the actor cannot open are dropped, unreadable sections and
+ * protected commercial columns are omitted. The historical `budget` alias is
+ * gone so no protected amount can travel under another name.
  */
 export async function GET(request, { params }) {
 	let db;
@@ -53,7 +63,7 @@ export async function GET(request, { params }) {
             p.status as project_status,
             p.start_date as project_start_date,
             p.end_date as project_end_date,
-            p.budget as project_estimated_hours
+            p.project_team
           FROM projects p
           INNER JOIN user_activity_assignments uaa ON p.project_id = uaa.project_id
           WHERE uaa.user_id = ?
@@ -82,7 +92,6 @@ export async function GET(request, { params }) {
             p.status as project_status,
             p.start_date as project_start_date,
             p.end_date as project_end_date,
-            p.budget as project_estimated_hours,
             p.project_team
           FROM projects p
           WHERE p.project_team IS NOT NULL AND p.project_team != '' AND p.project_team != '[]'
@@ -105,17 +114,30 @@ export async function GET(request, { params }) {
 						} catch {
 							return false;
 						}
-					})
-					.map((project) => {
-						// Remove project_team from result
-						const result = { ...project };
-						delete result.project_team;
-						return result;
 					});
 			} catch (err) {
 				console.log('project_team JSON query failed:', err.message);
 			}
 		}
+
+		// Policy shaping: only projects the acting user may open are returned,
+		// and every row is filtered for unreadable sections and protected
+		// commercial columns. `project_team` is membership evidence, never part
+		// of this endpoint's row shape.
+		const permittedProjects = [];
+		const leadPolicy = await loadLeadPolicy(db);
+		for (const project of projects) {
+			const rights = resolveProjectRights({
+				user: currentUser,
+				project,
+				leadPolicy,
+			});
+			if (!rights.canOpen) continue;
+			const filtered = filterProjectForRights({ ...project }, rights);
+			delete filtered.project_team;
+			permittedProjects.push(filtered);
+		}
+		projects = permittedProjects;
 
 		// For each project, get the activities
 		const projectsWithActivities = await Promise.all(

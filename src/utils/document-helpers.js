@@ -4,6 +4,11 @@ import {
 	getCurrentUser,
 	ensurePermission,
 } from '@/utils/api-permissions';
+import {
+	loadLeadPolicy,
+	projectAccessDeniedResponse,
+	requireProjectAccess,
+} from '@/lib/project-rights';
 import { query } from '@/utils/database';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
@@ -134,23 +139,38 @@ export async function handleDocumentDownload(request, docId) {
 		);
 	}
 
-	// 2. Enforce RBAC READ authorization on the target entity (SEC-06)
-	const auth = await ensurePermission(request, resource, PERMISSIONS.READ);
-	if (auth instanceof Response) return auth;
-	if (!auth.authorized) {
-		return NextResponse.json(
-			{ success: false, error: 'Forbidden' },
-			{ status: 403 }
-		);
-	}
+	// 2. Enforce project section rights for project documents; other entity
+	// types keep their resource permission. (SEC-06)
+	if (doc.entity_type === 'project') {
+		const access = await requireProjectAccess(request, doc.entity_id, {
+			getLeadPolicy: loadLeadPolicy,
+		});
+		if ('response' in access) return access.response;
+		try {
+			if (!access.rights.sections.upload_documents.read) {
+				return projectAccessDeniedResponse();
+			}
+		} finally {
+			if (access.ownsDb) access.db.release?.();
+		}
+	} else {
+		const auth = await ensurePermission(request, resource, PERMISSIONS.READ);
+		if (auth instanceof Response) return auth;
+		if (!auth.authorized) {
+			return NextResponse.json(
+				{ success: false, error: 'Forbidden' },
+				{ status: 403 }
+			);
+		}
 
-	// 3. Verify target entity exists and is active (SEC-06 IDOR check)
-	const exists = await verifyEntityExists(doc.entity_type, doc.entity_id);
-	if (!exists) {
-		return NextResponse.json(
-			{ success: false, error: `${doc.entity_type} not found` },
-			{ status: 404 }
-		);
+		// 3. Verify target entity exists and is active (SEC-06 IDOR check)
+		const exists = await verifyEntityExists(doc.entity_type, doc.entity_id);
+		if (!exists) {
+			return NextResponse.json(
+				{ success: false, error: `${doc.entity_type} not found` },
+				{ status: 404 }
+			);
+		}
 	}
 
 	// 4. Safely locate file on disk (SEC-10 Path Traversal prevention)
