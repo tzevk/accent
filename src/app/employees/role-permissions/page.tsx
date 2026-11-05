@@ -173,7 +173,7 @@ export default function RolePermissionsPage() {
 							</div>
 							<div>
 								<h1 className="text-2xl font-bold text-gray-900">
-									Role Permissions
+									Edit Role Permissions
 								</h1>
 								<p className="mt-1 text-sm text-gray-600">
 									Manage the flat permissions granted to every user with a role.

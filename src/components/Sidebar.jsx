@@ -391,7 +391,7 @@ export default function Sidebar() {
 													}`}
 												>
 													<span className="hidden sidebar-open:inline">
-														Role Permissions
+														Edit Role Permissions
 													</span>
 												</Link>
 											)}

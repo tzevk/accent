@@ -61,7 +61,7 @@ describe('Sidebar employee master children', () => {
 		renderSidebar();
 
 		expect(
-			screen.getByRole('link', { name: 'Role Permissions' })
+			screen.getByRole('link', { name: 'Edit Role Permissions' })
 		).toHaveAttribute('href', '/employees/role-permissions');
 	});
 
