@@ -235,11 +235,21 @@ export default function RolePermissionsPage() {
 							<table className="w-full text-sm">
 								<thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
 									<tr>
-										<th className="px-4 py-3">Role</th>
-										<th className="px-4 py-3">Code</th>
-										<th className="px-4 py-3">Department</th>
-										<th className="px-4 py-3">Permissions</th>
-										<th className="px-4 py-3 text-right">Actions</th>
+										<th scope="col" className="px-4 py-3">
+											Role
+										</th>
+										<th scope="col" className="px-4 py-3">
+											Code
+										</th>
+										<th scope="col" className="px-4 py-3">
+											Department
+										</th>
+										<th scope="col" className="px-4 py-3">
+											Permissions
+										</th>
+										<th scope="col" className="px-4 py-3 text-right">
+											Actions
+										</th>
 									</tr>
 								</thead>
 								<tbody className="divide-y divide-gray-100">
@@ -290,6 +300,7 @@ export default function RolePermissionsPage() {
 																setNotice('');
 																setEditingRole(role);
 															}}
+															aria-label={`Edit permissions for ${role.role_name}`}
 															className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
 														>
 															<PencilIcon

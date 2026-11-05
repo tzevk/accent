@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import {
 	getRolePermissionGroups,
@@ -30,6 +30,14 @@ export default function RolePermissionDialog({
 }: RolePermissionDialogProps) {
 	const [draft, setDraft] = useState<string[]>([]);
 	const [search, setSearch] = useState('');
+	const dialogRef = useRef<HTMLDivElement>(null);
+	const closeRef = useRef(onCloseAction);
+	const savingRef = useRef(saving);
+
+	useEffect(() => {
+		closeRef.current = onCloseAction;
+		savingRef.current = saving;
+	}, [onCloseAction, saving]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -39,12 +47,49 @@ export default function RolePermissionDialog({
 
 	useEffect(() => {
 		if (!open) return;
+		const previousFocus =
+			document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null;
+		const dialog = dialogRef.current;
+		const focusables = () =>
+			Array.from(
+				dialog?.querySelectorAll<HTMLElement>(
+					'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+				) ?? []
+			);
+
+		dialog?.querySelector<HTMLInputElement>('#role-permission-search')?.focus();
+
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === 'Escape' && !saving) onCloseAction();
+			if (event.key === 'Escape') {
+				if (!savingRef.current) closeRef.current();
+				return;
+			}
+			if (event.key !== 'Tab') return;
+
+			const items = focusables();
+			if (items.length === 0) return;
+			const first = items[0];
+			const last = items[items.length - 1];
+			const active = document.activeElement;
+			const outside = !dialog?.contains(active);
+
+			if (event.shiftKey && (active === first || outside)) {
+				event.preventDefault();
+				last.focus();
+			} else if (!event.shiftKey && (active === last || outside)) {
+				event.preventDefault();
+				first.focus();
+			}
 		};
+
 		document.addEventListener('keydown', onKeyDown);
-		return () => document.removeEventListener('keydown', onKeyDown);
-	}, [open, saving, onCloseAction]);
+		return () => {
+			document.removeEventListener('keydown', onKeyDown);
+			previousFocus?.focus?.();
+		};
+	}, [open]);
 
 	const groups = useMemo(() => {
 		const query = search.trim().toLowerCase();
@@ -74,6 +119,7 @@ export default function RolePermissionDialog({
 			}}
 		>
 			<div
+				ref={dialogRef}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="role-permission-dialog-title"

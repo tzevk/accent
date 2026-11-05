@@ -20,9 +20,11 @@ describe('RolePermissionDialog', () => {
 			screen.getByRole('dialog', { name: 'Manage role permissions' })
 		).toBeTruthy();
 		expect(
-			(screen.getByLabelText(/View lead information/) as HTMLInputElement)
-				.checked
+			(screen.getByLabelText('Leads: View') as HTMLInputElement).checked
 		).toBe(true);
+		expect(document.activeElement).toBe(
+			screen.getByRole('searchbox', { name: 'Search role permissions' })
+		);
 
 		fireEvent.click(screen.getByLabelText('Projects: View'));
 		fireEvent.click(
@@ -30,6 +32,27 @@ describe('RolePermissionDialog', () => {
 		);
 
 		expect(onSaveAction).toHaveBeenCalledWith(['leads:read', 'projects:read']);
+	});
+
+	it('traps Tab between the first and last controls', () => {
+		render(
+			<RolePermissionDialog
+				open
+				roleName="Employee"
+				initialPermissions={['leads:read']}
+				saving={false}
+				onCloseAction={vi.fn()}
+				onSaveAction={vi.fn()}
+			/>
+		);
+
+		const save = screen.getByRole('button', { name: 'Save role permissions' });
+		save.focus();
+		fireEvent.keyDown(document, { key: 'Tab' });
+
+		expect(document.activeElement).toBe(
+			screen.getByRole('button', { name: 'Close role permission editor' })
+		);
 	});
 
 	it('filters resources and closes without saving', () => {
