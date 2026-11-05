@@ -19,7 +19,7 @@ import {
 } from '@/lib/project-rights/permission-config';
 import { parseRolePermissions } from '@/lib/role-permissions';
 import RolePermissionPanel from './RolePermissionPanel';
-import RolePermissionDialog from './RolePermissionDialog';
+import RolePermissionDialog from '@/components/permissions/RolePermissionDialog';
 import {
 	ArrowLeftIcon,
 	CheckIcon,

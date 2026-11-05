@@ -90,6 +90,10 @@ export default function Sidebar() {
 		adminRouteOverride ||
 		(!rbacLoading &&
 			(user?.is_super_admin || can(RESOURCES.EMPLOYEES, PERMISSIONS.READ)));
+	const canViewRolePermissions =
+		adminRouteOverride ||
+		(!rbacLoading &&
+			(user?.is_super_admin || can(RESOURCES.SETTINGS, PERMISSIONS.READ)));
 	const canViewUsers =
 		adminRouteOverride ||
 		(!rbacLoading &&
@@ -377,6 +381,20 @@ export default function Sidebar() {
 													Leave Requests
 												</span>
 											</Link>
+											{canViewRolePermissions && (
+												<Link
+													href="/employees/role-permissions"
+													className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
+														pathname === '/employees/role-permissions'
+															? 'bg-purple-100 text-[#64126D]'
+															: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
+													}`}
+												>
+													<span className="hidden sidebar-open:inline">
+														Role Permissions
+													</span>
+												</Link>
+											)}
 										</div>
 									)}
 								</>
