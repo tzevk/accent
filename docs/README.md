@@ -9,6 +9,7 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Operate payroll and check employee entry points   | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
 | Work Leads, ownership, and the legacy review flow | [Lead operator guide](app/leads/operator-guide.md)                                              |
+| Set up and operate ticket email notifications     | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
 | Understand project view and edit screens          | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
 | Understand project manhours                       | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
 | Understand the Timesheet report                   | [Timesheet implementation](app/reports/timesheet-implementation.md)                             |
@@ -64,6 +65,7 @@ Read the relevant record before changing its behavior.
 | Reporting            | [Employee Utilization](adr/0003-employee-utilization-formula-and-source.md), [Project Employee Cost](adr/0016-project-employee-cost-from-recorded-payroll.md), [Incurred cost and commitments](adr/0017-project-incurred-cost-and-commitments-are-separate.md)                                                                                                                                                                                                                                                           |
 | Security             | [Session validation](adr/0011-session-validation-in-proxy-and-handlers.md), [rich-text trust boundary](adr/0012-rich-text-trust-boundary.md), [rate limits](adr/0013-rate-limit-identity-and-store.md), [public endpoint allowlist](adr/0014-unauthenticated-endpoint-allowlist.md)                                                                                                                                                                                                                                      |
 | Leads                | [Legacy Lead review and the canonical Proposal](adr/0031-legacy-lead-review-and-canonical-proposal.md), [the Lead activity log and the conversion handoff](adr/0032-lead-activity-log-and-conversion-handoff.md)                                                                                                                                                                                                                                                                                                         |
+| Projects             | [Membership, shared lead policy, and explicit project scopes](adr/0034-project-membership-lead-policy-and-explicit-scopes.md) — accepted design; not implemented.                                                                                                                                                                                                                                                                                                                                                        |
 
 ## Audit records and change history
 
@@ -93,6 +95,7 @@ Use the [issue tracker workflow](agents/issue-tracker.md) to check current task 
 - [Monthly company and project expenditure specification](app/reports/project-expenditure-spec.md) — [implementation issue #304](https://github.com/tzevk/accent/issues/304)
 - [Lead Audit and Performance report design](app/reports/lead-audit-design.md) — approved design; implemented in issue #398.
 - [Lead Audit and Performance report specification](app/reports/lead-audit-spec.md) — implemented in issue #398 (PR #407).
+- [Project permissions design](app/projects/permissions-design.md) — approved policy, migration rules, and acceptance scenarios; not implemented.
 
 ## Contributor workflows
 

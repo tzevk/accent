@@ -1,27 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { GET as idGET, DELETE as idDELETE } from '@/app/api/tickets/[id]/route';
+import { POST, PUT } from '@/app/api/tickets/route';
 
-const mockExecute = vi.fn();
-const mockDbConnect = vi.fn().mockResolvedValue({
-	execute: mockExecute,
+const mocks = vi.hoisted(() => ({
+	execute: vi.fn(),
+	beginTransaction: vi.fn(),
+	commit: vi.fn(),
+	rollback: vi.fn(),
 	release: vi.fn(),
-	end: vi.fn(),
-});
-
-vi.mock('@/utils/database', () => ({ dbConnect: mockDbConnect }));
-vi.mock('@/utils/server-auth', () => ({
-	getServerAuth: vi.fn().mockResolvedValue({
-		user: {
-			id: 1,
-			is_super_admin: true,
-			full_name: 'Admin',
-			username: 'admin',
-		},
-	}),
+	dbConnect: vi.fn(),
+	getServerAuth: vi.fn(),
+	listTicketDepartments: vi.fn(),
+	canHandleTicket: vi.fn(),
+	enqueueTicketEmails: vi.fn(),
 }));
 
-const { GET: idGET, DELETE: idDELETE } =
-	await import('@/app/api/tickets/[id]/route');
-const { POST } = await import('@/app/api/tickets/route');
+vi.mock('@/utils/database', () => ({ dbConnect: mocks.dbConnect }));
+vi.mock('@/utils/server-auth', () => ({
+	getServerAuth: mocks.getServerAuth,
+}));
+vi.mock('@/lib/tickets/departments', () => ({
+	listTicketDepartments: mocks.listTicketDepartments,
+	canHandleTicket: mocks.canHandleTicket,
+}));
+vi.mock('@/lib/tickets/email-outbox', () => ({
+	enqueueTicketEmails: mocks.enqueueTicketEmails,
+}));
 
 type CreateRequestOpts = { url?: string; method?: string; body?: unknown };
 type MockRequest = {
@@ -30,7 +34,6 @@ type MockRequest = {
 	headers: Headers;
 	json?: () => Promise<unknown>;
 };
-type MockCall = unknown[];
 
 function createRequest(opts: CreateRequestOpts = {}) {
 	const req: MockRequest = {
@@ -42,58 +45,47 @@ function createRequest(opts: CreateRequestOpts = {}) {
 	return req;
 }
 
-describe('Tickets — soft delete', () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
+function authUser(overrides: Record<string, unknown> = {}) {
+	mocks.getServerAuth.mockResolvedValue({
+		user: {
+			id: 1,
+			is_super_admin: false,
+			full_name: 'Employee',
+			username: 'employee',
+			...overrides,
+		},
 	});
+}
 
-	it('DELETE uses UPDATE SET isDelete = 1, not DELETE FROM', async () => {
-		mockExecute.mockImplementation((sql: string) => {
-			if (sql.includes('UPDATE support_tickets SET isDelete'))
-				return Promise.resolve([{ affectedRows: 1 }]);
-			return Promise.resolve([
-				[{ id: 1, user_id: 1, status: 'new', assigned_to: null }],
-			]);
-		});
-		const r = await idDELETE(createRequest({ method: 'DELETE' }), {
-			params: Promise.resolve({ id: '1' }),
-		});
-		const json = await r.json();
-		expect(json.success).toBe(true);
-		const deleteSql = mockExecute.mock.calls.find((c: MockCall) =>
-			(c[0] as string).includes('SET isDelete = 1')
-		)?.[0] as string;
-		expect(deleteSql).toContain('SET isDelete = 1');
-		expect(deleteSql).toContain('isDelete = 0');
+beforeEach(() => {
+	vi.resetAllMocks();
+	mocks.dbConnect.mockResolvedValue({
+		execute: mocks.execute,
+		beginTransaction: mocks.beginTransaction,
+		commit: mocks.commit,
+		rollback: mocks.rollback,
+		release: mocks.release,
 	});
+	mocks.beginTransaction.mockResolvedValue(undefined);
+	mocks.commit.mockResolvedValue(undefined);
+	mocks.rollback.mockResolvedValue(undefined);
+	mocks.listTicketDepartments.mockResolvedValue([
+		{
+			id: 5,
+			name: 'IT',
+			role_id: 3,
+			role_name: 'IT Support',
+			is_active: true,
+			handler_count: 2,
+		},
+	]);
+	mocks.canHandleTicket.mockResolvedValue(false);
+	mocks.enqueueTicketEmails.mockResolvedValue(undefined);
+});
 
-	it('SELECT queries filter by isDelete = 0', async () => {
-		mockExecute.mockImplementation((sql: string) => {
-			if (sql.includes('support_tickets'))
-				return Promise.resolve([
-					[{ id: 1, user_id: 1, status: 'new', assigned_to: null }],
-				]);
-			if (sql.includes('ticket_comments')) return Promise.resolve([[]]);
-			return Promise.resolve([[]]);
-		});
-		await idDELETE(createRequest({ method: 'DELETE' }), {
-			params: Promise.resolve({ id: '1' }),
-		});
-		const selectSqls = mockExecute.mock.calls
-			.filter((c: MockCall) => (c[0] as string).includes('support_tickets'))
-			.map((c: MockCall) => c[0] as string);
-		for (const sql of selectSqls) {
-			if (sql.includes('SELECT')) {
-				expect(sql).toContain('isDelete = 0');
-			}
-		}
-	});
-
-	it('uses a schema-supported category when category is omitted', async () => {
-		mockExecute
-			.mockResolvedValueOnce([[]])
-			.mockResolvedValueOnce([{ insertId: 1 }])
-			.mockResolvedValueOnce([[{ id: 1, category: 'other' }]]);
+describe('Tickets — ticket routing and access', () => {
+	it('rejects a new ticket without a responsible department before touching the database', async () => {
+		authUser();
 
 		const response = await POST(
 			createRequest({
@@ -104,58 +96,279 @@ describe('Tickets — soft delete', () => {
 				},
 			})
 		);
-
 		const json = await response.json();
-		expect(response.status).toBe(200);
-		expect(json.success).toBe(true);
 
-		const insertCall = mockExecute.mock.calls[1] as MockCall;
-		expect(insertCall[1]).toEqual([
-			expect.stringMatching(/^TKT-\d{6}-\d{4}$/),
-			1,
-			'Cannot access report',
-			'The report page is unavailable.',
-			'other',
-			'medium',
-		]);
+		expect(response.status).toBe(400);
+		expect(json.success).toBe(false);
+		expect(mocks.dbConnect).not.toHaveBeenCalled();
+		expect(mocks.execute).not.toHaveBeenCalled();
 	});
 
-	it('writes the schema-supported critical priority', async () => {
-		mockExecute.mockReset();
-		mockExecute
-			.mockResolvedValueOnce([[]])
-			.mockResolvedValueOnce([{ insertId: 1 }])
-			.mockResolvedValueOnce([[{ id: 1, priority: 'critical' }]]);
+	it('rejects a department that is not selectable without saving a ticket', async () => {
+		authUser();
+		mocks.listTicketDepartments.mockResolvedValue([]);
 
 		const response = await POST(
 			createRequest({
 				method: 'POST',
 				body: {
-					subject: 'Report is blocked',
-					description: 'The report cannot be opened.',
-					priority: 'critical',
+					subject: 'Cannot access report',
+					description: 'The report page is unavailable.',
+					ticket_department_id: 9,
 				},
 			})
 		);
+		const json = await response.json();
 
-		expect(response.status).toBe(200);
-		const insertCall = mockExecute.mock.calls[1] as MockCall;
-		expect(insertCall[1][5]).toBe('critical');
+		expect(response.status).toBe(400);
+		expect(json.success).toBe(false);
+		expect(mocks.commit).not.toHaveBeenCalled();
+		expect(mocks.rollback).toHaveBeenCalled();
+		expect(mocks.enqueueTicketEmails).not.toHaveBeenCalled();
 	});
 
-	it('returns empty attachments for malformed comment JSON', async () => {
-		mockExecute.mockReset();
-		mockExecute
-			.mockResolvedValueOnce([
-				[{ id: 4, user_id: 1, title: 'Cannot access report' }],
-			])
-			.mockResolvedValueOnce([
+	it('creates the ticket and its alert jobs in one transaction', async () => {
+		authUser();
+		mocks.execute.mockImplementation((sql: string) => {
+			if (sql.includes('SELECT ticket_number FROM support_tickets')) {
+				return Promise.resolve([[{ ticket_number: 'TKT-202611-0007' }]]);
+			}
+			if (sql.includes('INSERT INTO support_tickets')) {
+				return Promise.resolve([{ insertId: 42 }]);
+			}
+			if (sql.includes('FROM support_tickets t')) {
+				return Promise.resolve([
+					[
+						{
+							id: 42,
+							ticket_number: 'TKT-202611-0008',
+							ticket_department_id: 5,
+						},
+					],
+				]);
+			}
+			return Promise.resolve([[]]);
+		});
+
+		const response = await POST(
+			createRequest({
+				method: 'POST',
+				body: {
+					subject: 'Cannot access report',
+					description: 'The report page is unavailable.',
+					priority: 'critical',
+					ticket_department_id: 5,
+				},
+			})
+		);
+		const json = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(json.success).toBe(true);
+		expect(json.data.id).toBe(42);
+		expect(mocks.commit).toHaveBeenCalledTimes(1);
+		expect(mocks.enqueueTicketEmails).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				ticketId: 42,
+				departmentId: 5,
+				assignmentVersion: 1,
+				eventType: 'created',
+				ticketNumber: 'TKT-202611-0008',
+				priority: 'critical',
+			})
+		);
+	});
+
+	it('does not report success when the alert jobs cannot be queued', async () => {
+		authUser();
+		mocks.execute.mockImplementation((sql: string) => {
+			if (sql.includes('SELECT ticket_number FROM support_tickets')) {
+				return Promise.resolve([[{ ticket_number: 'TKT-202611-0007' }]]);
+			}
+			if (sql.includes('INSERT INTO support_tickets')) {
+				return Promise.resolve([{ insertId: 42 }]);
+			}
+			return Promise.resolve([[]]);
+		});
+		mocks.enqueueTicketEmails.mockRejectedValue(
+			new Error('No eligible recipients for the department')
+		);
+
+		const response = await POST(
+			createRequest({
+				method: 'POST',
+				body: {
+					subject: 'Cannot access report',
+					description: 'The report page is unavailable.',
+					ticket_department_id: 5,
+				},
+			})
+		);
+		const json = await response.json();
+
+		expect(response.status).toBe(500);
+		expect(json.success).toBe(false);
+		expect(mocks.commit).not.toHaveBeenCalled();
+		expect(mocks.rollback).toHaveBeenCalled();
+	});
+
+	it('forbids a non-super-admin from forging a routing change', async () => {
+		authUser({ id: 2 });
+		mocks.canHandleTicket.mockResolvedValue(true);
+		mocks.execute.mockImplementation((sql: string) => {
+			if (sql.includes('FROM support_tickets')) {
+				return Promise.resolve([
+					[
+						{
+							id: 1,
+							user_id: 9,
+							status: 'open',
+							priority: 'medium',
+							ticket_department_id: 5,
+							assignment_version: 1,
+							ticket_number: 'TKT-202611-0001',
+						},
+					],
+				]);
+			}
+			return Promise.resolve([[]]);
+		});
+
+		const response = await PUT(
+			createRequest({
+				method: 'PUT',
+				body: { id: 1, ticket_department_id: 6 },
+			})
+		);
+		const json = await response.json();
+
+		expect(response.status).toBe(403);
+		expect(json.success).toBe(false);
+		expect(mocks.listTicketDepartments).not.toHaveBeenCalled();
+		expect(mocks.enqueueTicketEmails).not.toHaveBeenCalled();
+		expect(mocks.commit).not.toHaveBeenCalled();
+	});
+
+	it('allows a current handler to update the persisted status', async () => {
+		authUser({ id: 2 });
+		mocks.canHandleTicket.mockResolvedValue(true);
+		mocks.execute.mockImplementation((sql: string) => {
+			if (sql.includes('FROM support_tickets t')) {
+				return Promise.resolve([
+					[
+						{
+							id: 1,
+							user_id: 9,
+							status: 'resolved',
+							ticket_department_id: 5,
+						},
+					],
+				]);
+			}
+			if (sql.includes('FROM support_tickets')) {
+				return Promise.resolve([
+					[
+						{
+							id: 1,
+							user_id: 9,
+							status: 'pending_info',
+							ticket_department_id: 5,
+						},
+					],
+				]);
+			}
+			return Promise.resolve([{ affectedRows: 1 }]);
+		});
+
+		const response = await PUT(
+			createRequest({
+				method: 'PUT',
+				body: { id: 1, status: 'resolved' },
+			})
+		);
+		const json = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(json.success).toBe(true);
+		expect(json.data.status).toBe('resolved');
+		expect(mocks.commit).toHaveBeenCalledTimes(1);
+	});
+
+	it('lets an owner delete their own unassigned legacy open ticket', async () => {
+		authUser();
+		mocks.execute.mockImplementation((sql: string) => {
+			if (sql.includes('UPDATE support_tickets SET isDelete = 1')) {
+				return Promise.resolve([{ affectedRows: 1 }]);
+			}
+			return Promise.resolve([
 				[
-					{ id: 1, attachments: '' },
-					{ id: 2, attachments: 'not-json' },
-					{ id: 3, attachments: '["file.pdf"]' },
+					{
+						id: 1,
+						user_id: 1,
+						status: 'open',
+						assigned_to: null,
+						ticket_department_id: null,
+					},
 				],
 			]);
+		});
+
+		const response = await idDELETE(createRequest({ method: 'DELETE' }), {
+			params: Promise.resolve({ id: '1' }),
+		});
+		const json = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(json.success).toBe(true);
+	});
+
+	it('forbids an owner from deleting a ticket routed to a department', async () => {
+		authUser();
+		mocks.execute.mockResolvedValue([
+			[
+				{
+					id: 1,
+					user_id: 1,
+					status: 'open',
+					assigned_to: null,
+					ticket_department_id: 5,
+				},
+			],
+		]);
+
+		const response = await idDELETE(createRequest({ method: 'DELETE' }), {
+			params: Promise.resolve({ id: '1' }),
+		});
+		const json = await response.json();
+
+		expect(response.status).toBe(403);
+		expect(json.success).toBe(false);
+	});
+
+	it('returns empty attachments for malformed comment JSON and exposes capabilities', async () => {
+		authUser();
+		mocks.execute.mockImplementation((sql: string) => {
+			if (sql.includes('ticket_comments')) {
+				return Promise.resolve([
+					[
+						{ id: 1, attachments: '' },
+						{ id: 2, attachments: 'not-json' },
+						{ id: 3, attachments: '["file.pdf"]' },
+					],
+				]);
+			}
+			return Promise.resolve([
+				[
+					{
+						id: 4,
+						user_id: 1,
+						title: 'Cannot access report',
+						ticket_department_id: 5,
+					},
+				],
+			]);
+		});
 
 		const response = await idGET(createRequest(), {
 			params: Promise.resolve({ id: '4' }),
@@ -164,6 +377,9 @@ describe('Tickets — soft delete', () => {
 		const json = await response.json();
 		expect(response.status).toBe(200);
 		expect(json.success).toBe(true);
+		expect(json.data.can_update_status).toBe(true);
+		expect(json.data.can_reassign).toBe(false);
+		expect(json.data.can_handle).toBe(false);
 		expect(json.data.comments).toEqual([
 			{ id: 1, attachments: [] },
 			{ id: 2, attachments: [] },

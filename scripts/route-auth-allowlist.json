@@ -25,6 +25,11 @@
 		"reason": "Machine-to-machine ingestion endpoint authenticated by a Bearer SMARTOFFICE_WEBHOOK_SECRET header, not a session cookie."
 	},
 	{
+		"path": "src/app/api/cron/ticket-emails/route.ts",
+		"methods": ["GET"],
+		"reason": "Machine caller: Vercel Cron sends no session cookie (ADR-0014). The handler authenticates with a constant-time Bearer CRON_SECRET check and answers 401/503 otherwise."
+	},
+	{
 		"path": "src/app/api/documents/route.js",
 		"methods": ["*"],
 		"reason": "Thin forwarder: every handler delegates to src/app/api/document-master/route.js, which guards each handler with ensurePermission."

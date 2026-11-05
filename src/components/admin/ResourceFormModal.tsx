@@ -230,6 +230,7 @@ export default function ResourceFormModal({
 											return (
 												<FieldGroup
 													label={field.label}
+													htmlFor={field.name}
 													required={field.required}
 													hint={field.hint}
 													error={error ? String(error) : undefined}

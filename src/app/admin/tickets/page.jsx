@@ -1,11 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import Navbar from '@/components/Navbar';
+import { Button } from '@/components/ui/button';
+import { useSession } from '@/context/SessionContext';
+import { apiGet, apiPost, apiPut } from '@/lib/api-client';
+import { TICKET_STATUSES } from '@/lib/tickets/constants';
+import TicketDepartmentSettings from '@/components/tickets/TicketDepartmentSettings';
 import {
 	TicketIcon,
 	MagnifyingGlassIcon,
-	FunnelIcon,
 	UserIcon,
 	ClockIcon,
 	ChatBubbleLeftRightIcon,
@@ -15,6 +21,12 @@ import {
 	ArrowPathIcon,
 	UserGroupIcon,
 	ShieldCheckIcon,
+	ChevronDownIcon,
+	ChevronUpIcon,
+	ExclamationTriangleIcon,
+	InboxIcon,
+	BoltIcon,
+	LockClosedIcon,
 } from '@heroicons/react/24/outline';
 
 const PRIORITIES = [
@@ -34,118 +46,146 @@ const PRIORITIES = [
 		color: 'bg-orange-100 text-orange-700 border-orange-300',
 	},
 	{
-		value: 'urgent',
-		label: 'Urgent',
+		value: 'critical',
+		label: 'Critical',
 		color: 'bg-red-100 text-red-700 border-red-300',
 	},
 ];
 
-const STATUSES = [
-	{
-		value: 'new',
-		label: 'New',
+// Labels are the persisted status enum (shared with the ticket surfaces);
+// only the badge colours and icons stay local to this admin page.
+const STATUS_META = {
+	open: {
 		color: 'bg-blue-100 text-blue-800',
-		icon: '🆕',
-		nextStatus: 'under_review',
+		statColor: 'text-blue-600',
+		Icon: InboxIcon,
 	},
-	{
-		value: 'under_review',
-		label: 'Under Review',
-		color: 'bg-purple-100 text-purple-800',
-		icon: '👀',
-		nextStatus: 'in_progress',
-	},
-	{
-		value: 'in_progress',
-		label: 'In Progress',
+	in_progress: {
 		color: 'bg-yellow-100 text-yellow-800',
-		icon: '⚡',
-		nextStatus: 'waiting_for_employee',
+		statColor: 'text-yellow-600',
+		Icon: BoltIcon,
 	},
-	{
-		value: 'waiting_for_employee',
-		label: 'Waiting for Employee',
+	pending_info: {
 		color: 'bg-orange-100 text-orange-800',
-		icon: '⏳',
-		nextStatus: 'in_progress',
+		statColor: 'text-orange-600',
+		Icon: ClockIcon,
 	},
-	{
-		value: 'resolved',
-		label: 'Resolved',
+	resolved: {
 		color: 'bg-green-100 text-green-800',
-		icon: '✅',
-		nextStatus: 'closed',
+		statColor: 'text-green-600',
+		Icon: CheckCircleIcon,
 	},
-	{
-		value: 'closed',
-		label: 'Closed',
+	closed: {
 		color: 'bg-gray-100 text-gray-800',
-		icon: '🔒',
-		nextStatus: null,
+		statColor: 'text-gray-600',
+		Icon: LockClosedIcon,
 	},
-];
+};
+
+const STATUSES = TICKET_STATUSES.map((status) => ({
+	...status,
+	...STATUS_META[status.value],
+}));
+
+function messageOf(error, fallback) {
+	return error instanceof Error && error.message ? error.message : fallback;
+}
 
 export default function TicketManagementPage() {
-	const [tickets, setTickets] = useState([]);
-	const [users, setUsers] = useState([]);
-	const [loading, setLoading] = useState(true);
+	const { user } = useSession();
+	const isSuperAdmin =
+		user?.is_super_admin === true ||
+		user?.is_super_admin === 1 ||
+		user?.is_super_admin === '1';
+
 	const [showViewModal, setShowViewModal] = useState(false);
 	const [selectedTicket, setSelectedTicket] = useState(null);
+	const [modalError, setModalError] = useState('');
+
 	const [filterStatus, setFilterStatus] = useState('');
 	const [filterPriority, setFilterPriority] = useState('');
-	const [filterRoutedTo, setFilterRoutedTo] = useState('');
+	const [filterDepartmentId, setFilterDepartmentId] = useState('');
 
 	const [searchQuery, setSearchQuery] = useState('');
 	const [newComment, setNewComment] = useState('');
 	const [submittingComment, setSubmittingComment] = useState(false);
 	const [updatingTicket, setUpdatingTicket] = useState(false);
+	const [showDepartments, setShowDepartments] = useState(true);
 
-	useEffect(() => {
-		fetchTickets();
-		fetchUsers();
-	}, [filterStatus, filterPriority, filterRoutedTo]);
+	const departmentsQuery = useQuery({
+		queryKey: ['ticket-departments', 'selectable'],
+		queryFn: async () => (await apiGet('/api/ticket-departments')).data ?? [],
+	});
 
-	const fetchTickets = async () => {
+	const departments = departmentsQuery.data ?? [];
+	const selectableDepartmentIds = new Set(
+		departments.map((department) => Number(department.id))
+	);
+
+	// Super admins can also filter by departments that are disabled or missing
+	// a responsible role, so they request the same `?all=true` catalog the
+	// settings panel uses. The request stays disabled for everyone else,
+	// keeping role metadata out of their caches.
+	const allDepartmentsQuery = useQuery({
+		queryKey: ['ticket-departments', 'all'],
+		queryFn: async () =>
+			(await apiGet('/api/ticket-departments', { all: true })).data ?? [],
+		enabled: isSuperAdmin,
+	});
+
+	const allDepartments = allDepartmentsQuery.data ?? [];
+
+	const filterDepartments =
+		isSuperAdmin && allDepartmentsQuery.data ? allDepartments : departments;
+	const filterDepartmentsQuery = isSuperAdmin
+		? allDepartmentsQuery
+		: departmentsQuery;
+
+	// Keep the selected filter even when its department stops being offered:
+	// the tickets API already filters by id, and silently clearing it would
+	// drop the rows the admin was looking at.
+	const departmentFilter = filterDepartmentId;
+
+	const ticketsQuery = useQuery({
+		queryKey: [
+			'tickets',
+			'admin',
+			filterStatus,
+			filterPriority,
+			departmentFilter,
+		],
+		queryFn: () =>
+			apiGet('/api/tickets', {
+				all: 'true',
+				status: filterStatus,
+				priority: filterPriority,
+				ticket_department_id: departmentFilter,
+			}),
+	});
+
+	const tickets = ticketsQuery.data?.data ?? [];
+
+	const refreshSelectedTicket = async (ticketId) => {
 		try {
-			const params = new URLSearchParams({ all: 'true' });
-			if (filterStatus) params.append('status', filterStatus);
-			if (filterPriority) params.append('priority', filterPriority);
-			if (filterRoutedTo) params.append('routed_to', filterRoutedTo);
-
-			const res = await fetch(`/api/tickets?${params}`);
-			const data = await res.json();
-			if (data.success) {
-				setTickets(data.data);
-			}
+			const res = await apiGet(`/api/tickets/${ticketId}`);
+			setSelectedTicket(res.data);
+			setModalError('');
 		} catch (error) {
-			console.error('Error fetching tickets:', error);
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const fetchUsers = async () => {
-		try {
-			const res = await fetch('/api/users');
-			const data = await res.json();
-			if (data.success) {
-				setUsers(data.data || []);
-			}
-		} catch (error) {
-			console.error('Error fetching users:', error);
+			setModalError(
+				messageOf(error, 'Could not refresh the ticket. Close and reopen it.')
+			);
 		}
 	};
 
 	const handleViewTicket = async (ticket) => {
 		try {
-			const res = await fetch(`/api/tickets/${ticket.id}`);
-			const data = await res.json();
-			if (data.success) {
-				setSelectedTicket(data.data);
-				setShowViewModal(true);
-			}
+			const res = await apiGet(`/api/tickets/${ticket.id}`);
+			setSelectedTicket(res.data);
+			setNewComment('');
+			setModalError('');
+			setShowViewModal(true);
 		} catch (error) {
-			console.error('Error fetching ticket details:', error);
+			toast.error(messageOf(error, 'Could not load the ticket'));
 		}
 	};
 
@@ -155,94 +195,89 @@ export default function TicketManagementPage() {
 		resolutionNotes = null
 	) => {
 		setUpdatingTicket(true);
+		setModalError('');
 		try {
 			const payload = { id: ticketId, status: newStatus };
 			if (resolutionNotes) payload.resolution_notes = resolutionNotes;
 
-			const res = await fetch('/api/tickets', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
-			});
-
-			const data = await res.json();
-			if (data.success) {
-				fetchTickets();
-				if (selectedTicket) {
-					handleViewTicket({ id: ticketId });
-				}
-				return true;
-			} else {
-				alert(data.error || 'Failed to update ticket');
-				return false;
-			}
+			await apiPut('/api/tickets', payload);
+			await ticketsQuery.refetch();
+			await refreshSelectedTicket(ticketId);
+			return true;
 		} catch (error) {
-			console.error('Error updating ticket:', error);
-			alert('Failed to update ticket');
+			setModalError(messageOf(error, 'Failed to update the ticket'));
 			return false;
 		} finally {
 			setUpdatingTicket(false);
 		}
 	};
 
-	const handleAssignTicket = async (ticketId, userId) => {
-		setUpdatingTicket(true);
-		try {
-			const res = await fetch('/api/tickets', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: ticketId, assigned_to: userId }),
-			});
+	const reassignMutation = useMutation({
+		mutationFn: ({ ticketId, departmentId }) =>
+			apiPut('/api/tickets', {
+				id: ticketId,
+				ticket_department_id: departmentId,
+			}),
+		onSuccess: async (_result, variables) => {
+			toast.success('Ticket reassigned');
+			await ticketsQuery.refetch();
+			await refreshSelectedTicket(variables.ticketId);
+		},
+		onError: (error) => {
+			setModalError(messageOf(error, 'Failed to reassign the ticket'));
+		},
+	});
 
-			const data = await res.json();
-			if (data.success) {
-				fetchTickets();
-				if (selectedTicket) {
-					handleViewTicket({ id: ticketId });
-				}
-				alert('Ticket assigned successfully');
-			} else {
-				alert(data.error || 'Failed to assign ticket');
-			}
-		} catch (error) {
-			console.error('Error assigning ticket:', error);
-			alert('Failed to assign ticket');
-		} finally {
-			setUpdatingTicket(false);
-		}
+	const handleReassign = (value) => {
+		const departmentId = Number(value);
+		if (!Number.isInteger(departmentId) || departmentId <= 0) return;
+		setModalError('');
+		reassignMutation.mutate({
+			ticketId: selectedTicket.id,
+			departmentId,
+		});
 	};
 
 	const handleAddComment = async (ticketId) => {
 		if (!newComment.trim()) return;
 
 		setSubmittingComment(true);
+		setModalError('');
 		try {
-			const res = await fetch(`/api/tickets/${ticketId}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ comment: newComment }),
-			});
-
-			const data = await res.json();
-			if (data.success) {
-				setNewComment('');
-				handleViewTicket({ id: ticketId });
-			}
+			await apiPost(`/api/tickets/${ticketId}`, { comment: newComment });
+			setNewComment('');
+			await refreshSelectedTicket(ticketId);
 		} catch (error) {
-			console.error('Error adding comment:', error);
+			setModalError(messageOf(error, 'Failed to add the comment'));
 		} finally {
 			setSubmittingComment(false);
 		}
 	};
 
-	const filteredTickets = tickets.filter(
-		(ticket) =>
-			searchQuery === '' ||
-			ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			ticket.ticket_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			ticket.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			ticket.user_name.toLowerCase().includes(searchQuery.toLowerCase())
-	);
+	const closeViewModal = () => {
+		setShowViewModal(false);
+		setSelectedTicket(null);
+		setNewComment('');
+		setModalError('');
+	};
+
+	const matchesSearch = (ticket) => {
+		if (!searchQuery) return true;
+		const query = searchQuery.toLowerCase();
+		return [
+			ticket.subject,
+			ticket.ticket_number,
+			ticket.description,
+			ticket.user_name,
+			ticket.ticket_department_name,
+		].some((value) =>
+			String(value ?? '')
+				.toLowerCase()
+				.includes(query)
+		);
+	};
+
+	const filteredTickets = tickets.filter(matchesSearch);
 
 	const getStatusBadge = (status) => {
 		const statusConfig = STATUSES.find((s) => s.value === status);
@@ -250,7 +285,7 @@ export default function TicketManagementPage() {
 			<span
 				className={`px-3 py-1 text-xs font-semibold rounded-full ${statusConfig.color} inline-flex items-center gap-1`}
 			>
-				<span>{statusConfig.icon}</span>
+				<statusConfig.Icon className="h-3.5 w-3.5" />
 				{statusConfig.label}
 			</span>
 		) : (
@@ -271,71 +306,70 @@ export default function TicketManagementPage() {
 		);
 	};
 
-	const getTicketStats = () => {
-		return {
-			new: tickets.filter((t) => t.status === 'new').length,
-			under_review: tickets.filter((t) => t.status === 'under_review').length,
-			in_progress: tickets.filter((t) => t.status === 'in_progress').length,
-			waiting: tickets.filter((t) => t.status === 'waiting_for_employee')
-				.length,
-			resolved: tickets.filter((t) => t.status === 'resolved').length,
-			closed: tickets.filter((t) => t.status === 'closed').length,
-		};
-	};
-
-	const stats = getTicketStats();
+	const filtersActive =
+		filterStatus || filterPriority || departmentFilter || searchQuery;
 
 	return (
 		<div className="min-h-screen bg-gray-50">
 			<Navbar />
 			<div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
 				{/* Header */}
-				<div className="mb-8">
-					<h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-						<ShieldCheckIcon className="h-8 w-8 text-indigo-600" />
-						Ticket Management
-					</h1>
-					<p className="text-gray-600 mt-2">
-						Manage and resolve employee support tickets
-					</p>
+				<div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+					<div>
+						<h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+							<ShieldCheckIcon className="h-8 w-8 text-indigo-600" />
+							Ticket Management
+						</h1>
+						<p className="text-gray-600 mt-2">
+							Manage and resolve employee support tickets
+						</p>
+					</div>
+					{isSuperAdmin && (
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setShowDepartments((open) => !open)}
+							aria-expanded={showDepartments}
+							aria-controls="ticket-department-settings"
+						>
+							<ChevronUpIcon
+								className={`h-4 w-4 ${showDepartments ? '' : 'hidden'}`}
+							/>
+							<ChevronDownIcon
+								className={`h-4 w-4 ${showDepartments ? 'hidden' : ''}`}
+							/>
+							Department settings
+						</Button>
+					)}
 				</div>
 
+				{/* Department routing (super-admin only) */}
+				{isSuperAdmin && showDepartments && (
+					<section
+						id="ticket-department-settings"
+						aria-label="Department routing settings"
+						className="mb-6"
+					>
+						<TicketDepartmentSettings isSuperAdmin={isSuperAdmin} />
+					</section>
+				)}
+
 				{/* Stats Cards */}
-				<div className="flex gap-4 mb-6">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-blue-600">{stats.new}</div>
-						<div className="text-xs text-gray-600">New</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-purple-600">
-							{stats.under_review}
+				<div className="flex flex-wrap gap-4 mb-6">
+					{STATUSES.map((status) => (
+						<div
+							key={status.value}
+							className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-[120px] px-3 py-2"
+						>
+							<div className={`text-lg font-bold ${status.statColor}`}>
+								{
+									tickets.filter((ticket) => ticket.status === status.value)
+										.length
+								}
+							</div>
+							<div className="text-xs text-gray-600">{status.label}</div>
 						</div>
-						<div className="text-xs text-gray-600">Under Review</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-yellow-600">
-							{stats.in_progress}
-						</div>
-						<div className="text-xs text-gray-600">In Progress</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-orange-600">
-							{stats.waiting}
-						</div>
-						<div className="text-xs text-gray-600">Waiting</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-green-600">
-							{stats.resolved}
-						</div>
-						<div className="text-xs text-gray-600">Resolved</div>
-					</div>
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-gray-600">
-							{stats.closed}
-						</div>
-						<div className="text-xs text-gray-600">Closed</div>
-					</div>
+					))}
 				</div>
 
 				{/* Filters */}
@@ -347,6 +381,7 @@ export default function TicketManagementPage() {
 								<input
 									type="text"
 									placeholder="Search tickets..."
+									aria-label="Search tickets"
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
@@ -357,6 +392,7 @@ export default function TicketManagementPage() {
 						<select
 							value={filterStatus}
 							onChange={(e) => setFilterStatus(e.target.value)}
+							aria-label="Filter by status"
 							className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
 						>
 							<option value="">All Statuses</option>
@@ -370,6 +406,7 @@ export default function TicketManagementPage() {
 						<select
 							value={filterPriority}
 							onChange={(e) => setFilterPriority(e.target.value)}
+							aria-label="Filter by priority"
 							className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
 						>
 							<option value="">All Priorities</option>
@@ -381,24 +418,37 @@ export default function TicketManagementPage() {
 						</select>
 
 						<select
-							value={filterRoutedTo}
-							onChange={(e) => setFilterRoutedTo(e.target.value)}
-							className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+							value={departmentFilter}
+							onChange={(e) => setFilterDepartmentId(e.target.value)}
+							aria-label="Filter by department"
+							disabled={filterDepartmentsQuery.isLoading}
+							className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm disabled:opacity-50"
 						>
 							<option value="">All Departments</option>
-							<option value="hr">HR</option>
-							<option value="admin">Admin</option>
+							{departmentFilter &&
+								!filterDepartments.some(
+									(department) => String(department.id) === departmentFilter
+								) && (
+									<option value={departmentFilter}>
+										Department #{departmentFilter} (unavailable)
+									</option>
+								)}
+							{filterDepartments.map((department) => (
+								<option key={department.id} value={department.id}>
+									{department.name}
+									{selectableDepartmentIds.has(Number(department.id))
+										? ''
+										: ' (unavailable for new tickets)'}
+								</option>
+							))}
 						</select>
 
-						{(filterStatus ||
-							filterPriority ||
-							filterRoutedTo ||
-							searchQuery) && (
+						{filtersActive && (
 							<button
 								onClick={() => {
 									setFilterStatus('');
 									setFilterPriority('');
-									setFilterRoutedTo('');
+									setFilterDepartmentId('');
 									setSearchQuery('');
 								}}
 								className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
@@ -408,10 +458,47 @@ export default function TicketManagementPage() {
 							</button>
 						)}
 					</div>
+					{(filterDepartmentsQuery.isError ||
+						(isSuperAdmin && departmentsQuery.isError)) && (
+						<p className="mt-3 text-sm text-red-600" role="alert">
+							Could not load departments:{' '}
+							{messageOf(
+								filterDepartmentsQuery.error ?? departmentsQuery.error,
+								'unknown error'
+							)}
+							.{' '}
+							<button
+								onClick={() => {
+									void filterDepartmentsQuery.refetch();
+									if (isSuperAdmin) void departmentsQuery.refetch();
+								}}
+								className="font-medium text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+							>
+								Try again
+							</button>
+						</p>
+					)}
 				</div>
 
 				{/* Tickets List */}
-				{loading ? (
+				{ticketsQuery.isError ? (
+					<div
+						className="bg-white rounded-xl shadow-sm border border-red-200 p-12 text-center"
+						role="alert"
+					>
+						<ExclamationTriangleIcon className="h-12 w-12 text-red-400 mx-auto mb-4" />
+						<h3 className="text-lg font-medium text-gray-900 mb-2">
+							Could not load tickets
+						</h3>
+						<p className="text-gray-600 mb-4">
+							{messageOf(ticketsQuery.error, 'Something went wrong')}
+						</p>
+						<Button onClick={() => ticketsQuery.refetch()}>
+							<ArrowPathIcon className="h-4 w-4" />
+							Try again
+						</Button>
+					</div>
+				) : ticketsQuery.isLoading ? (
 					<div className="text-center py-12">
 						<ArrowPathIcon className="h-8 w-8 text-gray-400 animate-spin mx-auto mb-4" />
 						<p className="text-gray-500">Loading tickets...</p>
@@ -422,7 +509,11 @@ export default function TicketManagementPage() {
 						<h3 className="text-lg font-medium text-gray-900 mb-2">
 							No tickets found
 						</h3>
-						<p className="text-gray-500">Try adjusting your filters</p>
+						<p className="text-gray-500">
+							{filtersActive
+								? 'Try adjusting your filters'
+								: 'No tickets have been submitted yet'}
+						</p>
 					</div>
 				) : (
 					<div className="space-y-3">
@@ -457,12 +548,23 @@ export default function TicketManagementPage() {
 													<ClockIcon className="h-4 w-4" />
 													{new Date(ticket.created_at).toLocaleString()}
 												</span>
-												{ticket.assigned_to_name && (
-													<span className="flex items-center gap-1 text-indigo-600">
-														<UserGroupIcon className="h-4 w-4" />
-														Assigned to: {ticket.assigned_to_name}
-													</span>
-												)}
+												<span
+													className={`flex items-center gap-1 ${
+														ticket.ticket_department_name &&
+														!ticket.ticket_role_name
+															? 'text-amber-700'
+															: 'text-indigo-600'
+													}`}
+												>
+													<UserGroupIcon className="h-4 w-4" />
+													{ticket.ticket_department_name
+														? `Department: ${ticket.ticket_department_name}${
+																ticket.ticket_role_name
+																	? ` (${ticket.ticket_role_name})`
+																	: ' (no responsible role)'
+															}`
+														: 'Not routed to a department'}
+												</span>
 												{ticket.attachment_url && (
 													<span className="flex items-center gap-1 text-indigo-600">
 														<PaperClipIcon className="h-4 w-4" />
@@ -495,7 +597,8 @@ export default function TicketManagementPage() {
 								</p>
 							</div>
 							<button
-								onClick={() => setShowViewModal(false)}
+								onClick={closeViewModal}
+								aria-label="Close ticket"
 								className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
 							>
 								<XMarkIcon className="h-6 w-6 text-gray-500" />
@@ -503,69 +606,150 @@ export default function TicketManagementPage() {
 						</div>
 
 						<div className="p-6 space-y-6 max-h-[calc(90vh-200px)] overflow-y-auto">
-							{/* Quick Actions */}
-							<div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-								<h4 className="font-semibold text-gray-900 mb-3">
-									Quick Actions
-								</h4>
-								<div className="flex flex-wrap gap-2">
-									{STATUSES.map((status) => (
-										<button
-											key={status.value}
-											onClick={() => {
-												if (
-													status.value === 'resolved' ||
-													status.value === 'closed'
-												) {
-													const notes = prompt('Enter resolution notes:');
-													if (notes)
-														handleUpdateStatus(
-															selectedTicket.id,
-															status.value,
-															notes
-														);
-												} else {
-													handleUpdateStatus(selectedTicket.id, status.value);
-												}
-											}}
-											disabled={
-												updatingTicket || selectedTicket.status === status.value
-											}
-											className={`px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-												selectedTicket.status === status.value
-													? `${status.color} font-semibold`
-													: 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-											}`}
-										>
-											{status.icon} {status.label}
-										</button>
-									))}
-								</div>
-							</div>
-
-							{/* Assign Ticket */}
-							<div className="bg-gray-50 rounded-lg p-4">
-								<label className="block text-sm font-semibold text-gray-700 mb-2">
-									Assign To
-								</label>
-								<select
-									value={selectedTicket.assigned_to || ''}
-									onChange={(e) =>
-										handleAssignTicket(
-											selectedTicket.id,
-											e.target.value ? parseInt(e.target.value) : null
-										)
-									}
-									disabled={updatingTicket}
-									className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
+							{modalError && (
+								<div
+									className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+									role="alert"
 								>
-									<option value="">Unassigned</option>
-									{users.map((user) => (
-										<option key={user.id} value={user.id}>
-											{user.full_name || user.username} - {user.email}
-										</option>
-									))}
-								</select>
+									{modalError}
+								</div>
+							)}
+
+							{/* Quick Actions */}
+							{selectedTicket.can_update_status === true ? (
+								<div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+									<h4 className="font-semibold text-gray-900 mb-3">
+										Quick Actions
+									</h4>
+									<div className="flex flex-wrap gap-2">
+										{STATUSES.map((status) => (
+											<button
+												key={status.value}
+												onClick={() => {
+													if (
+														status.value === 'resolved' ||
+														status.value === 'closed'
+													) {
+														const notes = prompt('Enter resolution notes:');
+														if (notes)
+															handleUpdateStatus(
+																selectedTicket.id,
+																status.value,
+																notes
+															);
+													} else {
+														handleUpdateStatus(selectedTicket.id, status.value);
+													}
+												}}
+												disabled={
+													updatingTicket ||
+													selectedTicket.status === status.value
+												}
+												className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+													selectedTicket.status === status.value
+														? `${status.color} font-semibold`
+														: 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+												}`}
+											>
+												<status.Icon className="h-4 w-4" />
+												{status.label}
+											</button>
+										))}
+									</div>
+								</div>
+							) : (
+								<div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-600">
+									Only the employee who submitted this ticket, a current handler
+									for its department, or a super admin can change its status.
+								</div>
+							)}
+
+							{/* Responsible Department */}
+							<div className="bg-gray-50 rounded-lg p-4">
+								{selectedTicket.can_reassign === true ? (
+									<>
+										<label
+											htmlFor="ticket-department"
+											className="block text-sm font-semibold text-gray-700 mb-2"
+										>
+											Responsible department
+										</label>
+										<select
+											id="ticket-department"
+											value={selectedTicket.ticket_department_id ?? ''}
+											onChange={(e) => handleReassign(e.target.value)}
+											disabled={
+												reassignMutation.isPending || departments.length === 0
+											}
+											className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
+										>
+											<option value="" disabled>
+												{departments.length === 0
+													? 'No configured departments available'
+													: 'Select a department'}
+											</option>
+											{selectedTicket.ticket_department_id &&
+												!departments.some(
+													(department) =>
+														Number(department.id) ===
+														Number(selectedTicket.ticket_department_id)
+												) && (
+													<option
+														value={selectedTicket.ticket_department_id}
+														disabled
+													>
+														{selectedTicket.ticket_department_name ??
+															`Department #${selectedTicket.ticket_department_id}`}{' '}
+														(unavailable for new tickets)
+													</option>
+												)}
+											{departments.map((department) => (
+												<option key={department.id} value={department.id}>
+													{department.role_name
+														? `${department.name} \u2014 ${department.role_name}`
+														: department.name}
+												</option>
+											))}
+										</select>
+										<p className="text-xs text-gray-500 mt-2">
+											Every active member of the department&rsquo;s role is
+											notified. Reassigning ends the previous team&rsquo;s
+											access to this ticket.
+										</p>
+										{reassignMutation.isPending && (
+											<p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+												<ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+												Saving department...
+											</p>
+										)}
+									</>
+								) : (
+									<>
+										<p className="block text-sm font-semibold text-gray-700 mb-2">
+											Responsible department
+										</p>
+										<p className="text-sm text-gray-700">
+											{selectedTicket.ticket_department_name ? (
+												<>
+													{selectedTicket.ticket_department_name}
+													{selectedTicket.ticket_role_name ? (
+														` \u00b7 ${selectedTicket.ticket_role_name}`
+													) : (
+														<span className="font-medium text-amber-700">
+															{` \u00b7 no responsible role`}
+														</span>
+													)}
+												</>
+											) : (
+												'Not routed to a department'
+											)}
+											<span className="block text-xs text-gray-500 mt-1">
+												Only a super admin can change a ticket&rsquo;s
+												department.
+											</span>
+										</p>
+									</>
+								)}
 							</div>
 
 							{/* Status & Priority */}
@@ -650,7 +834,11 @@ export default function TicketManagementPage() {
 									{/* Add Comment */}
 									{selectedTicket.status !== 'closed' && (
 										<div className="mt-4">
+											<label htmlFor="new-ticket-comment" className="sr-only">
+												Add a comment
+											</label>
 											<textarea
+												id="new-ticket-comment"
 												value={newComment}
 												onChange={(e) => setNewComment(e.target.value)}
 												placeholder="Add a comment or update to the employee..."
