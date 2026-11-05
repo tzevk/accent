@@ -401,3 +401,11 @@ _Avoid_: Latest proposal, Preferred proposal, Duplicate cleanup
 **Stored-Value Inventory**:
 The record of what legacy Leads actually stored before mapping: every distinct stage label and owner name, how many Leads carry it, and whether it was auto-resolved, ambiguous, or unresolved. It exists so no value is classified without evidence (ADR-0031).
 _Avoid_: Migration log, Import report
+
+**Ticket Handler**:
+A member of a Ticket Department's designated role who shares responsibility for its support requests. This responsibility does not grant system administration rights.
+_Avoid_: Super-admin, System administrator, Sole assignee
+
+**Ticket Department**:
+A support team, such as IT, HR, or Admin, that receives employee support requests. It has one designated role whose members handle its tickets.
+_Avoid_: Employee department, System role, Individual assignee

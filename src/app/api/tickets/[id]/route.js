@@ -1,6 +1,25 @@
 import { NextResponse } from 'next/server';
 import { dbConnect } from '@/utils/database';
 import { getServerAuth } from '@/utils/server-auth';
+import { canHandleTicket } from '@/lib/tickets/departments';
+
+const TICKET_DETAIL_SELECT = `
+  SELECT
+    t.*,
+    t.title AS subject,
+    u.full_name as user_name,
+    u.email as user_email,
+    a.full_name as assigned_to_name,
+    r.full_name as resolved_by_name,
+    td.name as ticket_department_name,
+    tr.role_name as ticket_role_name
+  FROM support_tickets t
+  LEFT JOIN users u ON t.user_id = u.id
+  LEFT JOIN users a ON t.assigned_to = a.id
+  LEFT JOIN users r ON t.resolved_by = r.id
+  LEFT JOIN ticket_departments td ON td.id = t.ticket_department_id AND td.isDelete = 0
+  LEFT JOIN roles_master tr ON tr.id = td.role_id
+`;
 
 function parseAttachments(value) {
 	if (!value) return [];
@@ -38,20 +57,8 @@ export async function GET(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Fetch ticket
 		const [tickets] = await connection.execute(
-			`SELECT 
-        t.*,
-        t.title AS subject,
-        u.full_name as user_name,
-        u.email as user_email,
-        a.full_name as assigned_to_name,
-        r.full_name as resolved_by_name
-      FROM support_tickets t
-      LEFT JOIN users u ON t.user_id = u.id
-      LEFT JOIN users a ON t.assigned_to = a.id
-      LEFT JOIN users r ON t.resolved_by = r.id
-       WHERE t.id = ? AND t.isDelete = 0`,
+			`${TICKET_DETAIL_SELECT} WHERE t.id = ? AND t.isDelete = 0`,
 			[id]
 		);
 
@@ -63,9 +70,17 @@ export async function GET(request, { params }) {
 		}
 
 		const ticket = tickets[0];
+		const isOwner = ticket.user_id === session.user.id;
+		const isAdmin = Boolean(session.user.is_super_admin);
+		// Membership is read fresh so a stale session role cannot unlock a
+		// department the user no longer handles.
+		const isHandler = isAdmin
+			? false
+			: await canHandleTicket(connection, ticket.id, session.user.id);
 
-		// Check access - user can see own tickets, admins can see all
-		if (ticket.user_id !== session.user.id && !session.user.is_super_admin) {
+		// Owners, super admins, and current responsible-role members may read
+		// the ticket. Unrelated department members may not.
+		if (!isOwner && !isAdmin && !isHandler) {
 			return NextResponse.json(
 				{ success: false, error: 'Unauthorized' },
 				{ status: 403 }
@@ -74,7 +89,7 @@ export async function GET(request, { params }) {
 
 		// Fetch comments - filter out internal comments for non-admin users
 		let commentQuery = `
-      SELECT 
+      SELECT
         c.*,
         u.full_name as user_name,
         u.is_super_admin as commenter_is_admin
@@ -84,7 +99,7 @@ export async function GET(request, { params }) {
     `;
 
 		// Regular users should not see internal comments
-		if (!session.user.is_super_admin) {
+		if (!isAdmin) {
 			commentQuery += ` AND (c.is_internal = 0 OR c.is_internal IS NULL)`;
 		}
 
@@ -96,6 +111,9 @@ export async function GET(request, { params }) {
 			success: true,
 			data: {
 				...ticket,
+				can_update_status: isOwner || isAdmin || isHandler,
+				can_reassign: isAdmin,
+				can_handle: isHandler || isAdmin,
 				comments: comments.map((c) => ({
 					...c,
 					attachments: parseAttachments(c.attachments),
@@ -144,7 +162,6 @@ export async function POST(request, { params }) {
 
 		connection = await dbConnect();
 
-		// Check ticket exists and user has access
 		const [tickets] = await connection.execute(
 			`SELECT * FROM support_tickets WHERE id = ? AND isDelete = 0`,
 			[id]
@@ -158,14 +175,23 @@ export async function POST(request, { params }) {
 		}
 
 		const ticket = tickets[0];
-		if (ticket.user_id !== session.user.id && !session.user.is_super_admin) {
+		const isOwner = ticket.user_id === session.user.id;
+		const isAdmin = Boolean(session.user.is_super_admin);
+		const isHandler =
+			!isOwner && !isAdmin
+				? await canHandleTicket(connection, ticket.id, session.user.id)
+				: false;
+
+		// Owners, super admins, and current responsible-role members may reply.
+		if (!isOwner && !isAdmin && !isHandler) {
 			return NextResponse.json(
 				{ success: false, error: 'Unauthorized' },
 				{ status: 403 }
 			);
 		}
 
-		// Add comment
+		const internalComment = Boolean(is_internal) && isAdmin;
+
 		const [result] = await connection.execute(
 			`INSERT INTO ticket_comments (ticket_id, user_id, comment, is_internal, attachments)
        VALUES (?, ?, ?, ?, ?)`,
@@ -173,16 +199,14 @@ export async function POST(request, { params }) {
 				id,
 				session.user.id,
 				comment,
-				is_internal && session.user.is_super_admin,
+				internalComment,
 				JSON.stringify(attachments),
 			]
 		);
 
-		// Update ticket status if it was waiting for employee
-		if (
-			ticket.status === 'waiting_for_employee' &&
-			ticket.user_id === session.user.id
-		) {
+		// A reply from the employee to a pending-info ticket moves it back to
+		// in-progress. Uses the real stored status value.
+		if (ticket.status === 'pending_info' && isOwner) {
 			await connection.execute(
 				`UPDATE support_tickets SET status = 'in_progress' WHERE id = ? AND isDelete = 0`,
 				[id]
@@ -198,7 +222,7 @@ export async function POST(request, { params }) {
 				user_name: session.user.full_name || session.user.username,
 				comment,
 				attachments,
-				is_internal: is_internal && session.user.is_super_admin,
+				is_internal: internalComment,
 				created_at: new Date(),
 			},
 		});
@@ -213,7 +237,7 @@ export async function POST(request, { params }) {
 	}
 }
 
-// DELETE - Delete ticket (admin only or owner if not yet assigned)
+// DELETE - Delete ticket (admin only or owner of an unassigned legacy ticket)
 export async function DELETE(request, { params }) {
 	let connection;
 	try {
@@ -248,13 +272,17 @@ export async function DELETE(request, { params }) {
 
 		const ticket = tickets[0];
 		const isOwner = ticket.user_id === session.user.id;
-		const isAdmin = session.user.is_super_admin;
+		const isAdmin = Boolean(session.user.is_super_admin);
 
-		// Only admin can delete, or owner if ticket is still new and unassigned
-		if (
-			!isAdmin &&
-			(!isOwner || ticket.status !== 'new' || ticket.assigned_to)
-		) {
+		// Only a super admin can delete, or the owner of a legacy ticket that
+		// is still new, individually unassigned, and not routed to a department.
+		const isDeletableLegacyTicket =
+			isOwner &&
+			ticket.status === 'open' &&
+			!ticket.assigned_to &&
+			!ticket.ticket_department_id;
+
+		if (!isAdmin && !isDeletableLegacyTicket) {
 			return NextResponse.json(
 				{ success: false, error: 'Unauthorized' },
 				{ status: 403 }

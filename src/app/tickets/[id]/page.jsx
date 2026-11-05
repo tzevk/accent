@@ -1,9 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
+import { apiGet, apiPost, apiPut } from '@/lib/api-client';
+import { formatDateTime } from '@/lib/format';
+import { TICKET_STATUSES } from '@/lib/tickets/constants';
 import {
 	TicketIcon,
 	ArrowLeftIcon,
@@ -12,6 +16,7 @@ import {
 	ArrowPathIcon,
 	ClockIcon,
 	UserIcon,
+	BuildingOffice2Icon,
 } from '@heroicons/react/24/outline';
 
 const PRIORITIES = [
@@ -37,103 +42,127 @@ const PRIORITIES = [
 	},
 ];
 
-const STATUSES = [
-	{ value: 'new', label: 'New', color: 'bg-blue-100 text-blue-800' },
-	{
-		value: 'under_review',
-		label: 'Under Review',
-		color: 'bg-purple-100 text-purple-800',
-	},
-	{
-		value: 'in_progress',
-		label: 'In Progress',
-		color: 'bg-yellow-100 text-yellow-800',
-	},
-	{
-		value: 'waiting_for_employee',
-		label: 'Waiting for You',
-		color: 'bg-orange-100 text-orange-800',
-	},
-	{
-		value: 'resolved',
-		label: 'Resolved',
-		color: 'bg-green-100 text-green-800',
-	},
-	{ value: 'closed', label: 'Closed', color: 'bg-gray-100 text-gray-800' },
-];
+/** Badge colours for the persisted ticket statuses; labels come from the shared enum. */
+const STATUS_COLORS = {
+	open: 'bg-blue-100 text-blue-800',
+	in_progress: 'bg-yellow-100 text-yellow-800',
+	pending_info: 'bg-orange-100 text-orange-800',
+	resolved: 'bg-green-100 text-green-800',
+	closed: 'bg-gray-100 text-gray-800',
+};
+
+const selectClass =
+	'w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500';
 
 export default function TicketDetailPage() {
 	const params = useParams();
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const ticketId = params.id;
 
-	const [ticket, setTicket] = useState(null);
-	const [loading, setLoading] = useState(true);
 	const [newComment, setNewComment] = useState('');
-	const [submittingComment, setSubmittingComment] = useState(false);
+	const [isInternalNote, setIsInternalNote] = useState(false);
+	const [commentError, setCommentError] = useState(null);
+	const [nextStatus, setNextStatus] = useState('');
+	const [resolutionNotes, setResolutionNotes] = useState('');
+	const [statusError, setStatusError] = useState(null);
 
-	const fetchTicketDetails = useCallback(async () => {
-		try {
-			const res = await fetch(`/api/tickets/${ticketId}`);
-			const data = await res.json();
-			if (data.success) {
-				setTicket(data.data);
-			} else {
-				alert('Ticket not found');
-				router.push('/tickets');
-			}
-		} catch (error) {
-			console.error('Error fetching ticket:', error);
-			alert('Failed to load ticket');
-		} finally {
-			setLoading(false);
-		}
-	}, [ticketId, router]);
+	const ticketQuery = useQuery({
+		queryKey: ['tickets', 'detail', String(ticketId)],
+		queryFn: () => apiGet(`/api/tickets/${ticketId}`),
+		enabled: Boolean(ticketId),
+		staleTime: 0,
+		refetchOnWindowFocus: true,
+		retry: false,
+	});
 
-	useEffect(() => {
-		if (ticketId) {
-			fetchTicketDetails();
-		}
-	}, [ticketId, fetchTicketDetails]);
+	const ticket = ticketQuery.data?.data ?? null;
 
-	const handleAddComment = async (e) => {
+	const refreshTicket = () => {
+		// The detail query lives under the tickets prefix, so this also refreshes
+		// the list and any capability booleans cached for this ticket.
+		queryClient.invalidateQueries({ queryKey: ['tickets'] });
+	};
+
+	const commentMutation = useMutation({
+		mutationFn: (payload) => apiPost(`/api/tickets/${ticketId}`, payload),
+		onMutate: () => setCommentError(null),
+		onSuccess: () => {
+			setNewComment('');
+			setIsInternalNote(false);
+			refreshTicket();
+		},
+		onError: (error) => {
+			setCommentError(
+				error?.message || 'We could not send your reply. Please try again.'
+			);
+			refreshTicket();
+		},
+	});
+
+	const statusMutation = useMutation({
+		mutationFn: (payload) =>
+			apiPut('/api/tickets', { id: Number(ticketId), ...payload }),
+		onMutate: () => setStatusError(null),
+		onSuccess: () => {
+			setNextStatus('');
+			setResolutionNotes('');
+			refreshTicket();
+		},
+		onError: (error) => {
+			setStatusError(
+				error?.message || 'We could not update the status. Please try again.'
+			);
+			refreshTicket();
+		},
+	});
+
+	const handleAddComment = (e) => {
 		e.preventDefault();
+		setCommentError(null);
 		if (!newComment.trim()) {
-			alert('Please enter a comment');
+			setCommentError('Enter a reply before sending.');
 			return;
 		}
+		commentMutation.mutate({
+			comment: newComment.trim(),
+			is_internal: isInternalNote,
+		});
+	};
 
-		setSubmittingComment(true);
-		try {
-			const res = await fetch(`/api/tickets/${ticketId}`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ comment: newComment }),
-			});
+	const effectiveStatus = nextStatus || ticket?.status || '';
+	const needsResolutionNotes =
+		effectiveStatus === 'resolved' || effectiveStatus === 'closed';
 
-			const data = await res.json();
-			if (data.success) {
-				setNewComment('');
-				fetchTicketDetails();
-			} else {
-				alert(data.error || 'Failed to add comment');
-			}
-		} catch (error) {
-			console.error('Error adding comment:', error);
-			alert('Failed to add comment');
-		} finally {
-			setSubmittingComment(false);
+	const handleStatusUpdate = (e) => {
+		e.preventDefault();
+		setStatusError(null);
+		if (!ticket) return;
+		if (effectiveStatus === ticket.status) {
+			setStatusError('Choose a different status to update this ticket.');
+			return;
 		}
+		const payload = { status: effectiveStatus };
+		if (needsResolutionNotes && resolutionNotes.trim()) {
+			payload.resolution_notes = resolutionNotes.trim();
+		}
+		statusMutation.mutate(payload);
 	};
 
 	const getStatusBadge = (status) => {
-		const s = STATUSES.find((s) => s.value === status);
-		if (!s) return status;
+		const config = TICKET_STATUSES.find((s) => s.value === status);
+		if (!config) {
+			return (
+				<span className="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
+					{status || 'Unknown'}
+				</span>
+			);
+		}
 		return (
 			<span
-				className={`px-2 py-0.5 text-xs font-medium rounded-full ${s.color}`}
+				className={`px-2 py-0.5 text-xs font-medium rounded-full ${STATUS_COLORS[config.value] || 'bg-gray-100 text-gray-700'}`}
 			>
-				{s.label}
+				{config.label}
 			</span>
 		);
 	};
@@ -150,7 +179,7 @@ export default function TicketDetailPage() {
 		);
 	};
 
-	if (loading) {
+	if (ticketQuery.isPending) {
 		return (
 			<div className="min-h-screen bg-gray-50">
 				<Navbar />
@@ -169,7 +198,7 @@ export default function TicketDetailPage() {
 		);
 	}
 
-	if (!ticket) {
+	if (ticketQuery.isError || !ticket) {
 		return (
 			<div className="min-h-screen bg-gray-50">
 				<Navbar />
@@ -177,12 +206,20 @@ export default function TicketDetailPage() {
 				<div className="flex pt-16 sm:pl-16">
 					<div className="flex-1">
 						<div className="px-4 sm:px-6 lg:px-8 py-6 max-w-3xl mx-auto">
-							<div className="text-center py-16">
-								<TicketIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-								<p className="text-sm font-medium text-gray-900 mb-1">
-									Ticket not found
+							<div
+								role="alert"
+								className="mx-auto max-w-md rounded-lg border border-red-200 bg-red-50 p-5 text-center"
+							>
+								<TicketIcon className="h-12 w-12 text-red-300 mx-auto mb-3" />
+								<p className="text-sm font-medium text-red-900">
+									This ticket could not be opened
+								</p>
+								<p className="text-sm text-red-800 mt-1">
+									{ticketQuery.error?.message ||
+										'The ticket may have been removed, or you no longer have access to it.'}
 								</p>
 								<button
+									type="button"
 									onClick={() => router.push('/tickets')}
 									className="mt-3 px-4 py-2 text-sm bg-[#64126D] text-white rounded-lg hover:bg-[#7a1785]"
 								>
@@ -196,6 +233,8 @@ export default function TicketDetailPage() {
 		);
 	}
 
+	const supportReply = (comment) => comment.user_id !== ticket.user_id;
+
 	return (
 		<div className="min-h-screen bg-gray-50">
 			<Navbar />
@@ -206,6 +245,7 @@ export default function TicketDetailPage() {
 					<div className="px-4 sm:px-6 lg:px-8 py-6 max-w-3xl mx-auto">
 						{/* Back */}
 						<button
+							type="button"
 							onClick={() => router.push('/tickets')}
 							className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4"
 						>
@@ -225,24 +265,31 @@ export default function TicketDetailPage() {
 							<h1 className="text-xl font-bold text-gray-900">
 								{ticket.subject}
 							</h1>
-							<div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+							<div className="flex items-center gap-3 mt-2 text-xs text-gray-500 flex-wrap">
 								<span className="flex items-center gap-1">
 									<UserIcon className="h-3.5 w-3.5" />
 									{ticket.user_name}
 								</span>
 								<span className="flex items-center gap-1">
 									<ClockIcon className="h-3.5 w-3.5" />
-									{new Date(ticket.created_at).toLocaleString()}
+									{formatDateTime(ticket.created_at)}
 								</span>
+								{ticket.ticket_department_name && (
+									<span className="flex items-center gap-1">
+										<BuildingOffice2Icon className="h-3.5 w-3.5" />
+										{ticket.ticket_department_name}
+										{ticket.ticket_role_name && ` · ${ticket.ticket_role_name}`}
+									</span>
+								)}
 							</div>
 						</div>
 
-						{/* Waiting for Response Alert */}
-						{ticket.status === 'waiting_for_employee' && (
+						{/* Waiting for the employee */}
+						{ticket.status === 'pending_info' && (
 							<div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-5">
 								<p className="text-sm font-medium text-orange-800">
-									Action Required: The support team needs additional information
-									from you. Please reply below.
+									This ticket is waiting for the employee to provide the
+									requested information.
 								</p>
 							</div>
 						)}
@@ -285,7 +332,7 @@ export default function TicketDetailPage() {
 								</p>
 								{ticket.resolved_at && (
 									<p className="text-xs text-green-700 mt-2">
-										Resolved on {new Date(ticket.resolved_at).toLocaleString()}
+										Resolved on {formatDateTime(ticket.resolved_at)}
 										{ticket.resolved_by_name &&
 											` by ${ticket.resolved_by_name}`}
 									</p>
@@ -295,6 +342,26 @@ export default function TicketDetailPage() {
 
 						{/* Sidebar Info */}
 						<div className="flex flex-wrap gap-4 mb-5">
+							<div className="bg-white rounded-lg border border-gray-200 px-4 py-3 flex items-center gap-2">
+								<div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center text-[#64126D]">
+									<BuildingOffice2Icon className="h-3.5 w-3.5" />
+								</div>
+								<div>
+									<p className="text-xs text-gray-500">
+										Responsible department
+									</p>
+									<p className="text-sm font-medium text-gray-900">
+										{ticket.ticket_department_name || 'Not routed'}
+									</p>
+									<p className="text-xs text-gray-600">
+										{ticket.ticket_role_name
+											? `Role: ${ticket.ticket_role_name}`
+											: ticket.ticket_department_name
+												? 'No responsible role configured'
+												: 'No responsible role'}
+									</p>
+								</div>
+							</div>
 							{ticket.assigned_to_name && (
 								<div className="bg-white rounded-lg border border-gray-200 px-4 py-3 flex items-center gap-2">
 									<div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center text-[#64126D] text-xs font-bold">
@@ -312,11 +379,108 @@ export default function TicketDetailPage() {
 								<div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
 									<p className="text-xs text-gray-500">Last updated</p>
 									<p className="text-sm font-medium text-gray-900">
-										{new Date(ticket.updated_at).toLocaleString()}
+										{formatDateTime(ticket.updated_at)}
 									</p>
 								</div>
 							)}
 						</div>
+
+						{/* Status update — only when the server says this viewer may update it */}
+						{ticket.can_update_status && (
+							<div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
+								<h2 className="text-sm font-semibold text-gray-900 mb-3">
+									Update status
+								</h2>
+								<form onSubmit={handleStatusUpdate} className="space-y-3">
+									<div>
+										<label
+											htmlFor="ticket-status"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Status
+										</label>
+										<select
+											id="ticket-status"
+											value={effectiveStatus}
+											onChange={(e) => {
+												setNextStatus(e.target.value);
+												setStatusError(null);
+											}}
+											disabled={statusMutation.isPending}
+											className={`${selectClass} sm:max-w-xs`}
+										>
+											{!TICKET_STATUSES.some(
+												(s) => s.value === ticket.status
+											) && (
+												<option value={ticket.status}>{ticket.status}</option>
+											)}
+											{TICKET_STATUSES.map((status) => (
+												<option key={status.value} value={status.value}>
+													{status.label}
+												</option>
+											))}
+										</select>
+									</div>
+
+									{needsResolutionNotes && (
+										<div>
+											<label
+												htmlFor="ticket-resolution-notes"
+												className="block text-sm font-medium text-gray-700 mb-1"
+											>
+												Resolution notes{' '}
+												<span className="text-xs font-normal text-gray-400">
+													(optional)
+												</span>
+											</label>
+											<textarea
+												id="ticket-resolution-notes"
+												value={resolutionNotes}
+												onChange={(e) => setResolutionNotes(e.target.value)}
+												rows={3}
+												disabled={statusMutation.isPending}
+												placeholder="What fixed the issue?"
+												className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent resize-none disabled:bg-gray-50 disabled:text-gray-500"
+											/>
+										</div>
+									)}
+
+									{statusError && (
+										<p
+											role="alert"
+											className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+										>
+											{statusError}
+										</p>
+									)}
+									{statusMutation.isSuccess && !statusMutation.isPending && (
+										<p className="text-sm text-green-700" role="status">
+											Status updated.
+										</p>
+									)}
+
+									<div className="flex justify-end">
+										<button
+											type="submit"
+											disabled={
+												statusMutation.isPending ||
+												effectiveStatus === ticket.status
+											}
+											className="px-4 py-2 text-sm bg-[#64126D] text-white rounded-lg hover:bg-[#7a1785] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+										>
+											{statusMutation.isPending ? (
+												<>
+													<ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
+													Saving...
+												</>
+											) : (
+												'Save status'
+											)}
+										</button>
+									</div>
+								</form>
+							</div>
+						)}
 
 						{/* Comments */}
 						<div className="bg-white rounded-lg border border-gray-200 p-5">
@@ -328,27 +492,36 @@ export default function TicketDetailPage() {
 							{ticket.comments && ticket.comments.length > 0 ? (
 								<div className="space-y-3 mb-5">
 									{ticket.comments.map((comment) => {
-										const isAdmin =
-											comment.commenter_is_admin ||
-											comment.user_id !== ticket.user_id;
+										const isSupport = supportReply(comment);
 										return (
 											<div
 												key={comment.id}
-												className={`rounded-lg p-3 ${isAdmin ? 'bg-green-50 border-l-2 border-green-400' : 'bg-gray-50 border-l-2 border-gray-300'}`}
+												className={`rounded-lg p-3 ${
+													comment.is_internal
+														? 'bg-amber-50 border-l-2 border-amber-400'
+														: isSupport
+															? 'bg-green-50 border-l-2 border-green-400'
+															: 'bg-gray-50 border-l-2 border-gray-300'
+												}`}
 											>
-												<div className="flex items-center justify-between mb-1">
-													<div className="flex items-center gap-1.5">
+												<div className="flex items-center justify-between mb-1 gap-2">
+													<div className="flex items-center gap-1.5 flex-wrap">
 														<span className="text-sm font-medium text-gray-900">
 															{comment.user_name}
 														</span>
-														{isAdmin && (
+														{isSupport && (
 															<span className="text-[10px] px-1.5 py-0.5 bg-green-200 text-green-800 rounded font-medium">
 																Support
 															</span>
 														)}
+														{Boolean(comment.is_internal) && (
+															<span className="text-[10px] px-1.5 py-0.5 bg-amber-200 text-amber-900 rounded font-medium">
+																Internal note
+															</span>
+														)}
 													</div>
-													<span className="text-xs text-gray-400">
-														{new Date(comment.created_at).toLocaleString()}
+													<span className="text-xs text-gray-400 shrink-0">
+														{formatDateTime(comment.created_at)}
 													</span>
 												</div>
 												<p className="text-sm text-gray-700 whitespace-pre-wrap">
@@ -365,34 +538,81 @@ export default function TicketDetailPage() {
 							)}
 
 							{/* Reply */}
-							{ticket.status !== 'closed' ? (
+							{ticket.status === 'closed' ? (
+								<div className="border-t border-gray-100 pt-4 text-center">
+									<p className="text-xs text-gray-400">This ticket is closed</p>
+								</div>
+							) : ticket.can_update_status ? (
 								<form
 									onSubmit={handleAddComment}
-									className="border-t border-gray-100 pt-4"
+									className="border-t border-gray-100 pt-4 space-y-3"
 								>
-									<textarea
-										value={newComment}
-										onChange={(e) => setNewComment(e.target.value)}
-										placeholder={
-											ticket.status === 'waiting_for_employee'
-												? 'Provide the requested information...'
-												: 'Write a reply...'
-										}
-										rows={3}
-										className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent resize-none ${
-											ticket.status === 'waiting_for_employee'
-												? 'border-orange-300 bg-orange-50'
-												: 'border-gray-300'
-										}`}
-										required
-									/>
-									<div className="flex justify-end mt-2">
+									<div>
+										<label
+											htmlFor="ticket-reply"
+											className="block text-sm font-medium text-gray-700 mb-1"
+										>
+											Reply
+										</label>
+										<textarea
+											id="ticket-reply"
+											value={newComment}
+											onChange={(e) => setNewComment(e.target.value)}
+											placeholder={
+												ticket.status === 'pending_info'
+													? 'Provide the requested information...'
+													: 'Write a reply...'
+											}
+											rows={3}
+											disabled={commentMutation.isPending}
+											aria-invalid={Boolean(commentError)}
+											className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-[#64126D] focus:border-transparent resize-none disabled:bg-gray-50 disabled:text-gray-500 ${
+												ticket.status === 'pending_info'
+													? 'border-orange-300 bg-orange-50'
+													: 'border-gray-300'
+											}`}
+										/>
+									</div>
+
+									{ticket.can_reassign && (
+										<div className="flex items-start gap-2">
+											<input
+												id="ticket-internal-note"
+												type="checkbox"
+												checked={isInternalNote}
+												onChange={(e) => setIsInternalNote(e.target.checked)}
+												disabled={commentMutation.isPending}
+												className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#64126D] focus:ring-[#64126D]"
+											/>
+											<label
+												htmlFor="ticket-internal-note"
+												className="text-sm text-gray-700"
+											>
+												Internal note
+												<span className="block text-xs text-gray-500">
+													Hidden from the employee. Only super-admins can add
+													internal notes.
+												</span>
+											</label>
+										</div>
+									)}
+
+									{commentError && (
+										<p
+											role="alert"
+											className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+										>
+											{commentError}
+										</p>
+									)}
+
+									<div className="flex justify-end">
 										<button
 											type="submit"
-											disabled={!newComment.trim() || submittingComment}
+											disabled={!newComment.trim() || commentMutation.isPending}
 											className="px-4 py-2 text-sm bg-[#64126D] text-white rounded-lg hover:bg-[#7a1785] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
 										>
-											{submittingComment ? (
+											{commentMutation.isPending ? (
 												<>
 													<ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />
 													Sending...
@@ -405,7 +625,9 @@ export default function TicketDetailPage() {
 								</form>
 							) : (
 								<div className="border-t border-gray-100 pt-4 text-center">
-									<p className="text-xs text-gray-400">This ticket is closed</p>
+									<p className="text-xs text-gray-400">
+										You can view this ticket but cannot reply to it.
+									</p>
 								</div>
 							)}
 						</div>

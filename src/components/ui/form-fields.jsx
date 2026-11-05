@@ -78,11 +78,19 @@ const FieldHint = forwardRef(function FieldHint(
 	);
 });
 
-function FieldGroup({ label, hint, error, required, children, className }) {
+function FieldGroup({
+	label,
+	htmlFor,
+	hint,
+	error,
+	required,
+	children,
+	className,
+}) {
 	return (
 		<div className={cn('flex flex-col', className)}>
 			{label ? (
-				<Label>
+				<Label htmlFor={htmlFor}>
 					{label}
 					{required ? <span className="text-rose-500 ml-0.5">*</span> : null}
 				</Label>

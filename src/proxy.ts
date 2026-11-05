@@ -26,6 +26,9 @@ const PUBLIC_PATHS: Record<string, true> = {
 	'/api/attendance/webhook': true,
 	// Uptime probe; answers { status: 'ok' } and carries no data.
 	'/api/health': true,
+	// Vercel Cron cannot carry a session cookie; the real auth boundary is
+	// the constant-time Bearer CRON_SECRET check inside the handler.
+	'/api/cron/ticket-emails': true,
 	'/favicon.ico': true,
 	// Next serves src/app/icon.png at this root path for every page (both
 	// public and protected), so it must not be gated.
