@@ -42,6 +42,26 @@ describe('RolePermissionPanel', () => {
 		).not.toBeTruthy();
 	});
 
+	it('warns and hides management for the super-admin role', () => {
+		render(
+			<RolePermissionPanel
+				roleName="Super Admin"
+				roleCode="super_admin"
+				roleId={23}
+				rolePermissions={['projects:read']}
+				canManage
+				onManageAction={vi.fn()}
+			/>
+		);
+
+		expect(
+			screen.getByText(/Super administrators bypass role permissions/)
+		).toBeTruthy();
+		expect(
+			screen.queryByRole('button', { name: 'Manage role permissions' })
+		).toBeNull();
+	});
+
 	it('calls the manage action', () => {
 		const onManageAction = vi.fn();
 		render(

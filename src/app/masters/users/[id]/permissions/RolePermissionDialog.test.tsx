@@ -24,7 +24,7 @@ describe('RolePermissionDialog', () => {
 				.checked
 		).toBe(true);
 
-		fireEvent.click(screen.getByLabelText(/View project information/));
+		fireEvent.click(screen.getByLabelText('Projects: View'));
 		fireEvent.click(
 			screen.getByRole('button', { name: 'Save role permissions' })
 		);

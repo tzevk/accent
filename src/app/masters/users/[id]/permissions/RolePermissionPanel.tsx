@@ -8,6 +8,7 @@ import {
 
 type RolePermissionPanelProps = {
 	roleName?: string | null;
+	roleCode?: string | null;
 	roleId?: number | string | null;
 	rolePermissions: unknown;
 	canManage: boolean;
@@ -20,6 +21,7 @@ type RolePermissionPanelProps = {
  */
 export default function RolePermissionPanel({
 	roleName,
+	roleCode,
 	roleId,
 	rolePermissions,
 	canManage,
@@ -36,6 +38,7 @@ export default function RolePermissionPanel({
 	const title = roleName
 		? `Inherited from role: ${roleName}`
 		: 'Inherited role permissions';
+	const isSuperAdminRole = roleCode === 'super_admin';
 
 	return (
 		<section
@@ -61,16 +64,26 @@ export default function RolePermissionPanel({
 						</p>
 					</div>
 				</div>
-				{canManage && roleId !== null && roleId !== undefined && (
-					<button
-						type="button"
-						onClick={onManageAction}
-						className="shrink-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-					>
-						Manage role permissions
-					</button>
-				)}
+				{canManage &&
+					!isSuperAdminRole &&
+					roleId !== null &&
+					roleId !== undefined && (
+						<button
+							type="button"
+							onClick={onManageAction}
+							className="shrink-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+						>
+							Manage role permissions
+						</button>
+					)}
 			</div>
+
+			{isSuperAdminRole && (
+				<p className="mt-2 text-xs font-medium text-amber-700">
+					Super administrators bypass role permissions. Changes to this role
+					have no effect while the account remains a super administrator.
+				</p>
+			)}
 
 			{groups.length === 0 ? (
 				<p className="mt-3 text-sm text-gray-600">

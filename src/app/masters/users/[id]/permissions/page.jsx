@@ -17,6 +17,7 @@ import {
 	buildProjectScopesPayload,
 	buildSectionPayload,
 } from '@/lib/project-rights/permission-config';
+import { parseRolePermissions } from '@/lib/role-permissions';
 import RolePermissionPanel from './RolePermissionPanel';
 import RolePermissionDialog from './RolePermissionDialog';
 import {
@@ -2201,6 +2202,11 @@ export default function UserPermissionsPage() {
 
 	const currentModule = activeModule ? MODULE_FIELDS[activeModule] : null;
 	const enabledCount = Object.values(enabledModules).filter(Boolean).length;
+	const roleGrantedModules = new Set(
+		parseRolePermissions(user?.role_permissions).map(
+			(permission) => permission.split(':')[0]
+		)
+	);
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -2271,6 +2277,7 @@ export default function UserPermissionsPage() {
 						roleName={user.role_name}
 						roleId={user.role_id}
 						rolePermissions={user.role_permissions}
+						roleCode={user.role_code}
 						canManage={canManageRolePermissions}
 						onManageAction={() => {
 							setRoleError(null);
@@ -2414,6 +2421,14 @@ export default function UserPermissionsPage() {
 																	>
 																		{moduleDef.name}
 																	</span>
+																	{roleGrantedModules.has(module) && (
+																		<span
+																			className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700"
+																			title="This role grants permissions for this module"
+																		>
+																			Role
+																		</span>
+																	)}
 																	{isEnabled && (
 																		<span
 																			className={`shrink-0 text-xs px-2 py-0.5 rounded-full tabular-nums ${tone.enabledChip}`}

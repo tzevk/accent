@@ -16,7 +16,7 @@ vi.mock('@/utils/api-permissions', async (importOriginal) => {
 	};
 });
 
-const { GET } = await import('@/app/api/users/[id]/route');
+import { GET } from '@/app/api/users/[id]/route';
 
 const db = { execute: mocks.mockExecute, release: mocks.mockRelease };
 

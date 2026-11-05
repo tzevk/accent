@@ -147,6 +147,7 @@ export default function RolePermissionDialog({
 											>
 												<input
 													type="checkbox"
+													aria-label={`${group.label}: ${action.label}`}
 													checked={action.granted}
 													onChange={() =>
 														setDraft((current) =>
