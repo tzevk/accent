@@ -19,6 +19,7 @@ This file owns coding, security, data, and testing requirements. Read only secti
 - Use the existing palette and status conventions. The sidebar uses `var(--sidebar-bg)`; primary buttons use `bg-[#64126D]` and `hover:bg-[#52105a]`; accents include `#7F2487` and `#86288F`.
 - Check the canonical badge map in `src/components/EmployeeHub.tsx` before adding status colors. Individual pages may intentionally vary.
 - `src/app/globals.css` forces black text on `input`, `textarea`, and `select`; do not override it with gray text.
+- The root layout wraps every page in `.content-with-sidebar`, which already reserves the 64px band for the fixed navigation bar. Do not render a second `Sidebar` or a nested `.content-with-sidebar` in a page, and do not add an 80–96px top offset. Start page content with `pt-6` — the 24px offset used by the Projects and Leads pages — so the title sits directly under the navigation bar.
 
 ## Client data and forms
 
