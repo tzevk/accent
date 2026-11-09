@@ -1129,6 +1129,7 @@ export default function SalaryProfileSection({
 								min="0"
 								value={form.gross}
 								onChange={(event) => update({ gross: event.target.value })}
+								onWheel={(event) => event.currentTarget.blur()}
 								placeholder="Enter gross salary"
 								className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
 							/>

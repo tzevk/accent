@@ -62,6 +62,13 @@ Logged Hours  = Σ user_activity_assignments.daily_entries.hours, that calendar 
 | HRA / Conveyance / Call (20/10/10 %) | ₹2,600 / ₹1,300 / ₹1,300                                         |
 | Net Pay                              | Gross base + Other Allowances − PF/ESIC/PT/MLWF/TDS/loan/advance |
 
+### Editing the Salary Profile
+
+Gross Salary on `/employees?type=Payroll` is stored exactly as entered: the
+editor saves the amount you type and never recalculates it. Scrolling the
+pointer over the field can no longer step the amount — the input loses focus on
+wheel, so a stray scroll leaves the entered agreement unchanged.
+
 ## The month's lifecycle
 
 ```mermaid

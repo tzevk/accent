@@ -118,6 +118,37 @@ describe('SalaryProfileSection', () => {
 		expect(screen.getAllByText('₹1,000.00').length).toBeGreaterThan(0); // loan EMI
 	});
 
+	it('keeps the entered gross salary when the field is scrolled', async () => {
+		renderSection();
+		const grossInput = await screen.findByLabelText('Gross Salary *');
+		await waitFor(() => expect(grossInput).toHaveValue(50000));
+
+		fireEvent.change(grossInput, { target: { value: '900000' } });
+		grossInput.focus();
+		expect(grossInput).toHaveFocus();
+
+		fireEvent.wheel(grossInput);
+
+		// The wheel gesture must not step the value and must drop focus.
+		expect(grossInput).toHaveValue(900000);
+		expect(grossInput).not.toHaveFocus();
+
+		fireEvent.click(
+			screen.getByRole('button', { name: '+ Add New Salary Profile' })
+		);
+
+		await waitFor(() => {
+			const saveCall = fetchMock.mock.calls.find(
+				([url, init]) =>
+					String(url) === '/api/payroll/salary-profile' &&
+					init?.method === 'POST'
+			);
+			expect(saveCall).toBeTruthy();
+			const payload = JSON.parse(String(saveCall?.[1]?.body));
+			expect(payload.gross_salary).toBe(900000);
+		});
+	});
+
 	it('persists explicit overrides and resets them to derived values', async () => {
 		renderSection();
 		const grossInput = await screen.findByLabelText('Gross Salary *');
