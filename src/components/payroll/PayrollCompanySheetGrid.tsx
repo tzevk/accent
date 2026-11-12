@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import {
 	flexRender,
@@ -59,17 +59,46 @@ const COLUMN_BY_ID = Object.fromEntries(
 	COMPANY_SHEET_COLUMNS.map((column) => [column.id, column])
 ) as Record<CompanySheetColumnId, CompanySheetColumn>;
 
+/**
+ * Every supported monetary column keeps the footer total it had before the
+ * company-format redesign. Attendance, rate, identity and unsupported columns
+ * are deliberately absent: `totalFor` must never invent a zero for them.
+ */
 const TOTAL_COLUMNS: Readonly<Partial<Record<CompanySheetColumnId, true>>> = {
+	basic: true,
+	da: true,
+	hra: true,
+	conveyance_allowance: true,
+	call_allowance: true,
+	other_allowance: true,
+	bonus: true,
+	incentive: true,
+	provident_fund: true,
+	esic: true,
+	professional_tax: true,
+	tax_deducted_at_source: true,
+	retention_amount: true,
 	gross: true,
 	total_ded: true,
 	net_sal: true,
 };
 
-const CODE_WIDTH = 'w-[88px] sm:w-[128px]';
-const NAME_WIDTH = 'w-[120px] sm:w-[196px]';
-const NAME_LEFT = 'left-[88px] sm:left-[128px]';
-const SCROLL_PANEL_WIDTH =
-	'w-[calc(100vw-2rem)] sm:w-[calc(100vw-3rem)] lg:w-[calc(100vw-4rem)]';
+/**
+ * One source of truth for the rendered column widths. `table-fixed` plus the
+ * `<colgroup>` makes these the widths the browser actually uses, and the
+ * frozen cells' sticky offsets read the same custom properties. With auto
+ * layout, Employee Code rendered ~168.79px while Full Name stuck at the
+ * nominal 128px, covering part of the code after horizontal scrolling.
+ *
+ * The clamps shrink the frozen pair on a narrow viewport (and at 200% zoom) so
+ * the value columns always keep a reachable track, while desktop keeps the
+ * full-width identity cells.
+ */
+const SHEET_WIDTH_STYLE = {
+	'--sheet-code-w': 'clamp(4.5rem, 18vw, 10.5rem)',
+	'--sheet-name-w': 'clamp(6.5rem, 24vw, 12.25rem)',
+	'--sheet-value-w': 'clamp(6rem, 9vw, 7.5rem)',
+} as CSSProperties;
 
 const UNAVAILABLE_REASON: Record<CompanySheetUnavailableReason, string> = {
 	not_recorded: 'Not recorded on the Payroll Slip',
@@ -77,7 +106,10 @@ const UNAVAILABLE_REASON: Record<CompanySheetUnavailableReason, string> = {
 	unsupported_mapping: 'No confirmed company mapping',
 	attendance_source_error: 'Attendance data could not be read',
 	holiday_source_error: 'Holiday data could not be read',
+	employment_source_error:
+		'Employee identity and employment data could not be read',
 	employment_unavailable: 'Employment dates are unavailable',
+	source_error: 'Employee data could not be read',
 };
 
 const ATTENDANCE_UNAVAILABLE: Record<
@@ -88,6 +120,8 @@ const ATTENDANCE_UNAVAILABLE: Record<
 		'Attendance data could not be read, so the current attendance counts are unavailable. The Payroll Slip amounts above are unchanged.',
 	holiday_source_error:
 		'Holiday data could not be read, so the attendance dates cannot be classified. The Payroll Slip amounts above are unchanged.',
+	employment_source_error:
+		'Employee identity and employment data could not be read, so the attendance dates cannot be classified from a validated employment window. The Payroll Slip amounts above are unchanged.',
 	employment_unavailable:
 		'Employment dates are missing or inconsistent, so the attendance dates cannot be classified. The Payroll Slip amounts above are unchanged.',
 };
@@ -116,27 +150,23 @@ function totalFor(
 
 function headerCellClass(column: CompanySheetColumn): string {
 	return cn(
-		'sticky top-0 z-30 whitespace-nowrap border-b border-r border-gray-300 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-700',
+		'sticky top-0 z-30 whitespace-normal break-words border-b border-r border-gray-300 bg-gray-50 px-2 py-2 text-xs font-semibold leading-snug text-gray-700',
 		column.kind === 'text' ? 'text-left' : 'text-right',
-		column.id === 'employee_code' && `left-0 z-40 ${CODE_WIDTH}`,
-		column.id === 'full_name' && `${NAME_LEFT} z-40 ${NAME_WIDTH}`
+		column.id === 'employee_code' && 'left-0 z-40',
+		column.id === 'full_name' && 'left-[var(--sheet-code-w)] z-40'
 	);
 }
 
-function bodyCellClass(
-	column: CompanySheetColumn,
-	expanded: boolean
-): string {
+function bodyCellClass(column: CompanySheetColumn, expanded: boolean): string {
 	const frozenBackground = expanded
 		? 'bg-[#faf7fb]'
 		: 'bg-white group-hover:bg-gray-50';
 	return cn(
 		'border-b border-r border-gray-200 px-2 py-1.5 align-middle text-[13px] text-gray-800',
 		column.kind === 'text' ? 'text-left' : 'text-right tabular-nums',
-		column.id === 'employee_code' &&
-			`sticky left-0 z-20 ${CODE_WIDTH} ${frozenBackground}`,
+		column.id === 'employee_code' && `sticky left-0 z-20 ${frozenBackground}`,
 		column.id === 'full_name' &&
-			`sticky ${NAME_LEFT} z-20 ${NAME_WIDTH} ${frozenBackground}`
+			`sticky left-[var(--sheet-code-w)] z-20 ${frozenBackground}`
 	);
 }
 
@@ -144,9 +174,9 @@ function footerCellClass(column: CompanySheetColumn): string {
 	return cn(
 		'border-b border-r border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-800',
 		column.kind === 'text' ? 'text-left' : 'text-right tabular-nums',
-		column.id === 'employee_code' &&
-			`sticky left-0 z-20 ${CODE_WIDTH} bg-gray-50`,
-		column.id === 'full_name' && `sticky ${NAME_LEFT} z-20 ${NAME_WIDTH} bg-gray-50`
+		column.id === 'employee_code' && 'sticky left-0 z-20 bg-gray-50',
+		column.id === 'full_name' &&
+			'sticky left-[var(--sheet-code-w)] z-20 bg-gray-50'
 	);
 }
 
@@ -207,8 +237,9 @@ function AttendanceCategoryText({
 		<p className="mt-2 text-xs leading-relaxed text-gray-600">
 			Absent {formatNumber(buckets.absent)} · Half days{' '}
 			{formatNumber(buckets.half_days)} · Paid leave{' '}
-			{formatNumber(buckets.paid_leave)} (PL {formatNumber(buckets.paid_leave_by_code.PL)},
-			CL {formatNumber(buckets.paid_leave_by_code.CL)}, SL{' '}
+			{formatNumber(buckets.paid_leave)} (PL{' '}
+			{formatNumber(buckets.paid_leave_by_code.PL)}, CL{' '}
+			{formatNumber(buckets.paid_leave_by_code.CL)}, SL{' '}
 			{formatNumber(buckets.paid_leave_by_code.SL)}, EL{' '}
 			{formatNumber(buckets.paid_leave_by_code.EL)}) · Unpaid leave{' '}
 			{formatNumber(buckets.unpaid_leave)} (LWP{' '}
@@ -293,8 +324,8 @@ function AttendanceSection({
 				and unpaid leave count 0.
 			</p>
 			<p className="mt-1 text-xs leading-relaxed text-gray-700">
-				OT Hours use the existing payable-overtime gate and are not Logged Hours.
-				They never add days or change pay.
+				OT Hours use the existing payable-overtime gate and are not Logged
+				Hours. They never add days or change pay.
 			</p>
 		</section>
 	);
@@ -386,7 +417,10 @@ function IssueList({
 					return (
 						<li
 							key={`${issue.code}-${index}`}
-							className={cn('flex items-start gap-1.5 text-xs', style.className)}
+							className={cn(
+								'flex items-start gap-1.5 text-xs',
+								style.className
+							)}
 						>
 							<style.Icon
 								className="mt-0.5 h-4 w-4 shrink-0"
@@ -486,16 +520,13 @@ function ExpandedDetails({
 						)}
 					</div>
 					<p className="mt-2 text-xs text-gray-600">
-						Payment state is recorded on the Payroll Slip and does not change the
-						amounts in this sheet.
+						Payment state is recorded on the Payroll Slip and does not change
+						the amounts in this sheet.
 					</p>
 				</section>
 			</div>
 
-			<IssueList
-				issues={sheet.issues}
-				headingId={`${headingId}-issues`}
-			/>
+			<IssueList issues={sheet.issues} headingId={`${headingId}-issues`} />
 		</div>
 	);
 }
@@ -505,7 +536,9 @@ export function PayrollCompanySheetGrid({
 }: PayrollCompanySheetGridProps) {
 	const [expanded, setExpanded] = useState<ExpandedState>({});
 
-	const columns = useMemo<ColumnDef<PayrollCompanySheetGridRow, CompanySheetCell>[]>(
+	const columns = useMemo<
+		ColumnDef<PayrollCompanySheetGridRow, CompanySheetCell>[]
+	>(
 		() =>
 			COMPANY_SHEET_COLUMNS.map((column) => ({
 				id: column.id,
@@ -531,15 +564,9 @@ export function PayrollCompanySheetGrid({
 									className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
 								>
 									{isExpanded ? (
-										<ChevronDownIcon
-											className="h-4 w-4"
-											aria-hidden="true"
-										/>
+										<ChevronDownIcon className="h-4 w-4" aria-hidden="true" />
 									) : (
-										<ChevronRightIcon
-											className="h-4 w-4"
-											aria-hidden="true"
-										/>
+										<ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
 									)}
 								</button>
 								<span className="min-w-0 flex-1">
@@ -550,9 +577,7 @@ export function PayrollCompanySheetGrid({
 					}
 
 					if (column.id === 'full_name') {
-						const status = paymentStatusBadge(
-							info.row.original.payment_status
-						);
+						const status = paymentStatusBadge(info.row.original.payment_status);
 						return (
 							<div className="min-w-0">
 								<Link
@@ -594,7 +619,7 @@ export function PayrollCompanySheetGrid({
 	const firstColumnId = COMPANY_SHEET_COLUMNS[0].id;
 
 	return (
-		<div className="relative rounded-b-xl">
+		<div className="relative rounded-b-xl" style={SHEET_WIDTH_STYLE}>
 			<div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
 				<p className="flex items-center gap-1.5 text-xs text-gray-600">
 					<ArrowRightIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -602,7 +627,8 @@ export function PayrollCompanySheetGrid({
 					Name stay frozen.
 				</p>
 				<p className="text-xs text-gray-500">
-					Attendance is current evidence; amounts are the generated Payroll Slip.
+					Attendance is current evidence; amounts are the generated Payroll
+					Slip.
 				</p>
 			</div>
 
@@ -611,7 +637,7 @@ export function PayrollCompanySheetGrid({
 				aria-label="Company payroll sheet"
 				aria-describedby="payroll-company-sheet-scroll-hint"
 				tabIndex={0}
-				className="max-h-[72vh] overflow-auto overscroll-x-contain [scroll-padding-top:2.5rem] focus-visible:outline focus-visible:outline-2 focus-visible:[outline-offset:-2px] focus-visible:outline-[#64126D]"
+				className="max-h-[72vh] overflow-auto overscroll-x-contain [container-type:inline-size] [scroll-padding-top:2.5rem] focus-visible:outline focus-visible:outline-2 focus-visible:[outline-offset:-2px] focus-visible:outline-[#64126D]"
 			>
 				<p id="payroll-company-sheet-scroll-hint" className="sr-only">
 					The company payroll sheet scrolls in both directions. Headers and the
@@ -620,12 +646,27 @@ export function PayrollCompanySheetGrid({
 					deductions and review warnings.
 				</p>
 
-				<table className="min-w-full border-separate border-spacing-0 text-[13px]">
+				<table className="min-w-full table-fixed border-separate border-spacing-0 text-[13px]">
 					<caption className="sr-only">
 						Company payroll sheet for the selected Payroll month. Attendance
 						cells show current Attendance Records. Money cells show the
 						generated Payroll Slip snapshot.
 					</caption>
+					<colgroup>
+						{COMPANY_SHEET_COLUMNS.map((column) => (
+							<col
+								key={column.id}
+								style={{
+									width:
+										column.id === 'employee_code'
+											? 'var(--sheet-code-w)'
+											: column.id === 'full_name'
+												? 'var(--sheet-name-w)'
+												: 'var(--sheet-value-w)',
+								}}
+							/>
+						))}
+					</colgroup>
 					<thead>
 						{table.getHeaderGroups().map((headerGroup) => (
 							<tr key={headerGroup.id}>
@@ -682,7 +723,7 @@ export function PayrollCompanySheetGrid({
 												colSpan={COMPANY_SHEET_COLUMNS.length}
 												className="border-b border-gray-200 p-0"
 											>
-												<div className={cn('sticky left-0', SCROLL_PANEL_WIDTH)}>
+												<div className="sticky left-0 w-[100cqw] min-w-0">
 													<ExpandedDetails
 														row={row.original}
 														headingId={headingId}

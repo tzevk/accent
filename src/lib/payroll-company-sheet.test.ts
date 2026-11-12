@@ -89,7 +89,7 @@ function input(overrides: Partial<CompanySheetInput> = {}): CompanySheetInput {
 		slips: [slip()],
 		attendance: { state: 'loaded', records: [] },
 		holidays: { state: 'loaded', holidays: [] },
-		employment: [EMPLOYMENT_FULL_MONTH],
+		employment: { state: 'loaded', employees: [EMPLOYMENT_FULL_MONTH] },
 		...overrides,
 	};
 }
@@ -344,7 +344,7 @@ describe('attendance classification', () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					code: 'invalid_attendance_status',
-					dates: ['2026-02-17'],
+					count: 1,
 				}),
 			])
 		);
@@ -531,7 +531,7 @@ describe('attendance classification', () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					code: 'optional_holidays_ignored',
-					dates: ['2026-02-18'],
+					count: 1,
 				}),
 			])
 		);
@@ -553,15 +553,18 @@ describe('attendance classification', () => {
 describe('employment boundaries', () => {
 	it('counts mid-month joining and inclusive exit dates, keeping outside dates separate', () => {
 		const result = build({
-			employment: [
-				{
-					employee_id: EMPLOYEE_ID,
-					status: 'active',
-					joining_date: '2026-02-10',
-					hire_date: null,
-					exit_date: '2026-02-20',
-				},
-			],
+			employment: {
+				state: 'loaded',
+				employees: [
+					{
+						employee_id: EMPLOYEE_ID,
+						status: 'active',
+						joining_date: '2026-02-10',
+						hire_date: null,
+						exit_date: '2026-02-20',
+					},
+				],
+			},
 			attendance: {
 				state: 'loaded',
 				records: [
@@ -590,7 +593,7 @@ describe('employment boundaries', () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					code: 'attendance_outside_employment',
-					dates: ['2026-02-09', '2026-02-21'],
+					count: 2,
 				}),
 			])
 		);
@@ -598,15 +601,18 @@ describe('employment boundaries', () => {
 
 	it('keeps an open-ended active employment valid', () => {
 		const result = build({
-			employment: [
-				{
-					employee_id: EMPLOYEE_ID,
-					status: 'active',
-					joining_date: '2020-01-01',
-					hire_date: null,
-					exit_date: null,
-				},
-			],
+			employment: {
+				state: 'loaded',
+				employees: [
+					{
+						employee_id: EMPLOYEE_ID,
+						status: 'active',
+						joining_date: '2020-01-01',
+						hire_date: null,
+						exit_date: null,
+					},
+				],
+			},
 		});
 		expect(result.rows[0].attendance.state).toBe('available');
 		expect(buckets(result.rows[0]).outside_employment).toBe(0);
@@ -614,15 +620,18 @@ describe('employment boundaries', () => {
 
 	it('falls back to hire date when joining date is absent', () => {
 		const result = build({
-			employment: [
-				{
-					employee_id: EMPLOYEE_ID,
-					status: 'active',
-					joining_date: null,
-					hire_date: '2026-01-15',
-					exit_date: null,
-				},
-			],
+			employment: {
+				state: 'loaded',
+				employees: [
+					{
+						employee_id: EMPLOYEE_ID,
+						status: 'active',
+						joining_date: null,
+						hire_date: '2026-01-15',
+						exit_date: null,
+					},
+				],
+			},
 		});
 		expect(result.rows[0].attendance.state).toBe('available');
 		expect(buckets(result.rows[0]).outside_employment).toBe(0);
@@ -677,7 +686,9 @@ describe('employment boundaries', () => {
 		] as const;
 
 		for (const testCase of cases) {
-			const result = build({ employment: [testCase.employment] });
+			const result = build({
+				employment: { state: 'loaded', employees: [testCase.employment] },
+			});
 			const row = result.rows[0];
 
 			expect(row.attendance, testCase.label).toMatchObject({
@@ -702,6 +713,85 @@ describe('employment boundaries', () => {
 				])
 			);
 		}
+	});
+
+	it('reports a failed employee source instead of missing identifiers and dates', () => {
+		const failed = build({
+			slips: [slip({ uan: null, pf_no: null, esi_no: null })],
+			employment: {
+				state: 'error',
+				message: 'Employee records could not be read.',
+			},
+		});
+		const failedRow = failed.rows[0];
+
+		expect(failed.sources.employees).toEqual({
+			state: 'error',
+			message: 'Employee records could not be read.',
+		});
+		expect(failed.issues).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ code: 'employees_source_error' }),
+			])
+		);
+		expect(failedRow.attendance).toEqual({
+			state: 'unavailable',
+			reason: 'employment_source_error',
+		});
+		expect(failedRow.issues).not.toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ code: 'employment_dates_missing' }),
+			])
+		);
+		// A failed batch must not read as "these identifiers were never recorded".
+		expect(failedRow.cells.uan).toEqual({
+			state: 'not_available',
+			reason: 'source_error',
+		});
+		expect(failedRow.cells.pf_no).toEqual({
+			state: 'not_available',
+			reason: 'source_error',
+		});
+		expect(failedRow.cells.esic_no).toEqual({
+			state: 'not_available',
+			reason: 'source_error',
+		});
+		// The listing's own identity and the calendar/money stay visible.
+		expect(failedRow.cells.employee_code).toEqual({
+			state: 'text',
+			value: 'EMP-042',
+		});
+		expect(failedRow.cells.full_name).toEqual({
+			state: 'text',
+			value: 'Asha Rao',
+		});
+		expect(failedRow.cells.designation).toEqual({
+			state: 'text',
+			value: 'Accountant',
+		});
+		expect(failedRow.cells.total_days).toEqual({ state: 'number', value: 28 });
+		expect(failedRow.cells.net_sal).toEqual({ state: 'number', value: 42615 });
+
+		// A successful batch that simply has no row for this Employee is the
+		// genuinely-missing case, reported differently.
+		const missing = build({
+			slips: [slip({ uan: null, pf_no: null, esi_no: null })],
+			employment: { state: 'loaded', employees: [] },
+		});
+		expect(missing.sources.employees.state).toBe('loaded');
+		expect(missing.rows[0].attendance).toMatchObject({
+			state: 'unavailable',
+			reason: 'employment_unavailable',
+		});
+		expect(missing.rows[0].cells.uan).toEqual({
+			state: 'not_available',
+			reason: 'not_recorded',
+		});
+		expect(missing.rows[0].issues).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ code: 'employment_dates_missing' }),
+			])
+		);
 	});
 });
 
@@ -1034,10 +1124,13 @@ describe('row population', () => {
 					employee_code: 'EMP-043',
 				}),
 			],
-			employment: [
-				EMPLOYMENT_FULL_MONTH,
-				{ ...EMPLOYMENT_FULL_MONTH, employee_id: OTHER_EMPLOYEE_ID },
-			],
+			employment: {
+				state: 'loaded',
+				employees: [
+					EMPLOYMENT_FULL_MONTH,
+					{ ...EMPLOYMENT_FULL_MONTH, employee_id: OTHER_EMPLOYEE_ID },
+				],
+			},
 			attendance: {
 				state: 'loaded',
 				records: [
@@ -1063,7 +1156,7 @@ describe('row population', () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					code: 'attendance_duplicate_date',
-					dates: ['2026-02-02'],
+					count: 1,
 				}),
 			])
 		);

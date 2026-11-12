@@ -114,12 +114,12 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
 
 | Prerequisite                                                                                       | Where                                                                                     | If missing                                                                                                                                                                                           |
 | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Joining Date (or Hire Date), plus Exit Date for a leaver                                            | `/employees` — employment details                                                          | Missing or inconsistent dates require review. Do not use the date the record was entered as the joining date. |
+| Joining Date (or Hire Date), plus Exit Date for a leaver                                           | `/employees` — employment details                                                         | Missing or inconsistent dates require review. Do not use the date the record was entered as the joining date.                                                                                        |
 | Salary Profile with CTC and `std_hours_per_day`                                                    | `/employees` — Salary Profile tab (`Payroll`) / Contract Pay tab (`Contract`)             | Finalize blocks and names the employee: neither a profile nor a legacy `salary_structures` row → nothing to compute (ADR-0001). Without `employer_cost` the CTC chain falls back to the agreed gross |
 | Component Rates for the month                                                                      | `/admin/payroll/rates`                                                                    | DA falls back to the frozen config default (0 fixed); PT uses the statutory slab                                                                                                                     |
 | Holidays published                                                                                 | Attendance → Holiday Master                                                               | Basis Hours count a holiday as a working day                                                                                                                                                         |
 | Attendance entered                                                                                 | Attendance module                                                                         | Slip shows the standard working days as present and 0 absent — money is unaffected                                                                                                                   |
-| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id`, then the linked user's employee. An unresolvable row cannot establish payroll ownership. |
+| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id`, then the linked user's employee. An unresolvable row cannot establish payroll ownership.                                                                   |
 | Daily hours logged by staff                                                                        | project → Edit → **My Activities** (nudged by the dashboard's "Activity Update Required") | No hours-based pay (allowance-only at best) — HR's main pre-finalize check                                                                                                                           |
 
 ## Running the month
@@ -135,7 +135,7 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
 3. **Review**: the **Payroll** stream opens the company sheet grid described
    below; the **Contract** stream keeps its existing
    `Days / Present / Hrs Logged / Rate/Hr / Basic … Gross / PF … Deductions /
-   Net Pay / Status` table, totals and Payment tile. Click a Full Name or
+Net Pay / Status` table, totals and Payment tile. Click a Full Name or
    Employee name for the slip document. This is where a ₹0 or short month must
    be caught — after Finalize it is frozen.
 4. **Finalize Payroll Run** — review the **Payroll completeness** section before confirming.
@@ -193,9 +193,20 @@ columns do not show.
   an attendance credit, not the salary **Payable Day**.
 - **OT Hours** are current attendance overtime hours under the payable-overtime
   gate. They are not **Logged Hours**, and they do not add days or change pay.
-- The row footer totals only **GROSS**, **TOTAL DED** and **NET SAL**, which
-  are the stored Payroll Slip totals. Unsupported columns never acquire a
-  zero total.
+- The row footer totals the supported monetary columns: **BASIC**, **DA**,
+  **HRA**, **CONVEYANCE ALLOWANCE**, **CALL ALLOWANCE**, **OTHER ALLOWANCE**,
+  **BONUS**, **INCENTIVE**, **PROVIDENT FUND**, **ESIC**,
+  **PROFESSIONAL TAX**, **TAX DEDUCTED AT SOURCE**, **RETENTION AMOUNT**,
+  **GROSS**, **TOTAL DED** and **NET SAL**. These use the same recorded cell
+  values as the rows. If any row's supported value is missing, that column's
+  total reads **Not available** rather than a partial or invented figure.
+  Attendance, rate, identity, and unsupported columns never acquire a zero
+  total.
+- If the Employees read fails, UAN, PF No., ESIC No. and the dependent
+  attendance counts read **Not available** with a source warning; they are not
+  reported as "not recorded". Known name, Employee Code, Designation, Total
+  Days and every recorded money amount stay visible. A successful read that
+  genuinely lacks an identifier still reads **Not available** as missing data.
 - Click **Full Name** to open the existing Payroll Slip document.
 - Generate, Finalize, Reopen, payment, Excel export and bulk PDF keep their
   existing roles. Contract keeps its existing table and columns. Exports and
@@ -214,22 +225,21 @@ Recorded slips and frozen allocations remain intact.
 Late-discovered work outside a saved roster remains visible in the cost report with unknown employee cost.
 Review it with the payroll owner; paid runs cannot reopen, so pay corrections belong in a later run.
 
-
 ## When a number looks wrong
 
-| Symptom                                  | Cause                                                                               | Fix                                                                                         |
-| ---------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| ₹0 net pay                               | No `daily_entries` hours in that month, or the login/employee link is missing       | Have the hours logged, then Reopen → delete the slip on `/reports` → Generate               |
-| Rate differs from last month             | Basis Hours follow the month's working days                                         | Expected; compare `Hrs Logged × Rate/Hr` against Gross                                      |
-| `Hrs Logged 0` / `Rate —` on an old slip | Slip generated before the hours basis existed (columns NULL)                        | Historical snapshot — leave it, or regenerate a draft month                                 |
-| Gross ≠ CTC                              | Pay follows logged hours; CTC is the _full month_ equivalent (`full_month_gross`)   | Expected                                                                                    |
-| Employer cost counts a bonus twice       | A slip generated before the #305 correction stored the double count in its snapshot | Historical snapshot — correct it only via Reopen → delete the slip on `/reports` → Generate |
-| Finalize refuses                         | Missing profiles/slips, employment-date issues, or slips outside monthly eligibility | Review the named employees. Correct dates/profiles, then generate missing slips or remove incorrect draft slips. |
-| Reopen refused                           | A slip in the month is paid, or you are not a super-admin                           | Corrections become next month's arrears                                                     |
-| Slip deletion refused                    | The month's run is finalized/paid                                                   | Reopen first (super-admin)                                                                  |
-| Company column shows `Not available`     | No recorded value or confirmed company mapping exists for that field                | Expected. It is not a zero; do not infer a value from a similar field or current profile    |
-| Attendance counts differ from the slip   | The grid shows current Attendance Records; the Payroll Slip keeps its frozen snapshot | Expected. Pay follows the recorded Payroll Slip; attendance display changes do not reprice it |
-| Days Paid differs from Payable Day       | Company Days Paid includes paid leave, holidays and Weekly Off; Payable Day is a payroll credit | Expected. Use Payable Day only where payroll documentation names it                         |
+| Symptom                                  | Cause                                                                                           | Fix                                                                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| ₹0 net pay                               | No `daily_entries` hours in that month, or the login/employee link is missing                   | Have the hours logged, then Reopen → delete the slip on `/reports` → Generate                                    |
+| Rate differs from last month             | Basis Hours follow the month's working days                                                     | Expected; compare `Hrs Logged × Rate/Hr` against Gross                                                           |
+| `Hrs Logged 0` / `Rate —` on an old slip | Slip generated before the hours basis existed (columns NULL)                                    | Historical snapshot — leave it, or regenerate a draft month                                                      |
+| Gross ≠ CTC                              | Pay follows logged hours; CTC is the _full month_ equivalent (`full_month_gross`)               | Expected                                                                                                         |
+| Employer cost counts a bonus twice       | A slip generated before the #305 correction stored the double count in its snapshot             | Historical snapshot — correct it only via Reopen → delete the slip on `/reports` → Generate                      |
+| Finalize refuses                         | Missing profiles/slips, employment-date issues, or slips outside monthly eligibility            | Review the named employees. Correct dates/profiles, then generate missing slips or remove incorrect draft slips. |
+| Reopen refused                           | A slip in the month is paid, or you are not a super-admin                                       | Corrections become next month's arrears                                                                          |
+| Slip deletion refused                    | The month's run is finalized/paid                                                               | Reopen first (super-admin)                                                                                       |
+| Company column shows `Not available`     | No recorded value or confirmed company mapping exists for that field                            | Expected. It is not a zero; do not infer a value from a similar field or current profile                         |
+| Attendance counts differ from the slip   | The grid shows current Attendance Records; the Payroll Slip keeps its frozen snapshot           | Expected. Pay follows the recorded Payroll Slip; attendance display changes do not reprice it                    |
+| Days Paid differs from Payable Day       | Company Days Paid includes paid leave, holidays and Weekly Off; Payable Day is a payroll credit | Expected. Use Payable Day only where payroll documentation names it                                              |
 
 ## Where the code lives
 
@@ -238,7 +248,7 @@ Review it with the payroll owner; paid runs cannot reopen, so pay corrections be
 | Pay formula, earnings split, statutory math                 | `src/utils/payroll-calculation.js`                                                     |
 | Server orchestration: hours fetch, batch/insert, generation | `src/utils/payroll-calculator.js`                                                      |
 | Run lock, completeness gates, paid derivation               | `src/app/api/payroll/_lib/payroll-run.js`, `runs/{finalize,reopen,mark-paid}/route.js` |
-| Monthly employment eligibility and saved Payroll Run Roster | `src/lib/payroll-run-roster.ts`, `migrations/20261109120000_payroll_run_rosters.ts` |
+| Monthly employment eligibility and saved Payroll Run Roster | `src/lib/payroll-run-roster.ts`, `migrations/20261109120000_payroll_run_rosters.ts`    |
 | Generate / preview API                                      | `src/app/api/payroll/generate/route.js`                                                |
 | Slips listing + payment update                              | `src/app/api/payroll/slips/route.js`                                                   |
 | Company-sheet pure read model                               | `src/lib/payroll-company-sheet.ts`                                                     |
