@@ -158,7 +158,7 @@ export default function PayrollRunDashboard() {
 		slips.length > 0 &&
 		companySheetRows.length !== slips.length;
 	const companySheetMeta =
-		stream === 'payroll' ? slipsQuery.data?.meta ?? null : null;
+		stream === 'payroll' ? (slipsQuery.data?.meta ?? null) : null;
 
 	const currentStream = STREAMS.find((s) => s.value === stream) || STREAMS[0];
 	const streamLabel = currentStream.label;
@@ -256,12 +256,15 @@ export default function PayrollRunDashboard() {
 			// Through the cache, so the badge above and the dialog can never quote
 			// two different months; `staleTime: 0` because "current" means the read
 			// that just happened, not a cache entry the mount left behind.
-			const { run: monthRun, summary: monthSummary, readiness: monthReadiness } =
-				await queryClient.fetchQuery({
-					queryKey: ['payroll', 'run', month],
-					queryFn: () => readRun(month),
-					staleTime: 0,
-				});
+			const {
+				run: monthRun,
+				summary: monthSummary,
+				readiness: monthReadiness,
+			} = await queryClient.fetchQuery({
+				queryKey: ['payroll', 'run', month],
+				queryFn: () => readRun(month),
+				staleTime: 0,
+			});
 
 			if (!monthRun) {
 				setError(
@@ -651,14 +654,18 @@ export default function PayrollRunDashboard() {
 					</h2>
 					{runQuery.isError ? (
 						<p role="alert" className="mt-2 text-sm text-red-700">
-							Unable to check payroll completeness. Refresh the page before finalizing.
+							Unable to check payroll completeness. Refresh the page before
+							finalizing.
 						</p>
 					) : !readiness ? (
-						<p className="mt-2 text-sm text-gray-600">Checking employee eligibility…</p>
+						<p className="mt-2 text-sm text-gray-600">
+							Checking employee eligibility…
+						</p>
 					) : readiness.basis === 'legacy' ? (
 						<p className="mt-2 text-sm text-gray-700">
-							This historical run has no saved employee roster. Existing slips and
-							payments remain recorded, but employee coverage cannot be verified.
+							This historical run has no saved employee roster. Existing slips
+							and payments remain recorded, but employee coverage cannot be
+							verified.
 						</p>
 					) : (
 						<>
@@ -695,13 +702,17 @@ export default function PayrollRunDashboard() {
 											</dd>
 										</div>
 										<div>
-											<dt className="text-gray-600">Employment dates to review</dt>
+											<dt className="text-gray-600">
+												Employment dates to review
+											</dt>
 											<dd className="font-semibold text-gray-900">
 												{formatNumber(readiness.employment_issue_count)}
 											</dd>
 										</div>
 										<div>
-											<dt className="text-gray-600">Slips outside eligibility</dt>
+											<dt className="text-gray-600">
+												Slips outside eligibility
+											</dt>
 											<dd className="font-semibold text-gray-900">
 												{formatNumber(readiness.unexpected_slip_count)}
 											</dd>
@@ -727,36 +738,36 @@ export default function PayrollRunDashboard() {
 				</section>
 
 				{/* Stats Cards */}
-				<div className="flex gap-4 mb-6">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+				<div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
 						<div className="text-lg font-bold text-blue-600">
 							{slips.length}
 						</div>
 						<div className="text-xs text-gray-600">Employees</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-green-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-green-600 break-words">
 							{formatCurrency(totalGross)}
 						</div>
 						<div className="text-xs text-gray-600">Total Gross</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-red-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-red-600 break-words">
 							{formatCurrency(totalDeductions)}
 						</div>
 						<div className="text-xs text-gray-600">Deductions</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-indigo-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-indigo-600 break-words">
 							{formatCurrency(totalNet)}
 						</div>
 						<div className="text-xs text-gray-600">Net Pay</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2 col-span-2 sm:col-span-1">
 						<div className="text-lg font-bold flex flex-wrap items-baseline gap-x-2">
 							{slips.length === 0 ? (
 								<span className="text-gray-400">—</span>
@@ -814,9 +825,7 @@ export default function PayrollRunDashboard() {
 									role="status"
 									className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
 								>
-									<p className="font-medium">
-										Company sheet data needs review
-									</p>
+									<p className="font-medium">Company sheet data needs review</p>
 									<ul className="mt-1 list-disc space-y-1 pl-5">
 										{companySheetMeta.issues.map((issue, index) => (
 											<li key={`${issue.code}-${index}`}>{issue.message}</li>

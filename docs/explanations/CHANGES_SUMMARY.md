@@ -410,9 +410,11 @@ Money cells are the generated Payroll Slip snapshot (`GROSS = total_earnings`, `
 Attendance cells are current Attendance Records and are labelled **Current attendance — generated payroll amounts are unchanged** in the expanded row.
 Unsupported or unrecorded values read **Not available**; a genuine recorded zero stays zero.
 Expanded details also show payment state, recorded extra deductions, reconciliation and source/review warnings.
-The footer totals only GROSS, TOTAL DED and NET SAL.
+The footer totals the supported monetary columns — BASIC, DA, HRA, CONVEYANCE ALLOWANCE, CALL ALLOWANCE, OTHER ALLOWANCE, BONUS, INCENTIVE, PROVIDENT FUND, ESIC, PROFESSIONAL TAX, TAX DEDUCTED AT SOURCE, RETENTION AMOUNT, GROSS, TOTAL DED and NET SAL — from the same recorded cell values as the rows; a missing supported value makes that column's total **Not available**, and unsupported/rate/attendance/identity columns never acquire a zero total.
+Identity and dependent attendance values report a source failure distinctly from genuinely missing records, without echoing raw database errors.
+The company grid uses fixed identity-column widths with matching sticky offsets and caps expanded details to the scroll viewport, so frozen identity stays legible at narrow widths and 200% zoom.
 
 Payroll Slip generation, salary calculation, the saved Payroll Run Roster, completeness checks, exports and slip documents are unchanged.
 Company Days Paid is explained as an attendance credit, distinct from the payroll Payable Day; OT Hours are explained as attendance overtime, distinct from Logged Hours.
 
-Lower-level coverage validates the 51-column pure read model, the opt-in `include=company-sheet` listing projection under `payroll:read`, and the grid's rendered column count, slip link, keyboard expansion and money-only footer.
+Lower-level coverage validates the 51-column pure read model, the opt-in `include=company-sheet` listing projection under `payroll:read`, and the grid's rendered column count, slip link, keyboard expansion and supported-money footer with blank unsupported columns.

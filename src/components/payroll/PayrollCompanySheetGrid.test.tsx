@@ -60,10 +60,22 @@ function companyRow(): CompanySheetRow {
 	cells.total_days = { state: 'number', value: 31 };
 	cells.days_present = { state: 'number', value: 18 };
 	cells.days_paid = { state: 'number', value: 27 };
+	cells.basic = { state: 'number', value: 1000 };
+	cells.da = { state: 'number', value: 400 };
+	cells.hra = { state: 'number', value: 600 };
+	cells.conveyance_allowance = { state: 'number', value: 250 };
+	cells.call_allowance = { state: 'number', value: 150 };
+	cells.other_allowance = { state: 'number', value: 100 };
+	cells.bonus = { state: 'number', value: 200 };
+	cells.incentive = { state: 'number', value: 0 };
+	cells.provident_fund = { state: 'number', value: 1800 };
+	cells.esic = { state: 'number', value: 0 };
+	cells.professional_tax = { state: 'number', value: 200 };
+	cells.tax_deducted_at_source = { state: 'number', value: 100 };
+	cells.retention_amount = { state: 'number', value: 50 };
 	cells.gross = { state: 'number', value: 12500 };
 	cells.total_ded = { state: 'number', value: 2500 };
 	cells.net_sal = { state: 'number', value: 10000 };
-	cells.provident_fund = { state: 'number', value: 1800 };
 	cells.loan = {
 		state: 'not_available',
 		reason: 'unsupported_mapping',
@@ -151,7 +163,9 @@ describe('PayrollCompanySheetGrid', () => {
 				'Current attendance — generated payroll amounts are unchanged'
 			)
 		).toBeInTheDocument();
-		expect(screen.getByText(/Company Days Paid = Days Present/)).toBeInTheDocument();
+		expect(
+			screen.getByText(/Company Days Paid = Days Present/)
+		).toBeInTheDocument();
 		expect(screen.getByText(/not Logged Hours/)).toBeInTheDocument();
 		expect(screen.getByText('Other deductions')).toBeInTheDocument();
 		expect(screen.getByText('₹500.00')).toBeInTheDocument();
@@ -193,7 +207,12 @@ describe('PayrollCompanySheetGrid', () => {
 		expect(screen.getAllByText('₹10,000.00').length).toBeGreaterThan(0);
 	});
 
-	it('totals only the authoritative money columns in the footer', () => {
+	const footerCell = (totals: HTMLElement, id: CompanySheetColumnId) =>
+		within(totals).getAllByRole('cell')[
+			COMPANY_SHEET_COLUMNS.findIndex((column) => column.id === id)
+		];
+
+	it('totals every supported monetary column and leaves unsupported ones blank', () => {
 		render(
 			<PayrollCompanySheetGrid
 				rows={[
@@ -215,9 +234,58 @@ describe('PayrollCompanySheetGrid', () => {
 		);
 
 		const totals = screen.getByRole('row', { name: /TOTALS/ });
-		expect(within(totals).getByText('₹13,000.00')).toBeInTheDocument();
-		expect(within(totals).getByText('₹2,500.00')).toBeInTheDocument();
-		expect(within(totals).getByText('₹10,500.00')).toBeInTheDocument();
-		expect(within(totals).queryByText('₹0.00')).not.toBeInTheDocument();
+		expect(footerCell(totals, 'basic')).toHaveTextContent('₹2,000.00');
+		expect(footerCell(totals, 'da')).toHaveTextContent('₹800.00');
+		expect(footerCell(totals, 'hra')).toHaveTextContent('₹1,200.00');
+		expect(footerCell(totals, 'conveyance_allowance')).toHaveTextContent(
+			'₹500.00'
+		);
+		expect(footerCell(totals, 'call_allowance')).toHaveTextContent('₹300.00');
+		expect(footerCell(totals, 'other_allowance')).toHaveTextContent('₹200.00');
+		expect(footerCell(totals, 'bonus')).toHaveTextContent('₹400.00');
+		// Genuine recorded zeros stay zero, rather than going blank.
+		expect(footerCell(totals, 'incentive')).toHaveTextContent('₹0.00');
+		expect(footerCell(totals, 'provident_fund')).toHaveTextContent('₹3,600.00');
+		expect(footerCell(totals, 'esic')).toHaveTextContent('₹0.00');
+		expect(footerCell(totals, 'professional_tax')).toHaveTextContent('₹400.00');
+		expect(footerCell(totals, 'tax_deducted_at_source')).toHaveTextContent(
+			'₹200.00'
+		);
+		expect(footerCell(totals, 'retention_amount')).toHaveTextContent('₹100.00');
+		expect(footerCell(totals, 'gross')).toHaveTextContent('₹13,000.00');
+		expect(footerCell(totals, 'total_ded')).toHaveTextContent('₹2,500.00');
+		expect(footerCell(totals, 'net_sal')).toHaveTextContent('₹10,500.00');
+
+		expect(footerCell(totals, 'employee_code')).toHaveTextContent('TOTALS');
+		// Unsupported, rate, identity and attendance columns acquire no total.
+		for (const id of [
+			'uan',
+			'total_days',
+			'days_present',
+			'ot_hours',
+			'ot_rate',
+			'paid_holiday_amount',
+			'basic_arrears',
+			'loan',
+			'advance',
+		] as const) {
+			expect(footerCell(totals, id).textContent).toBe('');
+		}
+	});
+
+	it('keeps a supported footer total unavailable when a row value is missing', () => {
+		const incomplete = companyRow();
+		incomplete.cells.basic = {
+			state: 'not_available',
+			reason: 'not_recorded',
+		};
+
+		render(<PayrollCompanySheetGrid rows={[gridRow({ sheet: incomplete })]} />);
+
+		const totals = screen.getByRole('row', { name: /TOTALS/ });
+		expect(footerCell(totals, 'basic')).toHaveTextContent('Not available');
+		// One missing component does not hide the totals that are fully known.
+		expect(footerCell(totals, 'gross')).toHaveTextContent('₹12,500.00');
+		expect(footerCell(totals, 'net_sal')).toHaveTextContent('₹10,000.00');
 	});
 });

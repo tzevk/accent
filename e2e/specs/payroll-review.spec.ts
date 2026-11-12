@@ -140,7 +140,12 @@ test('payroll review separates current attendance from recorded money', async ({
 		})
 	).toBeVisible();
 	await expect(details).toContainText('Outside Employment 20.00');
-	await expect(details).toContainText('Unpaid leave 2.50');
+	// The Unpaid bucket is the UL record (1.00). LWP Days is the separate
+	// Unpaid Leave + Absent figure (1.00 + 1.50), rendered as its own Stat.
+	await expect(details).toContainText('Unpaid leave 1.00');
+	await expect(
+		details.getByText('LWP Days', { exact: true }).locator('xpath=..')
+	).toContainText('2.50');
 	await expect(
 		details
 			.getByText('MLWF (labour welfare)', { exact: true })

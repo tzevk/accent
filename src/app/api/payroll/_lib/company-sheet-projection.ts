@@ -7,10 +7,11 @@
  * `buildCompanySheet` module. Money still comes from the already-normalized
  * Payroll Slip rows: nothing here re-prices a slip or derives Basic/DA.
  *
- * Source failures are values, not request failures. A failed attendance or
- * holiday read comes back as `{ state: 'error' }` so the model can keep every
- * recorded money cell visible while marking only the dependent attendance
- * cells unavailable. The adapter never returns daily records to the caller;
+ * Source failures are values, not request failures. A failed employees,
+ * attendance or holiday read comes back as `{ state: 'error' }` so the model
+ * can keep every recorded money cell and every listing-supplied identity
+ * visible while marking only the evidence that read could not supply as
+ * unavailable. The adapter never returns daily records to the caller;
  * attendance is consumed as monthly aggregates by the model.
  *
  * Query shape:
@@ -29,7 +30,7 @@ import {
 	buildCompanySheet,
 	type CompanySheetAttendanceRecord,
 	type CompanySheetAttendanceSource,
-	type CompanySheetEmploymentInput,
+	type CompanySheetEmploymentSource,
 	type CompanySheetHolidayInput,
 	type CompanySheetHolidaySource,
 	type CompanySheetResult,
@@ -82,6 +83,8 @@ interface EmployeeEvidenceRow {
 	exit_date?: string | Date | null;
 }
 
+const EMPLOYEES_UNAVAILABLE =
+	'Employee identity and employment records could not be read; UAN, PF No., ESIC No. and attendance counts are unavailable.';
 const ATTENDANCE_UNAVAILABLE =
 	'Attendance records could not be read; attendance counts are unavailable.';
 const HOLIDAY_UNAVAILABLE =
@@ -121,14 +124,18 @@ function reasonFor(error: unknown): string {
 
 /**
  * One batched employees read for the returned Payroll Slips. A failure is
- * logged and degrades to no employment evidence, which the model reports as
- * `employment_unavailable`; the recorded money is still returned.
+ * returned as a source error, never as an empty batch: the model must be able
+ * to tell "the batch could not be read" apart from "these Employees have no
+ * recorded identifiers/dates". The caller-safe message keeps the raw database
+ * error out of the response.
  */
 async function readEmployees(
 	db: CompanySheetProjectionDb,
 	employeeIds: readonly number[]
-): Promise<EmployeeEvidenceRow[]> {
-	if (employeeIds.length === 0) return [];
+): Promise<CompanySheetEmploymentSource> {
+	if (employeeIds.length === 0) {
+		return { state: 'loaded', employees: [] };
+	}
 
 	try {
 		const [rows] = await db.execute(
@@ -138,13 +145,16 @@ async function readEmployees(
         WHERE id IN (${placeholders(employeeIds.length)})`,
 			employeeIds
 		);
-		return (rows as EmployeeEvidenceRow[] | null) ?? [];
+		return {
+			state: 'loaded',
+			employees: (rows as EmployeeEvidenceRow[] | null) ?? [],
+		};
 	} catch (error) {
 		console.error(
 			'company-sheet employee evidence read failed:',
 			reasonFor(error)
 		);
-		return [];
+		return { state: 'error', message: EMPLOYEES_UNAVAILABLE };
 	}
 }
 
@@ -236,7 +246,10 @@ export async function loadCompanySheetProjection(
 		),
 	];
 
-	let employees: EmployeeEvidenceRow[] = [];
+	let employeeBatch: CompanySheetEmploymentSource = {
+		state: 'loaded',
+		employees: [],
+	};
 	let attendance: CompanySheetAttendanceSource = {
 		state: 'loaded',
 		records: [],
@@ -245,28 +258,36 @@ export async function loadCompanySheetProjection(
 
 	if (employeeIds.length > 0) {
 		// Independent sources, so one failed read never cancels the others.
-		[employees, attendance, holidays] = await Promise.all([
+		[employeeBatch, attendance, holidays] = await Promise.all([
 			readEmployees(db, employeeIds),
 			readAttendance(db, employeeIds, start, end),
 			readHolidays(db, start, end),
 		]);
 	}
 
+	const employees: readonly EmployeeEvidenceRow[] =
+		employeeBatch.state === 'loaded'
+			? (employeeBatch.employees as unknown as readonly EmployeeEvidenceRow[])
+			: [];
 	const employeeById = new Map<number, EmployeeEvidenceRow>();
 	for (const employee of employees) {
 		const id = Number(employee.id);
 		if (Number.isInteger(id)) employeeById.set(id, employee);
 	}
 
-	const employment: CompanySheetEmploymentInput[] = [
-		...employeeById.entries(),
-	].map(([employeeId, employee]) => ({
-		employee_id: employeeId,
-		status: employee.status ?? null,
-		joining_date: employee.joining_date ?? null,
-		hire_date: employee.hire_date ?? null,
-		exit_date: employee.exit_date ?? null,
-	}));
+	const employment: CompanySheetEmploymentSource =
+		employeeBatch.state === 'loaded'
+			? {
+					state: 'loaded',
+					employees: employees.map((employee) => ({
+						employee_id: Number(employee.id),
+						status: employee.status ?? null,
+						joining_date: employee.joining_date ?? null,
+						hire_date: employee.hire_date ?? null,
+						exit_date: employee.exit_date ?? null,
+					})),
+				}
+			: employeeBatch;
 
 	const projectionSlips = input.slips.map((slip) =>
 		withEmployeeIdentity(slip, employeeById.get(Number(slip.employee_id)))

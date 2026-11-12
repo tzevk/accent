@@ -161,6 +161,18 @@ export interface CompanySheetEmploymentInput {
 	readonly exit_date?: string | Date | null;
 }
 
+/**
+ * Employment evidence is a source, not just a list: a failed employee batch
+ * must never look like Employees whose identifiers and dates are missing. The
+ * error arm carries a caller-safe message, never the raw database error.
+ */
+export type CompanySheetEmploymentSource =
+	| {
+			readonly state: 'loaded';
+			readonly employees: readonly CompanySheetEmploymentInput[];
+	  }
+	| { readonly state: 'error'; readonly message?: string | null };
+
 export interface CompanySheetAttendanceRecord {
 	readonly employee_id: number;
 	readonly attendance_date: string | Date;
@@ -205,7 +217,7 @@ export interface CompanySheetInput {
 	readonly slips: readonly CompanySheetSlipInput[];
 	readonly attendance: CompanySheetAttendanceSource;
 	readonly holidays: CompanySheetHolidaySource;
-	readonly employment: readonly CompanySheetEmploymentInput[];
+	readonly employment: CompanySheetEmploymentSource;
 }
 
 // ─── Output values ──────────────────────────────────────────────────
@@ -216,7 +228,10 @@ export type CompanySheetUnavailableReason =
 	| 'unsupported_mapping'
 	| 'attendance_source_error'
 	| 'holiday_source_error'
-	| 'employment_unavailable';
+	| 'employment_source_error'
+	| 'employment_unavailable'
+	/** The Employees batch failed, so a value was never readable. */
+	| 'source_error';
 
 export type CompanySheetCell =
 	| { readonly state: 'text'; readonly value: string }
@@ -267,6 +282,7 @@ export interface CompanySheetAttendanceBuckets {
 export type CompanySheetAttendanceUnavailableReason =
 	| 'attendance_source_error'
 	| 'holiday_source_error'
+	| 'employment_source_error'
 	| 'employment_unavailable';
 
 export type CompanySheetRowAttendance =
@@ -309,6 +325,7 @@ export type CompanySheetIssueCode =
 	| 'holiday_source_error'
 	| 'holiday_date_invalid'
 	| 'optional_holidays_ignored'
+	| 'employees_source_error'
 	| 'employment_dates_missing'
 	| 'employment_dates_invalid'
 	| 'employment_outside_month'
@@ -337,9 +354,12 @@ export interface CompanySheetIssue {
 	readonly severity: CompanySheetIssueSeverity;
 	readonly scope: CompanySheetIssueScope;
 	readonly message: string;
-	readonly dates?: readonly string[];
-	readonly fields?: readonly string[];
+	/**
+	 * Aggregated evidence only. Daily date lists stay inside the pure model so
+	 * the listing projection can never expose an attendance history.
+	 */
 	readonly count?: number;
+	readonly fields?: readonly string[];
 	readonly difference?: number;
 }
 
@@ -367,6 +387,7 @@ export interface CompanySheetResult {
 	readonly total_days: number;
 	readonly rows: readonly CompanySheetRow[];
 	readonly sources: {
+		readonly employees: CompanySheetSourceStatus;
 		readonly attendance: CompanySheetSourceStatus;
 		readonly holidays: CompanySheetSourceStatus;
 	};
@@ -445,6 +466,21 @@ function textCell(value: unknown): CompanySheetCell {
 	return text ? { state: 'text', value: text } : notAvailable('not_recorded');
 }
 
+/**
+ * A text field from the optional Employees evidence batch. When that batch
+ * failed, a missing value is a source failure — never "not recorded on the
+ * Payroll Slip". A value the listing already supplied stays visible.
+ */
+function sourcedTextCell(
+	value: unknown,
+	sourceLoaded: boolean
+): CompanySheetCell {
+	if (value !== null && value !== undefined && String(value).trim() !== '') {
+		return textCell(value);
+	}
+	return notAvailable(sourceLoaded ? 'not_recorded' : 'source_error');
+}
+
 function numberCell(value: number): CompanySheetCell {
 	return Number.isFinite(value)
 		? { state: 'number', value }
@@ -519,6 +555,7 @@ interface BuildContext {
 	readonly currentDate: string;
 	readonly attendanceLoaded: boolean;
 	readonly holidayLoaded: boolean;
+	readonly employmentLoaded: boolean;
 	readonly attendance: AttendanceIndex;
 	readonly holidays: HolidayIndex;
 	readonly employmentByEmployee: ReadonlyMap<
@@ -573,7 +610,7 @@ function indexAttendance(
 				'warning',
 				'attendance',
 				'Attendance records with a missing Employee or invalid date were ignored.',
-				{ dates: invalidDates }
+				{ count: invalidDates.length }
 			)
 		);
 	}
@@ -614,7 +651,7 @@ function indexHolidays(
 				'warning',
 				'source',
 				'Holiday Master rows with an invalid date were ignored.',
-				{ dates: invalidDates }
+				{ count: invalidDates.length }
 			)
 		);
 	}
@@ -625,7 +662,7 @@ function indexHolidays(
 				'info',
 				'source',
 				'Optional holidays are working days; only an explicit H status makes them a paid holiday.',
-				{ dates: optionalDates }
+				{ count: optionalDates.length }
 			)
 		);
 	}
@@ -832,6 +869,20 @@ function computeRowAttendance(
 	employeeId: number
 ): AttendanceOutcome {
 	const issues: CompanySheetIssue[] = [];
+	if (!context.employmentLoaded) {
+		// The employee batch failed. That is a source failure, not evidence that
+		// this Employee has no dates, so do not report the missing-date issue.
+		return {
+			state: 'unavailable',
+			reason: !context.attendanceLoaded
+				? 'attendance_source_error'
+				: !context.holidayLoaded
+					? 'holiday_source_error'
+					: 'employment_source_error',
+			issues,
+		};
+	}
+
 	const evidence = context.employmentByEmployee.get(employeeId);
 	const employment = resolveEmploymentDates(
 		{
@@ -901,7 +952,7 @@ function computeRowAttendance(
 				'warning',
 				'attendance',
 				'More than one Attendance Record was supplied for the same date; the last one was used.',
-				{ dates: [...duplicateDates] }
+				{ count: duplicateDates.size }
 			)
 		);
 	}
@@ -912,7 +963,7 @@ function computeRowAttendance(
 				'warning',
 				'attendance',
 				'An unrecognised Attendance Record status is shown as Unrecorded for review.',
-				{ dates: classified.invalidDates }
+				{ count: classified.invalidDates.length }
 			)
 		);
 	}
@@ -923,7 +974,7 @@ function computeRowAttendance(
 				'warning',
 				'attendance',
 				'Attendance evidence outside the validated employment window is counted as Outside Employment.',
-				{ dates: classified.outsideRecordDates }
+				{ count: classified.outsideRecordDates.length }
 			)
 		);
 	}
@@ -1271,10 +1322,10 @@ function buildRow(
 		...attendanceCells(attendance, context.totalDays),
 		employee_code: textCell(slip.employee_code),
 		full_name: textCell(slip.employee_name),
-		designation: textCell(slip.position),
-		uan: textCell(slip.uan),
-		pf_no: textCell(slip.pf_no),
-		esic_no: textCell(slip.esi_no),
+		designation: sourcedTextCell(slip.position, context.employmentLoaded),
+		uan: sourcedTextCell(slip.uan, context.employmentLoaded),
+		pf_no: sourcedTextCell(slip.pf_no, context.employmentLoaded),
+		esic_no: sourcedTextCell(slip.esi_no, context.employmentLoaded),
 		basic: basic === null ? notAvailable('not_recorded') : numberCell(basic),
 		da: da === null ? notAvailable('not_recorded') : numberCell(da),
 		hra: amountCell(slip.hra),
@@ -1342,9 +1393,26 @@ export function buildCompanySheet(
 		state: 'error',
 		message: 'Holiday evidence was not supplied.',
 	};
+	const employmentSource: CompanySheetEmploymentSource = input.employment ?? {
+		state: 'error',
+		message: 'Employee evidence was not supplied.',
+	};
 	const attendanceLoaded = attendanceSource.state === 'loaded';
 	const holidayLoaded = holidaySource.state === 'loaded';
+	const employmentLoaded = employmentSource.state === 'loaded';
 
+	if (employmentSource.state === 'error') {
+		globalIssues.push(
+			makeIssue(
+				'employees_source_error',
+				'unavailable',
+				'source',
+				employmentSource.message ||
+					'Employee identity and employment evidence could not be read; UAN, PF No., ESIC No. and attendance counts are unavailable.',
+				{}
+			)
+		);
+	}
 	if (!attendanceLoaded) {
 		globalIssues.push(
 			makeIssue(
@@ -1373,9 +1441,11 @@ export function buildCompanySheet(
 	const attendance = indexAttendance(attendanceSource, monthKey, globalIssues);
 	const holidays = indexHolidays(holidaySource, monthKey, globalIssues);
 	const employmentByEmployee = new Map<number, CompanySheetEmploymentInput>();
-	for (const evidence of input.employment ?? []) {
-		if (Number.isInteger(evidence.employee_id)) {
-			employmentByEmployee.set(evidence.employee_id, evidence);
+	if (employmentSource.state === 'loaded') {
+		for (const evidence of employmentSource.employees) {
+			if (Number.isInteger(evidence.employee_id)) {
+				employmentByEmployee.set(evidence.employee_id, evidence);
+			}
 		}
 	}
 
@@ -1388,6 +1458,7 @@ export function buildCompanySheet(
 		currentDate,
 		attendanceLoaded,
 		holidayLoaded,
+		employmentLoaded,
 		attendance,
 		holidays,
 		employmentByEmployee,
@@ -1400,6 +1471,14 @@ export function buildCompanySheet(
 		total_days: totalDays,
 		rows: (input.slips ?? []).map((slip) => buildRow(slip, context)),
 		sources: {
+			employees:
+				employmentSource.state === 'loaded'
+					? { state: 'loaded', message: null }
+					: {
+							state: 'error',
+							message:
+								employmentSource.message || 'Employee evidence unavailable.',
+						},
 			attendance: {
 				state: attendanceLoaded ? 'loaded' : 'error',
 				message: attendanceLoaded

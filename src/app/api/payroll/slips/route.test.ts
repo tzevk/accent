@@ -929,6 +929,144 @@ describe('payroll slips API — company-sheet projection (issue #428)', () => {
 		errorSpy.mockRestore();
 	});
 
+	it('distinguishes a failed employee source from genuinely missing identifiers', async () => {
+		grant('payroll:read');
+		mockProjectionDb({ employeeError: new Error('employees table down') });
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		const sheet = body.data[0].company_sheet;
+
+		expect(body.company_sheet.sources.employees.state).toBe('error');
+		expect(
+			body.company_sheet.issues.some(
+				(issue: { code: string }) => issue.code === 'employees_source_error'
+			)
+		).toBe(true);
+		expect(sheet.attendance).toEqual({
+			state: 'unavailable',
+			reason: 'employment_source_error',
+		});
+		expect(sheet.cells.uan).toEqual({
+			state: 'not_available',
+			reason: 'source_error',
+		});
+		expect(sheet.cells.pf_no).toEqual({
+			state: 'not_available',
+			reason: 'source_error',
+		});
+		expect(sheet.cells.esic_no).toEqual({
+			state: 'not_available',
+			reason: 'source_error',
+		});
+		// The ordinary listing's identity, the calendar and the money survive.
+		expect(sheet.cells.employee_code).toEqual({
+			state: 'text',
+			value: 'EMP-007',
+		});
+		expect(sheet.cells.designation).toEqual({
+			state: 'text',
+			value: 'Senior Engineer',
+		});
+		expect(sheet.cells.total_days).toEqual({ state: 'number', value: 28 });
+		expect(sheet.cells.gross).toEqual({ state: 'number', value: 70000 });
+		expect(sheet.cells.net_sal).toEqual({ state: 'number', value: 62000 });
+		// Raw database text never leaks through the source-error message.
+		expect(JSON.stringify(body)).not.toContain('employees table down');
+
+		errorSpy.mockRestore();
+	});
+
+	it('returns issue counts, never daily date arrays, in the projection', async () => {
+		grant('payroll:read');
+		mockProjectionDb({
+			employees: [
+				{
+					...EMPLOYEE,
+					// The 27th is outside this validated employment window.
+					exit_date: '2026-02-10',
+				},
+			],
+			attendance: [
+				{
+					employee_id: 7,
+					attendance_date: '2026-02-03',
+					status: 'Z',
+					overtime_hours: 0,
+				},
+				{
+					employee_id: 7,
+					attendance_date: '2026-02-04',
+					status: 'P',
+					overtime_hours: 0,
+				},
+				{
+					employee_id: 7,
+					attendance_date: '2026-02-04',
+					status: 'OT',
+					overtime_hours: 0,
+				},
+				{
+					employee_id: 7,
+					attendance_date: '2026-02-27',
+					status: 'P',
+					overtime_hours: 0,
+				},
+			],
+			holidays: [{ date: '2026-02-31', is_active: 1, is_optional: 0 }],
+		});
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		const body = await res.json();
+		const sheet = body.data[0].company_sheet;
+		const rowCodes = sheet.issues.map((issue: { code: string }) => issue.code);
+		expect(rowCodes).toEqual(
+			expect.arrayContaining([
+				'invalid_attendance_status',
+				'attendance_duplicate_date',
+				'attendance_outside_employment',
+			])
+		);
+		for (const code of [
+			'invalid_attendance_status',
+			'attendance_duplicate_date',
+			'attendance_outside_employment',
+		]) {
+			const issue = sheet.issues.find(
+				(candidate: { code: string }) => candidate.code === code
+			);
+			expect(issue.count).toBeGreaterThan(0);
+			expect(issue).not.toHaveProperty('dates');
+		}
+
+		const holidayIssue = body.company_sheet.issues.find(
+			(issue: { code: string }) => issue.code === 'holiday_date_invalid'
+		);
+		expect(holidayIssue).toMatchObject({ count: 1 });
+		expect(holidayIssue).not.toHaveProperty('dates');
+
+		// The network payload carries monthly aggregates only: none of the
+		// offending dates leaks, and no attendance row is echoed.
+		const payload = JSON.stringify(body);
+		expect(payload).not.toContain('attendance_date');
+		for (const dailyEvidence of [
+			'2026-02-03',
+			'2026-02-04',
+			'2026-02-27',
+			'2026-02-31',
+		]) {
+			expect(payload).not.toContain(dailyEvidence);
+		}
+	});
+
 	it('treats a successful empty attendance read as calendar defaults', async () => {
 		grant('payroll:read');
 		mockProjectionDb({ attendance: [], holidays: [] });
