@@ -52,3 +52,45 @@ jobs:
           INTEGRATION_DB_PASSWORD: integration-root-pass
           LEADS_INTEGRATION_PORT: 31369
         run: npm run test:integration:leads
+
+  e2e-financial-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: integration-root-pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -pintegration-root-pass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium with system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Disposable-database payroll review smoke (issue #426)
+        env:
+          INTEGRATION_DB_HOST: 127.0.0.1
+          INTEGRATION_DB_PORT: 3306
+          INTEGRATION_DB_NAME: accent_integration_e2e_426
+          INTEGRATION_DB_USER: root
+          INTEGRATION_DB_PASSWORD: integration-root-pass
+          E2E_ISSUE: '426'
+        run: npm run test:e2e
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: e2e/artifacts
+          retention-days: 7
+          if-no-files-found: ignore

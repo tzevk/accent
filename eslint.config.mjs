@@ -7,6 +7,9 @@ const ignores = [
 	'.next/**',
 	'out/**',
 	'build/**',
+	'e2e/artifacts/**',
+	'playwright-report/**',
+	'test-results/**',
 	'next-env.d.ts',
 	'._*',
 	'**/._*',
@@ -40,6 +43,14 @@ const eslintConfig = [
 			'react-hooks/preserve-manual-memoization': 'warn',
 			'react-hooks/incompatible-library': 'warn',
 			'react-hooks/immutability': 'warn',
+		},
+	},
+	{
+		// Playwright fixtures call their completion callback `use`; it is not a
+		// React hook. Keep the React hook rules for application code only.
+		files: ['e2e/**/*.ts'],
+		rules: {
+			'react-hooks/rules-of-hooks': 'off',
 		},
 	},
 	{
