@@ -524,7 +524,9 @@ export function PayrollCompanySheetGrid({
 									type="button"
 									onClick={() => info.row.toggleExpanded()}
 									aria-expanded={isExpanded}
-									aria-controls={detailsId(sheet.slip_id)}
+									aria-controls={
+										isExpanded ? detailsId(sheet.slip_id) : undefined
+									}
 									aria-label={`${isExpanded ? 'Collapse' : 'Expand'} attendance and deduction details for ${name}`}
 									className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
 								>
