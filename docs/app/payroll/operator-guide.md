@@ -114,38 +114,45 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
 
 | Prerequisite                                                                                       | Where                                                                                     | If missing                                                                                                                                                                                           |
 | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Joining Date (or Hire Date), plus Exit Date for a leaver                                            | `/employees` — employment details                                                          | Missing or inconsistent dates require review. Do not use the date the record was entered as the joining date. |
 | Salary Profile with CTC and `std_hours_per_day`                                                    | `/employees` — Salary Profile tab (`Payroll`) / Contract Pay tab (`Contract`)             | Finalize blocks and names the employee: neither a profile nor a legacy `salary_structures` row → nothing to compute (ADR-0001). Without `employer_cost` the CTC chain falls back to the agreed gross |
 | Component Rates for the month                                                                      | `/admin/payroll/rates`                                                                    | DA falls back to the frozen config default (0 fixed); PT uses the statutory slab                                                                                                                     |
 | Holidays published                                                                                 | Attendance → Holiday Master                                                               | Basis Hours count a holiday as a working day                                                                                                                                                         |
 | Attendance entered                                                                                 | Attendance module                                                                         | Slip shows the standard working days as present and 0 absent — money is unaffected                                                                                                                   |
-| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id` → linked user → email/username match; an unresolvable row's hours are dropped, so that employee's hours-based pay reads 0                                   |
+| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id`, then the linked user's employee. An unresolvable row cannot establish payroll ownership. |
 | Daily hours logged by staff                                                                        | project → Edit → **My Activities** (nudged by the dashboard's "Activity Update Required") | No hours-based pay (allowance-only at best) — HR's main pre-finalize check                                                                                                                           |
 
 ## Running the month
 
 1. Open `/admin/payroll`, choose the month, pick the **Payroll** or **Contract**
    stream.
-2. **Generate Payroll Slips** (`POST /api/payroll/generate`) — creates the
-   month's Payroll Run as `draft` on first use, then writes a slip per active
-   employee of that stream who has a salary profile (or a legacy
-   `salary_structures` row — ADR-0001). **Employees who already have a
-   slip are skipped** (`results.skipped`), so a recompute needs its slip deleted
-   first (reopen a finalized month, then delete on `/reports`). `{ employee_id,
-preview: true }` computes one slip without saving it.
+2. **Generate Payroll Slips** (`POST /api/payroll/generate`) — creates the month's Payroll Run as `draft` on first use.
+   It generates slips for eligible Employees in the selected pay stream using the shared monthly employment rule.
+   The covering canonical Salary Profile takes precedence over the legacy `salary_structures` fallback (ADR-0001).
+   **Employees who already have a slip are skipped** (`results.skipped`).
+   To recompute, reopen an unpaid finalized run if needed, then delete the affected draft slip and generate again.
+   `{ employee_id, preview: true }` checks the same eligibility and calculates one slip without saving it.
 3. **Review**: `Days / Present / Hrs Logged / Rate/Hr / Basic … Gross /
 PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
    tile in the header. Click a name for the slip document. This is where a ₹0
    or short month must be caught — after Finalize it is frozen.
-4. **Finalize Payroll Run** — confirmation summarizes headcount and totals. It
-   refuses, naming everyone, while either group is outstanding:
-   - active Payroll/Contract employees **with** a profile but **no slip**
-     (fix: Generate again),
-   - active Payroll/Contract employees **without** a profile (fix: master data).
-     Finalizing locks the month for both streams against regeneration.
+4. **Finalize Payroll Run** — review the **Payroll completeness** section before confirming.
+   Eligibility follows employment dates for the selected month, across both pay streams.
+   A November joiner is excluded from October, even with a backdated Salary Profile.
+   A person entered in November who actually joined in October can still belong to October.
+   Employees who left during October remain eligible for October, even if now inactive.
+   Finalization refuses and names employees with missing profiles, missing slips, or employment dates needing review.
+   Slips outside the eligible set also require correction.
+   Joining Date takes precedence over Hire Date; Exit Date includes the final employed day.
+   Select the Salary Profile covering the later of employment start and the month's first day.
+   The pay formula and full-month Basis Hours do not change; Logged Hours determine hours-based pay.
+   Finalization saves the validated employee roster and freezes Project allocations atomically.
+   If either save fails, neither the run lock nor its snapshots commit.
 5. **Pay** — per-slip `pending/processed/paid/hold` + date + reference from
    `/reports`, or the dashboard's **Mark month paid** with a payment date for
    the whole month. The run badge reads `paid` automatically only when 100 % of
    the month's slips are paid (derived, never stored).
+   Payment does not establish roster completeness for a historical run without a saved roster.
 6. **Export** — **Export Excel** (`/api/payroll/export-sheet`, payroll grid or
    the 5-column contract sheet) and **Download All PDFs**
    (`/api/payroll/bulk-pdf`). A single slip's PDF goes through the same endpoint
@@ -160,6 +167,20 @@ PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
 8. **Employees** see their slips at `/user/payslips` once the month's run is
    finalized (months with no run row — historical slips — stay visible).
 
+### Historical roster stability
+
+Newly finalized runs save the full validated Payroll Run Roster, not just the employees who happen to have slips.
+Later employee or Salary Profile edits do not change that saved set.
+Reopen returns an unpaid run to live eligibility review; re-finalization saves another roster version.
+Earlier versions remain preserved.
+
+Historical finalized runs without a saved roster show **roster unavailable**.
+The application does not invent original eligibility from today's employee records.
+Recorded slips and frozen allocations remain intact.
+Late-discovered work outside a saved roster remains visible in the cost report with unknown employee cost.
+Review it with the payroll owner; paid runs cannot reopen, so pay corrections belong in a later run.
+
+
 ## When a number looks wrong
 
 | Symptom                                  | Cause                                                                               | Fix                                                                                         |
@@ -169,7 +190,7 @@ PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
 | `Hrs Logged 0` / `Rate —` on an old slip | Slip generated before the hours basis existed (columns NULL)                        | Historical snapshot — leave it, or regenerate a draft month                                 |
 | Gross ≠ CTC                              | Pay follows logged hours; CTC is the _full month_ equivalent (`full_month_gross`)   | Expected                                                                                    |
 | Employer cost counts a bonus twice       | A slip generated before the #305 correction stored the double count in its snapshot | Historical snapshot — correct it only via Reopen → delete the slip on `/reports` → Generate |
-| Finalize refuses                         | Missing slips and/or missing profiles, named in the error                           | Generate again / write the profile                                                          |
+| Finalize refuses                         | Missing profiles/slips, employment-date issues, or slips outside monthly eligibility | Review the named employees. Correct dates/profiles, then generate missing slips or remove incorrect draft slips. |
 | Reopen refused                           | A slip in the month is paid, or you are not a super-admin                           | Corrections become next month's arrears                                                     |
 | Slip deletion refused                    | The month's run is finalized/paid                                                   | Reopen first (super-admin)                                                                  |
 
@@ -180,11 +201,16 @@ PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
 | Pay formula, earnings split, statutory math                 | `src/utils/payroll-calculation.js`                                                     |
 | Server orchestration: hours fetch, batch/insert, generation | `src/utils/payroll-calculator.js`                                                      |
 | Run lock, completeness gates, paid derivation               | `src/app/api/payroll/_lib/payroll-run.js`, `runs/{finalize,reopen,mark-paid}/route.js` |
+| Monthly employment eligibility and saved Payroll Run Roster | `src/lib/payroll-run-roster.ts`, `migrations/20261109120000_payroll_run_rosters.ts` |
 | Generate / preview API                                      | `src/app/api/payroll/generate/route.js`                                                |
 | Slips listing + payment update                              | `src/app/api/payroll/slips/route.js`                                                   |
 | Slip figures shared by every reader                         | `src/lib/payroll.js`                                                                   |
 | Slip document (screen) / PDF                                | `src/components/payroll/PayrollSlipDocument.jsx`, `src/lib/slip-pdf.js`                |
 | Hours-basis slip columns (ADR-0010)                         | `migrations/20260925120000_add_slip_hours_basis_columns.js`                            |
+
+Apply `20261109120000_payroll_run_rosters.ts` before starting the updated application.
+Use the normal migration command for the target environment (`npm run migrate` for development).
+The migration adds the roster snapshot table only; it does not change existing payroll rows or invent historical rosters.
 
 ## Related
 

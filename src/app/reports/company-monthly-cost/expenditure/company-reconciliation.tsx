@@ -113,6 +113,7 @@ export function CompanyReconciliationPanel({
 							data-estimated-total={data.payroll.estimated_total}
 							data-currency={data.payroll.currency}
 							data-missing-pricing={data.payroll.missing_pricing_count}
+							data-unpriced={data.payroll.unpriced_count}
 							data-recorded-total={data.payroll.recorded_total}
 							className="min-w-0"
 						>
@@ -149,8 +150,8 @@ export function CompanyReconciliationPanel({
 						calculated.{' '}
 						{data.payroll.missing_pricing_count > 0 &&
 							`${data.payroll.missing_pricing_count} have no Salary Profile covering this month. `}
-						Known costs and logged hours remain included. An unpriced zero does
-						not mean zero actual salary.
+						Known costs and logged hours remain included. An unknown cost is
+						not zero actual salary.
 					</p>
 				)}
 

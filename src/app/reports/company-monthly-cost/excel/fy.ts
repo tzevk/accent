@@ -156,27 +156,60 @@ function buildFYMetricSheet(
 			const empName = (r.employee_name as string) || '';
 			const empCode =
 				(r.employee_code as string) || String(r.employee_id ?? '');
-			make(`${empName} (${empCode})`, TINT_EMP, 'left');
+			const unknown = r.cost_known === false;
+			const reason =
+				r.worked_outside_finalized_run === true
+					? 'worked outside finalized payroll (unpriced)'
+					: 'cost unavailable in finalized run (unpriced)';
+			make(
+				`${empName} (${empCode})${unknown ? ` — ${reason}` : ''}`,
+				TINT_EMP,
+				'left'
+			);
 		}
 		if (options.includeProject) {
 			const proj =
 				[r.project_code as string, r.project_name as string]
 					.filter(Boolean)
 					.join(' – ') || '—';
-			make(proj, TINT_YELLOW, 'left');
+			const unknown = r.cost_known === false;
+			const unknownNote =
+				'unknown_cost_count' in r
+					? `Partial: ${Number(r.unknown_cost_count)} employee(s) with unknown cost`
+					: 'Cost unavailable';
+			make(
+				`${proj}${unknown ? ` — ${unknownNote}` : ''}`,
+				TINT_YELLOW,
+				'left'
+			);
 		}
 		if (hasRate) {
-			make((r.hourly_rate as number) ?? 0, TINT_BLUE, 'right', '#,##0.00');
+			make(
+				r.cost_known === false ? '—' : ((r.hourly_rate as number) ?? 0),
+				TINT_BLUE,
+				'right',
+				r.cost_known === false ? undefined : '#,##0.00'
+			);
 		}
 		if (options.includeProject) {
 			make((r.client_name as string) || '—', TINT_BLUE, 'left');
 		}
 		for (const mKey of data.month_keys) {
-			const v =
-				(isCost
-					? (r.monthly_cost as Record<string, number>)?.[mKey]
-					: (r.monthly_hours as Record<string, number>)?.[mKey]) || 0;
-			make(v, TINT_AMBER_LIGHT, 'right', isCost ? '#,##0.00' : '#,##0.##');
+			if (isCost) {
+				const v = (r.monthly_cost as Record<string, number>)?.[mKey] ?? 0;
+				const known =
+					(r.monthly_cost_known as Record<string, boolean>)?.[mKey] !==
+					false;
+				make(
+					v === 0 ? '—' : known ? v : `${v.toFixed(2)} *`,
+					TINT_AMBER_LIGHT,
+					'right',
+					known && v !== 0 ? '#,##0.00' : undefined
+				);
+			} else {
+				const v = (r.monthly_hours as Record<string, number>)?.[mKey] ?? 0;
+				make(v, TINT_AMBER_LIGHT, 'right', '#,##0.##');
+			}
 		}
 		make(
 			(r.total_hours as number) ?? 0,
@@ -185,7 +218,15 @@ function buildFYMetricSheet(
 			'#,##0.##',
 			true
 		);
-		make((r.total_cost as number) ?? 0, TINT_GREEN, 'right', '#,##0.00', true);
+		const rowKnown = r.cost_known !== false;
+		const rowCost = Number(r.total_cost ?? 0);
+		make(
+			rowKnown ? rowCost : rowCost > 0 ? `${rowCost.toFixed(2)} *` : '—',
+			TINT_GREEN,
+			'right',
+			rowKnown ? '#,##0.00' : undefined,
+			true
+		);
 		rn++;
 	}
 
@@ -201,7 +242,10 @@ function buildFYMetricSheet(
 		1; // Sr + emp + proj + rate + client
 	ws.mergeCells(rn, 1, rn, labelCols);
 	const lbl = tr.getCell(1);
-	lbl.value = 'Grand Total — Company';
+	lbl.value =
+		isCost && !data.totals.cost_known
+			? 'Grand Total — Company (partial: unknown cost excluded)'
+			: 'Grand Total — Company';
 	setFont(lbl, { bold: true, size: 9.5 });
 	lbl.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= labelCols; c++) box(tr.getCell(c));
@@ -210,14 +254,18 @@ function buildFYMetricSheet(
 	for (let i = 0; i < data.month_keys.length; i++) {
 		const mKey = data.month_keys[i];
 		const c = tr.getCell(labelCols + 1 + i);
-		c.value =
-			(isCost
-				? data.totals.monthly_cost[mKey]
-				: data.totals.monthly_hours[mKey]) || 0;
+		if (isCost) {
+			const v = data.totals.monthly_cost[mKey] ?? 0;
+			const known = data.totals.monthly_cost_known[mKey] !== false;
+			c.value = v === 0 ? '—' : known ? v : `${v.toFixed(2)} *`;
+			if (known && v !== 0) c.numFmt = '#,##0.00';
+		} else {
+			c.value = data.totals.monthly_hours[mKey] ?? 0;
+			c.numFmt = '#,##0.##';
+		}
 		setFont(c, { bold: true, size: 9 });
 		setFill(c, TINT_AMBER_LIGHT);
 		c.alignment = { vertical: 'middle', horizontal: 'right' };
-		c.numFmt = isCost ? '#,##0.00' : '#,##0.##';
 		box(c);
 	}
 	const th = tr.getCell(labelCols + 1 + data.month_keys.length);
@@ -228,11 +276,15 @@ function buildFYMetricSheet(
 	th.numFmt = '#,##0.##';
 	box(th);
 	const tc = tr.getCell(labelCols + 2 + data.month_keys.length);
-	tc.value = data.totals.total_cost;
+	tc.value = data.totals.cost_known
+		? data.totals.total_cost
+		: data.totals.total_cost > 0
+			? `${data.totals.total_cost.toFixed(2)} *`
+			: '—';
 	setFont(tc, { bold: true, size: 9.5 });
 	setFill(tc, TINT_GREEN);
 	tc.alignment = { vertical: 'middle', horizontal: 'right' };
-	tc.numFmt = '#,##0.00';
+	if (data.totals.cost_known) tc.numFmt = '#,##0.00';
 	box(tc);
 
 	ws.views = [{ state: 'frozen', ySplit: 3 }];

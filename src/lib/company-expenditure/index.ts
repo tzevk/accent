@@ -527,6 +527,7 @@ export type {
 	PayrollCostStatus,
 	PayrollDrilldown,
 	PayrollEmployeeCost,
+	PayrollEmploymentIssue,
 	PayrollExpenditure,
 	PayrollHourLine,
 	PayrollPayStream,
@@ -534,6 +535,8 @@ export type {
 	PayrollReconstructionEvidence,
 	PayrollReconstructionLimitation,
 	PayrollReconstructionSummary,
+	PayrollRosterBasis,
+	PayrollRosterState,
 	PayrollShareBasis,
 	ReconstructionLimitationCode,
 	PeriodBasis,
@@ -910,6 +913,7 @@ export async function fetchPayrollDrilldown(
 		totals,
 		employees,
 		coverage: interpretation.coverage,
+		roster: interpretation.roster,
 	};
 }
 

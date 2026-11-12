@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
 import { useSession } from '@/context/SessionContext';
 import { R, add, mul, sub, toNumber } from '@/lib/money';
-import { formatCurrency, formatMonth } from '@/lib/format';
+import { formatCurrency, formatMonth, formatNumber } from '@/lib/format';
 import {
 	FEBRUARY_PT,
 	isFebruaryMonth,
@@ -83,8 +83,12 @@ const STREAMS = [
 const readRun = async (month) => {
 	const data = await apiGet('/api/payroll/runs', { month });
 	return data.success
-		? { run: data.data?.run ?? null, summary: data.data?.summary ?? null }
-		: { run: null, summary: null };
+		? {
+				run: data.data?.run ?? null,
+				summary: data.data?.summary ?? null,
+				readiness: data.data?.readiness ?? null,
+			}
+		: { run: null, summary: null, readiness: null };
 };
 
 export default function PayrollRunDashboard() {
@@ -121,6 +125,7 @@ export default function PayrollRunDashboard() {
 
 	const run = runQuery.data?.run ?? null;
 	const summary = runQuery.data?.summary ?? null;
+	const readiness = runQuery.data?.readiness ?? null;
 	const slips = slipsQuery.data || [];
 	// "Loading" has always meant "a slips read is in flight": the first one, the
 	// one a month or stream change starts, and the refetch a write triggers.
@@ -227,7 +232,7 @@ export default function PayrollRunDashboard() {
 			// Through the cache, so the badge above and the dialog can never quote
 			// two different months; `staleTime: 0` because "current" means the read
 			// that just happened, not a cache entry the mount left behind.
-			const { run: monthRun, summary: monthSummary } =
+			const { run: monthRun, summary: monthSummary, readiness: monthReadiness } =
 				await queryClient.fetchQuery({
 					queryKey: ['payroll', 'run', month],
 					queryFn: () => readRun(month),
@@ -244,11 +249,12 @@ export default function PayrollRunDashboard() {
 			if (
 				!confirm(
 					`Finalize the Payroll Run for ${formatMonth(month)}?\n\n` +
-						`Employees: ${monthSummary.headcount}\n` +
+						`Eligible employees: ${formatNumber(monthReadiness?.eligible_count)}\n` +
+						`Payroll Slips: ${formatNumber(monthSummary.headcount)}\n` +
 						`Total Gross: ${formatCurrency(monthSummary.total_gross)}\n` +
 						`Total Deductions: ${formatCurrency(monthSummary.total_deductions)}\n` +
 						`Net Pay: ${formatCurrency(monthSummary.total_net_pay)}\n\n` +
-						'Finalizing locks the month — Payroll Slips can no longer be generated.'
+						'Finalizing saves the validated employee roster and freezes cost allocation. Payroll Slips can no longer be generated.'
 				)
 			)
 				return;
@@ -608,6 +614,93 @@ export default function PayrollRunDashboard() {
 						</fieldset>
 					</div>
 				</div>
+
+				<section
+					aria-labelledby="payroll-completeness-heading"
+					className="mb-6 rounded-xl border border-gray-200 bg-white p-4"
+				>
+					<h2
+						id="payroll-completeness-heading"
+						className="text-sm font-semibold text-gray-900"
+					>
+						Payroll completeness
+					</h2>
+					{runQuery.isError ? (
+						<p role="alert" className="mt-2 text-sm text-red-700">
+							Unable to check payroll completeness. Refresh the page before finalizing.
+						</p>
+					) : !readiness ? (
+						<p className="mt-2 text-sm text-gray-600">Checking employee eligibility…</p>
+					) : readiness.basis === 'legacy' ? (
+						<p className="mt-2 text-sm text-gray-700">
+							This historical run has no saved employee roster. Existing slips and
+							payments remain recorded, but employee coverage cannot be verified.
+						</p>
+					) : (
+						<>
+							<p className="mt-1 text-sm text-gray-600">
+								{readiness.basis === 'frozen'
+									? 'Employee coverage saved at finalization. Later employee changes do not change this roster.'
+									: 'Eligibility follows employment dates for this month, across Payroll and Contract pay streams.'}
+							</p>
+							<dl className="mt-3 flex flex-wrap gap-x-6 gap-y-3 text-sm">
+								<div>
+									<dt className="text-gray-600">Eligible employees</dt>
+									<dd className="font-semibold text-gray-900">
+										{formatNumber(readiness.eligible_count)}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-gray-600">Payroll Slips</dt>
+									<dd className="font-semibold text-gray-900">
+										{formatNumber(readiness.slip_count)}
+									</dd>
+								</div>
+								{readiness.basis === 'live' && (
+									<>
+										<div>
+											<dt className="text-gray-600">Missing slips</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.missing_slip_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">Missing profiles</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.missing_profile_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">Employment dates to review</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.employment_issue_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">Slips outside eligibility</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.unexpected_slip_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">Employees excluded</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.excluded_count)}
+											</dd>
+										</div>
+									</>
+								)}
+							</dl>
+							{readiness.basis === 'live' && (
+								<p className="mt-3 text-sm text-gray-700">
+									{readiness.can_finalize
+										? 'Every eligible employee has a covering Salary Profile and Payroll Slip. The run is ready for final review.'
+										: 'Resolve missing profiles, slips, or employment-date issues before finalizing. Finalize names the employees needing attention.'}
+								</p>
+							)}
+						</>
+					)}
+				</section>
 
 				{/* Stats Cards */}
 				<div className="flex gap-4 mb-6">

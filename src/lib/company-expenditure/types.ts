@@ -1105,7 +1105,10 @@ export type PayrollCostStatus =
 	| 'estimated'
 	/** A finalized slip whose recorded employer cost is a known zero. */
 	| 'known_zero'
-	/** Cost cannot be stated: no Salary Profile covers the month. */
+	/**
+	 * Cost cannot be stated: no covering Salary Profile, work outside the
+	 * finalized roster, or a locked slip without a frozen allocation.
+	 */
 	| 'unknown';
 
 export type PayrollShareBasis = 'project' | 'no_project' | 'no_logged_hours';
@@ -1192,6 +1195,39 @@ export interface PayrollReconstructionSummary {
 	shares: PayrollProjectShare[];
 }
 
+/**
+ * Which roster bounded a month's employee-cost rows. `draft` is the live
+ * monthly eligibility, `saved` the validated roster frozen at Payroll
+ * Finalize, and `unavailable` a legacy locked run that predates snapshots.
+ */
+export type PayrollRosterBasis = 'draft' | 'saved' | 'unavailable';
+
+/** An employment-date issue the shared payroll roster flags for review. */
+export type PayrollEmploymentIssue =
+	| 'employment_dates_missing'
+	| 'employment_dates_invalid'
+	| 'work_outside_employment';
+
+/**
+ * The membership evidence behind the month's employee-cost rows, stated so a
+ * reader can tell live eligibility from the finalized run's saved roster.
+ */
+export interface PayrollRosterState {
+	basis: PayrollRosterBasis;
+	/** Members in the saved finalized roster; null when none applies. */
+	member_count: number | null;
+	/**
+	 * Live-eligible people with no Payroll Slip and no Logged Hours in the
+	 * saved finalized run. Disclosed separately; they carry no invented cost.
+	 */
+	not_in_saved_roster_count: number;
+	/**
+	 * People with real Logged Hours in the month but no saved finalized
+	 * membership and no Payroll Slip: visible, unpriced evidence.
+	 */
+	worked_outside_count: number;
+}
+
 /** One Employee's employee-cost position for a month. */
 export interface PayrollEmployeeCost {
 	employee_id: number;
@@ -1203,6 +1239,25 @@ export interface PayrollEmployeeCost {
 	recorded_amount: number | null;
 	/** Payroll-based estimate; never added to recorded cost. */
 	estimated_amount: number | null;
+	/**
+	 * The actual Payroll Slip's recorded employer cost, stated even when no
+	 * frozen allocation attributes it. It is never copied into Project shares
+	 * without evidence.
+	 */
+	slip_amount: number | null;
+	/**
+	 * Whether the row is a member of the finalized run's saved roster.
+	 * `null` means no saved roster applies (draft or legacy locked run).
+	 */
+	in_saved_roster: boolean | null;
+	/**
+	 * The row has real Logged Hours in a finalized month but is not in the
+	 * saved roster and has no Payroll Slip: worked, not included in the
+	 * finalized payroll, and unpriced here.
+	 */
+	worked_outside_finalized_run: boolean;
+	/** Employment-date evidence needing review, from the shared roster. */
+	employment_issue: PayrollEmploymentIssue | null;
 	logged_hours: number;
 	project_hours: number;
 	no_project_hours: number;
@@ -1269,6 +1324,8 @@ export interface PayrollDrilldown {
 	totals: PayrollExpenditure;
 	employees: PayrollEmployeeCost[];
 	coverage: CoverageNotice[];
+	/** The membership evidence behind the rows. */
+	roster: PayrollRosterState;
 }
 
 /** The command contract: every change carries the version it expects. */

@@ -5,11 +5,15 @@ import { payrollAuditRows } from '../../audit-rows';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
+	mockWithTransaction: vi.fn(),
 	mockEnsurePermission: vi.fn(),
 	mockExecute: vi.fn(),
 }));
 
-vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
+vi.mock('@/utils/database', () => ({
+	dbConnect: mocks.mockDbConnect,
+	withTransaction: mocks.mockWithTransaction,
+}));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
 	RESOURCES: { PAYROLL: 'payroll' },
@@ -74,6 +78,9 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 			execute: mocks.mockExecute,
 			release: vi.fn(),
 		});
+		mocks.mockWithTransaction.mockImplementation(async (fn) =>
+			fn(await mocks.mockDbConnect())
+		);
 		mocks.mockExecute.mockResolvedValue([[], undefined]);
 		signIn(true);
 	});
@@ -84,7 +91,7 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		const res = await POST(jsonRequest({ month: '2026-08-01' }));
 
 		expect(res.status).toBe(403);
-		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+		expect(mocks.mockWithTransaction).not.toHaveBeenCalled();
 	});
 
 	it('refuses a non-super-admin even with payroll:update', async () => {
@@ -97,7 +104,7 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		expect(body.success).toBe(false);
 		expect(body.error).toMatch(/super-admin/i);
 		// Identity decides this, so the database is never even consulted.
-		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+		expect(mocks.mockWithTransaction).not.toHaveBeenCalled();
 		expect(updates()).toHaveLength(0);
 		expect(audits()).toHaveLength(0);
 	});
@@ -106,7 +113,16 @@ describe('payroll reopen API — unlocking a finalized month (issue #244)', () =
 		const res = await POST(jsonRequest({}));
 
 		expect(res.status).toBe(400);
-		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+		expect(mocks.mockWithTransaction).not.toHaveBeenCalled();
+	});
+
+	it('locks the run row for the guarded transition', async () => {
+		mocks.mockExecute.mockResolvedValue([[], undefined]);
+
+		await POST(jsonRequest({ month: '2026-08-01' }));
+
+		expect(statements()[0]).toContain('FROM payroll_runs');
+		expect(statements()[0]).toContain('FOR UPDATE');
 	});
 
 	it('refuses a month that has no Payroll Run yet', async () => {

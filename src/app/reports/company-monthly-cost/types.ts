@@ -1,4 +1,8 @@
-import type { PayrollExpenditure } from '@/lib/company-expenditure/types';
+import type {
+	CoverageNotice,
+	PayrollEmploymentIssue,
+	PayrollExpenditure,
+} from '@/lib/company-expenditure/types';
 
 export interface FinancialYearOption {
 	year: number;
@@ -30,7 +34,11 @@ export interface MonthlyRow {
 	hourly_rate: number;
 	hours: number;
 	cost: number;
+	cost_known: boolean;
 	missing_salary_profile: boolean;
+	in_saved_roster: boolean | null;
+	worked_outside_finalized_run: boolean;
+	employment_issue: PayrollEmploymentIssue | null;
 }
 
 export interface MonthlyEmployeeRow {
@@ -43,8 +51,12 @@ export interface MonthlyEmployeeRow {
 	hourly_rate: number;
 	hours: number;
 	cost: number;
+	cost_known: boolean;
 	project_count: number;
 	missing_salary_profile: boolean;
+	in_saved_roster: boolean | null;
+	worked_outside_finalized_run: boolean;
+	employment_issue: PayrollEmploymentIssue | null;
 }
 
 export interface MonthlyProjectRow {
@@ -55,8 +67,10 @@ export interface MonthlyProjectRow {
 	client_name: string;
 	hours: number;
 	cost: number;
+	cost_known: boolean;
 	employee_count: number;
 	missing_salary_profile_count: number;
+	unknown_cost_count: number;
 }
 
 export interface MonthlyCompanyCostData {
@@ -68,6 +82,8 @@ export interface MonthlyCompanyCostData {
 	employee_rows: MonthlyEmployeeRow[];
 	project_rows: MonthlyProjectRow[];
 	payroll: PayrollExpenditure;
+	/** The month's payroll coverage disclosures. */
+	coverage: CoverageNotice[];
 	totals: {
 		total_hours: number;
 		total_cost: number;
@@ -89,10 +105,15 @@ export interface FYCompanyRow {
 	project_name: string;
 	client_name: string;
 	hourly_rate: number;
+	monthly_cost_known: Record<string, boolean>;
 	monthly_hours: Record<string, number>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	cost_known: boolean;
+	worked_outside_finalized_run: boolean;
+	in_saved_roster: boolean | null;
+	employment_issue: PayrollEmploymentIssue | null;
 }
 
 export interface FYEmployeeRow {
@@ -103,10 +124,15 @@ export interface FYEmployeeRow {
 	department: string | null;
 	designation: string | null;
 	hourly_rate: number;
+	monthly_cost_known: Record<string, boolean>;
 	monthly_hours: Record<string, number>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	cost_known: boolean;
+	worked_outside_finalized_run: boolean;
+	in_saved_roster: boolean | null;
+	employment_issue: PayrollEmploymentIssue | null;
 	project_count: number;
 }
 
@@ -116,10 +142,13 @@ export interface FYProjectRow {
 	project_code: string;
 	project_name: string;
 	client_name: string;
+	monthly_cost_known: Record<string, boolean>;
 	monthly_hours: Record<string, number>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	cost_known: boolean;
+	unknown_cost_count: number;
 	employee_count: number;
 }
 
@@ -132,15 +161,18 @@ export interface FYCompanyCostData {
 	employee_rows: FYEmployeeRow[];
 	project_rows: FYProjectRow[];
 	totals: {
+		monthly_cost_known: Record<string, boolean>;
 		monthly_hours: Record<string, number>;
 		monthly_cost: Record<string, number>;
 		total_hours: number;
 		total_cost: number;
+		cost_known: boolean;
 		blended_rate: number;
 	};
 	summary: {
 		total_hours: number;
 		total_cost: number;
+		cost_known: boolean;
 		blended_rate: number;
 		employee_count: number;
 		project_count: number;

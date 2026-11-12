@@ -165,7 +165,7 @@ export default function CloseSection({
 									>
 										{data.review.blockers.map((entry) => (
 											<li key={entry.code}>
-												<span className="font-medium">{entry.code}</span>
+												<span className="font-medium">{entry.label}</span>
 												{': '}
 												{entry.detail}
 											</li>
@@ -184,7 +184,7 @@ export default function CloseSection({
 									>
 										{data.review.warnings.map((entry) => (
 											<li key={entry.code}>
-												<span className="font-medium">{entry.code}</span>
+												<span className="font-medium">{entry.label}</span>
 												{': '}
 												{entry.detail}
 											</li>

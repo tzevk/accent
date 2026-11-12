@@ -43,6 +43,14 @@ import { expenditureMonths, monthLabel, projectKey } from './views/helpers';
 import { MonthlyView } from './views/monthly-view';
 import { FyView } from './views/fy-view';
 
+/** Payroll membership and employment evidence the Monthly view discloses. */
+const MONTHLY_ROSTER_NOTICE_CODES: Record<string, true> = {
+	payroll_roster_unavailable: true,
+	payroll_work_outside_finalized_run: true,
+	payroll_outside_finalized_roster: true,
+	payroll_employment_issue: true,
+};
+
 export default function CompanyMonthlyCostPage() {
 	return (
 		<Suspense
@@ -771,10 +779,10 @@ function CompanyMonthlyCostInner() {
 							<p className="mt-1">
 								{monthlyData.payroll.missing_pricing_count} employee(s) have no
 								Salary Profile covering this month. Their hours and projects
-								stay visible. Their cost shows ₹0.00 as an unpriced placeholder,
-								not confirmed zero cost. Totals include calculated costs only
-								and may be understated. Add the covering Salary Profiles to
-								price the remaining work.
+								stay visible. Their cost is shown as unavailable (—), not
+								confirmed zero cost. Totals include calculated costs only and
+								may be understated. Add the covering Salary Profiles to price
+								the remaining work.
 							</p>
 							<details className="mt-2">
 								<summary className="cursor-pointer font-medium underline underline-offset-2">
@@ -793,13 +801,38 @@ function CompanyMonthlyCostInner() {
 							</details>
 						</section>
 					)}
+				{viewMode === 'monthly' &&
+					monthlyData &&
+					monthlyData.coverage.some(
+						(notice) => MONTHLY_ROSTER_NOTICE_CODES[notice.code]
+					) && (
+						<section
+							aria-label="Finalized payroll roster disclosure"
+							role="status"
+							className="mx-auto mb-3 max-w-[1600px] rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+						>
+							<p className="font-semibold">
+								Finalized payroll roster for {monthlyData.month_label}
+							</p>
+							<ul className="mt-1 list-inside list-disc">
+								{monthlyData.coverage
+									.filter((notice) => MONTHLY_ROSTER_NOTICE_CODES[notice.code])
+									.map((notice) => (
+										<li key={notice.code}>
+											<span className="font-medium">{notice.label}.</span>{' '}
+											{notice.detail}
+										</li>
+									))}
+							</ul>
+						</section>
+					)}
 				{viewMode === 'monthly' && monthlyTotals && (
 					<div
 						className={`mx-auto mb-3 grid max-w-[1600px] grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5 ${breakdown === 'detailed' ? 'print:hidden' : 'print:mb-1 print:grid-cols-5'}`}
 					>
 						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-4 shadow-sm sm:col-span-2 md:col-span-1 print:p-1.5">
 							<p className="text-sm font-semibold text-[#64126D]">
-								{monthlyData?.payroll.missing_pricing_count
+								{monthlyData?.payroll.unpriced_count
 									? 'Employee cost — partial estimate'
 									: 'Estimated employee cost'}{' '}
 								· {monthlyData?.month_label}
@@ -810,8 +843,8 @@ function CompanyMonthlyCostInner() {
 							<p className="mt-1 text-sm text-gray-700">
 								Full-period total across all employees and projects; employee
 								cost is an estimate until payroll is finalized.
-								{monthlyData?.payroll.missing_pricing_count
-									? ' Unpriced salaries are excluded, so this partial estimate may be understated.'
+								{monthlyData?.payroll.unpriced_count
+									? ' Unpriced positions are shown as unavailable, so this partial total may be understated.'
 									: ''}
 							</p>
 						</div>
