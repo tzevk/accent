@@ -132,10 +132,12 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
    **Employees who already have a slip are skipped** (`results.skipped`).
    To recompute, reopen an unpaid finalized run if needed, then delete the affected draft slip and generate again.
    `{ employee_id, preview: true }` checks the same eligibility and calculates one slip without saving it.
-3. **Review**: `Days / Present / Hrs Logged / Rate/Hr / Basic … Gross /
-PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
-   tile in the header. Click a name for the slip document. This is where a ₹0
-   or short month must be caught — after Finalize it is frozen.
+3. **Review**: the **Payroll** stream opens the company sheet grid described
+   below; the **Contract** stream keeps its existing
+   `Days / Present / Hrs Logged / Rate/Hr / Basic … Gross / PF … Deductions /
+   Net Pay / Status` table, totals and Payment tile. Click a Full Name or
+   Employee name for the slip document. This is where a ₹0 or short month must
+   be caught — after Finalize it is frozen.
 4. **Finalize Payroll Run** — review the **Payroll completeness** section before confirming.
    Eligibility follows employment dates for the selected month, across both pay streams.
    A November joiner is excluded from October, even with a backdated Salary Profile.
@@ -167,6 +169,38 @@ PF … Deductions / Net Pay / Status` per row, totals in the footer, Payment
 8. **Employees** see their slips at `/user/payslips` once the month's run is
    finalized (months with no run row — historical slips — stay visible).
 
+### Company sheet grid (Payroll stream)
+
+The **Payroll** stream displays the company's 51 column captions, verbatim and
+in company order. **Employee Code** and **Full Name** stay frozen while the
+remaining columns scroll horizontally; headers stay visible and the scroll area
+is bounded so the page controls never move out of reach. The grid has one row
+per generated Payroll Slip. A month without generated slips stays empty, and
+the separate **Payroll completeness** section remains the roster and eligibility
+check — the grid's rows are not evidence of roster completeness.
+
+Amounts are the **generated Payroll Slip snapshot**. Attendance counts are
+**current Attendance Records**, which can change after generation. Expanding a
+row shows the exact label **Current attendance — generated payroll amounts are
+unchanged**, the monthly category breakdown, reconciliation state, source and
+review warnings, payment state, and recorded deductions that the company
+columns do not show.
+
+- A missing or unsupported value reads **Not available**. It never becomes a
+  blank cell or a zero. A genuine recorded zero still displays as `0.00` or
+  `₹0.00`.
+- **Company Days Paid** = Days Present + Leave + Paid Holiday + WeekOff. It is
+  an attendance credit, not the salary **Payable Day**.
+- **OT Hours** are current attendance overtime hours under the payable-overtime
+  gate. They are not **Logged Hours**, and they do not add days or change pay.
+- The row footer totals only **GROSS**, **TOTAL DED** and **NET SAL**, which
+  are the stored Payroll Slip totals. Unsupported columns never acquire a
+  zero total.
+- Click **Full Name** to open the existing Payroll Slip document.
+- Generate, Finalize, Reopen, payment, Excel export and bulk PDF keep their
+  existing roles. Contract keeps its existing table and columns. Exports and
+  Payroll Slip documents are unchanged by this grid.
+
 ### Historical roster stability
 
 Newly finalized runs save the full validated Payroll Run Roster, not just the employees who happen to have slips.
@@ -193,6 +227,9 @@ Review it with the payroll owner; paid runs cannot reopen, so pay corrections be
 | Finalize refuses                         | Missing profiles/slips, employment-date issues, or slips outside monthly eligibility | Review the named employees. Correct dates/profiles, then generate missing slips or remove incorrect draft slips. |
 | Reopen refused                           | A slip in the month is paid, or you are not a super-admin                           | Corrections become next month's arrears                                                     |
 | Slip deletion refused                    | The month's run is finalized/paid                                                   | Reopen first (super-admin)                                                                  |
+| Company column shows `Not available`     | No recorded value or confirmed company mapping exists for that field                | Expected. It is not a zero; do not infer a value from a similar field or current profile    |
+| Attendance counts differ from the slip   | The grid shows current Attendance Records; the Payroll Slip keeps its frozen snapshot | Expected. Pay follows the recorded Payroll Slip; attendance display changes do not reprice it |
+| Days Paid differs from Payable Day       | Company Days Paid includes paid leave, holidays and Weekly Off; Payable Day is a payroll credit | Expected. Use Payable Day only where payroll documentation names it                         |
 
 ## Where the code lives
 
@@ -204,6 +241,9 @@ Review it with the payroll owner; paid runs cannot reopen, so pay corrections be
 | Monthly employment eligibility and saved Payroll Run Roster | `src/lib/payroll-run-roster.ts`, `migrations/20261109120000_payroll_run_rosters.ts` |
 | Generate / preview API                                      | `src/app/api/payroll/generate/route.js`                                                |
 | Slips listing + payment update                              | `src/app/api/payroll/slips/route.js`                                                   |
+| Company-sheet pure read model                               | `src/lib/payroll-company-sheet.ts`                                                     |
+| Company-sheet listing projection                            | `src/app/api/payroll/_lib/company-sheet-projection.ts`                                 |
+| Company-sheet grid (Payroll stream)                         | `src/components/payroll/PayrollCompanySheetGrid.tsx`                                   |
 | Slip figures shared by every reader                         | `src/lib/payroll.js`                                                                   |
 | Slip document (screen) / PDF                                | `src/components/payroll/PayrollSlipDocument.jsx`, `src/lib/slip-pdf.js`                |
 | Hours-basis slip columns (ADR-0010)                         | `migrations/20260925120000_add_slip_hours_basis_columns.js`                            |

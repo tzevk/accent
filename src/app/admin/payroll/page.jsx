@@ -17,6 +17,7 @@ import { PAYMENT_STATUS, paymentStatusBadge } from '@/lib/payment-status';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { downloadFile } from '@/lib/download';
 import { InlineSpinner } from '@/components/LoadingSpinner';
+import { PayrollCompanySheetGrid } from '@/components/payroll/PayrollCompanySheetGrid';
 import {
 	ArrowDownTrayIcon,
 	ArrowPathIcon,
@@ -115,18 +116,23 @@ export default function PayrollRunDashboard() {
 	const slipsQuery = useQuery({
 		queryKey: ['payroll', 'slips', month, stream],
 		queryFn: async () => {
+			// The company-sheet projection is the Payroll stream's format. The
+			// Contract stream keeps its existing table and its ordinary listing.
 			const data = await apiGet('/api/payroll/slips', {
 				month,
 				salary_type: stream,
+				...(stream === 'payroll' ? { include: 'company-sheet' } : {}),
 			});
-			return data.success ? data.data || [] : [];
+			return data.success
+				? { rows: data.data || [], meta: data.company_sheet ?? null }
+				: { rows: [], meta: null };
 		},
 	});
 
 	const run = runQuery.data?.run ?? null;
 	const summary = runQuery.data?.summary ?? null;
 	const readiness = runQuery.data?.readiness ?? null;
-	const slips = slipsQuery.data || [];
+	const slips = slipsQuery.data?.rows || [];
 	// "Loading" has always meant "a slips read is in flight": the first one, the
 	// one a month or stream change starts, and the refetch a write triggers.
 	const loading = slipsQuery.isFetching;
@@ -135,6 +141,24 @@ export default function PayrollRunDashboard() {
 	const readError = slipsQuery.error
 		? slipsQuery.error.message || 'Failed to fetch payroll data'
 		: '';
+	// Payroll renders the company sheet from the listing's opt-in projection.
+	// Contract keeps its existing columns, so it never asks for or reads it.
+	const companySheetRows =
+		stream === 'payroll'
+			? slips
+					.filter((slip) => slip.company_sheet)
+					.map((slip) => ({
+						sheet: slip.company_sheet,
+						payment_status: slip.payment_status,
+						payment_date: slip.payment_date,
+					}))
+			: [];
+	const missingCompanySheet =
+		stream === 'payroll' &&
+		slips.length > 0 &&
+		companySheetRows.length !== slips.length;
+	const companySheetMeta =
+		stream === 'payroll' ? slipsQuery.data?.meta ?? null : null;
 
 	const currentStream = STREAMS.find((s) => s.value === stream) || STREAMS[0];
 	const streamLabel = currentStream.label;
@@ -761,21 +785,51 @@ export default function PayrollRunDashboard() {
 							: `Showing ${slips.length} ${stream} ${slips.length === 1 ? 'employee' : 'employees'} for ${formatMonth(month)}`}
 					</div>
 
-					<div className="overflow-x-auto">
-						{loading ? (
-							<div className="flex items-center justify-center py-12">
-								<InlineSpinner className="w-8 h-8" />
-							</div>
-						) : slips.length === 0 ? (
-							<div className="text-center py-12 text-gray-500">
-								<DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-								<p className="font-medium">No Payroll Slips found</p>
-								<p className="text-sm mt-1">
-									Generate Payroll Slips for {formatMonth(month)} to see data
-									here.
+					{loading ? (
+						<div className="flex items-center justify-center py-12">
+							<InlineSpinner className="w-8 h-8" />
+						</div>
+					) : slips.length === 0 ? (
+						<div className="text-center py-12 text-gray-500">
+							<DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+							<p className="font-medium">No Payroll Slips found</p>
+							<p className="text-sm mt-1">
+								Generate Payroll Slips for {formatMonth(month)} to see data
+								here.
+							</p>
+						</div>
+					) : stream === 'payroll' ? (
+						<>
+							{missingCompanySheet && (
+								<p
+									role="alert"
+									className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+								>
+									Company sheet details could not be loaded for every row.
+									Refresh the page. Recorded Payroll Slip amounts are unchanged.
 								</p>
-							</div>
-						) : (
+							)}
+							{companySheetMeta?.issues?.length > 0 && (
+								<div
+									role="status"
+									className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+								>
+									<p className="font-medium">
+										Company sheet data needs review
+									</p>
+									<ul className="mt-1 list-disc space-y-1 pl-5">
+										{companySheetMeta.issues.map((issue, index) => (
+											<li key={`${issue.code}-${index}`}>{issue.message}</li>
+										))}
+									</ul>
+								</div>
+							)}
+							{companySheetRows.length > 0 && (
+								<PayrollCompanySheetGrid rows={companySheetRows} />
+							)}
+						</>
+					) : (
+						<div className="overflow-x-auto">
 							<table className="w-full text-sm">
 								<thead className="bg-gray-50 border-b border-gray-200">
 									<tr>
@@ -1032,8 +1086,8 @@ export default function PayrollRunDashboard() {
 									</tr>
 								</tfoot>
 							</table>
-						)}
-					</div>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>
