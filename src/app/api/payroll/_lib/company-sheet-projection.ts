@@ -71,7 +71,9 @@ export interface CompanySheetProjectionDb {
 }
 
 interface EmployeeEvidenceRow {
+	/** `employees.id`, the numeric Employee primary key the slips reference. */
 	id: number | string;
+	/** The business Employee Code, distinct from the numeric row key. */
 	employee_id?: string | null;
 	position?: string | null;
 	uan?: string | null;
@@ -82,6 +84,19 @@ interface EmployeeEvidenceRow {
 	hire_date?: string | Date | null;
 	exit_date?: string | Date | null;
 }
+
+/**
+ * Raw identity/employment evidence from the Employees batch. It is deliberately
+ * not a `CompanySheetEmploymentSource`: the row's `employee_id` is the business
+ * code string, while the model's employment evidence is keyed by the numeric
+ * `employees.id`. The adapter maps between them after the batch.
+ */
+type EmployeeEvidenceSource =
+	| {
+			readonly state: 'loaded';
+			readonly employees: readonly EmployeeEvidenceRow[];
+	  }
+	| { readonly state: 'error'; readonly message: string };
 
 const EMPLOYEES_UNAVAILABLE =
 	'Employee identity and employment records could not be read; UAN, PF No., ESIC No. and attendance counts are unavailable.';
@@ -132,7 +147,7 @@ function reasonFor(error: unknown): string {
 async function readEmployees(
 	db: CompanySheetProjectionDb,
 	employeeIds: readonly number[]
-): Promise<CompanySheetEmploymentSource> {
+): Promise<EmployeeEvidenceSource> {
 	if (employeeIds.length === 0) {
 		return { state: 'loaded', employees: [] };
 	}
@@ -246,7 +261,7 @@ export async function loadCompanySheetProjection(
 		),
 	];
 
-	let employeeBatch: CompanySheetEmploymentSource = {
+	let employeeBatch: EmployeeEvidenceSource = {
 		state: 'loaded',
 		employees: [],
 	};
@@ -265,29 +280,31 @@ export async function loadCompanySheetProjection(
 		]);
 	}
 
-	const employees: readonly EmployeeEvidenceRow[] =
-		employeeBatch.state === 'loaded'
-			? (employeeBatch.employees as unknown as readonly EmployeeEvidenceRow[])
-			: [];
 	const employeeById = new Map<number, EmployeeEvidenceRow>();
-	for (const employee of employees) {
-		const id = Number(employee.id);
-		if (Number.isInteger(id)) employeeById.set(id, employee);
+	if (employeeBatch.state === 'loaded') {
+		for (const employee of employeeBatch.employees) {
+			const id = Number(employee.id);
+			if (Number.isInteger(id)) employeeById.set(id, employee);
+		}
 	}
 
 	const employment: CompanySheetEmploymentSource =
 		employeeBatch.state === 'loaded'
 			? {
 					state: 'loaded',
-					employees: employees.map((employee) => ({
-						employee_id: Number(employee.id),
-						status: employee.status ?? null,
-						joining_date: employee.joining_date ?? null,
-						hire_date: employee.hire_date ?? null,
-						exit_date: employee.exit_date ?? null,
-					})),
+					employees: [...employeeById.entries()].map(
+						([employeeId, employee]) => ({
+							// The model's employment key is the numeric `employees.id`, never
+							// the business Employee Code string in `employee_id`.
+							employee_id: employeeId,
+							status: employee.status ?? null,
+							joining_date: employee.joining_date ?? null,
+							hire_date: employee.hire_date ?? null,
+							exit_date: employee.exit_date ?? null,
+						})
+					),
 				}
-			: employeeBatch;
+			: { state: 'error', message: employeeBatch.message };
 
 	const projectionSlips = input.slips.map((slip) =>
 		withEmployeeIdentity(slip, employeeById.get(Number(slip.employee_id)))
