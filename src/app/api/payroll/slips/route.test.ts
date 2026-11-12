@@ -525,3 +525,499 @@ describe('payroll slips API — payment changes are audited (issue #243)', () =>
 		expect(auditRows()).toHaveLength(1);
 	});
 });
+
+describe('payroll slips API — company-sheet projection (issue #428)', () => {
+	/**
+	 * One normalized January slip shape is not enough for the projection: the
+	 * route must read Employees, Attendance Records and Holiday Master rows for
+	 * exactly the returned slips, and must not turn a source failure into a
+	 * failed listing. These tests dispatch the mocked connection by SQL so the
+	 * batch shape is observable without a second harness.
+	 */
+	const SLIP = {
+		id: 42,
+		month: '2026-02-01',
+		employee_id: 7,
+		employee_name: 'Asha Rao',
+		employee_code: 'EMP-007',
+		department: 'Engineering',
+		// The listing's grade alias must not become the company Designation.
+		designation: 'Grade A',
+		position: 'Senior Engineer',
+		joining_date: '2020-01-01',
+		basic: 50000,
+		da: 0,
+		da_used: 0,
+		profile_basic: 50000,
+		profile_basic_plus_da: 50000,
+		structure_basic_salary: null,
+		hra: 10000,
+		conveyance: 1600,
+		call_allowance: 500,
+		other_allowances: 200,
+		bonus: 0,
+		incentive: 1000,
+		total_earnings: '70000.00',
+		// The full-month contractual gross is deliberately different: GROSS in
+		// the company sheet is the stored total_earnings, never this fallback.
+		gross: '80000.00',
+		total_deductions: '8000.00',
+		net_pay: '62000.00',
+		pf_employee: '1800.00',
+		esic_employee: '0.00',
+		pt: '200.00',
+		tds: '0.00',
+		retention: '0.00',
+		mlwf: '0.00',
+		lwf: '0.00',
+		other_deductions: '6000.00',
+		lop_deduction: '0.00',
+		payment_status: 'paid',
+		device_code: 'DEV-99',
+	};
+
+	const EMPLOYEE = {
+		id: 7,
+		employee_id: 'EMP-007',
+		position: 'Senior Engineer',
+		uan: '100200300400',
+		pf_no: 'PF/007',
+		esi_no: 'ESIC/007',
+		status: 'active',
+		joining_date: '2020-01-01',
+		hire_date: '2019-12-15',
+		exit_date: null,
+	};
+
+	const FEBRUARY_ATTENDANCE = [
+		{
+			employee_id: 7,
+			attendance_date: '2026-02-02',
+			status: 'P',
+			overtime_hours: 0,
+		},
+		{
+			employee_id: 7,
+			attendance_date: '2026-02-03',
+			status: 'OT',
+			overtime_hours: '3.00',
+		},
+		{
+			employee_id: 7,
+			attendance_date: '2026-02-04',
+			status: 'HD',
+			overtime_hours: 0,
+		},
+		{
+			employee_id: 7,
+			attendance_date: '2026-02-05',
+			status: 'PL',
+			overtime_hours: 0,
+		},
+		{
+			employee_id: 7,
+			attendance_date: '2026-02-06',
+			status: 'A',
+			overtime_hours: 0,
+		},
+		{
+			employee_id: 7,
+			attendance_date: '2026-02-09',
+			status: 'H',
+			overtime_hours: 0,
+		},
+		{
+			employee_id: 7,
+			attendance_date: '2026-02-10',
+			status: 'WO',
+			overtime_hours: 0,
+		},
+	];
+
+	const FEBRUARY_HOLIDAYS = [
+		{ date: '2026-02-11', is_active: 1, is_optional: 0 },
+		// An optional holiday is a working day unless an explicit H record says
+		// otherwise; the route hands it to the model raw so that policy is applied
+		// in one place.
+		{ date: '2026-02-12', is_active: 1, is_optional: 1 },
+	];
+
+	interface ProjectionMock {
+		slips?: unknown[];
+		employees?: unknown[];
+		attendance?: unknown[];
+		holidays?: unknown[];
+		scheduledDA?: unknown[];
+		employeeError?: Error;
+		attendanceError?: Error;
+		holidayError?: Error;
+	}
+
+	function mockProjectionDb(overrides: ProjectionMock = {}): void {
+		const slips = overrides.slips ?? [SLIP];
+		const employees = overrides.employees ?? [EMPLOYEE];
+		const attendance = overrides.attendance ?? FEBRUARY_ATTENDANCE;
+		const holidays = overrides.holidays ?? FEBRUARY_HOLIDAYS;
+		const scheduledDA = overrides.scheduledDA ?? [];
+
+		mocks.mockExecute.mockImplementation(async (sql: string) => {
+			const text = String(sql);
+			if (text.includes('FROM payroll_slips ps')) return [slips, undefined];
+			if (text.includes('FROM payroll_schedules'))
+				return [scheduledDA, undefined];
+			if (text.includes('FROM employees')) {
+				if (overrides.employeeError) throw overrides.employeeError;
+				return [employees, undefined];
+			}
+			if (text.includes('FROM employee_attendance')) {
+				if (overrides.attendanceError) throw overrides.attendanceError;
+				return [attendance, undefined];
+			}
+			if (text.includes('FROM holiday_master')) {
+				if (overrides.holidayError) throw overrides.holidayError;
+				return [holidays, undefined];
+			}
+			return [[], undefined];
+		});
+	}
+
+	const projectionRequest = (query: string) =>
+		new Request(`http://localhost/api/payroll/slips${query}`);
+
+	const sourceStatements = (table: string) =>
+		statements().filter((sql) => sql.includes(`FROM ${table}`));
+
+	beforeEach(() => {
+		vi.resetAllMocks();
+		mocks.mockDbConnect.mockResolvedValue({
+			execute: mocks.mockExecute,
+			release: vi.fn(),
+		});
+		mocks.mockExecute.mockResolvedValue([[], undefined]);
+	});
+
+	it('attaches one aggregate company_sheet projection per returned slip', async () => {
+		grant('payroll:read');
+		mockProjectionDb();
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02')
+		);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.success).toBe(true);
+		expect(body.data).toHaveLength(1);
+
+		// Short month shape is accepted and normalised for the DATE column.
+		const [slipSql, slipParams] = mocks.mockExecute.mock.calls[0];
+		expect(String(slipSql)).toContain('ps.month = ?');
+		expect(slipParams).toContain('2026-02-01');
+
+		const row = body.data[0];
+		// The Payroll Slip snapshot fields stay exactly as the ordinary listing
+		// reports them; the projection rides alongside them.
+		expect(row.id).toBe(42);
+		expect(row.net_pay).toBe('62000.00');
+		expect(row.other_deductions).toBe('6000.00');
+
+		const sheet = row.company_sheet;
+		expect(sheet.slip_id).toBe(42);
+		expect(sheet.employee_id).toBe(7);
+		expect(Object.keys(sheet.cells)).toHaveLength(51);
+
+		// Identity uses the business Employee Code and `position`, never the
+		// grade alias or the biometric device code.
+		expect(sheet.cells.employee_code).toEqual({
+			state: 'text',
+			value: 'EMP-007',
+		});
+		expect(sheet.cells.designation).toEqual({
+			state: 'text',
+			value: 'Senior Engineer',
+		});
+		expect(sheet.cells.uan).toEqual({ state: 'text', value: '100200300400' });
+
+		// Calendar Total Days and the company attendance buckets.
+		expect(sheet.cells.total_days).toEqual({ state: 'number', value: 28 });
+		expect(sheet.cells.days_present).toEqual({ state: 'number', value: 2.5 });
+		expect(sheet.cells.days_paid).toEqual({ state: 'number', value: 12.5 });
+		expect(sheet.cells.lwp_days).toEqual({ state: 'number', value: 1.5 });
+		expect(sheet.cells.leave).toEqual({ state: 'number', value: 1 });
+		expect(sheet.cells.week_off).toEqual({ state: 'number', value: 7 });
+		expect(sheet.cells.paid_holiday).toEqual({ state: 'number', value: 2 });
+		expect(sheet.cells.ot_hours).toEqual({ state: 'number', value: 3 });
+		expect(sheet.attendance.state).toBe('available');
+		expect(sheet.attendance.buckets.unrecorded).toBe(14);
+		expect(sheet.attendance.buckets.reconciliation).toEqual({
+			calendar_balanced: true,
+			paid_balanced: true,
+		});
+
+		// Stored totals stay authoritative.
+		expect(sheet.cells.gross).toEqual({ state: 'number', value: 70000 });
+		expect(sheet.cells.total_ded).toEqual({ state: 'number', value: 8000 });
+		expect(sheet.cells.net_sal).toEqual({ state: 'number', value: 62000 });
+		expect(sheet.cells.loan).toEqual({
+			state: 'not_available',
+			reason: 'unsupported_mapping',
+		});
+
+		// Month-level source state and issues travel once, not per row.
+		expect(body.company_sheet).toMatchObject({
+			month: '2026-02-01',
+			month_key: '2026-02',
+			total_days: 28,
+			sources: {
+				attendance: { state: 'loaded', message: null },
+				holidays: { state: 'loaded', message: null },
+			},
+		});
+		expect(body.company_sheet.rows).toBeUndefined();
+
+		// Aggregate-only disclosure: no daily records, no employee directory.
+		expect(JSON.stringify(body)).not.toContain('attendance_date');
+		expect(JSON.stringify(body)).not.toContain('2026-02-02');
+	});
+
+	it('normalises Basic/DA once and exposes the same values in the projection', async () => {
+		grant('payroll:read');
+		mockProjectionDb({
+			scheduledDA: [{ value_type: 'fixed', value: 2500 }],
+		});
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		const body = await res.json();
+		expect(body.data[0].basic).toBe(47500);
+		expect(body.data[0].da).toBe(2500);
+		expect(body.data[0].basic_plus_da_source).toBe(50000);
+		expect(body.data[0].company_sheet.cells.basic).toEqual({
+			state: 'number',
+			value: 47500,
+		});
+		expect(body.data[0].company_sheet.cells.da).toEqual({
+			state: 'number',
+			value: 2500,
+		});
+	});
+
+	it('preserves ordinary listing requests without projection reads', async () => {
+		grant('payroll:read');
+		mockProjectionDb();
+
+		const res = await GET(
+			projectionRequest('?month=2026-02-01&salary_type=payroll')
+		);
+
+		const body = await res.json();
+		expect(body.success).toBe(true);
+		expect(body.data).toHaveLength(1);
+		expect(body.data[0].company_sheet).toBeUndefined();
+		expect(body.company_sheet).toBeUndefined();
+		expect(sourceStatements('employee_attendance')).toHaveLength(0);
+		expect(sourceStatements('holiday_master')).toHaveLength(0);
+		expect(sourceStatements('employees')).toHaveLength(0);
+	});
+
+	it('keeps the ordinary filters when the projection is requested', async () => {
+		grant('payroll:read');
+		mockProjectionDb();
+
+		const res = await GET(
+			projectionRequest(
+				'?include=company-sheet&month=2026-02-01&employee_id=7&payment_status=paid&salary_type=payroll'
+			)
+		);
+
+		const [sql, params] = mocks.mockExecute.mock.calls[0];
+		expect(String(sql)).toContain('ps.employee_id = ?');
+		expect(String(sql)).toContain('ps.payment_status = ?');
+		expect(String(sql)).toContain("sp.salary_type = 'contract'");
+		expect(params).toEqual(expect.arrayContaining(['2026-02-01', '7', 'paid']));
+		const body = await res.json();
+		expect(body.data).toHaveLength(1);
+		expect(body.data[0].company_sheet.attendance.state).toBe('available');
+	});
+
+	it('requires a valid month before reading the database', async () => {
+		grant('payroll:read');
+
+		const missing = await GET(projectionRequest('?include=company-sheet'));
+		expect(missing.status).toBe(400);
+		expect((await missing.json()).success).toBe(false);
+
+		const invalid = await GET(
+			projectionRequest('?include=company-sheet&month=2026-13')
+		);
+		expect(invalid.status).toBe(400);
+
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('denies the projection without payroll:read', async () => {
+		grant('employees:read');
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		expect(res.status).toBe(403);
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+		const body = await res.json();
+		expect(JSON.stringify(body)).not.toContain('EMP-007');
+	});
+
+	it('keeps stored money when the attendance source fails', async () => {
+		grant('payroll:read');
+		mockProjectionDb({ attendanceError: new Error('attendance down') });
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		const sheet = body.data[0].company_sheet;
+
+		expect(sheet.attendance).toEqual({
+			state: 'unavailable',
+			reason: 'attendance_source_error',
+		});
+		expect(sheet.cells.days_present).toEqual({
+			state: 'not_available',
+			reason: 'attendance_source_error',
+		});
+		expect(sheet.cells.total_days).toEqual({ state: 'number', value: 28 });
+		// Money is never replaced by the source failure.
+		expect(sheet.cells.net_sal).toEqual({ state: 'number', value: 62000 });
+		expect(sheet.cells.gross).toEqual({ state: 'number', value: 70000 });
+		expect(body.company_sheet.sources.attendance.state).toBe('error');
+		expect(
+			body.company_sheet.issues.some(
+				(issue: { code: string }) => issue.code === 'attendance_source_error'
+			)
+		).toBe(true);
+
+		errorSpy.mockRestore();
+	});
+
+	it('keeps stored money when the holiday source fails', async () => {
+		grant('payroll:read');
+		mockProjectionDb({ holidayError: new Error('holiday down') });
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		const sheet = body.data[0].company_sheet;
+
+		expect(sheet.attendance).toEqual({
+			state: 'unavailable',
+			reason: 'holiday_source_error',
+		});
+		expect(sheet.cells.total_days).toEqual({ state: 'number', value: 28 });
+		expect(sheet.cells.net_sal).toEqual({ state: 'number', value: 62000 });
+		expect(body.company_sheet.sources.holidays.state).toBe('error');
+
+		errorSpy.mockRestore();
+	});
+
+	it('treats a successful empty attendance read as calendar defaults', async () => {
+		grant('payroll:read');
+		mockProjectionDb({ attendance: [], holidays: [] });
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		const sheet = (await res.json()).data[0].company_sheet;
+		expect(sheet.attendance.state).toBe('available');
+		expect(sheet.cells.days_present).toEqual({ state: 'number', value: 0 });
+		expect(sheet.cells.days_paid).toEqual({ state: 'number', value: 6 });
+		expect(sheet.cells.leave).toEqual({ state: 'number', value: 0 });
+		expect(sheet.attendance.buckets.holidays).toBe(0);
+		expect(sheet.attendance.buckets.unrecorded).toBe(22);
+	});
+
+	it('batches one attendance read and one holiday read for every returned slip', async () => {
+		grant('payroll:read');
+		const secondSlip = {
+			...SLIP,
+			id: 43,
+			employee_id: 8,
+			employee_name: 'Bala Iyer',
+			employee_code: 'EMP-008',
+		};
+		const secondEmployee = {
+			...EMPLOYEE,
+			id: 8,
+			employee_id: 'EMP-008',
+			position: 'Analyst',
+		};
+		mockProjectionDb({
+			slips: [SLIP, secondSlip],
+			employees: [EMPLOYEE, secondEmployee],
+			attendance: [
+				...FEBRUARY_ATTENDANCE,
+				{
+					employee_id: 8,
+					attendance_date: '2026-02-02',
+					status: 'P',
+					overtime_hours: 0,
+				},
+			],
+		});
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		const body = await res.json();
+		// Attendance never adds a Payroll Slip row.
+		expect(body.data).toHaveLength(2);
+		expect(
+			body.data.map(
+				(row: { company_sheet: { employee_id: number } }) =>
+					row.company_sheet.employee_id
+			)
+		).toEqual([7, 8]);
+
+		const attendanceQueries = sourceStatements('employee_attendance');
+		const holidayQueries = sourceStatements('holiday_master');
+		expect(attendanceQueries).toHaveLength(1);
+		expect(holidayQueries).toHaveLength(1);
+		// No per-row attendance request.
+		const attendanceCall = mocks.mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('FROM employee_attendance')
+		);
+		expect(attendanceCall?.[1]).toEqual(
+			expect.arrayContaining([7, 8, '2026-02-01', '2026-02-28'])
+		);
+	});
+
+	it('returns an empty, still-versioned projection for a month with no slips', async () => {
+		grant('payroll:read');
+		mockProjectionDb({ slips: [] });
+
+		const res = await GET(
+			projectionRequest('?include=company-sheet&month=2026-02-01')
+		);
+
+		const body = await res.json();
+		expect(body.success).toBe(true);
+		expect(body.data).toEqual([]);
+		expect(body.company_sheet).toMatchObject({
+			month: '2026-02-01',
+			total_days: 28,
+		});
+		expect(sourceStatements('employee_attendance')).toHaveLength(0);
+		expect(sourceStatements('holiday_master')).toHaveLength(0);
+	});
+});
