@@ -100,6 +100,23 @@ const SHEET_WIDTH_STYLE = {
 	'--sheet-value-w': 'clamp(6rem, 9vw, 7.5rem)',
 } as CSSProperties;
 
+/**
+ * `table-layout: fixed` honours the colgroup widths only when the table has a
+ * definite used width. With `width: auto`, Chromium kept content-based column
+ * widths (Employee Code 151.54px at 720 CSS px) while Full Name's sticky
+ * offset stayed at the intended 129.6px, so the frozen cells overlapped at
+ * 200% zoom. State the exact column sum instead: layout and sticky offsets
+ * then resolve from the same width source at every breakpoint.
+ */
+const SHEET_TABLE_WIDTH = `calc(${[
+	'var(--sheet-code-w)',
+	'var(--sheet-name-w)',
+	...Array.from(
+		{ length: COMPANY_SHEET_COLUMNS.length - 2 },
+		() => 'var(--sheet-value-w)'
+	),
+].join(' + ')})`;
+
 const UNAVAILABLE_REASON: Record<CompanySheetUnavailableReason, string> = {
 	not_recorded: 'Not recorded on the Payroll Slip',
 	invalid_value: 'The recorded value is invalid',
@@ -646,7 +663,10 @@ export function PayrollCompanySheetGrid({
 					deductions and review warnings.
 				</p>
 
-				<table className="min-w-full table-fixed border-separate border-spacing-0 text-[13px]">
+				<table
+					style={{ width: SHEET_TABLE_WIDTH }}
+					className="table-fixed border-separate border-spacing-0 text-[13px]"
+				>
 					<caption className="sr-only">
 						Company payroll sheet for the selected Payroll month. Attendance
 						cells show current Attendance Records. Money cells show the
