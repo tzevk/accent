@@ -398,3 +398,21 @@ No attendance approval workflow or production data repair was added.
 Disposable MariaDB checks exercised first-entry/latest-access days (including a day with no explicit logout), first-entry stability across a later login, empty versus unavailable days, and self-only read-only access without Work Session or biometric tables.
 Chromium dashboard replays exercised fixed first entry, advancing last access, the immediate entry acknowledgement, failed-versus-empty states, and assignment-processing failures.
 See the [updated Work Session decision](../adr/0033-presence-silence-counted-from-activity-evidence.md#dashboard-log-in--log-out-presentation-2026-11-02).
+
+## Company payroll sheet grid (2026-11-12)
+
+The Payroll stream on `/admin/payroll` now shows the company's 51 salary-sheet captions, verbatim and in company order.
+The grid is read-only, freezes Employee Code and Full Name, keeps headers visible, and bounds horizontal scrolling.
+Contract keeps its existing table and columns.
+Generate, Finalize, Reopen, payment, Excel export and bulk PDF keep their existing roles.
+
+Money cells are the generated Payroll Slip snapshot (`GROSS = total_earnings`, `TOTAL DED = total_deductions`, `NET SAL = net_pay`).
+Attendance cells are current Attendance Records and are labelled **Current attendance — generated payroll amounts are unchanged** in the expanded row.
+Unsupported or unrecorded values read **Not available**; a genuine recorded zero stays zero.
+Expanded details also show payment state, recorded extra deductions, reconciliation and source/review warnings.
+The footer totals only GROSS, TOTAL DED and NET SAL.
+
+Payroll Slip generation, salary calculation, the saved Payroll Run Roster, completeness checks, exports and slip documents are unchanged.
+Company Days Paid is explained as an attendance credit, distinct from the payroll Payable Day; OT Hours are explained as attendance overtime, distinct from Logged Hours.
+
+Lower-level coverage validates the 51-column pure read model, the opt-in `include=company-sheet` listing projection under `payroll:read`, and the grid's rendered column count, slip link, keyboard expansion and money-only footer.
