@@ -298,7 +298,7 @@ function compareMembers(
 
 /* ── employment dates ──────────────────────────────────────────────── */
 
-interface ResolvedEmploymentDates {
+export interface ResolvedEmploymentDates {
 	start: string | null;
 	end: string | null;
 	issue: PayrollRunMemberIssue | null;
@@ -323,8 +323,11 @@ interface ResolvedEmploymentDates {
  * known exit before the month is definite even when the start is missing. Both
  * are still surfaced when the month carries a slip or Logged Hours.
  */
-function resolveEmploymentDates(
-	row: PayrollRunEmployeeRow,
+export function resolveEmploymentDates(
+	row: Pick<
+		PayrollRunEmployeeRow,
+		'status' | 'joining_date' | 'hire_date' | 'exit_date'
+	>,
 	monthStart: string,
 	monthEnd: string
 ): ResolvedEmploymentDates {
