@@ -9,6 +9,7 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Operate payroll and check employee entry points   | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
 | Work Leads, ownership, and the legacy review flow | [Lead operator guide](app/leads/operator-guide.md)                                              |
+| Run local MariaDB, leads integration, or browser smoke | [Local database operations](agents/local-database.md)                                      |
 | Set up and operate ticket email notifications     | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
 | Understand project view and edit screens          | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
 | Understand project manhours                       | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
