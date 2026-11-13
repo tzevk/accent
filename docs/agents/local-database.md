@@ -28,13 +28,13 @@ See the [leads integration guide](../app/leads/integration.md) for execution det
 
 `npm run test:e2e` runs the restored minimal browser harness. It owns the disposable database and the `next dev` process. Do not run `npx playwright test` directly, and do not point the command at a shared server.
 
-Repository checks and browser smoke run on a local machine, not in GitHub Actions. The [testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification) hold the canonical policy.
+GitHub Actions runs this harness on `ubuntu-latest` with Node 24 against a MariaDB 10.11 service. The commands below run the same harness on your machine. The [testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification) are canonical.
 
 ### First-time setup
 
 1. Use Node 24 (`package.json` engines is `24.x`).
 2. Run `npm ci`.
-3. Install Chromium once with `npm run test:e2e:install`. On Linux use `npx playwright install --with-deps chromium` so system libraries are installed too.
+3. Install Chromium once with `npm run test:e2e:install`. On Linux CI use `npx playwright install --with-deps chromium` so system libraries are installed too.
 4. Use MariaDB 10.11.x. Production is 10.11.15; the harness refuses MySQL and other MariaDB lines.
 
 ### Run

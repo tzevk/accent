@@ -14,8 +14,8 @@ old 41-spec suite and does not restore the old sole-E2E policy.
 - New scope: one Chromium project and one `npm run test:e2e` financial-review
   smoke journey. Orchestration lives in `scripts/e2e/`; the spec and hooks follow
   in `e2e/`.
-- `npm run verify` remains the separate lint, `build:prod`, and Vitest gate.
-  Browser smoke is a separate required check, not part of `verify`.
+- `npm run verify` remains the separate route-authorization, lint, `build:prod`, and Vitest gate.
+  Browser smoke is an additional required CI job, not part of `verify`.
 - The harness creates a unique disposable MariaDB database, pins every database
   branch environment variable, starts an owned loopback `next dev`, and cleans
   up after success or failure. It refuses operational targets, existing
@@ -29,14 +29,18 @@ Current commands, target guards, fixture hooks, and failure diagnosis are in
 [local database operations](../agents/local-database.md#playwright-financial-smoke-harness)
 and [CODING_STANDARDS.md](../../CODING_STANDARDS.md#testing-and-verification).
 
-## Local-only checks (2026-11-13)
+## CI and local checks (2026-11-13)
 
-The user directed on 2026-11-13 that repository checks and E2E run locally.
-`e2e.yml` was removed on 2026-10-10 and `checks.yml` on 2026-11-13.
-`npm run test:integration:leads` and `npm run test:e2e` run on your machine.
-Vercel previews and deployment builds remain enabled.
-The [testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification) are canonical.
-The dated sections above describe 2026-10-10 and 2026-11-12; they do not describe current CI.
+`checks.yml` runs the checks automatically on pushes and pull requests on
+standard `ubuntu-latest` runners with Node 24: the route-authorization check,
+`npm run verify` (which includes route-auth, lint, the production build, and
+Vitest), the leads integration harness against a MariaDB 10.11 service, and
+this browser smoke with failure artifacts. The same npm commands run locally.
+Vercel previews and deployment builds remain enabled and separate.
+Current commands and rules are in
+[CODING_STANDARDS.md](../../CODING_STANDARDS.md#testing-and-verification).
+The dated sections above describe 2026-10-10 and 2026-11-12; this section
+describes current execution.
 
 ## What was deleted
 
@@ -58,7 +62,7 @@ The dated sections above describe 2026-10-10 and 2026-11-12; they do not describ
   `scripts/scrub-stored-html.mjs` (`--artifact
 artifacts/security-scrub-dry-run.json`).
 - `npm run check:route-auth` and `checks.yml`, which never depended on the
-  harness. `checks.yml` was removed on 2026-11-13.
+  harness.
 
 ## Historical testing policy
 

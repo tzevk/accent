@@ -422,14 +422,13 @@ Lower-level coverage validates the 51-column pure read model, the opt-in `includ
 ## Vercel preview packaging (2026-11-13)
 
 Vercel deployment uploads exclude the Playwright harness and its configuration alongside their script dependencies.
-The harness remains available for local runs.
+The harness remains available locally and in CI.
 This prevents production type checks from loading test files whose script imports are excluded from the deployment.
 
-## Local-only repository checks (2026-11-13)
+## CI and local checks (2026-11-13)
 
-The user directed that repository checks and E2E run on the local machine.
-`e2e.yml` was removed on 2026-10-10 and `checks.yml` on 2026-11-13.
-The 2026-11-12 restoration stands; only the CI execution is removed.
-Leads integration and Playwright smoke run through their npm commands locally.
+GitHub Actions runs repository checks automatically again on pushes and pull requests, on standard `ubuntu-latest` runners with Node 24.
+`checks.yml` runs the route-authorization check, `npm run verify` (which now includes route-auth before lint, the production build, and Vitest), the leads integration harness against MariaDB 10.11, and the financial Playwright smoke with failure artifacts.
+The same npm commands run locally, so the workflow is identical on your machine.
 Vercel previews and deployment builds remain enabled.
 See the [testing and verification rules](../CODING_STANDARDS.md#testing-and-verification).

@@ -176,12 +176,16 @@ database is kept. The harness prints the fixture usernames and password. Stop
 with Ctrl+C, then drop the database manually. The port stays 31369 unless
 `LEADS_INTEGRATION_PORT` overrides it.
 
-## Local execution only
+## CI
 
-Run the harness from your shell against the local MariaDB 10.11 instance.
-The repository does not use GitHub Actions for checks or browser smoke.
-Its workflows are gone: `e2e.yml` on 2026-10-10 and `checks.yml` on 2026-11-13.
-See the [testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification).
+`checks.yml` runs the same command automatically in GitHub Actions on
+`ubuntu-latest` with Node 24, against a MariaDB 10.11 service — the engine
+production uses. The service creates no database, because the harness creates
+and drops its own. No secrets beyond the ephemeral service password, which
+lives only in the workflow. Run the command in your own shell against the
+local instance when working locally; the
+[testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification)
+are canonical.
 
 ## Troubleshooting
 
@@ -205,8 +209,6 @@ See the [testing and verification rules](../../CODING_STANDARDS.md#testing-and-v
   (or pick a fresh `INTEGRATION_DB_NAME`); the harness never reuses one.
 
 ## Verification record — 2026-10-20
-
-This record predates the 2026-11-13 local-only policy. Its CI references describe that date.
 
 - Local environment: Windows, MariaDB 10.11.15 (matching production), Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
 - `npm run test:integration:leads`: all eighty-three scenarios pass against the real application and an independent database reader on MariaDB 10.11.
