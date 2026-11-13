@@ -43,6 +43,7 @@ import {
 	loadPayrollMonth,
 	type CoverageNotice,
 	type PayrollEmployeeCost,
+	type PayrollEmploymentIssue,
 	type PayrollExpenditure,
 } from '@/lib/company-expenditure';
 
@@ -128,10 +129,16 @@ export interface CompanyProjectCostRow {
 	project_name: string;
 	client_name: string;
 	hourly_rate: number; // display rate at FY start for that employee
+	/** Cost stated for each month; `false` means the month's cost is unknown. */
+	monthly_cost_known: Record<string, boolean>;
 	monthly_hours: Record<string, number>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	cost_known: boolean;
+	worked_outside_finalized_run: boolean;
+	in_saved_roster: boolean | null;
+	employment_issue: PayrollEmploymentIssue | null;
 }
 
 export interface CompanyEmployeeFYRow {
@@ -142,10 +149,15 @@ export interface CompanyEmployeeFYRow {
 	department: string | null;
 	designation: string | null;
 	hourly_rate: number;
+	monthly_cost_known: Record<string, boolean>;
 	monthly_hours: Record<string, number>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	cost_known: boolean;
+	worked_outside_finalized_run: boolean;
+	in_saved_roster: boolean | null;
+	employment_issue: PayrollEmploymentIssue | null;
 	project_count: number;
 }
 
@@ -155,18 +167,23 @@ export interface CompanyProjectFYRow {
 	project_code: string;
 	project_name: string;
 	client_name: string;
+	monthly_cost_known: Record<string, boolean>;
 	monthly_hours: Record<string, number>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	cost_known: boolean;
+	unknown_cost_count: number;
 	employee_count: number;
 }
 
 export interface CompanyCostTotals {
+	monthly_cost_known: Record<string, boolean>;
 	monthly_hours: Record<string, number>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
+	cost_known: boolean;
 	/** Recorded employer-cost allocation portion, where the month had one. */
 	recorded_cost?: number;
 	/** Payroll-based estimate portion. */
@@ -186,6 +203,7 @@ export interface FYCompanyCostData {
 	summary: {
 		total_hours: number;
 		total_cost: number;
+		cost_known: boolean;
 		blended_rate: number;
 		employee_count: number;
 		project_count: number;
@@ -208,8 +226,19 @@ export interface MonthlyCompanyCostRow {
 	cost: number;
 	/** How this row's cost is known (#307): recorded, estimated, or unknown. */
 	cost_status: EmployeeCostStatus;
+	/**
+	 * `false` means cost is unknown: the row's ₹0 is never a confirmed zero.
+	 * Workbooks and screens state the unknown cost rather than printing 0.
+	 */
+	cost_known: boolean;
 	/** Zero is an unpriced placeholder when no covering Salary Profile exists. */
 	missing_salary_profile: boolean;
+	/** Whether the row is in the finalized run's saved roster; null when none applies. */
+	in_saved_roster: boolean | null;
+	/** Real Logged Hours outside the finalized run's saved roster. */
+	worked_outside_finalized_run: boolean;
+	/** Employment-date evidence needing review, from the shared roster. */
+	employment_issue: PayrollEmploymentIssue | null;
 	/** Recorded employer-cost allocation portion. */
 	recorded_cost: number;
 	/** Payroll-based estimate portion. */
@@ -232,10 +261,14 @@ export interface MonthlyCompanyCostData {
 		hourly_rate: number;
 		hours: number;
 		cost: number;
+		cost_known: boolean;
 		recorded_cost: number;
 		estimated_cost: number;
 		project_count: number;
 		missing_salary_profile: boolean;
+		in_saved_roster: boolean | null;
+		worked_outside_finalized_run: boolean;
+		employment_issue: PayrollEmploymentIssue | null;
 	}>;
 	project_rows: Array<{
 		sr_no: number;
@@ -245,10 +278,13 @@ export interface MonthlyCompanyCostData {
 		client_name: string;
 		hours: number;
 		cost: number;
+		cost_known: boolean;
 		recorded_cost: number;
 		estimated_cost: number;
 		employee_count: number;
 		missing_salary_profile_count: number;
+		/** Employees on this Project whose cost is unknown and not stated as zero. */
+		unknown_cost_count: number;
 	}>;
 	totals: {
 		total_hours: number;
@@ -709,6 +745,7 @@ export function buildMonthlyAllocationRows(
 	for (const employee of employees) {
 		const lookup = employeeIndex.get(employee.employee_id);
 		const recorded = employee.recorded_amount !== null;
+		const costKnown = recorded || employee.estimated_amount !== null;
 		const status: EmployeeCostStatus = recorded
 			? employee.recorded_amount === 0
 				? 'known_zero'
@@ -735,7 +772,12 @@ export function buildMonthlyAllocationRows(
 				recorded_cost: recorded ? share.amount : 0,
 				estimated_cost: recorded ? 0 : share.amount,
 				cost_status: status,
+				cost_known: costKnown,
 				missing_salary_profile: employee.missing_pricing,
+				in_saved_roster: employee.in_saved_roster,
+				worked_outside_finalized_run:
+					employee.worked_outside_finalized_run,
+				employment_issue: employee.employment_issue,
 			});
 		}
 	}
@@ -770,15 +812,23 @@ export function buildMonthlyAllocationEmployeeRows(
 				hourly_rate: 0,
 				hours: 0,
 				cost: 0,
+				cost_known: row.cost_known,
 				recorded_cost: 0,
 				estimated_cost: 0,
 				project_count: 0,
 				missing_salary_profile: false,
+				in_saved_roster: row.in_saved_roster,
+				worked_outside_finalized_run: row.worked_outside_finalized_run,
+				employment_issue: row.employment_issue,
 				_projects: new Set<string>(),
 			};
 			grouped.set(row.employee_id, aggregate);
 		}
 		aggregate.missing_salary_profile ||= row.missing_salary_profile;
+		aggregate.cost_known ||= row.cost_known;
+		aggregate.worked_outside_finalized_run ||=
+			row.worked_outside_finalized_run;
+		aggregate.employment_issue ||= row.employment_issue;
 		aggregate.hours = round2(aggregate.hours + row.hours);
 		aggregate.cost = round2(aggregate.cost + row.cost);
 		aggregate.recorded_cost = round2(
@@ -813,6 +863,7 @@ export function buildMonthlyAllocationProjectRows(
 		MonthlyCompanyCostData['project_rows'][number] & {
 			_employees: Set<number>;
 			_missingProfiles: Set<number>;
+			_unknownCostEmployees: Set<number>;
 		}
 	>();
 	for (const row of rows) {
@@ -828,15 +879,19 @@ export function buildMonthlyAllocationProjectRows(
 				client_name: row.client_name,
 				hours: 0,
 				cost: 0,
+				cost_known: row.cost_known,
 				recorded_cost: 0,
 				estimated_cost: 0,
 				employee_count: 0,
 				missing_salary_profile_count: 0,
+				unknown_cost_count: 0,
 				_employees: new Set<number>(),
 				_missingProfiles: new Set<number>(),
+				_unknownCostEmployees: new Set<number>(),
 			};
 			grouped.set(key, aggregate);
 		}
+		aggregate.cost_known ||= row.cost_known;
 		aggregate.hours = round2(aggregate.hours + row.hours);
 		aggregate.cost = round2(aggregate.cost + row.cost);
 		aggregate.recorded_cost = round2(
@@ -848,13 +903,16 @@ export function buildMonthlyAllocationProjectRows(
 		aggregate._employees.add(row.employee_id);
 		if (row.missing_salary_profile)
 			aggregate._missingProfiles.add(row.employee_id);
+		if (!row.cost_known) aggregate._unknownCostEmployees.add(row.employee_id);
 	}
 	const result = [...grouped.values()].map((aggregate) => {
-		const { _employees, _missingProfiles, ...rest } = aggregate;
+		const { _employees, _missingProfiles, _unknownCostEmployees, ...rest } =
+			aggregate;
 		return {
 			...rest,
 			employee_count: _employees.size,
 			missing_salary_profile_count: _missingProfiles.size,
+			unknown_cost_count: _unknownCostEmployees.size,
 		};
 	});
 	result.sort(
@@ -914,11 +972,18 @@ export interface FYAllocationRow {
 	project_name: string;
 	client_name: string;
 	monthly_hours: Record<string, number>;
+	/** Cost stated per month; `false` means that month's cost is unknown. */
+	monthly_cost_known: Record<string, boolean>;
 	monthly_cost: Record<string, number>;
 	total_hours: number;
 	total_cost: number;
 	recorded_cost: number;
 	estimated_cost: number;
+	/** Every contributing month's cost is stated, never an invented zero. */
+	cost_known: boolean;
+	worked_outside_finalized_run: boolean;
+	in_saved_roster: boolean | null;
+	employment_issue: PayrollEmploymentIssue | null;
 	/** Display rate the FY table and workbook read (`blended` for the row). */
 	hourly_rate: number;
 }
@@ -962,15 +1027,32 @@ export function buildFYAllocationRows(
 						project_name: destination.project_name,
 						client_name: destination.client_name,
 						monthly_hours: {},
+						monthly_cost_known: {},
 						monthly_cost: {},
 						total_hours: 0,
 						total_cost: 0,
 						recorded_cost: 0,
 						estimated_cost: 0,
+						cost_known: true,
+						worked_outside_finalized_run:
+							employee.worked_outside_finalized_run,
+						in_saved_roster: employee.in_saved_roster,
+						employment_issue: employee.employment_issue,
 						hourly_rate: 0,
 					};
 					grouped.set(groupKey, row);
 				}
+				const shareKnown =
+					employee.recorded_amount !== null ||
+					employee.estimated_amount !== null;
+				row.monthly_cost_known[key] =
+					(row.monthly_cost_known[key] ?? true) && shareKnown;
+				row.cost_known = row.cost_known && shareKnown;
+				row.worked_outside_finalized_run =
+					row.worked_outside_finalized_run ||
+					employee.worked_outside_finalized_run;
+				row.employment_issue =
+					row.employment_issue ?? employee.employment_issue;
 				row.monthly_hours[key] = round2(
 					(row.monthly_hours[key] ?? 0) + share.hours
 				);
@@ -1002,28 +1084,36 @@ export function buildFYAllocationRows(
 	return rows;
 }
 
-function allocationTotalsFromFYRows(
+export function buildFYAllocationTotals(
 	rows: FYAllocationRow[]
 ): CompanyCostTotals {
 	const monthlyHours: Record<string, Decimal> = {};
 	const monthlyCost: Record<string, Decimal> = {};
+	const monthlyCostKnown: Record<string, boolean> = {};
 	for (const key of FY_MONTH_KEYS) {
 		monthlyHours[key] = R(0);
 		monthlyCost[key] = R(0);
+		monthlyCostKnown[key] = true;
 	}
 	let totalHours = R(0);
 	let totalCost = R(0);
+	let costKnown = true;
 	for (const row of rows) {
 		for (const key of FY_MONTH_KEYS) {
 			monthlyHours[key] = add(monthlyHours[key], row.monthly_hours[key] ?? 0);
 			monthlyCost[key] = add(monthlyCost[key], row.monthly_cost[key] ?? 0);
+			monthlyCostKnown[key] =
+				monthlyCostKnown[key] &&
+				(row.monthly_cost_known[key] ?? true);
 		}
 		totalHours = add(totalHours, row.total_hours);
 		totalCost = add(totalCost, row.total_cost);
+		costKnown = costKnown && row.cost_known;
 	}
 	const hours = round2(toNumber(totalHours));
 	const cost = round2(toNumber(totalCost));
 	return {
+		monthly_cost_known: monthlyCostKnown,
 		monthly_hours: Object.fromEntries(
 			FY_MONTH_KEYS.map((key) => [key, round2(toNumber(monthlyHours[key]))])
 		),
@@ -1032,6 +1122,7 @@ function allocationTotalsFromFYRows(
 		),
 		total_hours: hours,
 		total_cost: cost,
+		cost_known: costKnown,
 		recorded_cost: round2(
 			rows.reduce((sum, row) => add(sum, row.recorded_cost), R(0)).toNumber()
 		),
@@ -1138,7 +1229,7 @@ export async function fetchFYCompanyCost(
 	);
 	const employee_rows = buildFYAllocationEmployeeRows(rows);
 	const project_rows = buildFYAllocationProjectRows(rows);
-	const totals = allocationTotalsFromFYRows(rows);
+	const totals = buildFYAllocationTotals(rows);
 
 	const projectSet = new Set<string>();
 	const employeeSet = new Set<number>();
@@ -1161,6 +1252,7 @@ export async function fetchFYCompanyCost(
 		summary: {
 			total_hours: totals.total_hours,
 			total_cost: totals.total_cost,
+			cost_known: totals.cost_known,
 			blended_rate: totals.blended_rate,
 			employee_count: employeeSet.size,
 			project_count: projectSet.size,
@@ -1181,9 +1273,11 @@ export function buildFYAllocationEmployeeRows(
 		if (!aggregate) {
 			const monthly_hours: Record<string, number> = {};
 			const monthly_cost: Record<string, number> = {};
+			const monthly_cost_known: Record<string, boolean> = {};
 			for (const key of FY_MONTH_KEYS) {
 				monthly_hours[key] = 0;
 				monthly_cost[key] = 0;
+				monthly_cost_known[key] = true;
 			}
 			aggregate = {
 				sr_no: 0,
@@ -1193,16 +1287,30 @@ export function buildFYAllocationEmployeeRows(
 				department: row.department,
 				designation: row.designation,
 				hourly_rate: 0,
+				monthly_cost_known,
 				monthly_hours,
 				monthly_cost,
 				total_hours: 0,
 				total_cost: 0,
+				cost_known: true,
+				worked_outside_finalized_run: row.worked_outside_finalized_run,
+				in_saved_roster: row.in_saved_roster,
+				employment_issue: row.employment_issue,
 				project_count: 0,
 				_projects: new Set<string>(),
 			};
 			grouped.set(row.employee_id, aggregate);
 		}
+		aggregate.cost_known = aggregate.cost_known && row.cost_known;
+		aggregate.worked_outside_finalized_run =
+			aggregate.worked_outside_finalized_run ||
+			row.worked_outside_finalized_run;
+		aggregate.employment_issue =
+			aggregate.employment_issue ?? row.employment_issue;
 		for (const key of FY_MONTH_KEYS) {
+			aggregate.monthly_cost_known[key] =
+				aggregate.monthly_cost_known[key] &&
+				(row.monthly_cost_known[key] ?? true);
 			aggregate.monthly_hours[key] = round2(
 				(aggregate.monthly_hours[key] ?? 0) + (row.monthly_hours[key] ?? 0)
 			);
@@ -1237,7 +1345,10 @@ export function buildFYAllocationProjectRows(
 ): CompanyProjectFYRow[] {
 	const grouped = new Map<
 		string,
-		CompanyProjectFYRow & { _employees: Set<number> }
+		CompanyProjectFYRow & {
+			_employees: Set<number>;
+			_unknownCostEmployees: Set<number>;
+		}
 	>();
 	for (const row of rows) {
 		const key =
@@ -1246,9 +1357,11 @@ export function buildFYAllocationProjectRows(
 		if (!aggregate) {
 			const monthly_hours: Record<string, number> = {};
 			const monthly_cost: Record<string, number> = {};
+			const monthly_cost_known: Record<string, boolean> = {};
 			for (const monthKey of FY_MONTH_KEYS) {
 				monthly_hours[monthKey] = 0;
 				monthly_cost[monthKey] = 0;
+				monthly_cost_known[monthKey] = true;
 			}
 			aggregate = {
 				sr_no: 0,
@@ -1256,16 +1369,24 @@ export function buildFYAllocationProjectRows(
 				project_code: row.project_code,
 				project_name: row.project_name,
 				client_name: row.client_name,
+				monthly_cost_known,
 				monthly_hours,
 				monthly_cost,
 				total_hours: 0,
 				total_cost: 0,
+				cost_known: true,
+				unknown_cost_count: 0,
 				employee_count: 0,
 				_employees: new Set<number>(),
+				_unknownCostEmployees: new Set<number>(),
 			};
 			grouped.set(key, aggregate);
 		}
+		aggregate.cost_known = aggregate.cost_known && row.cost_known;
 		for (const monthKey of FY_MONTH_KEYS) {
+			aggregate.monthly_cost_known[monthKey] =
+				aggregate.monthly_cost_known[monthKey] &&
+				(row.monthly_cost_known[monthKey] ?? true);
 			aggregate.monthly_hours[monthKey] = round2(
 				(aggregate.monthly_hours[monthKey] ?? 0) +
 					(row.monthly_hours[monthKey] ?? 0)
@@ -1278,10 +1399,15 @@ export function buildFYAllocationProjectRows(
 		aggregate.total_hours = round2(aggregate.total_hours + row.total_hours);
 		aggregate.total_cost = round2(aggregate.total_cost + row.total_cost);
 		aggregate._employees.add(row.employee_id);
+		if (!row.cost_known) aggregate._unknownCostEmployees.add(row.employee_id);
 	}
 	const result = [...grouped.values()].map((aggregate) => {
-		const { _employees, ...rest } = aggregate;
-		return { ...rest, employee_count: _employees.size };
+		const { _employees, _unknownCostEmployees, ...rest } = aggregate;
+		return {
+			...rest,
+			employee_count: _employees.size,
+			unknown_cost_count: _unknownCostEmployees.size,
+		};
 	});
 	result.sort(
 		(a, b) =>

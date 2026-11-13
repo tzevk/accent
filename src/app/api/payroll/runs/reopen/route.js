@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { dbConnect } from '@/utils/database';
+import { withTransaction } from '@/utils/database';
 import {
 	ensurePermission,
 	RESOURCES,
@@ -39,6 +39,10 @@ import {
  * The signed-off totals are cleared on reopen: they describe a finalized run
  * and stop describing it the moment it is a draft again. The audit entry keeps
  * them, which is why the log exists.
+ *
+ * Saved finalization rosters are NOT deleted. A later Finalize appends a new
+ * version; the older versions remain immutable history. Reopening a legacy run
+ * invents no backfill.
  */
 
 /** The columns reopen clears, so the response never shows a stale finalize. */
@@ -65,16 +69,13 @@ const REOPENABLE_STATUSES = ['finalized', 'paid'];
 
 /** The refusal a month with paid slips always gets, from either check. */
 function paidSlipsRefusal(paidSlips, monthLabel) {
-	return NextResponse.json(
-		{
-			success: false,
-			error: `Cannot reopen ${monthLabel}: ${paidSlips} Payroll Slip${
-				paidSlips === 1 ? ' is' : 's are'
-			} already paid — a paid month is permanent.`,
-			paid_slips: paidSlips,
-		},
-		{ status: 409 }
-	);
+	return {
+		success: false,
+		error: `Cannot reopen ${monthLabel}: ${paidSlips} Payroll Slip${
+			paidSlips === 1 ? ' is' : 's are'
+		} already paid — a paid month is permanent.`,
+		paid_slips: paidSlips,
+	};
 }
 
 export async function POST(request) {
@@ -99,7 +100,6 @@ export async function POST(request) {
 		);
 	}
 
-	let db;
 	try {
 		const { month } = await request.json().catch(() => ({}));
 		const period = payrollPeriod(month);
@@ -111,49 +111,56 @@ export async function POST(request) {
 			);
 		}
 
-		db = await dbConnect();
-
-		const run = await findPayrollRun(db, period);
-		if (!run) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: `No Payroll Run exists for ${formatMonth(period.month)}.`,
-				},
-				{ status: 404 }
-			);
-		}
-
-		if (!REOPENABLE_STATUSES.includes(run.status)) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: `The Payroll Run for ${formatMonth(
-						period.month
-					)} is not finalized — there is nothing to reopen.`,
-				},
-				{ status: 409 }
-			);
-		}
-
-		// Any paid slip anywhere in the month, both Employee Type streams — one
-		// run pays both, so one paid slip makes the whole month permanent.
-		const summary = await summarizeMonthSlips(db, period.month);
-		if (summary.paid_slips > 0) {
-			return paidSlipsRefusal(summary.paid_slips, formatMonth(period.month));
-		}
-
 		const reopenedBy = authResult.user?.id ?? null;
 
-		// Two guards make this atomic, and both are needed:
-		//   - `AND status IN (...)` so a concurrent reopen (or re-finalize) that
-		//     got there first matches no row here;
-		//   - `AND NOT EXISTS (paid slip)` so a payment that landed between the
-		//     check above and this statement cannot be reopened over. Reading the
-		//     slips inside the UPDATE also takes the locks a concurrent bulk
-		//     mark-paid needs, so the two cannot interleave.
-		const [result] = await db.execute(
-			`UPDATE payroll_runs
+		const outcome = await withTransaction(async (db) => {
+			// The run row is the month's mutex: Generate and Finalize hold it for
+			// their whole write, so a reopen either lands between them or waits.
+			const run = await findPayrollRun(db, period, { forUpdate: true });
+			if (!run) {
+				return {
+					status: 404,
+					body: {
+						success: false,
+						error: `No Payroll Run exists for ${formatMonth(period.month)}.`,
+					},
+				};
+			}
+
+			if (!REOPENABLE_STATUSES.includes(run.status)) {
+				return {
+					status: 409,
+					body: {
+						success: false,
+						error: `The Payroll Run for ${formatMonth(
+							period.month
+						)} is not finalized — there is nothing to reopen.`,
+					},
+				};
+			}
+
+			// Any paid slip anywhere in the month, both Employee Type streams — one
+			// run pays both, so one paid slip makes the whole month permanent.
+			const summary = await summarizeMonthSlips(db, period.month);
+			if (summary.paid_slips > 0) {
+				return {
+					status: 409,
+					body: paidSlipsRefusal(
+						summary.paid_slips,
+						formatMonth(period.month)
+					),
+				};
+			}
+
+			// Two guards make this atomic, and both are needed:
+			//   - `AND status IN (...)` so a concurrent reopen (or re-finalize) that
+			//     got there first matches no row here;
+			//   - `AND NOT EXISTS (paid slip)` so a payment that landed between the
+			//     check above and this statement cannot be reopened over. Reading the
+			//     slips inside the UPDATE also takes the locks a concurrent bulk
+			//     mark-paid needs, so the two cannot interleave.
+			const [result] = await db.execute(
+				`UPDATE payroll_runs
           SET status = 'draft',
               finalized_by = NULL,
               finalized_at = NULL,
@@ -168,51 +175,65 @@ export async function POST(request) {
             SELECT 1 FROM payroll_slips
              WHERE month = ? AND payment_status = 'paid'
           )`,
-			[run.id, ...REOPENABLE_STATUSES, period.month]
-		);
+				[run.id, ...REOPENABLE_STATUSES, period.month]
+			);
 
-		if (result.affectedRows === 0) {
-			// The guarded UPDATE matched nothing. Re-read to say which guard bit,
-			// because the two need different fixes.
-			const current = await findPayrollRun(db, period);
-			if (current && REOPENABLE_STATUSES.includes(current.status)) {
-				const paid = await summarizeMonthSlips(db, period.month);
-				return paidSlipsRefusal(paid.paid_slips, formatMonth(period.month));
+			if (result.affectedRows === 0) {
+				// The guarded UPDATE matched nothing. Re-read to say which guard bit,
+				// because the two need different fixes.
+				const current = await findPayrollRun(db, period, {
+					forUpdate: true,
+				});
+				if (current && REOPENABLE_STATUSES.includes(current.status)) {
+					const paid = await summarizeMonthSlips(db, period.month);
+					return {
+						status: 409,
+						body: paidSlipsRefusal(
+							paid.paid_slips,
+							formatMonth(period.month)
+						),
+					};
+				}
+
+				return {
+					status: 409,
+					body: {
+						success: false,
+						error: `The Payroll Run for ${formatMonth(
+							period.month
+						)} was reopened by another request.`,
+					},
+				};
 			}
 
-			return NextResponse.json(
-				{
-					success: false,
-					error: `The Payroll Run for ${formatMonth(
+			// The row read before the transition is the snapshot: it still holds the
+			// signed-off totals and who finalized them, which is exactly what a
+			// dispute about the reopened month needs.
+			await recordPayrollAudit(db, {
+				entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_RUN,
+				entityId: run.id,
+				action: PAYROLL_AUDIT_ACTION.REOPEN,
+				payrollRunId: run.id,
+				month: period.monthNumber,
+				year: period.year,
+				performedBy: reopenedBy,
+				oldValues: auditSnapshot(run),
+				newValues: { status: 'draft', ...CLEARED_ON_REOPEN },
+			});
+
+			return {
+				status: 200,
+				body: {
+					success: true,
+					message: `Payroll Run for ${formatMonth(
 						period.month
-					)} was reopened by another request.`,
+					)} reopened — the month is a draft again and Payroll Slips can be regenerated.`,
+					data: { ...run, status: 'draft', ...CLEARED_ON_REOPEN },
 				},
-				{ status: 409 }
-			);
-		}
-
-		// The row read before the transition is the snapshot: it still holds the
-		// signed-off totals and who finalized them, which is exactly what a
-		// dispute about the reopened month needs.
-		await recordPayrollAudit(db, {
-			entityType: PAYROLL_AUDIT_ENTITY.PAYROLL_RUN,
-			entityId: run.id,
-			action: PAYROLL_AUDIT_ACTION.REOPEN,
-			payrollRunId: run.id,
-			month: period.monthNumber,
-			year: period.year,
-			performedBy: reopenedBy,
-			oldValues: auditSnapshot(run),
-			newValues: { status: 'draft', ...CLEARED_ON_REOPEN },
+			};
 		});
 
-		return NextResponse.json({
-			success: true,
-			message: `Payroll Run for ${formatMonth(
-				period.month
-			)} reopened — the month is a draft again and Payroll Slips can be regenerated.`,
-			data: { ...run, status: 'draft', ...CLEARED_ON_REOPEN },
-		});
+		return NextResponse.json(outcome.body, { status: outcome.status });
 	} catch (error) {
 		console.error('POST /api/payroll/runs/reopen error:', error);
 		return NextResponse.json(
@@ -223,13 +244,5 @@ export async function POST(request) {
 			},
 			{ status: 500 }
 		);
-	} finally {
-		if (db) {
-			try {
-				db.release();
-			} catch {
-				// Ignore release errors
-			}
-		}
 	}
 }

@@ -7,3 +7,28 @@ Simultaneously the four scattered admin pages move under one `/admin/payroll/*` 
 Considered: (a) status quo per-slip locking only — rejected, regen after payment is the exact bug; (b) supplementary runs per month — rejected, requires redesigning the `UNIQUE(month, employee)` key; (c) label-only rename keeping old URLs — rejected because both list pages were merging anyway, making the move nearly free; (d) backfilling runs for history — rejected as unneeded migration writes (grandfather rule is one query branch).
 
 Consequences: generate/reopen APIs must check run status by month (no FK from slips to runs); P1 structure → P2 run/audit → P3 self-service + DA unification to `payroll_schedules`; `salary_structures` retirement stays deferred per ADR-0001; dropping dead `employee_payroll`, `employee_payroll_components`, `statutory_payments` tables in the same migration.
+
+## Monthly eligibility and saved run roster (2026-11-09)
+
+Generate, Preview, Finalize, and draft employee-cost reporting use one monthly eligibility rule.
+Joining Date takes precedence over Hire Date; Exit Date is inclusive.
+Any employment overlap with the month qualifies, including a mid-month joiner or a leaver now marked inactive.
+Record creation time is not an employment date.
+Missing or inconsistent employment dates on payroll candidates require review rather than silent exclusion.
+Employees paid through either stream remain eligible regardless of Employee Type.
+
+Select the Salary Profile covering the later of the month's first day and the employment start.
+This supports new joiners without changing the established hours-based formula or splitting an existing employee's mid-month rate change.
+Missing profiles, missing slips, uncertain employment dates, and slips outside eligibility prevent finalization.
+Existing slips alone never define the expected roster.
+
+Finalize saves the validated roster and freezes allocations in the same transaction as the run transition.
+Both are postconditions: any failure rolls back the entire finalization.
+Generation and finalization serialize through the month's run lock.
+Reopening preserves earlier roster versions; re-finalization appends a newly validated version.
+
+Locked reporting reads the saved roster and recorded payroll evidence, not a newly computed current-employee population.
+Later master-data changes cannot add salary estimates to a finalized month.
+Real Logged Hours outside the saved roster remain visible with unknown cost and an explicit review notice.
+Legacy locked runs without a saved roster disclose that limitation; no backfill pretends to recover the original validated set.
+

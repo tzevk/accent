@@ -505,7 +505,11 @@ function buildExpenditureReconciliationSheet(
 			notice.code === 'payroll_not_finalized' ||
 			notice.code === 'payroll_pricing_missing' ||
 			notice.code === 'payroll_allocation_missing' ||
-			notice.code === 'payroll_slip_missing'
+			notice.code === 'payroll_slip_missing' ||
+			notice.code === 'payroll_roster_unavailable' ||
+			notice.code === 'payroll_work_outside_finalized_run' ||
+			notice.code === 'payroll_outside_finalized_roster' ||
+			notice.code === 'payroll_employment_issue'
 	);
 	const payrollRows: Array<[string, string]> = [
 		[
@@ -515,6 +519,10 @@ function buildExpenditureReconciliationSheet(
 		[
 			'Recorded payroll (already in confirmed cost)',
 			`${formatCurrencyIn(reconciliation.payroll.recorded_total, reconciliation.payroll.currency)} ${reconciliation.payroll.currency} (${reconciliation.payroll.recorded_count} recorded, ${reconciliation.payroll.known_zero_count} known zero)`,
+		],
+		[
+			'Unpriced employee positions (unknown, not zero)',
+			`${reconciliation.payroll.unpriced_count} employee position(s) have cost that cannot be stated; their hours stay visible and no ₹0 cost is claimed`,
 		],
 		[
 			'Missing pricing (unknown, not zero)',

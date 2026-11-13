@@ -8,8 +8,9 @@
  * and Project identities, allocation and financial versions,
  * classification, currency and tax basis, and evidence states are exactly
  * what the report stated when the month closed. Payroll finalization stays
- * separate: a pending payroll is a disclosed warning, never a blocker, and
- * finalizing payroll never closes supplier cost, accruals, or the month.
+ * separate: pending payroll evidence rides the payroll coverage notices and
+ * is a disclosed warning, never a blocker, and finalizing payroll never
+ * closes supplier cost, accruals, or the month.
  *
  * Closed-period protection hangs off the seams the module built for it:
  * every write path below asks `assertMonthOpen` before it writes, and the
@@ -262,9 +263,11 @@ function asWarning(code: string, label: string, detail: string): CloseBlocker {
 /**
  * Map one reconciliation onto the close decision. Unwired sources,
  * unresolved cost exceptions, unsupported commitments, and an empty month
- * block the close; pending payroll, partial cash cover, and legacy cash
- * gaps are disclosed warnings. Notices the close does not judge are
- * passed through as warnings, never dropped.
+ * block the close; payroll evidence gaps, partial cash cover, and legacy cash
+ * gaps are disclosed warnings. Each payroll gap keeps the count its own
+ * coverage notice stated — the close never re-sums overlapping counts — and
+ * notices the close does not judge are passed through as warnings, never
+ * dropped.
  */
 export function reviewReconciliation(
 	reconciliation: CompanyReconciliation
@@ -303,21 +306,6 @@ export function reviewReconciliation(
 				severity: 'error',
 			});
 		}
-	}
-	const payroll = reconciliation.payroll;
-	const pendingPayroll =
-		(payroll.estimated_count ?? 0) +
-		(payroll.missing_slip_count ?? 0) +
-		(payroll.missing_pricing_count ?? 0) +
-		(payroll.allocation_missing_count ?? 0);
-	if (pendingPayroll > 0) {
-		warnings.push(
-			asWarning(
-				'payroll_finalization_pending',
-				'Payroll finalization pending',
-				`${pendingPayroll} employee position(s) are estimated or missing a slip, pricing, or frozen allocation. Finalizing payroll freezes attribution; it does not close the month.`
-			)
-		);
 	}
 	const cash = reconciliation.cash;
 	const partialCash =

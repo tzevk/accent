@@ -8,11 +8,13 @@ import {
 import {
 	payrollPeriod,
 	findPayrollRun,
-	summarizeMonthSlips,
+	findMonthSlips,
+	summarizeSlipRows,
+	loadPayrollRunReadiness,
 } from '@/app/api/payroll/_lib/payroll-run';
 
 /**
- * GET - Read a month's Payroll Run and the totals Finalize would commit.
+ * GET - Read a month's Payroll Run, its totals and the completeness preflight.
  *
  * Query params:
  *  - month: Payroll month (YYYY-MM-01)
@@ -26,6 +28,16 @@ import {
  * and never stored on the run, so the header cannot disagree with per-slip
  * truth. It drops the moment one slip leaves `paid`, and a month with no slips
  * is not paid. `summary.paid_slips` is the count behind it.
+ *
+ * `readiness` is the admin completeness panel's contract:
+ *  - `basis: 'live'`   — draft/no run; counts come from current employment
+ *                        dates and pay agreements.
+ *  - `basis: 'frozen'` — locked run with a saved finalization roster; counts
+ *                        come from that immutable snapshot.
+ *  - `basis: 'legacy'` — locked run predating saved rosters; `eligible_count`
+ *                        is null because original membership cannot be proven.
+ * `can_finalize` is a preflight only; Finalize re-validates and names every
+ * person behind a refusal.
  */
 export async function GET(request) {
 	// RBAC check
@@ -53,9 +65,19 @@ export async function GET(request) {
 		db = await dbConnect();
 
 		const run = await findPayrollRun(db, period);
-		const summary = await summarizeMonthSlips(db, period.month);
+		const slips = await findMonthSlips(db, period.month);
+		const summary = summarizeSlipRows(slips, period.month);
+		const readiness = await loadPayrollRunReadiness(
+			db,
+			period,
+			run,
+			slips
+		);
 
-		return NextResponse.json({ success: true, data: { run, summary } });
+		return NextResponse.json({
+			success: true,
+			data: { run, summary, readiness },
+		});
 	} catch (error) {
 		console.error('GET /api/payroll/runs error:', error);
 		return NextResponse.json(

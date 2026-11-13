@@ -8,6 +8,10 @@ import {
 	buildMonthlyAllocationEmployeeRows,
 	buildMonthlyAllocationProjectRows,
 	buildMonthlyAllocationTotals,
+	buildFYAllocationRows,
+	buildFYAllocationEmployeeRows,
+	buildFYAllocationProjectRows,
+	buildFYAllocationTotals,
 	type SalaryProfile,
 	type ProjectCostRow,
 } from '@/app/reports/company-monthly-cost/employee-cost-data-source';
@@ -269,6 +273,10 @@ describe('monthly salary profile coverage', () => {
 			status: 'unknown',
 			recorded_amount: null,
 			estimated_amount: null,
+			slip_amount: null,
+			in_saved_roster: null,
+			worked_outside_finalized_run: false,
+			employment_issue: null,
 			logged_hours: 12,
 			project_hours: 12,
 			no_project_hours: 0,
@@ -387,5 +395,102 @@ describe('monthly salary profile coverage', () => {
 			employee_count: 3,
 			project_count: 2,
 		});
+	});
+});
+
+describe('FY unknown cost evidence', () => {
+	it('keeps off-roster work unknown instead of a confirmed FY zero', () => {
+		const share: PayrollProjectShare = {
+			project_id: 60,
+			project_code: 'P-60',
+			project_name: 'Project 60',
+			client_name: null,
+			hours: 8,
+			amount: 0,
+			rounding_adjustment: 0,
+			basis: 'project',
+		};
+		const base: PayrollEmployeeCost = {
+			employee_id: 1,
+			employee_code: 'EMP-1',
+			employee_name: 'Off roster',
+			pay_stream: 'unknown',
+			status: 'unknown',
+			recorded_amount: null,
+			estimated_amount: null,
+			slip_amount: null,
+			in_saved_roster: false,
+			worked_outside_finalized_run: true,
+			employment_issue: null,
+			logged_hours: 8,
+			project_hours: 8,
+			no_project_hours: 0,
+			no_logged_hours: false,
+			missing_slip: false,
+			missing_pricing: false,
+			allocation_missing: false,
+			source: {
+				payroll_slip_id: null,
+				allocation_id: null,
+				allocation_version: null,
+				allocation_kind: null,
+				month: '2026-10',
+			},
+			shares: [share],
+			hours_by_project: [],
+			reconstruction: null,
+		};
+		const known: PayrollEmployeeCost = {
+			...base,
+			employee_id: 2,
+			employee_code: 'EMP-2',
+			employee_name: 'Recorded',
+			status: 'recorded',
+			recorded_amount: 200,
+			in_saved_roster: true,
+			worked_outside_finalized_run: false,
+			shares: [{ ...share, amount: 200 }],
+			hours_by_project: [],
+		};
+
+		const rows = buildFYAllocationRows(
+			2026,
+			['2026-10'],
+			new Map([['2026-10', [base, known]]]),
+			new Map()
+		);
+		const unknownRow = rows.find((row) => row.employee_id === 1);
+		expect(unknownRow).toMatchObject({
+			total_hours: 8,
+			total_cost: 0,
+			cost_known: false,
+			worked_outside_finalized_run: true,
+			monthly_cost_known: { oct: false },
+		});
+		expect(unknownRow?.monthly_cost.oct).toBe(0);
+
+		const employeeRow = buildFYAllocationEmployeeRows(rows).find(
+			(row) => row.employee_id === 1
+		);
+		expect(employeeRow).toMatchObject({
+			cost_known: false,
+			worked_outside_finalized_run: true,
+			monthly_cost_known: { oct: false },
+		});
+
+		const projectRow = buildFYAllocationProjectRows(rows).find(
+			(row) => row.project_id === 60
+		);
+		expect(projectRow).toMatchObject({
+			cost_known: false,
+			unknown_cost_count: 1,
+			monthly_cost_known: { oct: false },
+		});
+
+		const totals = buildFYAllocationTotals(rows);
+		expect(totals.cost_known).toBe(false);
+		expect(totals.monthly_cost_known.oct).toBe(false);
+		expect(totals.monthly_cost.oct).toBe(200);
+		expect(totals.total_cost).toBe(200);
 	});
 });

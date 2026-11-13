@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
 import { useSession } from '@/context/SessionContext';
 import { R, add, mul, sub, toNumber } from '@/lib/money';
-import { formatCurrency, formatMonth } from '@/lib/format';
+import { formatCurrency, formatMonth, formatNumber } from '@/lib/format';
 import {
 	FEBRUARY_PT,
 	isFebruaryMonth,
@@ -17,6 +17,7 @@ import { PAYMENT_STATUS, paymentStatusBadge } from '@/lib/payment-status';
 import { apiGet, apiPost } from '@/lib/api-client';
 import { downloadFile } from '@/lib/download';
 import { InlineSpinner } from '@/components/LoadingSpinner';
+import { PayrollCompanySheetGrid } from '@/components/payroll/PayrollCompanySheetGrid';
 import {
 	ArrowDownTrayIcon,
 	ArrowPathIcon,
@@ -83,8 +84,12 @@ const STREAMS = [
 const readRun = async (month) => {
 	const data = await apiGet('/api/payroll/runs', { month });
 	return data.success
-		? { run: data.data?.run ?? null, summary: data.data?.summary ?? null }
-		: { run: null, summary: null };
+		? {
+				run: data.data?.run ?? null,
+				summary: data.data?.summary ?? null,
+				readiness: data.data?.readiness ?? null,
+			}
+		: { run: null, summary: null, readiness: null };
 };
 
 export default function PayrollRunDashboard() {
@@ -111,17 +116,23 @@ export default function PayrollRunDashboard() {
 	const slipsQuery = useQuery({
 		queryKey: ['payroll', 'slips', month, stream],
 		queryFn: async () => {
+			// The company-sheet projection is the Payroll stream's format. The
+			// Contract stream keeps its existing table and its ordinary listing.
 			const data = await apiGet('/api/payroll/slips', {
 				month,
 				salary_type: stream,
+				...(stream === 'payroll' ? { include: 'company-sheet' } : {}),
 			});
-			return data.success ? data.data || [] : [];
+			return data.success
+				? { rows: data.data || [], meta: data.company_sheet ?? null }
+				: { rows: [], meta: null };
 		},
 	});
 
 	const run = runQuery.data?.run ?? null;
 	const summary = runQuery.data?.summary ?? null;
-	const slips = slipsQuery.data || [];
+	const readiness = runQuery.data?.readiness ?? null;
+	const slips = slipsQuery.data?.rows || [];
 	// "Loading" has always meant "a slips read is in flight": the first one, the
 	// one a month or stream change starts, and the refetch a write triggers.
 	const loading = slipsQuery.isFetching;
@@ -130,6 +141,24 @@ export default function PayrollRunDashboard() {
 	const readError = slipsQuery.error
 		? slipsQuery.error.message || 'Failed to fetch payroll data'
 		: '';
+	// Payroll renders the company sheet from the listing's opt-in projection.
+	// Contract keeps its existing columns, so it never asks for or reads it.
+	const companySheetRows =
+		stream === 'payroll'
+			? slips
+					.filter((slip) => slip.company_sheet)
+					.map((slip) => ({
+						sheet: slip.company_sheet,
+						payment_status: slip.payment_status,
+						payment_date: slip.payment_date,
+					}))
+			: [];
+	const missingCompanySheet =
+		stream === 'payroll' &&
+		slips.length > 0 &&
+		companySheetRows.length !== slips.length;
+	const companySheetMeta =
+		stream === 'payroll' ? (slipsQuery.data?.meta ?? null) : null;
 
 	const currentStream = STREAMS.find((s) => s.value === stream) || STREAMS[0];
 	const streamLabel = currentStream.label;
@@ -227,12 +256,15 @@ export default function PayrollRunDashboard() {
 			// Through the cache, so the badge above and the dialog can never quote
 			// two different months; `staleTime: 0` because "current" means the read
 			// that just happened, not a cache entry the mount left behind.
-			const { run: monthRun, summary: monthSummary } =
-				await queryClient.fetchQuery({
-					queryKey: ['payroll', 'run', month],
-					queryFn: () => readRun(month),
-					staleTime: 0,
-				});
+			const {
+				run: monthRun,
+				summary: monthSummary,
+				readiness: monthReadiness,
+			} = await queryClient.fetchQuery({
+				queryKey: ['payroll', 'run', month],
+				queryFn: () => readRun(month),
+				staleTime: 0,
+			});
 
 			if (!monthRun) {
 				setError(
@@ -244,11 +276,12 @@ export default function PayrollRunDashboard() {
 			if (
 				!confirm(
 					`Finalize the Payroll Run for ${formatMonth(month)}?\n\n` +
-						`Employees: ${monthSummary.headcount}\n` +
+						`Eligible employees: ${formatNumber(monthReadiness?.eligible_count)}\n` +
+						`Payroll Slips: ${formatNumber(monthSummary.headcount)}\n` +
 						`Total Gross: ${formatCurrency(monthSummary.total_gross)}\n` +
 						`Total Deductions: ${formatCurrency(monthSummary.total_deductions)}\n` +
 						`Net Pay: ${formatCurrency(monthSummary.total_net_pay)}\n\n` +
-						'Finalizing locks the month — Payroll Slips can no longer be generated.'
+						'Finalizing saves the validated employee roster and freezes cost allocation. Payroll Slips can no longer be generated.'
 				)
 			)
 				return;
@@ -609,37 +642,132 @@ export default function PayrollRunDashboard() {
 					</div>
 				</div>
 
+				<section
+					aria-labelledby="payroll-completeness-heading"
+					className="mb-6 rounded-xl border border-gray-200 bg-white p-4"
+				>
+					<h2
+						id="payroll-completeness-heading"
+						className="text-sm font-semibold text-gray-900"
+					>
+						Payroll completeness
+					</h2>
+					{runQuery.isError ? (
+						<p role="alert" className="mt-2 text-sm text-red-700">
+							Unable to check payroll completeness. Refresh the page before
+							finalizing.
+						</p>
+					) : !readiness ? (
+						<p className="mt-2 text-sm text-gray-600">
+							Checking employee eligibility…
+						</p>
+					) : readiness.basis === 'legacy' ? (
+						<p className="mt-2 text-sm text-gray-700">
+							This historical run has no saved employee roster. Existing slips
+							and payments remain recorded, but employee coverage cannot be
+							verified.
+						</p>
+					) : (
+						<>
+							<p className="mt-1 text-sm text-gray-600">
+								{readiness.basis === 'frozen'
+									? 'Employee coverage saved at finalization. Later employee changes do not change this roster.'
+									: 'Eligibility follows employment dates for this month, across Payroll and Contract pay streams.'}
+							</p>
+							<dl className="mt-3 flex flex-wrap gap-x-6 gap-y-3 text-sm">
+								<div>
+									<dt className="text-gray-600">Eligible employees</dt>
+									<dd className="font-semibold text-gray-900">
+										{formatNumber(readiness.eligible_count)}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-gray-600">Payroll Slips</dt>
+									<dd className="font-semibold text-gray-900">
+										{formatNumber(readiness.slip_count)}
+									</dd>
+								</div>
+								{readiness.basis === 'live' && (
+									<>
+										<div>
+											<dt className="text-gray-600">Missing slips</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.missing_slip_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">Missing profiles</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.missing_profile_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">
+												Employment dates to review
+											</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.employment_issue_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">
+												Slips outside eligibility
+											</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.unexpected_slip_count)}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-gray-600">Employees excluded</dt>
+											<dd className="font-semibold text-gray-900">
+												{formatNumber(readiness.excluded_count)}
+											</dd>
+										</div>
+									</>
+								)}
+							</dl>
+							{readiness.basis === 'live' && (
+								<p className="mt-3 text-sm text-gray-700">
+									{readiness.can_finalize
+										? 'Every eligible employee has a covering Salary Profile and Payroll Slip. The run is ready for final review.'
+										: 'Resolve missing profiles, slips, or employment-date issues before finalizing. Finalize names the employees needing attention.'}
+								</p>
+							)}
+						</>
+					)}
+				</section>
+
 				{/* Stats Cards */}
-				<div className="flex gap-4 mb-6">
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+				<div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
 						<div className="text-lg font-bold text-blue-600">
 							{slips.length}
 						</div>
 						<div className="text-xs text-gray-600">Employees</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-green-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-green-600 break-words">
 							{formatCurrency(totalGross)}
 						</div>
 						<div className="text-xs text-gray-600">Total Gross</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-red-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-red-600 break-words">
 							{formatCurrency(totalDeductions)}
 						</div>
 						<div className="text-xs text-gray-600">Deductions</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
-						<div className="text-lg font-bold text-indigo-600">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2">
+						<div className="text-lg font-bold text-indigo-600 break-words">
 							{formatCurrency(totalNet)}
 						</div>
 						<div className="text-xs text-gray-600">Net Pay</div>
 					</div>
 
-					<div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-w-0 px-3 py-2">
+					<div className="bg-white rounded-xl shadow-sm border border-gray-200 min-w-0 px-3 py-2 col-span-2 sm:col-span-1">
 						<div className="text-lg font-bold flex flex-wrap items-baseline gap-x-2">
 							{slips.length === 0 ? (
 								<span className="text-gray-400">—</span>
@@ -668,21 +796,49 @@ export default function PayrollRunDashboard() {
 							: `Showing ${slips.length} ${stream} ${slips.length === 1 ? 'employee' : 'employees'} for ${formatMonth(month)}`}
 					</div>
 
-					<div className="overflow-x-auto">
-						{loading ? (
-							<div className="flex items-center justify-center py-12">
-								<InlineSpinner className="w-8 h-8" />
-							</div>
-						) : slips.length === 0 ? (
-							<div className="text-center py-12 text-gray-500">
-								<DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-								<p className="font-medium">No Payroll Slips found</p>
-								<p className="text-sm mt-1">
-									Generate Payroll Slips for {formatMonth(month)} to see data
-									here.
+					{loading ? (
+						<div className="flex items-center justify-center py-12">
+							<InlineSpinner className="w-8 h-8" />
+						</div>
+					) : slips.length === 0 ? (
+						<div className="text-center py-12 text-gray-500">
+							<DocumentTextIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+							<p className="font-medium">No Payroll Slips found</p>
+							<p className="text-sm mt-1">
+								Generate Payroll Slips for {formatMonth(month)} to see data
+								here.
+							</p>
+						</div>
+					) : stream === 'payroll' ? (
+						<>
+							{missingCompanySheet && (
+								<p
+									role="alert"
+									className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+								>
+									Company sheet details could not be loaded for every row.
+									Refresh the page. Recorded Payroll Slip amounts are unchanged.
 								</p>
-							</div>
-						) : (
+							)}
+							{companySheetMeta?.issues?.length > 0 && (
+								<div
+									role="status"
+									className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+								>
+									<p className="font-medium">Company sheet data needs review</p>
+									<ul className="mt-1 list-disc space-y-1 pl-5">
+										{companySheetMeta.issues.map((issue, index) => (
+											<li key={`${issue.code}-${index}`}>{issue.message}</li>
+										))}
+									</ul>
+								</div>
+							)}
+							{companySheetRows.length > 0 && (
+								<PayrollCompanySheetGrid rows={companySheetRows} />
+							)}
+						</>
+					) : (
+						<div className="overflow-x-auto">
 							<table className="w-full text-sm">
 								<thead className="bg-gray-50 border-b border-gray-200">
 									<tr>
@@ -939,8 +1095,8 @@ export default function PayrollRunDashboard() {
 									</tr>
 								</tfoot>
 							</table>
-						)}
-					</div>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

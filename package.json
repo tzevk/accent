@@ -7,7 +7,7 @@
 		"dev": "next dev",
 		"build": "next build",
 		"start": "next start",
-		"lint": "eslint src scripts",
+		"lint": "eslint src scripts e2e playwright.config.ts",
 		"check:route-auth": "node scripts/check-route-auth.mjs",
 		"security:poc-reruns": "node scripts/security-poc-reruns.mjs",
 		"security:scrub": "node scripts/scrub-stored-html.mjs",
@@ -19,7 +19,7 @@
 		"test:ui": "vitest --ui",
 		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",
-		"verify": "npm run lint && npm run build:prod && npm run test:run",
+		"verify": "npm run check:route-auth && npm run lint && npm run build:prod && npm run test:run",
 		"build:prod": "cross-env NODE_ENV=production next build",
 		"prepare": "husky",
 		"format": "prettier --write .",
@@ -32,7 +32,10 @@
 		"migrate:prod:rollback": "cross-env NODE_ENV=production knex migrate:rollback",
 		"seed": "knex seed:run",
 		"seed:dev": "knex seed:run",
-		"seed:make": "knex seed:make"
+		"seed:make": "knex seed:make",
+		"test:e2e": "node --experimental-strip-types scripts/e2e/cli.ts",
+		"test:e2e:install": "playwright install chromium",
+		"test:e2e:report": "playwright show-report e2e/artifacts/html-report"
 	},
 	"lint-staged": {
 		"**/*.{js,jsx,ts,tsx,json,css,md}": [
@@ -90,6 +93,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.65.0",
 		"@tailwindcss/postcss": "^4",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",

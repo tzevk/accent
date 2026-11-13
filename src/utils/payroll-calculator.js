@@ -18,6 +18,8 @@ import {
 } from './payroll-calculation';
 import { sumLoggedHoursForMonth } from '@/lib/logged-hours';
 import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
+import { loadPayrollRunRoster } from '@/lib/payroll-run-roster';
+import { withPayrollRunWriteLock } from '@/app/api/payroll/_lib/payroll-run';
 
 export { calculatePayroll, normalizeSalaryProfile };
 
@@ -27,6 +29,12 @@ const scheduleDate = (value) =>
 		: value.toISOString().split('T')[0];
 
 /**
+ * @typedef {object} EffectivePayrollSchedule
+ * @property {string} date
+ * @property {Record<string, unknown>} components
+ */
+
+/**
  * Load the effective Component Rates (payroll_schedules) once per run.
  * All component rates — including DA — resolve from `payroll_schedules`
  * (Component Rates); there is no legacy DA-table fallback.
@@ -34,6 +42,7 @@ const scheduleDate = (value) =>
  *   string or a Date, as `scheduleDate` accepts.
  * @param {object|null} existingDb - Caller's connection, passed through so a
  *   caller inside a transaction reads one snapshot.
+ * @returns {Promise<EffectivePayrollSchedule>}
  */
 export async function getEffectivePayrollSchedule(
 	forDate = new Date(),
@@ -282,14 +291,17 @@ export async function getEmployeeMonthlyHours(
  * Integrates with holiday_master for official holidays
  * @param {number} employeeId - Employee ID
  * @param {string} month - Month in YYYY-MM format
+ * @param {object|null} existingDb - Caller's connection, passed through so a
+ *   caller inside a transaction reads one snapshot.
  * @returns {Promise<object>} Attendance summary
  */
-export async function getEmployeeAttendance(employeeId, month) {
-	const db = await dbConnect();
+export async function getEmployeeAttendance(employeeId, month, existingDb = null) {
+	const db = existingDb || (await dbConnect());
+	const ownsConnection = !existingDb;
 
 	try {
 		// Get actual working days from holiday_master (excluding Sundays and official holidays)
-		const workingDaysInfo = await getWorkingDaysForMonth(month);
+		const workingDaysInfo = await getWorkingDaysForMonth(month, db);
 		const standardWorkingDays = workingDaysInfo.workingDays;
 
 		// Get attendance records for the month
@@ -399,65 +411,100 @@ export async function getEmployeeAttendance(employeeId, month) {
 			workingDaysBreakdown: null,
 		};
 	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
+		if (ownsConnection) {
+			try {
+				db.release();
+			} catch (_) {
+				/* ignore */
+			}
 		}
 	}
 }
 
+/** Human wording for a roster employment-date problem, shared by every refusal. */
+const EMPLOYMENT_ISSUE_LABELS = {
+	employment_dates_missing: 'employment dates are missing',
+	employment_dates_invalid: 'employment dates are invalid',
+	work_outside_employment: 'work is recorded outside their employment dates',
+};
+
+/** The roster's issue code as a sentence a route can return to an admin. */
+export function employmentIssueLabel(issue) {
+	return EMPLOYMENT_ISSUE_LABELS[issue] || String(issue || 'unknown issue');
+}
+
 /**
- * LEGACY COMPAT (future migration): canonical `employee_salary_profile`
- * first; `salary_structures` is a read-only fallback. Do not write new
- * `salary_structures` rows from payroll code.
+ * A refusal Generate can turn into a named client error instead of a generic
+ * 500: the caller asked to pay someone the shared monthly roster does not
+ * cover, or whose employment dates need review.
  */
-export async function getEmployeeSalaryProfile(
-	employeeId,
-	forDate = new Date()
-) {
-	const db = await dbConnect();
-	const dateStr = scheduleDate(forDate);
-
-	try {
-		const [canonicalRows] = await db.execute(
-			`SELECT *
-       FROM employee_salary_profile
-       WHERE employee_id = ?
-         AND is_active = 1
-         AND effective_from <= ?
-         AND (effective_to IS NULL OR effective_to >= ?)
-       ORDER BY effective_from DESC, id DESC
-       LIMIT 1`,
-			[employeeId, dateStr, dateStr]
-		);
-		const [legacyRows] = await db.execute(
-			`SELECT *
-       FROM salary_structures
-       WHERE employee_id = ?
-         AND is_active = 1
-         AND effective_from <= ?
-         AND (effective_to IS NULL OR effective_to >= ?)
-       ORDER BY effective_from DESC, id DESC
-       LIMIT 1`,
-			[employeeId, dateStr, dateStr]
-		);
-
-		const canonical = canonicalRows.length > 0 ? canonicalRows[0] : null;
-		const legacy = legacyRows.length > 0 ? legacyRows[0] : null;
-		return canonical || legacy
-			? normalizeSalaryProfile(canonical, legacy)
-			: null;
-	} catch (error) {
-		console.error('Error getting employee salary profile:', error);
-		return null;
-	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
-		}
+export class PayrollGenerationError extends Error {
+	constructor(message, options = {}) {
+		super(message);
+		this.name = 'PayrollGenerationError';
+		this.status = options.status ?? 400;
+		this.code = options.code ?? 'payroll_generation_refused';
+		this.reviewReason = options.reviewReason ?? null;
+		this.employeeId = options.employeeId ?? null;
 	}
+}
+
+/** One roster member by employees.id, or null when they are not on it. */
+function findRosterMember(roster, employeeId) {
+	return (
+		(roster?.members || []).find(
+			(member) => Number(member.employee_id) === Number(employeeId)
+		) || null
+	);
+}
+
+/**
+ * Why this employee cannot be paid from the month's roster, or null when they
+ * can. Single, batch and preview generation all use this same check so none of
+ * them can write a slip the shared eligibility rules exclude.
+ */
+export function payrollGenerationRefusal(member, employeeId, month) {
+	const who = member?.name
+		? `${member.name} (${member.employee_code})`
+		: `Employee ${employeeId}`;
+
+	if (!member) {
+		return new PayrollGenerationError(
+			`${who} is not on the ${month} payroll roster, so no Payroll Slip can be generated.`,
+			{
+				status: 422,
+				code: 'payroll_member_not_found',
+				employeeId,
+			}
+		);
+	}
+
+	if (member.issue) {
+		return new PayrollGenerationError(
+			`${who} cannot be paid for ${month}: ${employmentIssueLabel(
+				member.issue
+			)}. Resolve the employment dates before generating or finalizing payroll.`,
+			{
+				status: 422,
+				code: 'payroll_employment_review',
+				reviewReason: member.issue,
+				employeeId,
+			}
+		);
+	}
+
+	if (!member.salary_profile) {
+		return new PayrollGenerationError(
+			`No active salary profile found for ${who}. Please set up salary structure first.`,
+			{
+				status: 400,
+				code: 'payroll_profile_missing',
+				employeeId,
+			}
+		);
+	}
+
+	return null;
 }
 
 /**
@@ -465,12 +512,20 @@ export async function getEmployeeSalaryProfile(
  * Links the Salary Profile with the month's attendance calendar and the
  * hours logged in Project Activity Assignments: Gross is the CTC apportioned
  * over the month's payable hours and paid at the hours actually logged.
+ *
+ * The profile is the one the shared monthly roster selected at
+ * max(month start, employment start); callers inside a transaction pass their
+ * connection (and may pass the already-loaded roster) so reads see the roster
+ * that will be frozen. No profile argument means the roster is loaded here.
  * @param {number} employeeId - Employee ID
  * @param {Date} month - Payroll month (YYYY-MM-01 format)
  * @param {object} options - Optional settings
+ * @param {object} options.db - Existing connection (owned by the caller)
+ * @param {object} options.roster - Already-loaded PayrollRunRoster
+ * @param {object} options.salaryProfile - Roster-selected profile
  * @param {boolean} options.include_bonus - Whether to include bonus (default: false)
  * @param {number} options.loggedHours - Override the month's logged hours (preview/tests)
- * @returns {Promise<object>} Complete payroll breakdown
+ * @returns {Promise<object>} Complete payroll breakdown, or null without a profile
  */
 export async function calculateEmployeePayroll(
 	employeeId,
@@ -479,72 +534,49 @@ export async function calculateEmployeePayroll(
 ) {
 	const includeBonus =
 		options.include_bonus === true || options.includeBonus === true;
-	const profile = await getEmployeeSalaryProfile(employeeId, month);
+	const ownsConnection = !options.db;
+	const db = options.db || (await dbConnect());
 
-	if (!profile) return null;
+	try {
+		let profile = options.salaryProfile ?? null;
+		if (!profile) {
+			const roster =
+				options.roster || (await loadPayrollRunRoster(db, month));
+			const member = findRosterMember(roster, employeeId);
+			profile = member && !member.issue ? member.salary_profile : null;
+		}
 
-	const [payrollSchedule, attendance, loggedHours] = await Promise.all([
-		options.payrollSchedule ||
-			options.schedule ||
-			getEffectivePayrollSchedule(month),
-		options.attendance || getEmployeeAttendance(employeeId, month),
-		options.loggedHours !== undefined
-			? options.loggedHours
-			: getEmployeeLoggedHours(employeeId, month),
-	]);
+		if (!profile) return null;
 
-	return computePayroll(
-		employeeId,
-		month,
-		profile,
-		undefined,
-		{ ...attendance, loggedHours: Number(loggedHours) || 0 },
-		includeBonus,
-		payrollSchedule,
-		options.overrides || options.manualOverrides || {}
-	);
-}
+		const [payrollSchedule, attendance, loggedHours] = await Promise.all([
+			options.payrollSchedule ||
+				options.schedule ||
+				getEffectivePayrollSchedule(month, db),
+			options.attendance || getEmployeeAttendance(employeeId, month, db),
+			options.loggedHours !== undefined
+				? options.loggedHours
+				: getEmployeeLoggedHours(employeeId, month, db),
+		]);
 
-// ═══════════════════════════════════════════════════════════════════
-// SCHEMA MIGRATION - run once per process lifetime
-// ═══════════════════════════════════════════════════════════════════
-let _columnsEnsured = false;
-
-const PAYROLL_COLUMNS_TO_ADD = [
-	{ name: 'da', definition: 'DECIMAL(12, 2)' },
-	{ name: 'bonus', definition: 'DECIMAL(12, 2)' },
-	{ name: 'incentive', definition: 'DECIMAL(12, 2)' },
-	{ name: 'mlwf', definition: 'DECIMAL(12, 2)' },
-	{ name: 'retention', definition: 'DECIMAL(12, 2)' },
-	{ name: 'mlwf_employer', definition: 'DECIMAL(12, 2)' },
-	{ name: 'insurance', definition: 'DECIMAL(12, 2)' },
-	{ name: 'standard_working_days', definition: 'INT DEFAULT 26' },
-	{ name: 'days_present', definition: 'DECIMAL(5,1)' },
-	{ name: 'days_absent', definition: 'DECIMAL(5,1)' },
-	{ name: 'days_leave', definition: 'DECIMAL(5,1)' },
-	{ name: 'payable_days', definition: 'DECIMAL(5,1)' },
-	{ name: 'lop_days', definition: 'DECIMAL(5,1)' },
-	{ name: 'lop_deduction', definition: 'DECIMAL(12, 2)' },
-	{ name: 'overtime_hours', definition: 'DECIMAL(5,2)' },
-	{ name: 'ot_rate', definition: 'DECIMAL(12, 2) DEFAULT 0' },
-	{ name: 'full_month_gross', definition: 'DECIMAL(12, 2)' },
-	{ name: 'pl_total', definition: 'INT DEFAULT 21' },
-	{ name: 'pl_used', definition: 'INT DEFAULT 0' },
-	{ name: 'pl_balance', definition: 'INT DEFAULT 21' },
-];
-
-async function ensurePayrollColumns(db) {
-	if (_columnsEnsured) return;
-	for (const col of PAYROLL_COLUMNS_TO_ADD) {
-		try {
-			await db.query(
-				`ALTER TABLE payroll_slips ADD COLUMN ${col.name} ${col.definition}`
-			);
-		} catch (_) {
-			/* column already exists */
+		return computePayroll(
+			employeeId,
+			month,
+			profile,
+			undefined,
+			{ ...attendance, loggedHours: Number(loggedHours) || 0 },
+			includeBonus,
+			payrollSchedule,
+			options.overrides || options.manualOverrides || {}
+		);
+	} finally {
+		if (ownsConnection) {
+			try {
+				db.release();
+			} catch (_) {
+				/* ignore */
+			}
 		}
 	}
-	_columnsEnsured = true;
 }
 
 // Helper to convert undefined to null
@@ -674,26 +706,52 @@ function payrollToParams(payroll) {
 }
 
 /**
- * Generate and save payroll slip for an employee
- * Links salary structure with attendance for monthly calculations
+ * Generate and save payroll slip for an employee.
+ *
+ * The employee must be on the shared monthly roster with a profile selected at
+ * max(month start, employment start); a not-eligible or review-required
+ * employee is refused with a named reason rather than written as a slip.
+ * Callers inside a transaction pass `options.db` so the insert and the roster
+ * read share the run row lock.
  * @param {number} employeeId - Employee ID
  * @param {Date} month - Payroll month (YYYY-MM-01 format)
+ * @param {object} options - Existing connection / roster / bonus options
  * @returns {Promise<object>} Generated payroll slip
  */
 export async function generatePayrollSlip(employeeId, month, options = {}) {
-	const payroll = await calculateEmployeePayroll(employeeId, month, options);
-
-	if (!payroll) {
-		throw new Error(
-			`No active salary profile found for employee ${employeeId}. Please set up salary structure first.`
+	// Called without the route's transaction: own the month's write lock here so
+	// a standalone call cannot write behind a finalized run or race Finalize.
+	if (!options.db) {
+		return withPayrollRunWriteLock(month, (db) =>
+			generatePayrollSlip(employeeId, month, { ...options, db })
 		);
 	}
 
-	const db = await dbConnect();
+	const db = options.db;
+	const roster = options.roster || (await loadPayrollRunRoster(db, month));
+	const member = findRosterMember(roster, employeeId);
+	const refusal = payrollGenerationRefusal(member, employeeId, month);
+	if (refusal) throw refusal;
+
+	const payroll = await calculateEmployeePayroll(employeeId, month, {
+		...options,
+		db,
+		roster,
+		salaryProfile: member.salary_profile,
+	});
+
+	if (!payroll) {
+		throw new PayrollGenerationError(
+			`No active salary profile found for employee ${employeeId}. Please set up salary structure first.`,
+			{
+				status: 400,
+				code: 'payroll_profile_missing',
+				employeeId,
+			}
+		);
+	}
 
 	try {
-		await ensurePayrollColumns(db);
-
 		const [result] = await db.execute(
 			INSERT_SLIP_SQL,
 			payrollToParams(payroll)
@@ -712,72 +770,12 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
 		}
 
 		throw error;
-	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
-		}
 	}
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // BATCH HELPERS — fetch data for many employees in one DB round-trip
 // ═══════════════════════════════════════════════════════════════════
-
-/**
- * LEGACY COMPAT (future migration): canonical `employee_salary_profile` rows
- * merged over read-only `salary_structures` fallback via
- * normalizeSalaryProfile. Do not extend.
- */
-async function batchGetSalaryProfiles(db, employeeIds, forDate) {
-	if (employeeIds.length === 0) return new Map();
-
-	const placeholders = employeeIds.map(() => '?').join(',');
-	const date = scheduleDate(forDate);
-	const [canonicalRows] = await db.execute(
-		`SELECT *
-     FROM employee_salary_profile
-     WHERE is_active = 1
-       AND employee_id IN (${placeholders})
-       AND effective_from <= ?
-       AND (effective_to IS NULL OR effective_to >= ?)
-     ORDER BY employee_id, effective_from DESC, id DESC`,
-		[...employeeIds, date, date]
-	);
-	const [legacyRows] = await db.execute(
-		`SELECT *
-     FROM salary_structures
-     WHERE is_active = 1
-       AND employee_id IN (${placeholders})
-       AND effective_from <= ?
-       AND (effective_to IS NULL OR effective_to >= ?)
-     ORDER BY employee_id, effective_from DESC, id DESC`,
-		[...employeeIds, date, date]
-	);
-
-	const canonicalMap = new Map();
-	for (const row of canonicalRows) {
-		if (!canonicalMap.has(row.employee_id)) {
-			canonicalMap.set(row.employee_id, row);
-		}
-	}
-	const legacyMap = new Map();
-	for (const row of legacyRows) {
-		if (!legacyMap.has(row.employee_id)) legacyMap.set(row.employee_id, row);
-	}
-
-	const profileMap = new Map();
-	for (const employeeId of employeeIds) {
-		const canonical = canonicalMap.get(employeeId);
-		const legacy = legacyMap.get(employeeId);
-		if (canonical || legacy) {
-			profileMap.set(employeeId, normalizeSalaryProfile(canonical, legacy));
-		}
-	}
-
-	return profileMap;
-}
 
 /**
  * Fetch attendance records for a list of employee IDs for a given month
@@ -935,20 +933,24 @@ async function batchGetLoggedHours(db, employeeIds, month) {
 }
 
 /**
- * One employee's logged hours for a payroll month, on its own connection.
+ * One employee's logged hours for a payroll month. Callers inside a
+ * transaction pass their connection so the price reads the same snapshot.
  * The preview endpoint and single-slip generation price exactly what a
  * payroll run would.
  */
-async function getEmployeeLoggedHours(employeeId, month) {
-	const db = await dbConnect();
+async function getEmployeeLoggedHours(employeeId, month, existingDb = null) {
+	const db = existingDb || (await dbConnect());
+	const ownsConnection = !existingDb;
 	try {
 		const totals = await batchGetLoggedHours(db, [employeeId], month);
 		return totals.get(Number(employeeId)) || 0;
 	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
+		if (ownsConnection) {
+			try {
+				db.release();
+			} catch (_) {
+				/* ignore */
+			}
 		}
 	}
 }
@@ -994,348 +996,380 @@ export function computePayroll(
 }
 
 /**
- * Generate payroll slips for all active employees for a given month.
+ * Generate payroll slips for the shared monthly roster.
  * OPTIMIZED: uses batch DB queries + multi-row inserts.
+ *
+ * Membership comes only from `loadPayrollRunRoster`: an eligible employee is
+ * one whose employment window covers a day of the month and who has a Salary
+ * Profile selected at max(month start, employment start) — which is what lets
+ * a mid-month joiner in and still prices an established employee from the
+ * first-of-month agreement. Candidates needing employment-date review or a
+ * profile are not written here; Finalize names them instead.
+ *
  * @param {string} month - Payroll month (YYYY-MM-01 format)
  * @param {string|null} salaryType - Optional salary type filter
+ * @param {boolean} includeBonus - Add the configured bonus
+ * @param {number[]|null} bonusEmployeeIds - Limit the bonus to these employees
+ * @param {object} options - `db`: caller's transaction connection
  * @returns {Promise<object>} Summary of generation results
  */
 export async function generateMonthlyPayroll(
 	month,
 	salaryType = null,
 	includeBonus = false,
-	bonusEmployeeIds = null
+	bonusEmployeeIds = null,
+	options = {}
 ) {
-	const db = await dbConnect();
-
-	try {
-		const validSalaryTypes = [
-			'monthly',
-			'hourly',
-			'daily',
-			'contract',
-			'lumpsum',
-			'custom',
-			'payroll',
-		];
-		const filterBySalaryType =
-			salaryType && validSalaryTypes.includes(salaryType);
-		const isPayrollFilter = salaryType === 'payroll';
-		const isContractFilter = salaryType === 'contract';
-
-		// ── 1. Fetch employee list (canonical profiles first) ──
-		// LEGACY COMPAT (future migration): ssQuery covers employees that only
-		// have `salary_structures` rows. Canonical `employee_salary_profile`
-		// wins via the NOT EXISTS guard; do not extend.
-		const date = scheduleDate(month);
-		let espQuery = `SELECT DISTINCT esp.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name
-      FROM employee_salary_profile esp
-      JOIN employees e ON e.id = esp.employee_id
-       WHERE (e.status = 'active' OR e.status IS NULL)
-         AND esp.is_active = 1
-         AND esp.effective_from <= ?
-         AND (esp.effective_to IS NULL OR esp.effective_to >= ?)`;
-		const espParams = [date, date];
-		if (isPayrollFilter)
-			espQuery += ` AND (esp.salary_type IS NULL OR esp.salary_type != 'contract')`;
-		else if (isContractFilter) espQuery += ` AND esp.salary_type = 'contract'`;
-		else if (filterBySalaryType) {
-			espQuery += ` AND (esp.salary_type = ? OR (esp.salary_type IS NULL AND ? = 'monthly'))`;
-			espParams.push(salaryType, salaryType);
-		}
-		const [espEmployees] = await db.execute(espQuery, espParams);
-
-		let ssQuery = `SELECT DISTINCT ss.employee_id, CONCAT(e.first_name, ' ', e.last_name) as name
-       FROM salary_structures ss
-       JOIN employees e ON e.id = ss.employee_id
-       WHERE (e.status = 'active' OR e.status IS NULL)
-         AND ss.is_active = 1
-         AND ss.effective_from <= ?
-         AND (ss.effective_to IS NULL OR ss.effective_to >= ?)
-         AND NOT EXISTS (
-           SELECT 1 FROM employee_salary_profile esp
-           WHERE esp.employee_id = ss.employee_id
-             AND esp.is_active = 1
-             AND esp.effective_from <= ?
-             AND (esp.effective_to IS NULL OR esp.effective_to >= ?)
-         )`;
-		const ssParams = [date, date, date, date];
-		if (isPayrollFilter)
-			ssQuery += ` AND (ss.pay_type IS NULL OR ss.pay_type != 'contract')`;
-		else if (isContractFilter) ssQuery += ` AND ss.pay_type = 'contract'`;
-		else if (filterBySalaryType) {
-			ssQuery += ` AND (ss.pay_type = ? OR (ss.pay_type IS NULL AND ? = 'monthly'))`;
-			ssParams.push(salaryType, salaryType);
-		}
-		const [ssEmployees] = await db.execute(ssQuery, ssParams);
-
-		const employees = [...espEmployees, ...ssEmployees];
-		if (employees.length === 0) {
-			return { month, total: 0, success: 0, failed: 0, skipped: 0, errors: [] };
-		}
-
-		const employeeIds = employees.map((e) => e.employee_id);
-		const employeeNameMap = new Map(
-			employees.map((e) => [e.employee_id, e.name])
+	// Called without the route's transaction: own the month's write lock here so
+	// a standalone call cannot write behind a finalized run or race Finalize.
+	if (!options.db) {
+		return withPayrollRunWriteLock(month, (db) =>
+			generateMonthlyPayroll(
+				month,
+				salaryType,
+				includeBonus,
+				bonusEmployeeIds,
+				{ ...options, db }
+			)
 		);
+	}
 
-		// ── 2. Check for existing slips (skip duplicates in bulk) ──
-		const phExisting = employeeIds.map(() => '?').join(',');
-		const [existingSlips] = await db.execute(
-			`SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${phExisting})`,
-			[month, ...employeeIds]
-		);
-		const existingSet = new Set(existingSlips.map((r) => r.employee_id));
-		const newIds = employeeIds.filter((id) => !existingSet.has(id));
+	const db = options.db;
+	const validSalaryTypes = [
+		'monthly',
+		'hourly',
+		'daily',
+		'contract',
+		'lumpsum',
+		'custom',
+		'payroll',
+	];
+	const filterBySalaryType =
+		salaryType && validSalaryTypes.includes(salaryType);
+	const isPayrollFilter = salaryType === 'payroll';
+	const isContractFilter = salaryType === 'contract';
+	const roster = options.roster || (await loadPayrollRunRoster(db, month));
 
-		const results = {
-			month,
-			total: employees.length,
-			success: 0,
-			failed: 0,
-			skipped: existingSet.size,
-			errors: [],
+	// ── 1. Eligible roster members for this stream ──
+	// Stream membership lives on the selected Salary Profile, not on
+	// employees.employee_type, so both Payroll and Contract agreements are
+	// covered unless the caller filters one.
+	const employees = roster.members
+		.filter((member) => !member.issue && member.salary_profile)
+		.filter((member) => {
+			if (!filterBySalaryType) return true;
+			const memberType = member.salary_type
+				? String(member.salary_type).toLowerCase()
+				: null;
+			if (isContractFilter) return memberType === 'contract';
+			if (isPayrollFilter) return memberType !== 'contract';
+			return (
+				memberType === salaryType ||
+				(memberType === null && salaryType === 'monthly')
+			);
+		})
+		.map((member) => ({
+			employee_id: member.employee_id,
+			name: member.name,
+		}));
+
+	if (employees.length === 0) {
+		return { month, total: 0, success: 0, failed: 0, skipped: 0, errors: [] };
+	}
+
+	const employeeIds = employees.map((e) => e.employee_id);
+	const employeeNameMap = new Map(
+		employees.map((e) => [e.employee_id, e.name])
+	);
+	const memberMap = new Map(
+		roster.members.map((member) => [Number(member.employee_id), member])
+	);
+
+	// ── 2. Check for existing slips (skip duplicates in bulk) ──
+	const phExisting = employeeIds.map(() => '?').join(',');
+	const [existingSlips] = await db.execute(
+		`SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${phExisting})`,
+		[month, ...employeeIds]
+	);
+	const existingSet = new Set(existingSlips.map((r) => r.employee_id));
+	const newIds = employeeIds.filter((id) => !existingSet.has(id));
+
+	const results = {
+		month,
+		total: employees.length,
+		success: 0,
+		failed: 0,
+		skipped: existingSet.size,
+		errors: [],
+	};
+
+	if (newIds.length === 0) {
+		return results;
+	}
+
+	// ── 3. Batch-fetch effective schedules, attendance and logged hours ──
+	const payrollSchedule = await getEffectivePayrollSchedule(month, db);
+	const attendanceMap = await batchGetAttendance(db, newIds, month);
+	const hoursMap = await batchGetLoggedHours(db, newIds, month);
+
+	// ── 4. Compute all payrolls in memory and batch-insert ──
+	const BATCH_SIZE = 50;
+	const toInsert = [];
+
+	for (const empId of newIds) {
+		const member = memberMap.get(Number(empId));
+		const profile = member?.salary_profile;
+		if (!profile) {
+			results.failed++;
+			results.errors.push({
+				employee_id: empId,
+				name: employeeNameMap.get(empId),
+				error: `No active salary profile found for employee ${empId}`,
+			});
+			continue;
+		}
+
+		const defaultAtt = {
+			standardWorkingDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+			daysPresent: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+			daysAbsent: 0,
+			daysLeave: 0,
+			weeklyOff: 0,
+			holidays: 0,
+			halfDays: 0,
+			totalOvertimeHours: 0,
+			hasAttendanceData: false,
+			payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+			lopDays: 0,
+		};
+		const attendance = {
+			...(attendanceMap.get(empId) || defaultAtt),
+			loggedHours: hoursMap.get(empId) || 0,
 		};
 
-		if (newIds.length === 0) {
-			return results;
+		try {
+			// If bonusEmployeeIds is provided, only include bonus for those specific employees
+			const empIncludeBonus =
+				includeBonus &&
+				(bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
+			const payroll = computePayroll(
+				empId,
+				month,
+				profile,
+				undefined,
+				attendance,
+				empIncludeBonus,
+				payrollSchedule
+			);
+			toInsert.push(payroll);
+		} catch (err) {
+			results.failed++;
+			results.errors.push({
+				employee_id: empId,
+				name: employeeNameMap.get(empId),
+				error: err.message,
+			});
 		}
+	}
 
-		// ── 3. Batch-fetch effective schedules, profiles, attendance, hours ──
-		const payrollSchedule = await getEffectivePayrollSchedule(month, db);
-		const profileMap = await batchGetSalaryProfiles(db, newIds, month);
-		const attendanceMap = await batchGetAttendance(db, newIds, month);
-		const hoursMap = await batchGetLoggedHours(db, newIds, month);
+	// Multi-row INSERT in batches of BATCH_SIZE
+	for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+		const batch = toInsert.slice(i, i + BATCH_SIZE);
+		const singlePlaceholder = SLIP_PLACEHOLDER;
+		const allPlaceholders = batch.map(() => singlePlaceholder).join(',');
+		const allParams = batch.flatMap(payrollToParams);
 
-		// ── 4. Ensure schema once ──
-		await ensurePayrollColumns(db);
-
-		// ── 5. Compute all payrolls in memory and batch-insert ──
-		const BATCH_SIZE = 50;
-		const toInsert = [];
-
-		for (const empId of newIds) {
-			const profile = profileMap.get(empId);
-			if (!profile) {
-				results.failed++;
-				results.errors.push({
-					employee_id: empId,
-					name: employeeNameMap.get(empId),
-					error: `No active salary profile found for employee ${empId}`,
-				});
-				continue;
-			}
-
-			const defaultAtt = {
-				standardWorkingDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-				daysPresent: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-				daysAbsent: 0,
-				daysLeave: 0,
-				weeklyOff: 0,
-				holidays: 0,
-				halfDays: 0,
-				totalOvertimeHours: 0,
-				hasAttendanceData: false,
-				payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-				lopDays: 0,
-			};
-			const attendance = {
-				...(attendanceMap.get(empId) || defaultAtt),
-				loggedHours: hoursMap.get(empId) || 0,
-			};
-
-			try {
-				// If bonusEmployeeIds is provided, only include bonus for those specific employees
-				const empIncludeBonus =
-					includeBonus &&
-					(bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
-				const payroll = computePayroll(
-					empId,
-					month,
-					profile,
-					undefined,
-					attendance,
-					empIncludeBonus,
-					payrollSchedule
-				);
-				toInsert.push(payroll);
-			} catch (err) {
-				results.failed++;
-				results.errors.push({
-					employee_id: empId,
-					name: employeeNameMap.get(empId),
-					error: err.message,
-				});
-			}
-		}
-
-		// Multi-row INSERT in batches of BATCH_SIZE
-		for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
-			const batch = toInsert.slice(i, i + BATCH_SIZE);
-			const singlePlaceholder = SLIP_PLACEHOLDER;
-			const allPlaceholders = batch.map(() => singlePlaceholder).join(',');
-			const allParams = batch.flatMap(payrollToParams);
-
-			const batchSQL = `INSERT INTO payroll_slips (
+		const batchSQL = `INSERT INTO payroll_slips (
         ${SLIP_INSERT_COLUMNS.join(', ')}
       ) VALUES ${allPlaceholders}`;
 
-			try {
-				await db.query(batchSQL, allParams);
-				results.success += batch.length;
-			} catch (batchErr) {
-				// Fallback: insert one-by-one so partial success is recorded
-				for (const payroll of batch) {
-					try {
-						await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
-						results.success++;
-					} catch (singleErr) {
-						if (singleErr.code === 'ER_DUP_ENTRY') {
-							results.skipped++;
-						} else {
-							results.failed++;
-							results.errors.push({
-								employee_id: payroll.employee_id,
-								name: employeeNameMap.get(payroll.employee_id),
-								error: singleErr.message,
-							});
-						}
+		try {
+			await db.query(batchSQL, allParams);
+			results.success += batch.length;
+		} catch (batchErr) {
+			// Fallback: insert one-by-one so partial success is recorded
+			for (const payroll of batch) {
+				try {
+					await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
+					results.success++;
+				} catch (singleErr) {
+					if (singleErr.code === 'ER_DUP_ENTRY') {
+						results.skipped++;
+					} else {
+						results.failed++;
+						results.errors.push({
+							employee_id: payroll.employee_id,
+							name: employeeNameMap.get(payroll.employee_id),
+							error: singleErr.message,
+						});
 					}
 				}
 			}
 		}
-
-		db.release();
-		return results;
-	} catch (error) {
-		throw error;
-	} finally {
-		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
-		}
 	}
+
+	return results;
 }
 
 /**
  * Generate payroll slips for a list of specific employee IDs.
  * OPTIMIZED: batch-fetches data and inserts in bulk.
+ *
+ * Every requested id is checked against the shared monthly roster; an id that
+ * is not eligible (or needs employment-date review, or has no profile) is
+ * refused by name instead of being written. This closes the single/batch path
+ * as a bypass around Generate's roster.
+ *
  * @param {number[]} employeeIds - Array of employee IDs
  * @param {string} month - Payroll month (YYYY-MM-01 format)
+ * @param {boolean} includeBonus - Add the configured bonus
+ * @param {number[]|null} bonusEmployeeIds - Limit the bonus to these employees
+ * @param {object} options - `db`: caller's transaction connection
  * @returns {Promise<object>} Summary { success, failed, skipped, errors }
  */
 export async function generatePayrollSlipsBatch(
 	employeeIds,
 	month,
 	includeBonus = false,
-	bonusEmployeeIds = null
+	bonusEmployeeIds = null,
+	options = {}
 ) {
 	if (!employeeIds || employeeIds.length === 0) {
 		return { success: 0, failed: 0, skipped: 0, errors: [] };
 	}
 
-	const db = await dbConnect();
-	try {
-		// Check existing
-		const ph = employeeIds.map(() => '?').join(',');
-		const [existingSlips] = await db.execute(
-			`SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${ph})`,
-			[month, ...employeeIds]
+	// Called without the route's transaction: own the month's write lock here so
+	// a standalone call cannot write behind a finalized run or race Finalize.
+	if (!options.db) {
+		return withPayrollRunWriteLock(month, (db) =>
+			generatePayrollSlipsBatch(
+				employeeIds,
+				month,
+				includeBonus,
+				bonusEmployeeIds,
+				{ ...options, db }
+			)
 		);
-		const existingSet = new Set(existingSlips.map((r) => r.employee_id));
-		const newIds = employeeIds.filter((id) => !existingSet.has(id));
+	}
 
-		const results = {
-			success: 0,
-			failed: 0,
-			skipped: existingSet.size,
-			errors: [],
-		};
-		if (newIds.length === 0) {
-			return results;
+	const db = options.db;
+	const roster = options.roster || (await loadPayrollRunRoster(db, month));
+	const memberMap = new Map(
+		roster.members.map((member) => [Number(member.employee_id), member])
+	);
+
+	// Check existing
+	const ph = employeeIds.map(() => '?').join(',');
+	const [existingSlips] = await db.execute(
+		`SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${ph})`,
+		[month, ...employeeIds]
+	);
+	const existingSet = new Set(existingSlips.map((r) => r.employee_id));
+
+	const results = {
+		success: 0,
+		failed: 0,
+		skipped: existingSet.size,
+		errors: [],
+	};
+
+	// Validate before reading the month's attendance/hours, so an ineligible
+	// request cannot even be priced.
+	const pendingIds = [];
+	for (const employeeId of employeeIds) {
+		const empId = Number(employeeId);
+		if (existingSet.has(empId)) continue;
+
+		const member = memberMap.get(empId);
+		const refusal = payrollGenerationRefusal(member, empId, month);
+		if (refusal) {
+			results.failed++;
+			results.errors.push({
+				employee_id: empId,
+				name: member?.name,
+				employee_code: member?.employee_code,
+				reason: refusal.code,
+				review_reason: refusal.reviewReason,
+				error: refusal.message,
+			});
+			continue;
 		}
+		pendingIds.push(empId);
+	}
 
-		// Batch-fetch effective schedules, profiles, attendance, and hours.
-		const payrollSchedule = await getEffectivePayrollSchedule(month, db);
-		const profileMap = await batchGetSalaryProfiles(db, newIds, month);
-		const attendanceMap = await batchGetAttendance(db, newIds, month);
-		const hoursMap = await batchGetLoggedHours(db, newIds, month);
-		await ensurePayrollColumns(db);
-
-		for (const empId of newIds) {
-			const profile = profileMap.get(empId);
-			if (!profile) {
-				results.failed++;
-				results.errors.push({
-					employee_id: empId,
-					error: `No active salary profile found for employee ${empId}`,
-				});
-				continue;
-			}
-			const defaultAtt = {
-				standardWorkingDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-				daysPresent: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-				daysAbsent: 0,
-				daysLeave: 0,
-				weeklyOff: 0,
-				holidays: 0,
-				halfDays: 0,
-				totalOvertimeHours: 0,
-				hasAttendanceData: false,
-				payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
-				lopDays: 0,
-			};
-			const attendance = {
-				...(attendanceMap.get(empId) || defaultAtt),
-				loggedHours: hoursMap.get(empId) || 0,
-			};
-			try {
-				// If bonusEmployeeIds is provided, only include bonus for those specific employees
-				const empIncludeBonus =
-					includeBonus &&
-					(bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
-				const payroll = computePayroll(
-					empId,
-					month,
-					profile,
-					undefined,
-					attendance,
-					empIncludeBonus,
-					payrollSchedule
-				);
-				await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
-				results.success++;
-			} catch (err) {
-				if (err.code === 'ER_DUP_ENTRY') results.skipped++;
-				else {
-					results.failed++;
-					results.errors.push({ employee_id: empId, error: err.message });
-				}
-			}
-		}
-
-		db.release();
+	if (pendingIds.length === 0) {
 		return results;
-	} catch (error) {
-		throw error;
-	} finally {
+	}
+
+	// Batch-fetch effective schedules, attendance, and hours.
+	const payrollSchedule = await getEffectivePayrollSchedule(month, db);
+	const attendanceMap = await batchGetAttendance(db, pendingIds, month);
+	const hoursMap = await batchGetLoggedHours(db, pendingIds, month);
+
+	for (const empId of pendingIds) {
+		const profile = memberMap.get(empId)?.salary_profile;
+		if (!profile) {
+			// Refused above; kept as a guard against a roster changing mid-flight.
+			results.failed++;
+			results.errors.push({
+				employee_id: empId,
+				error: `No active salary profile found for employee ${empId}`,
+			});
+			continue;
+		}
+		const defaultAtt = {
+			standardWorkingDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+			daysPresent: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+			daysAbsent: 0,
+			daysLeave: 0,
+			weeklyOff: 0,
+			holidays: 0,
+			halfDays: 0,
+			totalOvertimeHours: 0,
+			hasAttendanceData: false,
+			payableDays: PAYROLL_CONFIG.STANDARD_WORKING_DAYS || 26,
+			lopDays: 0,
+		};
+		const attendance = {
+			...(attendanceMap.get(empId) || defaultAtt),
+			loggedHours: hoursMap.get(empId) || 0,
+		};
 		try {
-			db.release();
-		} catch (_) {
-			/* ignore */
+			// If bonusEmployeeIds is provided, only include bonus for those specific employees
+			const empIncludeBonus =
+				includeBonus &&
+				(bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
+			const payroll = computePayroll(
+				empId,
+				month,
+				profile,
+				undefined,
+				attendance,
+				empIncludeBonus,
+				payrollSchedule
+			);
+			await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
+			results.success++;
+		} catch (err) {
+			if (err.code === 'ER_DUP_ENTRY') results.skipped++;
+			else {
+				results.failed++;
+				results.errors.push({ employee_id: empId, error: err.message });
+			}
 		}
 	}
+
+	return results;
 }
 
 const payrollCalculator = {
 	getEffectivePayrollSchedule,
 	getEmployeeAttendance,
-	getEmployeeSalaryProfile,
 	calculateEmployeePayroll,
 	generatePayrollSlip,
 	generatePayrollSlipsBatch,
 	generateMonthlyPayroll,
+	payrollGenerationRefusal,
 };
 
 export default payrollCalculator;

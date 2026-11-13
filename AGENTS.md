@@ -23,7 +23,7 @@ Ask only when blocked on a safe or correct choice. Otherwise proceed with a stat
 - **Change authentication, security, API routes, authorization, rate limits, or uploads:** read [authentication and security](CODING_STANDARDS.md#authentication-and-security).
 - **Change queries, migrations, schemas, pools, or database-backed behavior:** read [database and data invariants](CODING_STANDARDS.md#database-and-data-invariants).
 - **Change billing, salary, payroll, timesheets, or employee costs:** read [money and payroll](CODING_STANDARDS.md#money-and-payroll).
-- **Add tests or choose checks:** read [testing and verification](CODING_STANDARDS.md#testing-and-verification).
+- **Add tests, choose checks, or change build/deployment automation:** read [testing and verification](CODING_STANDARDS.md#testing-and-verification).
 - **Run local MariaDB or the leads integration harness:** read [local database operations](docs/agents/local-database.md).
 - **Change domain terms or ADRs:** follow [the domain documentation workflow](docs/agents/domain.md).
 - **Work on GitHub issues:** follow [the issue tracker workflow](docs/agents/issue-tracker.md).

@@ -110,6 +110,13 @@ export function ProjectWiseMonthlyReport({
 												Salary Profile missing
 											</span>
 										)}
+										{!row.cost_known && !row.missing_salary_profile && (
+											<span className="mt-1 block text-sm font-normal text-amber-900">
+												{row.worked_outside_finalized_run
+													? 'Worked in month — not included in finalized payroll'
+													: 'Cost unavailable in the finalized run'}
+											</span>
+										)}
 									</td>
 									<td className="border border-black px-3 py-3 text-right tabular-nums">
 										{row.hourly_rate > 0 ? formatNumber(row.hourly_rate) : '—'}
@@ -118,10 +125,10 @@ export function ProjectWiseMonthlyReport({
 										{formatNumber(row.hours).replace(/\.00$/, '')}
 									</td>
 									<td className="border border-black px-3 py-3 text-right font-semibold tabular-nums">
-										{formatNumber(row.cost)}
-										{row.missing_salary_profile && (
+										{row.cost_known ? formatNumber(row.cost) : '—'}
+										{!row.cost_known && (
 											<span className="mt-1 block text-sm font-normal text-amber-900">
-												Unpriced placeholder
+												Unpriced · not zero
 											</span>
 										)}
 									</td>
@@ -140,7 +147,13 @@ export function ProjectWiseMonthlyReport({
 									{formatNumber(project.hours).replace(/\.00$/, '')}
 								</td>
 								<td className="border border-black px-2 py-2 text-right text-base font-bold tabular-nums">
-									{formatNumber(project.cost)}
+									{project.cost_known ? formatNumber(project.cost) : '—'}
+									{!project.cost_known && (
+										<span className="mt-1 block text-[11px] font-normal text-amber-900">
+											Unpriced · {project.unknown_cost_count} employee(s)
+											with unknown cost
+										</span>
+									)}
 									{project.missing_salary_profile_count > 0 && (
 										<span className="mt-1 block text-[11px] font-normal text-amber-900">
 											Partial cost

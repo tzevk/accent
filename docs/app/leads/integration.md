@@ -178,10 +178,14 @@ with Ctrl+C, then drop the database manually. The port stays 31369 unless
 
 ## CI
 
-`checks.yml` runs the same command against a MariaDB 10.11 service, the
-engine production uses. The service creates no database, because the harness
-creates and drops its own. No secrets beyond the ephemeral service password,
-which lives only in the workflow.
+`checks.yml` runs the same command automatically in GitHub Actions on
+`ubuntu-latest` with Node 24, against a MariaDB 10.11 service — the engine
+production uses. The service creates no database, because the harness creates
+and drops its own. No secrets beyond the ephemeral service password, which
+lives only in the workflow. Run the command in your own shell against the
+local instance when working locally; the
+[testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification)
+are canonical.
 
 ## Troubleshooting
 
