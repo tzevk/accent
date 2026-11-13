@@ -422,5 +422,14 @@ Lower-level coverage validates the 51-column pure read model, the opt-in `includ
 ## Vercel preview packaging (2026-11-13)
 
 Vercel deployment uploads exclude the Playwright harness and its configuration alongside their script dependencies.
-The harness remains available locally and in CI.
+The harness remains available for local runs.
 This prevents production type checks from loading test files whose script imports are excluded from the deployment.
+
+## Local-only repository checks (2026-11-13)
+
+The user directed that repository checks and E2E run on the local machine.
+`e2e.yml` was removed on 2026-10-10 and `checks.yml` on 2026-11-13.
+The 2026-11-12 restoration stands; only the CI execution is removed.
+Leads integration and Playwright smoke run through their npm commands locally.
+Vercel previews and deployment builds remain enabled.
+See the [testing and verification rules](../CODING_STANDARDS.md#testing-and-verification).

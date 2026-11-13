@@ -37,7 +37,7 @@ This file owns coding, security, data, and testing requirements. Read only secti
 - Route handlers still authorize each request with `getCurrentUser(request)`, `getServerAuth()`, or `ensurePermission()`. Proxy validation is not handler authorization.
 - Handler authorization caches users for 60 seconds. Call `invalidateUserCache(userId)` after changes that affect cached authorization.
 - Login creates a random 256-bit token, stores only its hash, and sets an HttpOnly, `SameSite=Lax` cookie with a 30-day expiry. Logout revokes its session; password change revokes all user sessions.
-- Public endpoints use the exact allowlist in ADR-0014 and the CI route-auth guard. Adding one requires updating both. Do not broaden public access with prefix matching; that applies only to static assets.
+- Public endpoints use the exact allowlist in ADR-0014 and the local route-auth guard. Adding one requires updating both. Do not broaden public access with prefix matching; that applies only to static assets.
 - Rate limits use platform-set `x-vercel-forwarded-for`, never client-supplied `x-forwarded-for`, together with the validated session token hash. Auth and heavy categories use shared MySQL fixed windows; other categories remain in memory. Preserve limits and storage semantics in `src/proxy.ts`.
 - Every exported API route handler must authorize with `getCurrentUser`, `getServerAuth`, or `ensurePermission`, unless a reasoned public-by-design or delegating-forwarder exception is recorded. `npm run check:route-auth` enforces this.
 - RBAC merges role and user `resource:action` permissions by set union. Field permissions use `users.field_permissions.modules[resource].crud[action]` values `hidden`, `view`, or `edit`, then `stripDisabledModules()` prunes disabled modules. A truthy `is_super_admin` bypasses checks. `canModifyTargetUser` prevents non-super-admins from changing a super-admin or a user at an equal or higher `role_hierarchy`.
@@ -66,8 +66,10 @@ This file owns coding, security, data, and testing requirements. Read only secti
 
 ## Testing and verification
 
-**Trigger: adding or changing tests, selecting checks, or running a local integration harness.**
+**Trigger: adding or changing tests, selecting checks, running a local integration harness, or changing build/test automation.**
 
+- Run repository checks and end-to-end (E2E) tests locally. Do not add or re-enable GitHub Actions without an explicit user request.
+- Vercel previews and their production builds remain enabled, separate from local test execution.
 - Prefer the lowest layer that can hold the assertion: pure logic, then component rendering, then route contracts, then browser journeys. Pure logic tests have no DB, network, or `fetch`; write them before implementation after listing failure modes.
 - Component tests render the real component with realistic payloads. Query by accessible role or label and assert observable behavior, such as accessible names, focus, and empty states. Do not fake route handlers or pin source text as proof.
 - Route tests cover API contracts, status codes, and authorization decisions. Existing route suites may mock the database where needed.
@@ -77,14 +79,15 @@ This file owns coding, security, data, and testing requirements. Read only secti
 - Do not serialize browser tests or disable parallelism to enforce ordering; combine dependent steps into one test. Do not use `page.waitForTimeout`; wait for a locator assertion or response.
 - Never use hardcoded or shared test data. Do not commit route, page, or component tests that mock their own dependencies and only assert that the mock answered.
 - The maintained Playwright harness lives in `e2e/` with orchestration in `scripts/e2e/`. It has one Chromium project and one `npm run test:e2e` command. The command creates a unique disposable MariaDB database, runs migrations with the resolved port, seeds through fixture hooks, starts an owned loopback `next dev`, verifies the app actually reads that database, runs the browser spec, and cleans up. Use `npm run test:e2e`; do not run `npx playwright test` directly because it refuses to start without the owned runtime.
-- `npm run test:e2e` is a separate required check. `npm run verify` remains the production-build/Vitest gate and intentionally does not run browser tests. CI runs the financial-smoke job against the same MariaDB 10.11 service pattern.
+- `npm run test:e2e` is a separate required local check for changed critical journeys. `npm run verify` remains the local production-build/Vitest gate and intentionally does not run browser tests.
 - The runtime refuses non-loopback hosts, database names lacking `integration`, existing databases, operational branch names, MariaDB versions other than 10.11, an unowned app port, and an existing `.next/dev/lock` or `.next/lock`. It pins `DEV_DB_*`, `STAGING_DB_*`, `PROD_DB_*`, `DB_HOST`, and `DB_PORT` for every child process. It never edits `.env`, kills, or attaches to an unowned server.
 - Journey fixtures are owned by `e2e/fixtures/hooks.ts`, which exports `seed(context)` and may export `cleanup(context)`. The context exposes the runtime, an independent reader, and the namespaced fixture helper. Fixtures use ordinary application authentication; do not add a test-only bypass, commit credentials, seed a super-admin, or grant `employees:read` to make a projection work.
 - Playwright reports, traces, and screenshots go to ignored `e2e/artifacts/`. Capture them on failure and never log passwords, session tokens, or operational Employee data.
 - The old 41-spec suite was removed on 2026-10-10 and is archived at tag `e2e-v1`; it is not the new suite's source of truth. [The removal and restoration record](docs/explanations/E2E_HARNESS_REMOVAL.md) explains that history. This is a restored minimal smoke harness, not a return of the old full suite or the old sole-E2E policy.
 - Vitest suites live beside code under `src/**/*.test.*`. Harness contracts and safety helpers are tested under `scripts/e2e/**/*.test.ts`. Existing regression coverage includes money and payroll math, leave/date/week-off logic, statutory calculations, RBAC and authorization, sanitization, punch/time-present math, and report data aggregation. Extend coverage in kind; do not recreate deleted Attendance report page-decision suites from #288.
 - Payroll API tests mock `@/utils/database` and dynamically import routes; mock-hoisting order matters, and DB mocks return `[rows, fields]`. Shared helpers live in `src/app/api/payroll/{test-perms,audit-rows}.ts`.
-- Run `npm run verify` before pushing. It includes lint, `build:prod`, and `test:run`. Subagents use this gate instead of standalone build, typecheck, or E2E commands.
+- Run `npm run verify` locally before pushing. It includes lint, `build:prod`, and `test:run`. Subagents use this gate instead of standalone build, typecheck, or E2E commands.
+- Run `npm run check:route-auth` locally when changing API routes or authorization rules.
 - `npm run build:prod` is the only working `next build` workaround: plain `npm run build` fails prerender because `.env` sets `NODE_ENV=development`. `build:prod` uses Turbopack and checks types and client bundling; `tsc --noEmit` misses client/server import-shape failures.
 - Do not start a dev server for delegated work. Only the assigned harness ticket or the orchestrator runs `npm run test:e2e`; it starts and stops its own owned server. The orchestrator performs merges and the final browser verification.
 - Before local integration or browser execution, read [local database operations](docs/agents/local-database.md) for target safety, shell configuration, Chromium setup, fixture hooks, and instance cleanup.
