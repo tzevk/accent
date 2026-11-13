@@ -418,3 +418,9 @@ Payroll Slip generation, salary calculation, the saved Payroll Run Roster, compl
 Company Days Paid is explained as an attendance credit, distinct from the payroll Payable Day; OT Hours are explained as attendance overtime, distinct from Logged Hours.
 
 Lower-level coverage validates the 51-column pure read model, the opt-in `include=company-sheet` listing projection under `payroll:read`, and the grid's rendered column count, slip link, keyboard expansion and supported-money footer with blank unsupported columns.
+
+## Vercel preview packaging (2026-11-13)
+
+Vercel deployment uploads exclude the Playwright harness and its configuration alongside their script dependencies.
+The harness remains available locally and in CI.
+This prevents production type checks from loading test files whose script imports are excluded from the deployment.
