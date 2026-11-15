@@ -6,15 +6,19 @@
  * Rate, so a disputed net-pay number can be traced back to the person who
  * changed the gross or the rate, and when.
  *
- * Two rules the callers depend on:
+ * Three rules the callers depend on:
  *
  * 1. `performed_by` is the authenticated session user, never a value from the
  *    request body — an entry whose performer is client-supplied is worse than
  *    no entry at all.
- * 2. An audit write must never break the mutation it describes. The INSERT
- *    goes through this module, which owns its own error handling and returns
- *    without throwing, the same best-effort contract as
+ * 2. By default an audit write must never break the mutation it describes. The
+ *    INSERT goes through this module, which owns its own error handling and
+ *    returns without throwing, the same best-effort contract as
  *    src/utils/activity-logger.ts.
+ * 3. A caller whose mutation is only defensible with its audit row opts into
+ *    `required: true`: the entry then rejects on a missing session performer or
+ *    a failed INSERT so the caller's transaction rolls the whole change back.
+ *    The #434 salary commands use this; nothing else does.
  *
  * It takes the caller's connection instead of opening its own so it works with
  * both payroll patterns: the pooled routes (slips, salary-profile,
@@ -32,13 +36,18 @@ export const PAYROLL_AUDIT_ENTITY = {
 };
 
 /** action values written here. The column's enum is widened by
- *  migrations/20260924170000_add_payroll_audit_reopen_action.js. */
+ *  migrations/20260924170000_add_payroll_audit_reopen_action.js, and for the
+ *  salary lifecycle by the #434 foundation migration,
+ *  migrations/20261115140000_salary_profile_revisions.ts. */
 export const PAYROLL_AUDIT_ACTION = {
 	CREATE: 'create',
 	UPDATE: 'update',
 	DELETE: 'delete',
 	FINALIZE: 'finalize',
 	REOPEN: 'reopen',
+	CORRECT: 'correct',
+	REVISE: 'revise',
+	CANCEL: 'cancel',
 };
 
 /** Row bookkeeping nobody disputes — never worth storing in a snapshot. */
@@ -84,6 +93,11 @@ export function auditSnapshot(row) {
  * @param entry.performedBy Session user id — never a request body field.
  * @param entry.oldValues   auditSnapshot() of the row read before the mutation.
  * @param entry.newValues   auditSnapshot() of the columns the mutation wrote.
+ * @param entry.required    Fail instead of returning when the entry cannot be
+ *                          written: a missing/invalid session performer or a
+ *                          failed INSERT rejects. Salary commands (#434) pass
+ *                          true so the audit row commits with the mutation;
+ *                          leave it out for the best-effort default.
  */
 export async function recordPayrollAudit(
 	db,
@@ -98,13 +112,19 @@ export async function recordPayrollAudit(
 		performedBy,
 		oldValues = null,
 		newValues = null,
+		required = false,
 	}
 ) {
 	// performed_by is NOT NULL and must be a real performer: without one the
-	// row answers nothing, so skip the write rather than fail the caller's
-	// request. Mirrors the invalid-user guard in logActivity().
+	// row answers nothing. Best-effort callers skip the write rather than fail
+	// their request; a required entry fails instead, because its mutation is
+	// only truthful if this row lands. Mirrors logActivity()'s invalid-user
+	// guard for the default path.
 	const performer = Number.parseInt(String(performedBy), 10);
 	if (!Number.isInteger(performer) || performer <= 0) {
+		if (required) {
+			throw new Error('Payroll audit entry requires a session performer');
+		}
 		console.warn(
 			'Payroll audit entry skipped: no session user to attribute it to'
 		);
@@ -131,6 +151,10 @@ export async function recordPayrollAudit(
 			]
 		);
 	} catch (error) {
+		// Best-effort callers keep their mutation; a required entry lets the
+		// original database error reach the caller's transaction so the whole
+		// change rolls back instead of committing without its audit row.
+		if (required) throw error;
 		console.error('Payroll audit log write failed:', error);
 	}
 }
