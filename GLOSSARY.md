@@ -92,6 +92,14 @@ _Avoid_: Employee Type, Employment status, Pay type
 The employee's current pay agreement — gross, derived allowances (basic/da/hra/conveyance/call allowance), applicability flags (PF/ESIC/PT/MLWF/retention/bonus/incentive/insurance), and PL/loan/advance. The input to payroll. Canonical table is `employee_salary_profile`.
 _Avoid_: Salary Structure, Compensation, Package
 
+**Salary Revision**:
+A dated version of an Employee's Salary Profile that preserves the agreed terms for that period. Later revisions retain earlier terms and leave recorded Payroll Slip amounts unchanged.
+_Avoid_: Salary overwrite, Salary Structure
+
+**Salary Correction**:
+A fix to mistaken values in an existing Salary Revision, not a change to the Employee's agreed salary. It keeps the same agreement rather than creating another Salary Revision.
+_Avoid_: Salary hike, New salary agreement
+
 **Salary Structure** (legacy):
 An earlier 25-column pay agreement in `salary_structures` (+ `salary_structure_components`). Superseded by Salary Profile; kept as read-only fallback until migration. Do not write new rows from payroll UI.
 _Avoid_: Salary Profile (when meaning the legacy table)
