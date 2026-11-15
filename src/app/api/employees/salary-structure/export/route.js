@@ -10,9 +10,11 @@ import {
 export async function GET(request) {
 	let connection;
 	try {
+		// Salary is payroll data: payroll:read is the only grant that may read it
+		// (issue #451). Employee-directory access alone must not export salary.
 		const auth = await ensurePermission(
 			request,
-			RESOURCES.EMPLOYEES,
+			RESOURCES.PAYROLL,
 			PERMISSIONS.READ
 		);
 		if (auth instanceof Response) return auth;
