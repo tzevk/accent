@@ -228,7 +228,7 @@ export const PAYROLL_STATUS_LABELS: Record<string, string> = {
 	recorded: 'Recorded',
 	estimated: 'Estimated',
 	known_zero: 'Known zero',
-	unknown: 'Unknown pricing',
+	unknown: 'Cost unavailable',
 };
 export function errorMessage(error: unknown): string {
 	return error instanceof Error

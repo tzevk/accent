@@ -8,7 +8,10 @@ const mocks = vi.hoisted(() => ({
 	mockExecute: vi.fn(),
 }));
 
-vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
+vi.mock('@/utils/database', () => ({
+	dbConnect: mocks.mockDbConnect,
+	withTransaction: vi.fn(),
+}));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
 	RESOURCES: { PAYROLL: 'payroll' },

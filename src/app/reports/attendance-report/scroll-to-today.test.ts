@@ -1,5 +1,8 @@
+// @vitest-environment node
+
 import { describe, expect, it } from 'vitest';
 import { preScrollLeft, todayDate, todaysColumn } from './scroll-to-today';
+import { execFileSync } from 'node:child_process';
 
 describe('todaysColumn', () => {
 	const days = ['2026-10-01', '2026-10-15', '2026-10-31'];
@@ -45,12 +48,27 @@ describe('preScrollLeft', () => {
 });
 
 describe('todayDate', () => {
-	it('formats the local calendar date, not a UTC day', () => {
-		// 2026-10-15 02:00 IST is 2026-10-14 20:30 UTC: a UTC reading would
-		// hand the viewer a column that is not today.
-		const local = new Date(2026, 9, 15, 2, 0, 0);
-		expect(todayDate(local)).toBe('2026-10-15');
-		expect(local.toISOString().slice(0, 10)).toBe('2026-10-14');
+	it.each([
+		['UTC', '2026-10-14T20:30:00.000Z', '2026-10-14'],
+		['Asia/Kolkata', '2026-10-14T20:30:00.000Z', '2026-10-15'],
+		['America/Los_Angeles', '2026-10-15T01:00:00.000Z', '2026-10-14'],
+	])('formats the local calendar date in %s', (timezone, instant, expected) => {
+		// Each process owns its timezone, independent of the host and other tests.
+		const moduleUrl = new URL('./scroll-to-today.ts', import.meta.url).href;
+		const actual = execFileSync(
+			process.execPath,
+			[
+				'--input-type=module',
+				'--eval',
+				`import { todayDate } from ${JSON.stringify(moduleUrl)};
+			process.stdout.write(todayDate(new Date(${JSON.stringify(instant)})));`,
+			],
+			{
+				encoding: 'utf8',
+				env: { ...process.env, TZ: timezone },
+			}
+		);
+		expect(actual).toBe(expected);
 	});
 
 	it('zero-pads single-digit months and days', () => {

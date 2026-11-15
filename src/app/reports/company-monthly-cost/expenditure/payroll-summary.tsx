@@ -84,8 +84,13 @@ export function PayrollSummary({
 		(notice) =>
 			notice.code === 'payroll_not_generated' ||
 			notice.code === 'payroll_not_finalized' ||
+			notice.code === 'payroll_slip_missing' ||
 			notice.code === 'payroll_pricing_missing' ||
-			notice.code === 'payroll_allocation_missing'
+			notice.code === 'payroll_allocation_missing' ||
+			notice.code === 'payroll_roster_unavailable' ||
+			notice.code === 'payroll_work_outside_finalized_run' ||
+			notice.code === 'payroll_outside_finalized_roster' ||
+			notice.code === 'payroll_employment_issue'
 	);
 	return (
 		<>
@@ -226,6 +231,15 @@ export function PayrollSummary({
 											data-recorded={employee.recorded_amount ?? ''}
 											data-estimated={employee.estimated_amount ?? ''}
 											data-hours={String(employee.logged_hours)}
+											data-in-saved-roster={
+												employee.in_saved_roster === null
+													? ''
+													: String(employee.in_saved_roster)
+											}
+											data-worked-outside={
+												employee.worked_outside_finalized_run ? 'true' : 'false'
+											}
+											data-slip-amount={employee.slip_amount ?? ''}
 											className="border-t border-gray-100"
 										>
 											<td className="px-3 py-2">
@@ -260,6 +274,46 @@ export function PayrollSummary({
 															{employee.allocation_missing &&
 																' · Allocation missing'}
 														</div>
+														{employee.worked_outside_finalized_run && (
+															<div
+																data-testid="payroll-worked-outside"
+																className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
+															>
+																Worked in month — not included in finalized
+																payroll
+															</div>
+														)}
+														{employee.in_saved_roster === false &&
+															!employee.worked_outside_finalized_run && (
+																<div
+																	data-testid="payroll-outside-roster"
+																	className="mt-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700"
+																>
+																	Outside finalized roster
+																</div>
+															)}
+														{employee.employment_issue && (
+															<div
+																data-testid="payroll-employment-issue"
+																className="mt-1 inline-block rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-900"
+															>
+																Employment dates need review
+															</div>
+														)}
+														{employee.allocation_missing &&
+															employee.slip_amount !== null && (
+																<div
+																	data-testid="payroll-slip-amount"
+																	className="mt-1 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900"
+																>
+																	Recorded slip{' '}
+																	{formatCurrencyIn(
+																		employee.slip_amount,
+																		data.payroll.currency
+																	)}{' '}
+																	· allocation unavailable
+																</div>
+															)}
 													</div>
 												</div>
 												{/* #308: reconstruction state and its review controls. Pending
@@ -468,6 +522,12 @@ export function PayrollSummary({
 																	data-project-code={share.project_code ?? ''}
 																	data-hours={String(share.hours)}
 																	data-amount={String(share.amount)}
+																	data-cost-known={
+																		employee.recorded_amount !== null ||
+																		employee.estimated_amount !== null
+																			? 'true'
+																			: 'false'
+																	}
 																	data-adjustment={String(
 																		share.rounding_adjustment
 																	)}
@@ -484,10 +544,13 @@ export function PayrollSummary({
 																		{formatNumber(share.hours)}
 																	</td>
 																	<td className="py-1 pr-3 text-right tabular-nums font-medium">
-																		{formatCurrencyIn(
-																			share.amount,
-																			data.payroll.currency
-																		)}
+																		{employee.recorded_amount === null &&
+																		employee.estimated_amount === null
+																			? '—'
+																			: formatCurrencyIn(
+																					share.amount,
+																					data.payroll.currency
+																				)}
 																	</td>
 																	<td className="py-1 pr-3 text-right tabular-nums text-gray-500">
 																		{share.rounding_adjustment === 0

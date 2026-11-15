@@ -42,7 +42,7 @@ export function MonthlyView({
 				month={data.month}
 				monthLabel={data.month_label}
 				totalCost={data.totals.total_cost}
-				partial={data.payroll.missing_pricing_count > 0}
+				partial={data.payroll.unpriced_count > 0}
 			/>
 		);
 	}
@@ -109,10 +109,14 @@ export function MonthlyView({
 								{formatNumber(r.hours).replace(/\.00$/, '')}
 							</td>
 							<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
-								{formatCurrency(r.cost)}
-								{r.missing_salary_profile && (
+								{r.cost_known ? formatCurrency(r.cost) : '—'}
+								{!r.cost_known && (
 									<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
-										Unpriced · Salary Profile missing
+										{r.worked_outside_finalized_run
+											? 'Worked in month — not included in finalized payroll'
+											: r.missing_salary_profile
+												? 'Unpriced · Salary Profile missing'
+												: 'Cost unavailable in the finalized run'}
 									</span>
 								)}
 							</td>
@@ -128,7 +132,7 @@ export function MonthlyView({
 							colSpan={5}
 							className="px-3 py-2.5 text-right text-sm uppercase text-[#4A1254]"
 						>
-							{data.payroll.missing_pricing_count > 0
+							{data.payroll.unpriced_count > 0
 								? 'Employee cost — partial · full-period total'
 								: 'Full-period grand total'}
 						</td>
@@ -210,7 +214,13 @@ export function MonthlyView({
 							{formatNumber(r.hours).replace(/\.00$/, '')}
 						</td>
 						<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
-							{formatCurrency(r.cost)}
+							{r.cost_known ? formatCurrency(r.cost) : '—'}
+							{!r.cost_known && (
+								<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
+									Unpriced · {r.unknown_cost_count} employee(s) with
+									unknown cost
+								</span>
+							)}
 							{r.missing_salary_profile_count > 0 && (
 								<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
 									Partial · {r.missing_salary_profile_count} missing Salary
@@ -230,7 +240,7 @@ export function MonthlyView({
 						colSpan={3}
 						className="px-3 py-2.5 text-right text-sm uppercase text-[#4A1254]"
 					>
-						{data.payroll.missing_pricing_count > 0
+						{data.payroll.unpriced_count > 0
 							? 'Employee cost — partial · full-period total'
 							: 'Full-period grand total'}
 					</td>

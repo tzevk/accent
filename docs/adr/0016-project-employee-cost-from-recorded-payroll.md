@@ -13,3 +13,10 @@ The report opens on the current month, clearly marked estimated, and prioritizes
 Include both payroll and contract pay streams, regardless of Employee Type. Do not use the Utilization report's Payroll Roster as the cost-report boundary. Disclose missing payroll or pricing data rather than silently excluding affected Employees.
 
 For already-finalized months without saved Project allocations, reconstruct once from recorded Payroll Slip employer cost and available timesheets. Mark the allocation as reconstructed, record its reconstruction date, and require review before freezing it. Do not present reconstructed shares as the original allocation at payroll finalization.
+
+The Payroll Run Roster is saved with allocation freezing at finalization.
+Locked reports preserve its membership and recorded identities even when employee dates, status, or Salary Profiles later change.
+Employees outside that saved set cannot introduce new salary-derived estimates into the locked month's totals.
+Their real Logged Hours remain visible as work not included in finalized payroll, with unknown cost rather than zero.
+Legacy finalized runs without a saved roster disclose unavailable roster history without inventing a finalization-time employee set.
+

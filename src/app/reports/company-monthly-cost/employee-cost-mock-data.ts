@@ -317,7 +317,11 @@ export function mockCostData(
 				hours: round2(line.hours),
 				cost,
 				cost_status: spec.finalized ? 'recorded' : 'estimated',
+				cost_known: true,
 				missing_salary_profile: false,
+				in_saved_roster: null,
+				worked_outside_finalized_run: false,
+				employment_issue: null,
 				recorded_cost: spec.finalized ? cost : 0,
 				estimated_cost: spec.finalized ? 0 : cost,
 			});
@@ -359,9 +363,13 @@ export function mockCostData(
 			hourly_rate: rateOf(cost, hours),
 			hours,
 			cost,
+			cost_known: true,
 			recorded_cost: recorded,
 			estimated_cost: estimated,
 			missing_salary_profile: false,
+			in_saved_roster: null,
+			worked_outside_finalized_run: false,
+			employment_issue: null,
 			project_count: new Set(
 				group
 					.filter((row) => row.project_id !== null)
@@ -394,6 +402,7 @@ export function mockCostData(
 			client_name: first.client_name,
 			hours: round2(group.reduce((sum, row) => sum + row.hours, 0)),
 			cost: round2(group.reduce((sum, row) => sum + row.cost, 0)),
+			cost_known: true,
 			recorded_cost: round2(
 				group.reduce((sum, row) => sum + row.recorded_cost, 0)
 			),
@@ -402,6 +411,7 @@ export function mockCostData(
 			),
 			employee_count: new Set(group.map((row) => row.employee_id)).size,
 			missing_salary_profile_count: 0,
+			unknown_cost_count: 0,
 		});
 	}
 	projectRows.forEach((row, index) => {
@@ -580,6 +590,10 @@ export function mockPayrollEmployees(
 				status: spec.finalized ? 'recorded' : 'estimated',
 				recorded_amount: spec.finalized ? employee.recorded_cost : null,
 				estimated_amount: spec.finalized ? null : employee.estimated_cost,
+				slip_amount: spec.finalized ? employee.recorded_cost : null,
+				in_saved_roster: null,
+				worked_outside_finalized_run: false,
+				employment_issue: null,
 				logged_hours: loggedHours,
 				project_hours: projectHours,
 				no_project_hours: noProjectHours,
@@ -663,15 +677,29 @@ export function mockFyCostData(
 					project_name: row.project_name,
 					client_name: row.client_name,
 					monthly_hours: {},
+					monthly_cost_known: {},
 					monthly_cost: {},
 					total_hours: 0,
 					total_cost: 0,
 					recorded_cost: 0,
 					estimated_cost: 0,
+					cost_known: true,
+					worked_outside_finalized_run:
+						row.worked_outside_finalized_run,
+					in_saved_roster: row.in_saved_roster,
+					employment_issue: row.employment_issue,
 					hourly_rate: 0,
 				};
 				rowsByKey[groupKey] = aggregate;
 			}
+			aggregate.monthly_cost_known[key] =
+				(aggregate.monthly_cost_known[key] ?? true) && row.cost_known;
+			aggregate.cost_known = aggregate.cost_known && row.cost_known;
+			aggregate.worked_outside_finalized_run =
+				aggregate.worked_outside_finalized_run ||
+				row.worked_outside_finalized_run;
+			aggregate.employment_issue =
+				aggregate.employment_issue ?? row.employment_issue;
 			aggregate.monthly_hours[key] = round2(
 				(aggregate.monthly_hours[key] ?? 0) + row.hours
 			);
@@ -712,12 +740,16 @@ export function mockFyCostData(
 			const first = group[0];
 			const monthlyHours: Record<string, number> = {};
 			const monthlyCost: Record<string, number> = {};
+			const monthlyCostKnown: Record<string, boolean> = {};
 			for (const key of MOCK_FY_MONTH_KEYS) {
 				monthlyHours[key] = round2(
 					group.reduce((sum, row) => sum + (row.monthly_hours[key] ?? 0), 0)
 				);
 				monthlyCost[key] = round2(
 					group.reduce((sum, row) => sum + (row.monthly_cost[key] ?? 0), 0)
+				);
+				monthlyCostKnown[key] = group.every(
+					(row) => row.monthly_cost_known[key] !== false
 				);
 			}
 			const totalHours = round2(
@@ -726,6 +758,13 @@ export function mockFyCostData(
 			const totalCost = round2(
 				group.reduce((sum, row) => sum + row.total_cost, 0)
 			);
+			const costKnown = group.every((row) => row.cost_known);
+			const workedOutside = group.some(
+				(row) => row.worked_outside_finalized_run
+			);
+			const employmentIssue = group.find(
+				(row) => row.employment_issue !== null
+			)?.employment_issue ?? null;
 			return {
 				sr_no: 0,
 				employee_id: first.employee_id,
@@ -734,10 +773,15 @@ export function mockFyCostData(
 				department: first.department,
 				designation: first.designation,
 				hourly_rate: rateOf(totalCost, totalHours),
+				monthly_cost_known: monthlyCostKnown,
 				monthly_hours: monthlyHours,
 				monthly_cost: monthlyCost,
 				total_hours: totalHours,
 				total_cost: totalCost,
+				cost_known: costKnown,
+				worked_outside_finalized_run: workedOutside,
+				in_saved_roster: first.in_saved_roster,
+				employment_issue: employmentIssue,
 				project_count: new Set(
 					group
 						.filter((row) => row.project_id !== null)
@@ -763,12 +807,16 @@ export function mockFyCostData(
 			const first = group[0];
 			const monthlyHours: Record<string, number> = {};
 			const monthlyCost: Record<string, number> = {};
+			const monthlyCostKnown: Record<string, boolean> = {};
 			for (const key of MOCK_FY_MONTH_KEYS) {
 				monthlyHours[key] = round2(
 					group.reduce((sum, row) => sum + (row.monthly_hours[key] ?? 0), 0)
 				);
 				monthlyCost[key] = round2(
 					group.reduce((sum, row) => sum + (row.monthly_cost[key] ?? 0), 0)
+				);
+				monthlyCostKnown[key] = group.every(
+					(row) => row.monthly_cost_known[key] !== false
 				);
 			}
 			return {
@@ -777,12 +825,19 @@ export function mockFyCostData(
 				project_code: first.project_code,
 				project_name: first.project_name,
 				client_name: first.client_name,
+				monthly_cost_known: monthlyCostKnown,
 				monthly_hours: monthlyHours,
 				monthly_cost: monthlyCost,
 				total_hours: round2(
 					group.reduce((sum, row) => sum + row.total_hours, 0)
 				),
 				total_cost: round2(group.reduce((sum, row) => sum + row.total_cost, 0)),
+				cost_known: group.every((row) => row.cost_known),
+				unknown_cost_count: new Set(
+					group
+						.filter((row) => !row.cost_known)
+						.map((row) => row.employee_id)
+				).size,
 				employee_count: new Set(group.map((row) => row.employee_id)).size,
 			};
 		})
@@ -797,6 +852,7 @@ export function mockFyCostData(
 
 	const monthlyHours: Record<string, number> = {};
 	const monthlyCost: Record<string, number> = {};
+	const monthlyCostKnown: Record<string, boolean> = {};
 	for (const key of MOCK_FY_MONTH_KEYS) {
 		monthlyHours[key] = round2(
 			rows.reduce((sum, row) => sum + (row.monthly_hours[key] ?? 0), 0)
@@ -804,11 +860,15 @@ export function mockFyCostData(
 		monthlyCost[key] = round2(
 			rows.reduce((sum, row) => sum + (row.monthly_cost[key] ?? 0), 0)
 		);
+		monthlyCostKnown[key] = rows.every(
+			(row) => row.monthly_cost_known[key] !== false
+		);
 	}
 	const totalHours = round2(
 		rows.reduce((sum, row) => sum + row.total_hours, 0)
 	);
 	const totalCost = round2(rows.reduce((sum, row) => sum + row.total_cost, 0));
+	const costKnown = rows.every((row) => row.cost_known);
 	const recordedCost = round2(
 		rows.reduce((sum, row) => sum + row.recorded_cost, 0)
 	);
@@ -825,10 +885,12 @@ export function mockFyCostData(
 		employee_rows: employeeRows,
 		project_rows: projectRows,
 		totals: {
+			monthly_cost_known: monthlyCostKnown,
 			monthly_hours: monthlyHours,
 			monthly_cost: monthlyCost,
 			total_hours: totalHours,
 			total_cost: totalCost,
+			cost_known: costKnown,
 			recorded_cost: recordedCost,
 			estimated_cost: estimatedCost,
 			blended_rate: rateOf(totalCost, totalHours),
@@ -836,6 +898,7 @@ export function mockFyCostData(
 		summary: {
 			total_hours: totalHours,
 			total_cost: totalCost,
+			cost_known: costKnown,
 			blended_rate: rateOf(totalCost, totalHours),
 			employee_count: Object.keys(employeeGroups).length,
 			project_count: new Set(

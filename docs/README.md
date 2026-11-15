@@ -9,6 +9,7 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | Operate payroll and check employee entry points   | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
 | Work Leads, ownership, and the legacy review flow | [Lead operator guide](app/leads/operator-guide.md)                                              |
+| Run local MariaDB, leads integration, or browser smoke | [Local database operations](agents/local-database.md)                                      |
 | Set up and operate ticket email notifications     | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
 | Understand project view and edit screens          | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
 | Understand project manhours                       | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
@@ -66,6 +67,7 @@ Read the relevant record before changing its behavior.
 | Security             | [Session validation](adr/0011-session-validation-in-proxy-and-handlers.md), [rich-text trust boundary](adr/0012-rich-text-trust-boundary.md), [rate limits](adr/0013-rate-limit-identity-and-store.md), [public endpoint allowlist](adr/0014-unauthenticated-endpoint-allowlist.md)                                                                                                                                                                                                                                      |
 | Leads                | [Legacy Lead review and the canonical Proposal](adr/0031-legacy-lead-review-and-canonical-proposal.md), [the Lead activity log and the conversion handoff](adr/0032-lead-activity-log-and-conversion-handoff.md)                                                                                                                                                                                                                                                                                                         |
 | Projects             | [Membership, shared lead policy, and explicit project scopes](adr/0034-project-membership-lead-policy-and-explicit-scopes.md) — implemented in issue #410.                                                                                                                                                                                                                                                                                                                                                               |
+| Proposal pricing | [Reviewed cost assumptions and confidentiality](adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md) — agreed design boundaries; not implemented. |
 
 ## Audit records and change history
 

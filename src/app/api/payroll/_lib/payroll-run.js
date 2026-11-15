@@ -10,6 +10,11 @@
 
 import { R, add, sub, toNumber } from '@/lib/money';
 import { ptAdjustmentFor, slipFigures } from '@/lib/payroll';
+import { withTransaction } from '@/utils/database';
+import {
+	loadFrozenPayrollRunRoster,
+	loadPayrollRunRoster,
+} from '@/lib/payroll-run-roster';
 
 /** Run statuses that lock the month against regenerating its Payroll Slips. */
 const LOCKED_STATUSES = ['finalized', 'paid'];
@@ -42,13 +47,19 @@ export function payrollPeriod(month) {
 	};
 }
 
-/** The month's Payroll Run, or null when the month was never generated. */
-export async function findPayrollRun(db, period) {
+/**
+ * The month's Payroll Run, or null when the month was never generated.
+ *
+ * Pass `{ forUpdate: true }` only on the connection that owns the write
+ * transaction: the row lock is what serialises Generate, Finalize and Reopen
+ * for the same month. A lookup on a short-lived connection does not hold.
+ */
+export async function findPayrollRun(db, period, options = {}) {
 	const [rows] = await db.execute(
 		`SELECT ${RUN_COLUMNS}
        FROM payroll_runs
       WHERE month = ? AND year = ? AND run_number = 1
-      LIMIT 1`,
+      LIMIT 1${options.forUpdate ? ' FOR UPDATE' : ''}`,
 		[period.monthNumber, period.year]
 	);
 	return rows[0] || null;
@@ -123,126 +134,96 @@ export async function createDraftPayrollRun(db, period) {
 }
 
 /**
- * Active, non-deleted employees with a Salary Profile covering the month but no
- * Payroll Slip for it — the first Finalize gate group.
+ * Run a Payroll Slip writer on a transaction that owns the month's Payroll Run
+ * row lock.
  *
- * `e.isDelete = 0` is essential: employee deletion is soft (it sets isDelete and
- * leaves status 'active'), so without it a deleted employee with a live profile
- * would block Finalize forever and be named as missing.
+ * Every exported generator can be called without a caller-supplied connection.
+ * In that case it must not simply open a connection and insert: the route-only
+ * check would be stale before the INSERT. This wrapper starts the write
+ * transaction, takes `SELECT ... FOR UPDATE` on the run (creating the draft on
+ * a month's first write), refuses a finalized/paid month, and hands the locked
+ * connection to the writer. Callers that already own that transaction pass
+ * their connection instead and call the generator directly.
  *
- * Mirrors the population `generateMonthlyPayroll` generates for (canonical
- * `employee_salary_profile`, falling back to legacy `salary_structures`), so
- * this group is always clearable by generating again. It carries no salary_type
- * filter, so it covers both Employee Type streams — stream membership lives on
- * the Salary Profile (`salary_type` / `pay_type`), not on
- * `employees.employee_type`.
+ * A locked run throws a retryable 409-shaped error rather than writing slips
+ * behind Finalize's back.
  */
-export async function findEmployeesMissingSlips(db, month) {
-	const [rows] = await db.execute(
-		`SELECT e.id AS employee_id,
-            e.employee_id AS employee_code,
-            CONCAT(e.first_name, ' ', e.last_name) AS name
-       FROM employees e
-      WHERE (e.status = 'active' OR e.status IS NULL)
-        AND e.isDelete = 0
-        AND (
-          EXISTS (
-            SELECT 1 FROM employee_salary_profile esp
-             WHERE esp.employee_id = e.id AND esp.is_active = 1
-               AND esp.effective_from <= ?
-               AND (esp.effective_to IS NULL OR esp.effective_to >= ?)
-          )
-          OR EXISTS (
-            SELECT 1 FROM salary_structures ss
-             WHERE ss.employee_id = e.id AND ss.is_active = 1
-               AND ss.effective_from <= ?
-               AND (ss.effective_to IS NULL OR ss.effective_to >= ?)
-          )
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM payroll_slips ps
-           WHERE ps.employee_id = e.id AND ps.month = ?
-        )
-      ORDER BY e.first_name, e.last_name`,
-		[month, month, month, month, month]
-	);
-	return rows;
-}
+export async function withPayrollRunWriteLock(month, fn) {
+	const period = payrollPeriod(month);
+	if (!period) {
+		throw new Error(`Invalid month format. Use YYYY-MM-01`);
+	}
 
-/**
- * Active, non-deleted employees typed Payroll or Contract who have NO Salary
- * Profile covering the month — the second Finalize gate group.
- *
- * `e.isDelete = 0` matters here too: a deleted employee cannot have their
- * Employee Type corrected through the API (that UPDATE also filters on
- * isDelete = 0), so including them would strand the month.
- *
- * Generate cannot compute a Payroll Slip for these people at all, so unlike the
- * missing-slip group this one is NOT cleared by generating again: the fix is
- * master data (write a Salary Profile, or correct the Employee Type). They are
- * reported separately from the missing-slip group so a refusal can say which
- * fix applies.
- *
- * Employees who already have a slip are excluded — their salary is already on
- * the month, so a missing profile is not an omission worth blocking on.
- */
-export async function findEmployeesWithoutProfiles(db, month) {
-	const [rows] = await db.execute(
-		`SELECT e.id AS employee_id,
-            e.employee_id AS employee_code,
-            e.employee_type,
-            CONCAT(e.first_name, ' ', e.last_name) AS name
-       FROM employees e
-      WHERE (e.status = 'active' OR e.status IS NULL)
-        AND e.isDelete = 0
-        AND e.employee_type IN ('Payroll', 'Contract')
-        AND NOT EXISTS (
-          SELECT 1 FROM employee_salary_profile esp
-           WHERE esp.employee_id = e.id AND esp.is_active = 1
-             AND esp.effective_from <= ?
-             AND (esp.effective_to IS NULL OR esp.effective_to >= ?)
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM salary_structures ss
-           WHERE ss.employee_id = e.id AND ss.is_active = 1
-             AND ss.effective_from <= ?
-             AND (ss.effective_to IS NULL OR ss.effective_to >= ?)
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM payroll_slips ps
-           WHERE ps.employee_id = e.id AND ps.month = ?
-        )
-      ORDER BY e.first_name, e.last_name`,
-		[month, month, month, month, month]
-	);
-	return rows;
+	return withTransaction(async (db) => {
+		let run = await findPayrollRun(db, period, { forUpdate: true });
+		if (isRunLocked(run)) {
+			throw Object.assign(
+				new Error(
+					`The Payroll Run for ${period.month} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`
+				),
+				{ code: 'payroll_run_locked', status: 409 }
+			);
+		}
+
+		if (!run) {
+			await createDraftPayrollRun(db, period);
+			run = await findPayrollRun(db, period, { forUpdate: true });
+			if (isRunLocked(run)) {
+				throw Object.assign(
+					new Error(
+						`The Payroll Run for ${period.month} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`
+					),
+					{ code: 'payroll_run_locked', status: 409 }
+				);
+			}
+		}
+
+		if (!run) {
+			throw new Error(
+				`The Payroll Run for ${period.month} could not be created.`
+			);
+		}
+
+		return fn(db, run);
+	});
 }
 
 /**
  * Every Payroll Slip of the month with the columns the run lock, the payment
- * state and the Finalize sign-off read.
+ * state, the Finalize sign-off and the roster completeness check read.
  *
  * One run covers both Employee Type streams, so "the month's slips" is always
  * the whole month and never one stream's subset — the run-level paid indicator
  * and the reopen block both have to look at every slip the run pays.
+ *
+ * The employee identity is joined here (not inferred from a live roster) so a
+ * slip whose employee has left, been renamed or been soft-deleted can still be
+ * named while Finalize reports it as unexpected or reopens the month.
  */
 export async function findMonthSlips(db, month) {
 	const [slips] = await db.execute(
-		`SELECT id, employee_id, payment_status, payment_date, payment_reference,
-              gross, total_earnings, total_deductions, net_pay, pt,
-              total_employer_contributions
-       FROM payroll_slips
-      WHERE month = ?
-      ORDER BY id`,
+		`SELECT ps.id, ps.employee_id, ps.payment_status, ps.payment_date,
+              ps.payment_reference, ps.gross, ps.total_earnings,
+              ps.total_deductions, ps.net_pay, ps.pt,
+              ps.total_employer_contributions,
+              e.employee_id AS employee_code,
+              CONCAT(e.first_name, ' ', e.last_name) AS name
+       FROM payroll_slips ps
+       LEFT JOIN employees e ON e.id = ps.employee_id
+      WHERE ps.month = ?
+      ORDER BY ps.id`,
 		[month]
 	);
 	return slips;
 }
 
 /**
- * Headcount, money totals and payment progress of the month's Payroll Slips.
+ * Headcount, money totals and payment progress of a list of Payroll Slips.
  * Money is summed with the money library (never float arithmetic); these are
  * the numbers Finalize signs off on and records on the run.
+ *
+ * Split from the query so Finalize can lock/read the month's slips once, check
+ * them against the roster, and still sign off the exact rows it validated.
  *
  * `is_paid` is the run-level paid indicator (issue #245), derived from the
  * slips themselves: true only when every slip of the month is paid. It is never
@@ -250,8 +231,7 @@ export async function findMonthSlips(db, month) {
  * one slip leaves `paid`, this returns to false. A month with no slips is not
  * paid.
  */
-export async function summarizeMonthSlips(db, month) {
-	const slips = await findMonthSlips(db, month);
+export function summarizeSlipRows(slips, month) {
 	const sum = (pick) =>
 		toNumber(slips.reduce((total, slip) => add(total, pick(slip)), R(0)));
 	const paidSlips = slips.filter(
@@ -283,5 +263,107 @@ export async function summarizeMonthSlips(db, month) {
 		),
 		paid_slips: paidSlips,
 		is_paid: slips.length > 0 && paidSlips === slips.length,
+	};
+}
+
+/** Headcount, money totals and payment progress of the month's Payroll Slips. */
+export async function summarizeMonthSlips(db, month) {
+	return summarizeSlipRows(await findMonthSlips(db, month), month);
+}
+
+/**
+ * The admin completeness panel's exact contract.
+ *
+ * `basis` says which membership source answered:
+ *  - `live`   — the month is a draft (or was never generated), so eligibility
+ *               is resolved from current employment dates and pay agreements.
+ *  - `frozen` — the run is locked and has a saved finalization roster. Counts
+ *               come from that immutable snapshot, never current profiles.
+ *  - `legacy` — the run is locked but predates saved rosters. `eligible_count`
+ *               is null because the original membership cannot be verified;
+ *               only the slips that actually exist are promised.
+ *
+ * `can_finalize` is a UI preflight only; Finalize independently validates the
+ * same roster and names the people behind every non-zero gap.
+ */
+export async function loadPayrollRunReadiness(db, period, run, slips) {
+	const slipEmployeeIds = new Set(
+		slips.map((slip) => Number(slip.employee_id))
+	);
+	const slipCount = slips.length;
+
+	if (isRunLocked(run)) {
+		const frozen = await loadFrozenPayrollRunRoster(db, period.month);
+		if (frozen) {
+			const memberIds = new Set(
+				frozen.members.map((member) => Number(member.employee_id))
+			);
+			return {
+				basis: 'frozen',
+				eligible_count: frozen.members.length,
+				slip_count: slipCount,
+				missing_slip_count: frozen.members.filter(
+					(member) => !slipEmployeeIds.has(Number(member.employee_id))
+				).length,
+				missing_profile_count: 0,
+				employment_issue_count: 0,
+				unexpected_slip_count: slips.filter(
+					(slip) => !memberIds.has(Number(slip.employee_id))
+				).length,
+				excluded_count: 0,
+				can_finalize: false,
+			};
+		}
+
+		// Locked legacy run: do not promise a completeness the data cannot prove.
+		return {
+			basis: 'legacy',
+			eligible_count: null,
+			slip_count: slipCount,
+			missing_slip_count: 0,
+			missing_profile_count: 0,
+			employment_issue_count: 0,
+			unexpected_slip_count: 0,
+			excluded_count: 0,
+			can_finalize: false,
+		};
+	}
+
+	const roster = await loadPayrollRunRoster(db, period.month);
+	const members = roster.members;
+	const reviewCount = members.filter((member) => member.issue).length;
+	const profileGapCount = members.filter(
+		(member) => !member.issue && !member.salary_profile
+	).length;
+	const eligible = members.filter(
+		(member) => !member.issue && member.salary_profile
+	);
+	const memberIds = new Set(
+		members.map((member) => Number(member.employee_id))
+	);
+	const missingSlipCount = eligible.filter(
+		(member) => !slipEmployeeIds.has(Number(member.employee_id))
+	).length;
+	const unexpectedSlipCount = slips.filter(
+		(slip) => !memberIds.has(Number(slip.employee_id))
+	).length;
+
+	return {
+		basis: 'live',
+		eligible_count: eligible.length,
+		slip_count: slipCount,
+		missing_slip_count: missingSlipCount,
+		missing_profile_count: profileGapCount,
+		employment_issue_count: reviewCount,
+		unexpected_slip_count: unexpectedSlipCount,
+		excluded_count: roster.excluded.length,
+		can_finalize:
+			!!run &&
+			run.status === 'draft' &&
+			eligible.length > 0 &&
+			missingSlipCount === 0 &&
+			profileGapCount === 0 &&
+			reviewCount === 0 &&
+			unexpectedSlipCount === 0,
 	};
 }

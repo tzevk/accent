@@ -82,6 +82,38 @@ It is not a forecast of hours that Employees have not logged.
 It can change while payroll is not finalized.
 See the [Payroll operator guide](../payroll/operator-guide.md) for the pay formula and review process.
 
+### Paid payroll with incomplete report coverage
+
+**Paid** means every existing Payroll Slip in the run is paid.
+New finalizations validate and save the full Payroll Run Roster before payment.
+Historical runs without a saved roster cannot prove original employee coverage.
+The report states that limitation instead of rebuilding the roster from today's employee list.
+
+Read the specific payroll warnings in **Financial close** and inspect **Payroll detail**.
+Missing slips, missing profiles, and missing frozen allocations are separate evidence gaps.
+These counts can overlap; do not add them to count affected Employees.
+The report does not describe these gaps as pending finalization when the run is already finalized.
+
+For draft payroll, review profiles, generate missing slips, then finalize after reviewing the run.
+For a finalized or paid run, ask the payroll owner to review missing employee coverage.
+Paid slips prevent reopening; pay corrections belong in the next month's run.
+For historical slips without frozen allocations, use the reviewed allocation-reconstruction workflow.
+
+For draft months, Generate, Finalize, and this report share monthly employment eligibility.
+A November joiner does not enter October just because a Salary Profile was backdated.
+An Employee entered in November who actually joined in October can belong to October.
+Mid-month joiners and leavers remain eligible for the days their employment intersects the month.
+Missing or inconsistent employment dates require payroll review.
+
+For locked months, later employee or profile changes do not recruit Employees into the saved roster.
+Real Logged Hours outside that roster remain visible as work not included in finalized payroll.
+The related employee cost stays unknown rather than becoming a new salary estimate or an assumed zero.
+Inspect those Employees in **Payroll detail** and review any pay correction with the payroll owner.
+
+Payroll finalization freezes employee-cost attribution.
+Financial close separately freezes the company's reviewed monthly figures.
+Paying payroll does not close the financial month.
+
 ### Partial total and zero
 
 **Partial** means some employee costs cannot be calculated.
@@ -146,7 +178,7 @@ A missing or incompatible budget does not mean the Project has no cost.
 | Situation                                | Action                                                                                                                             |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Missing Salary Profile                   | Open **Employee Cost — Month** to identify affected Employees. Review their Salary Profiles in **Employees**.                      |
-| A profile exists but the warning remains | Check the selected month, active profile, and effective dates. The report selects a profile covering the month's first day.        |
+| A profile exists but the warning remains | Check employment dates and the active profile's effective dates. It must cover the later of employment start and the month's first day. |
 | Historical profile dates are uncertain   | Ask the payroll owner to review the agreement. Do not backdate a profile just to remove a warning.                                 |
 | Employee cost seems too low              | Check Logged Hours and payroll settings. The estimate is not automatically the Employee's full monthly CTC.                        |
 | Unallocated payroll is high              | Inspect **Payroll detail** and the Employee's shares for **No project** or **No logged hours**.                                    |

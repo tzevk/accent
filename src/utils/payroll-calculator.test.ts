@@ -3,14 +3,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock database module before importing payroll-calculator
 vi.mock('@/utils/database', () => ({
 	dbConnect: vi.fn(),
+	withTransaction: vi.fn(),
+}));
+vi.mock('@/lib/payroll-run-roster', () => ({
+	loadPayrollRunRoster: vi.fn(),
+	loadFrozenPayrollRunRoster: vi.fn(),
 }));
 
 // Static imports after mock
-import { dbConnect } from '@/utils/database';
+import { dbConnect, withTransaction } from '@/utils/database';
+import { loadPayrollRunRoster } from '@/lib/payroll-run-roster';
 import {
+	PayrollGenerationError,
 	calculateEmployeePayroll,
 	computePayroll,
+	generateMonthlyPayroll,
+	generatePayrollSlip,
+	generatePayrollSlipsBatch,
 	getEffectivePayrollSchedule,
+	payrollGenerationRefusal,
 } from '@/utils/payroll-calculator';
 import PAYROLL_CONFIG from '@/utils/payroll-config';
 
@@ -276,6 +287,7 @@ describe('getEffectivePayrollSchedule DA resolution (canonical Component Rates o
 describe('calculateEmployeePayroll — hours-based pay', () => {
 	beforeEach(() => {
 		vi.mocked(dbConnect).mockReset();
+		vi.mocked(loadPayrollRunRoster).mockReset();
 	});
 
 	/** DB stub routing by SQL so call order never matters. */
@@ -283,22 +295,6 @@ describe('calculateEmployeePayroll — hours-based pay', () => {
 		return {
 			executed: [] as string[],
 			execute: vi.fn(async (sql: string) => {
-				if (sql.includes('FROM employee_salary_profile')) {
-					return [
-						[
-							{
-								employee_id: 7,
-								employer_cost: 26_000,
-								gross_salary: 20_000,
-								pf_applicable: 0,
-								esic_applicable: 0,
-								pt_applicable: 0,
-								effective_from: '2026-01-01',
-							},
-						],
-						undefined,
-					];
-				}
 				if (sql.includes('FROM user_activity_assignments')) {
 					return [
 						[
@@ -334,8 +330,32 @@ describe('calculateEmployeePayroll — hours-based pay', () => {
 		};
 	}
 
-	it('prices the month from the logged assignment hours', async () => {
-		vi.mocked(dbConnect).mockResolvedValue(payrollDb() as never);
+	it('prices the month from the logged assignment hours and the roster profile', async () => {
+		const db = payrollDb();
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+		vi.mocked(loadPayrollRunRoster).mockResolvedValue({
+			month: '2026-06-01',
+			members: [
+				{
+					employee_id: 7,
+					employee_code: 'EMP007',
+					name: 'Asha Rao',
+					employee_type: 'Payroll',
+					employment_start: '2026-01-01',
+					employment_end: null,
+					profile_date: '2026-06-01',
+					salary_profile: {
+						...makeProfile(20_000),
+						employer_cost: 26_000,
+					},
+					profile_source: 'employee_salary_profile',
+					profile_id: 3,
+					salary_type: 'monthly',
+					issue: null,
+				},
+			],
+			excluded: [],
+		} as never);
 
 		const payroll = await calculateEmployeePayroll(7, '2026-06-01');
 
@@ -346,5 +366,259 @@ describe('calculateEmployeePayroll — hours-based pay', () => {
 		expect(payroll?.logged_hours).toBe(12);
 		expect(payroll?.gross).toBe(1_500);
 		expect(payroll?.total_earnings).toBe(1_500);
+	});
+
+	it('returns null for an employee the roster does not cover', async () => {
+		const db = payrollDb();
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+		vi.mocked(loadPayrollRunRoster).mockResolvedValue({
+			month: '2026-06-01',
+			members: [],
+			excluded: [],
+		} as never);
+
+		expect(await calculateEmployeePayroll(7, '2026-06-01')).toBeNull();
+	});
+});
+
+describe('payrollGenerationRefusal — one eligibility rule for every generation path', () => {
+	const member = (overrides: Record<string, unknown> = {}) => ({
+		employee_id: 7,
+		employee_code: 'EMP007',
+		name: 'Asha Rao',
+		employee_type: 'Payroll',
+		employment_start: '2026-01-01',
+		employment_end: null,
+		profile_date: '2026-08-01',
+		salary_profile: makeProfile(30_000),
+		profile_source: 'employee_salary_profile',
+		profile_id: 3,
+		salary_type: 'monthly',
+		issue: null,
+		...overrides,
+	});
+
+	it('allows an eligible member', () => {
+		expect(payrollGenerationRefusal(member(), 7, '2026-08-01')).toBeNull();
+	});
+
+	it('refuses an employee the roster does not contain', () => {
+		const refusal = payrollGenerationRefusal(null, 99, '2026-08-01');
+		expect(refusal).toBeInstanceOf(PayrollGenerationError);
+		expect(refusal).toMatchObject({
+			status: 422,
+			code: 'payroll_member_not_found',
+			employeeId: 99,
+		});
+	});
+
+	it('refuses an employment-date review with the named reason', () => {
+		const refusal = payrollGenerationRefusal(
+			member({ issue: 'employment_dates_missing' }),
+			7,
+			'2026-08-01'
+		);
+		expect(refusal).toMatchObject({
+			status: 422,
+			code: 'payroll_employment_review',
+			reviewReason: 'employment_dates_missing',
+		});
+		expect(refusal?.message).toMatch(/employment dates are missing/);
+	});
+
+	it('refuses a member without a Salary Profile', () => {
+		const refusal = payrollGenerationRefusal(
+			member({ salary_profile: null }),
+			7,
+			'2026-08-01'
+		);
+		expect(refusal).toMatchObject({
+			status: 400,
+			code: 'payroll_profile_missing',
+		});
+		expect(refusal?.message).toContain('No active salary profile');
+	});
+});
+
+describe('payroll generation — the shared roster is the only population', () => {
+	beforeEach(() => {
+		vi.mocked(dbConnect).mockReset();
+		vi.mocked(withTransaction).mockReset();
+		vi.mocked(loadPayrollRunRoster).mockReset();
+	});
+
+	const member = (
+		employeeId: number,
+		overrides: Record<string, unknown> = {}
+	) => ({
+		employee_id: employeeId,
+		employee_code: `EMP00${employeeId}`,
+		name: `Employee ${employeeId}`,
+		employee_type: 'Payroll',
+		employment_start: '2026-01-01',
+		employment_end: null,
+		profile_date: '2026-08-01',
+		salary_profile: makeProfile(30_000),
+		profile_source: 'employee_salary_profile',
+		profile_id: employeeId,
+		salary_type: 'monthly',
+		issue: null,
+		...overrides,
+	});
+
+	/** One connection for the insert writes and for the holiday read. */
+	function generationDb(existingSlipIds: number[] = []) {
+		const inserted: unknown[][] = [];
+		const db = {
+			execute: vi.fn(async (sql: string, params: unknown[] = []) => {
+				const text = String(sql);
+				if (text.includes('INSERT INTO payroll_slips')) {
+					inserted.push(params);
+					return [{ insertId: inserted.length, affectedRows: 1 }, undefined];
+				}
+				if (text.includes('FROM payroll_slips')) {
+					return [
+						existingSlipIds.map((employee_id) => ({ employee_id })),
+						undefined,
+					];
+				}
+				if (text.includes('FROM payroll_schedules')) {
+					return [[], undefined];
+				}
+				return [[], undefined];
+			}),
+			query: vi.fn(async (_sql: string, params: unknown[]) => {
+				inserted.push(params);
+				return [{ affectedRows: 1 }, undefined];
+			}),
+			release: vi.fn(),
+		};
+		return { db, inserted };
+	}
+
+	it('generates for an eligible leaver and skips an employee who already has a slip', async () => {
+		const { db, inserted } = generationDb([11]);
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+		vi.mocked(loadPayrollRunRoster).mockResolvedValue({
+			month: '2026-08-01',
+			members: [
+				member(11),
+				// Inactive leaver with a mid-month exit: still employed this month.
+				member(12, {
+					employment_end: '2026-08-15',
+					employee_type: 'Contract',
+					salary_type: 'contract',
+				}),
+				// Payroll/Contract candidates with gaps never generate; Finalize names them.
+				member(13, { salary_profile: null }),
+				member(14, {
+					employment_start: null,
+					issue: 'employment_dates_missing',
+				}),
+			],
+			excluded: [],
+		} as never);
+
+		const results = await generateMonthlyPayroll(
+			'2026-08-01',
+			null,
+			false,
+			null,
+			{ db: db as never }
+		);
+
+		expect(results).toMatchObject({
+			total: 2,
+			success: 1,
+			failed: 0,
+			skipped: 1,
+		});
+		expect(inserted).toHaveLength(1);
+		// SLIP_INSERT_COLUMNS: month first, employee_id second.
+		expect(inserted[0][1]).toBe(12);
+	});
+
+	it('refuses a directly requested employee the roster does not cover', async () => {
+		const { db, inserted } = generationDb([]);
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+		vi.mocked(loadPayrollRunRoster).mockResolvedValue({
+			month: '2026-08-01',
+			members: [member(11)],
+			excluded: [
+				{
+					employee_id: 99,
+					employee_code: 'EMP099',
+					name: 'Off Roster',
+					reason: 'not_employed',
+				},
+			],
+		} as never);
+
+		const results = await generatePayrollSlipsBatch(
+			[11, 99],
+			'2026-08-01',
+			false,
+			null,
+			{ db: db as never }
+		);
+
+		expect(results.success).toBe(1);
+		expect(results.failed).toBe(1);
+		expect(results.errors[0]).toMatchObject({
+			employee_id: 99,
+			reason: 'payroll_member_not_found',
+		});
+		expect(inserted).toHaveLength(1);
+		expect(inserted[0][1]).toBe(11);
+	});
+
+	it('refuses a single slip for an employee the roster does not cover', async () => {
+		const { db, inserted } = generationDb([]);
+		vi.mocked(dbConnect).mockResolvedValue(db as never);
+		vi.mocked(loadPayrollRunRoster).mockResolvedValue({
+			month: '2026-08-01',
+			members: [],
+			excluded: [],
+		} as never);
+
+		await expect(
+			generatePayrollSlip(99, '2026-08-01', { db: db as never })
+		).rejects.toMatchObject({
+			code: 'payroll_member_not_found',
+			status: 422,
+		});
+		expect(inserted).toHaveLength(0);
+	});
+
+	it('takes the run row lock when called without a caller transaction', async () => {
+		const db = {
+			execute: vi.fn(async (sql: string) =>
+				String(sql).includes('FROM payroll_runs')
+					? [
+							[
+								{
+									id: 7,
+									month: 8,
+									year: 2026,
+									run_number: 1,
+									status: 'finalized',
+								},
+							],
+							undefined,
+						]
+					: [[], undefined]
+			),
+			query: vi.fn(),
+			release: vi.fn(),
+		};
+		vi.mocked(withTransaction).mockImplementation(async (fn) =>
+			fn(db as never)
+		);
+
+		await expect(generateMonthlyPayroll('2026-08-01')).rejects.toMatchObject({
+			code: 'payroll_run_locked',
+			status: 409,
+		});
+		expect(db.query).not.toHaveBeenCalled();
 	});
 });

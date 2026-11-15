@@ -29,21 +29,26 @@ import {
 	type AssignmentResolutionRow,
 } from '@/lib/logged-hours-source';
 import {
-	calculatePayroll,
-	normalizeSalaryProfile,
-} from '@/utils/payroll-calculation';
+	loadFrozenPayrollRunRoster,
+	loadPayrollRunRoster,
+	type FrozenPayrollRunRoster,
+} from '@/lib/payroll-run-roster';
+import { calculatePayroll } from '@/utils/payroll-calculation';
 import {
 	getEffectivePayrollSchedule,
 	getWorkingDaysForMonth,
+	type EffectivePayrollSchedule,
 } from '@/utils/payroll-calculator';
 import type { SqlConnection } from './records';
 import type {
 	CoverageNotice,
 	PayrollEmployeeCost,
+	PayrollEmploymentIssue,
 	PayrollExpenditure,
 	PayrollHourLine,
 	PayrollProjectShare,
 	PayrollReconstructionSummary,
+	PayrollRosterState,
 } from './types';
 
 /** The currency Payroll Slips are recorded in — the company's own payroll. */
@@ -206,15 +211,6 @@ function str(row: DbRow, key: string): string | null {
 	return typeof value === 'string' ? value : String(value);
 }
 
-interface EmployeeIdentity {
-	id: number;
-	code: string;
-	name: string;
-	status: string | null;
-	isDeleted: boolean;
-	employeeType: string | null;
-}
-
 interface SlipRow {
 	id: number;
 	employeeId: number;
@@ -243,106 +239,18 @@ interface MonthHours {
 	byEmployee: Map<number, PayrollHourLine[]>;
 }
 
-async function loadEmployees(
-	db: SqlConnection
-): Promise<Map<number, EmployeeIdentity>> {
-	const [rows] = await db.execute(
-		`SELECT id, employee_id,
-            CONCAT_WS(' ', first_name, last_name) AS name,
-            status, isDelete, employee_type
-       FROM employees`
-	);
-	const employees = new Map<number, EmployeeIdentity>();
-	for (const row of rows as DbRow[]) {
-		const id = num(row, 'id');
-		if (id === null) continue;
-		employees.set(id, {
-			id,
-			code: str(row, 'employee_id') ?? `#${id}`,
-			name: str(row, 'name')?.trim() || `Employee #${id}`,
-			status: str(row, 'status'),
-			isDeleted: Number(num(row, 'isDelete') ?? 0) === 1,
-			employeeType: str(row, 'employee_type'),
-		});
-	}
-	return employees;
+/** The payroll calculator's month working-day figures the estimate reads. */
+interface MonthWorkingDays {
+	workingDays: number;
 }
 
-interface ProfileRow {
-	canonical: DbRow | null;
-	legacy: DbRow | null;
-}
-
-async function loadProfiles(
-	db: SqlConnection
-): Promise<Map<number, ProfileRow[]>> {
-	const profiles = new Map<number, ProfileRow[]>();
-	const [canonicalRows] = await db.execute(
-		`SELECT * FROM employee_salary_profile WHERE is_active = 1`
-	);
-	for (const row of canonicalRows as DbRow[]) {
-		const employeeId = num(row, 'employee_id');
-		if (employeeId === null) continue;
-		const list = profiles.get(employeeId) ?? [];
-		list.push({ canonical: row, legacy: null });
-		profiles.set(employeeId, list);
-	}
-	const [legacyRows] = await db.execute(
-		`SELECT * FROM salary_structures WHERE is_active = 1`
-	);
-	for (const row of legacyRows as DbRow[]) {
-		const employeeId = num(row, 'employee_id');
-		if (employeeId === null) continue;
-		const list = profiles.get(employeeId) ?? [];
-		list.push({ canonical: null, legacy: row });
-		profiles.set(employeeId, list);
-	}
-	return profiles;
-}
-
-/**
- * The profile in force on the first day of `month`. The eligible canonical
- * Salary Profile always wins; the legacy `salary_structures` row is only used
- * when no canonical profile covers the month (as a field fallback alongside a
- * chosen canonical, exactly like `batchGetSalaryProfiles` in the payroll
- * calculator, so the report's estimate cannot disagree with the slip Payroll
- * Generate would price).
- */
-function profileForMonth(
-	rows: ProfileRow[] | undefined,
-	monthDay: string
-): DbRow | null {
-	if (!rows || rows.length === 0) return null;
-	const covers = (row: DbRow) => {
-		const from = str(row, 'effective_from');
-		const to = str(row, 'effective_to');
-		const fromDay = from ? from.slice(0, 10) : null;
-		const toDay = to ? to.slice(0, 10) : null;
-		if (fromDay && fromDay > monthDay) return false;
-		if (toDay && toDay < monthDay) return false;
-		return true;
-	};
-	const rank = (row: DbRow) => {
-		const from = str(row, 'effective_from')?.slice(0, 10) ?? '';
-		const id = num(row, 'id') ?? 0;
-		return { from, id };
-	};
-	const newestEligible = (side: 'canonical' | 'legacy'): DbRow | null => {
-		const eligible = rows
-			.map((entry) => entry[side])
-			.filter((row): row is DbRow => row !== null && covers(row));
-		if (eligible.length === 0) return null;
-		eligible.sort((a, b) => {
-			const left = rank(a);
-			const right = rank(b);
-			return right.from.localeCompare(left.from) || right.id - left.id;
-		});
-		return eligible[0];
-	};
-	const canonical = newestEligible('canonical');
-	const legacy = newestEligible('legacy');
-	if (!canonical && !legacy) return null;
-	return normalizeSalaryProfile(canonical, legacy);
+/** The pay stream the shared roster resolved for the month. */
+function payStreamOf(
+	salaryType: string | null | undefined
+): 'payroll' | 'contract' {
+	return String(salaryType ?? 'monthly').toLowerCase() === 'contract'
+		? 'contract'
+		: 'payroll';
 }
 
 async function loadSlips(
@@ -563,22 +471,30 @@ export async function loadAllocationBasis(
 	const monthDay = (str(row, 'month') ?? '').slice(0, 10);
 	const employerCost = Number(num(row, 'employer_cost') ?? 0);
 
-	const [employees, profiles, hours, runStatus] = await Promise.all([
-		loadEmployees(db),
-		loadProfiles(db),
-		loadMonthHours(db, monthDay),
+	const [liveRoster, frozenRoster, hours, runStatus] = await Promise.all([
+		monthDay ? loadPayrollRunRoster(db, monthDay) : Promise.resolve(null),
+		monthDay
+			? loadFrozenPayrollRunRoster(db, monthDay)
+			: Promise.resolve<FrozenPayrollRunRoster | null>(null),
+		monthDay
+			? loadMonthHours(db, monthDay)
+			: Promise.resolve<MonthHours>({ byEmployee: new Map() }),
 		monthDay
 			? loadRunStatus(db, monthDay)
 			: Promise.resolve<string | null>(null),
 	]);
-	const profile = profileForMonth(profiles.get(employeeId), monthDay);
-	const employee = employees.get(employeeId);
-	const payStream: AllocationBasis['payStream'] =
-		profile &&
-		String(
-			profile.salary_type ?? profile.pay_type ?? 'monthly'
-		).toLowerCase() === 'contract'
-			? 'contract'
+	const savedMember =
+		frozenRoster?.members.find(
+			(member) => member.employee_id === employeeId
+		) ?? null;
+	const liveMember =
+		liveRoster?.members.find((member) => member.employee_id === employeeId) ??
+		null;
+	const identityMember = savedMember ?? liveMember;
+	const payStream: AllocationBasis['payStream'] = savedMember
+		? payStreamOf(savedMember.salary_type)
+		: liveMember
+			? payStreamOf(liveMember.salary_type)
 			: 'payroll';
 	return {
 		slip: {
@@ -588,8 +504,8 @@ export async function loadAllocationBasis(
 			monthDay,
 		},
 		runStatus,
-		employeeCode: employee?.code ?? `#${employeeId}`,
-		employeeName: employee?.name ?? `Employee #${employeeId}`,
+		employeeCode: identityMember?.employee_code ?? `#${employeeId}`,
+		employeeName: identityMember?.name ?? `Employee #${employeeId}`,
 		payStream,
 		hours: (hours.byEmployee.get(employeeId) ?? []).map((line) => ({
 			...line,
@@ -627,6 +543,8 @@ export interface PayrollMonthInterpretation {
 	totals: PayrollExpenditure;
 	employees: PayrollEmployeeCost[];
 	coverage: CoverageNotice[];
+	/** The membership evidence behind the rows. */
+	roster: PayrollRosterState;
 }
 
 function monthLabelOf(month: string): string {
@@ -667,60 +585,97 @@ export async function loadPayrollMonth(
 	const monthDay = `${month}-01`;
 	const summaryReader = reconstructionSummaryReader;
 	const [
-		employees,
-		profiles,
+		liveRoster,
+		frozenRoster,
 		slips,
 		runStatus,
 		allocations,
 		hours,
-		workingDays,
-		schedule,
 		reconstructions,
 	] = await Promise.all([
-		loadEmployees(db),
-		loadProfiles(db),
+		loadPayrollRunRoster(db, month),
+		loadFrozenPayrollRunRoster(db, month),
 		loadSlips(db, monthDay),
 		loadRunStatus(db, monthDay),
 		loadFrozenAllocations(db, monthDay),
 		loadMonthHours(db, monthDay),
-		getWorkingDaysForMonth(month, db),
-		getEffectivePayrollSchedule(monthDay, db),
 		summaryReader
 			? summaryReader(db, monthDay)
 			: Promise.resolve(new Map<number, PayrollReconstructionSummary>()),
 	]);
 
+	const locked = isLockedStatus(runStatus);
+	const basis: PayrollRosterState['basis'] = !locked
+		? 'draft'
+		: frozenRoster
+			? 'saved'
+			: 'unavailable';
+
+	// Estimates are a draft-only statement. A locked month is never re-priced
+	// from today's Salary Profile: its saved roster, slips, and frozen
+	// allocations are the evidence.
+	let workingDays: MonthWorkingDays | null = null;
+	let schedule: EffectivePayrollSchedule | null = null;
+	if (basis === 'draft') {
+		[workingDays, schedule] = await Promise.all([
+			getWorkingDaysForMonth(month, db),
+			getEffectivePayrollSchedule(monthDay, db),
+		]);
+	}
+
 	const slipByEmployee = new Map(slips.map((slip) => [slip.employeeId, slip]));
 	const allocationBySlip = new Map(
 		allocations.map((allocation) => [allocation.slipId, allocation])
 	);
-	const locked = isLockedStatus(runStatus);
+	const liveById = new Map(
+		liveRoster.members.map((member) => [member.employee_id, member])
+	);
+	const savedById = new Map(
+		(frozenRoster?.members ?? []).map((member) => [
+			member.employee_id,
+			member,
+		])
+	);
+	const savedMemberIds =
+		basis === 'saved' ? new Set(savedById.keys()) : null;
 
 	const population = new Set<number>();
-	for (const slip of slips) population.add(slip.employeeId);
-	for (const [employeeId, list] of profiles) {
-		if (profileForMonth(list, monthDay)) {
-			const employee = employees.get(employeeId);
-			if (
-				employee &&
-				!employee.isDeleted &&
-				(employee.status === 'active' || employee.status === null)
-			) {
-				population.add(employeeId);
-			}
+
+	if (basis === 'draft') {
+		for (const member of liveRoster.members) {
+			const hasEvidence =
+				member.salary_profile !== null ||
+				slipByEmployee.has(member.employee_id) ||
+				(hours.byEmployee.get(member.employee_id)?.length ?? 0) > 0;
+			// A Payroll/Contract person with no agreement and no month evidence
+			// belongs to the readiness gate, not to the cost rows.
+			if (hasEvidence) population.add(member.employee_id);
 		}
+	} else {
+		// Locked membership is the saved set (when it exists) plus the actual
+		// slips and allocations. A legacy run without a snapshot keeps only
+		// that real evidence; today's employee list is never promoted into it.
+		for (const member of frozenRoster?.members ?? [])
+			population.add(member.employee_id);
+		for (const allocation of allocations)
+			population.add(allocation.employeeId);
 	}
-	for (const employeeId of hours.byEmployee.keys()) {
-		const employee = employees.get(employeeId);
-		if (employee && !employee.isDeleted) population.add(employeeId);
-	}
+	for (const slip of slips) population.add(slip.employeeId);
+	for (const employeeId of hours.byEmployee.keys())
+		population.add(employeeId);
 
 	const rows: PayrollEmployeeCost[] = [];
 	for (const employeeId of [...population].sort((a, b) => a - b)) {
-		const employee = employees.get(employeeId);
 		const slip = slipByEmployee.get(employeeId) ?? null;
 		const allocation = slip ? (allocationBySlip.get(slip.id) ?? null) : null;
-		const profile = profileForMonth(profiles.get(employeeId), monthDay);
+		const savedMember =
+			basis === 'saved' ? (savedById.get(employeeId) ?? null) : null;
+		const liveMember = liveById.get(employeeId) ?? null;
+		const inSaved = basis === 'saved' ? savedMember !== null : null;
+		// A saved member's dates were validated at Finalize. Everyone else is
+		// described by the roster evidence available now, for review disclosure.
+		const employmentIssue: PayrollEmploymentIssue | null =
+			savedMember === null ? (liveMember?.issue ?? null) : null;
 		const destinations = hours.byEmployee.get(employeeId) ?? [];
 		const hourLines = destinations.map((line) => ({ ...line }));
 		const loggedHours = round2(
@@ -735,18 +690,22 @@ export async function loadPayrollMonth(
 
 		const recorded =
 			slip !== null && allocation !== null && locked ? allocation : null;
+		const draftProfile =
+			basis === 'draft' ? (liveMember?.salary_profile ?? null) : null;
+		// An employment-date issue blocks pricing until it is reviewed; the
+		// row stays visible with its evidence instead of disappearing.
+		const profile =
+			basis === 'draft' && employmentIssue === null ? draftProfile : null;
 		const payStream: PayrollEmployeeCost['pay_stream'] = recorded
 			? recorded.payStream
-			: profile
-				? String(
-						profile.salary_type ?? profile.pay_type ?? 'monthly'
-					).toLowerCase() === 'contract'
-					? 'contract'
-					: 'payroll'
-				: 'unknown';
+			: savedMember
+				? payStreamOf(savedMember.salary_type)
+				: basis === 'draft' && liveMember?.salary_type
+					? payStreamOf(liveMember.salary_type)
+					: 'unknown';
 
 		let estimatedAmount: number | null = null;
-		if (!recorded && profile) {
+		if (!recorded && profile !== null && workingDays && schedule) {
 			try {
 				const estimate = calculatePayroll({
 					employeeId,
@@ -768,11 +727,34 @@ export async function loadPayrollMonth(
 			}
 		}
 
-		const missingSlip = slip === null && profile !== null && runStatus !== null;
-		// Unrecorded and unpriced stays unknown, never zero; recorded cost is final.
+		const missingSlip =
+			slip === null &&
+			runStatus !== null &&
+			(basis === 'saved'
+				? savedMember !== null
+				: basis === 'draft' && draftProfile !== null);
+		// "No Salary Profile covers the month" is a draft statement: a locked
+		// row is never priced from a live profile, so it is unknown for its own
+		// stated reason (outside roster, missing allocation, or legacy roster).
 		const missingPricing =
-			!recorded && profile === null && (slip !== null || loggedHours > 0);
+			!recorded &&
+			basis === 'draft' &&
+			draftProfile === null &&
+			(slip !== null || loggedHours > 0);
 		const allocationMissing = slip !== null && locked && allocation === null;
+		const workedOutsideFinalizedRun =
+			basis === 'saved' &&
+			savedMember === null &&
+			slip === null &&
+			allocation === null &&
+			loggedHours > 0;
+		const identityMember = savedMember ?? liveMember;
+		const employeeCode =
+			recorded?.employeeCode ?? identityMember?.employee_code ?? `#${employeeId}`;
+		const employeeName =
+			recorded?.employeeName ??
+			identityMember?.name ??
+			`Employee #${employeeId}`;
 		// The slip's latest reconstruction proposal: pending and rejected
 		// proposals stay beside the row as proposals; an approved one attaches
 		// only while its freeze is the current recorded allocation.
@@ -789,8 +771,13 @@ export async function loadPayrollMonth(
 		let shares: PayrollProjectShare[];
 		if (recorded) {
 			shares = recorded.shares;
+		} else if (estimatedAmount !== null) {
+			shares = allocateEmployerCost(estimatedAmount, hourLines).shares;
+		} else if (loggedHours > 0) {
+			// Hours stay visible while cost is unknown, never stated as zero.
+			shares = allocateEmployerCost(0, hourLines).shares;
 		} else {
-			shares = allocateEmployerCost(estimatedAmount ?? 0, hourLines).shares;
+			shares = [];
 		}
 		// A recorded Employee's hours are the frozen allocation's hours: a later
 		// timesheet edit must not change the hours shown beside frozen cost.
@@ -816,14 +803,16 @@ export async function loadPayrollMonth(
 
 		rows.push({
 			employee_id: employeeId,
-			employee_code:
-				recorded?.employeeCode || employee?.code || `#${employeeId}`,
-			employee_name:
-				recorded?.employeeName || employee?.name || `Employee #${employeeId}`,
+			employee_code: employeeCode,
+			employee_name: employeeName,
 			pay_stream: payStream,
 			status,
 			recorded_amount: recorded ? recorded.recordedEmployerCost : null,
 			estimated_amount: recorded ? null : estimatedAmount,
+			slip_amount: slip ? round2(slip.employerCost) : null,
+			in_saved_roster: inSaved,
+			worked_outside_finalized_run: workedOutsideFinalizedRun,
+			employment_issue: employmentIssue,
 			logged_hours: recorded ? recorded.totalLoggedHours : loggedHours,
 			project_hours: recorded ? recorded.projectHours : projectHours,
 			no_project_hours: recorded ? recorded.noProjectHours : noProjectHours,
@@ -846,8 +835,35 @@ export async function loadPayrollMonth(
 		});
 	}
 
+	const notInSavedRoster =
+		basis === 'saved' && savedMemberIds
+			? liveRoster.members.filter(
+					(member) =>
+						!savedMemberIds.has(member.employee_id) &&
+						member.salary_profile !== null &&
+						!slipByEmployee.has(member.employee_id) &&
+						(hours.byEmployee.get(member.employee_id)?.length ?? 0) === 0
+				).length
+			: 0;
+	const roster: PayrollRosterState = {
+		basis,
+		member_count: frozenRoster?.members.length ?? null,
+		not_in_saved_roster_count: notInSavedRoster,
+		worked_outside_count: rows.filter(
+			(row) => row.worked_outside_finalized_run
+		).length,
+	};
+
 	const totals = summarizePayroll(rows);
-	const coverage = payrollNotices(rows, totals, runStatus, allocations, slips);
+	const coverage = payrollNotices(
+		rows,
+		totals,
+		runStatus,
+		allocations,
+		slips,
+		roster,
+		monthLabelOf(month)
+	);
 	return {
 		month,
 		monthLabel: monthLabelOf(month),
@@ -855,6 +871,7 @@ export async function loadPayrollMonth(
 		totals,
 		employees: rows,
 		coverage,
+		roster,
 	};
 }
 
@@ -937,11 +954,19 @@ function payrollNotices(
 	totals: PayrollExpenditure,
 	runStatus: string | null,
 	allocations: readonly FrozenAllocation[],
-	slips: readonly SlipRow[]
+	slips: readonly SlipRow[],
+	roster: PayrollRosterState,
+	monthLabel: string
 ): CoverageNotice[] {
 	const notices: CoverageNotice[] = [];
 	const locked = isLockedStatus(runStatus);
 	const recordedRows = rows.filter((row) => row.recorded_amount !== null);
+	const employmentIssueRows = rows.filter(
+		(row) => row.employment_issue !== null
+	);
+	const workedOutsideRows = rows.filter(
+		(row) => row.worked_outside_finalized_run
+	);
 
 	if (runStatus === null) {
 		notices.push({
@@ -960,11 +985,46 @@ function payrollNotices(
 			severity: 'warning',
 		});
 	}
+	if (roster.basis === 'unavailable') {
+		notices.push({
+			code: 'payroll_roster_unavailable',
+			label: 'Finalized roster unavailable for this legacy run',
+			detail:
+				'This finalized Payroll Run predates the saved validated roster, so its original membership cannot be verified. Only actual Payroll Slips, frozen allocations, and real Logged Hours are shown; people without a Payroll Slip are not priced from today’s Salary Profiles. Treat the original roster as unavailable, not as the current employee list.',
+			severity: 'warning',
+		});
+	}
+	if (workedOutsideRows.length > 0) {
+		notices.push({
+			code: 'payroll_work_outside_finalized_run',
+			label: 'Worked in month — not included in finalized payroll',
+			detail: `${workedOutsideRows.length} employee(s) have Logged Hours in ${monthLabel} but are not in the finalized run’s saved roster. Their hours and Projects stay visible; their cost is unknown, not zero, and is not priced from a current Salary Profile.`,
+			severity: 'warning',
+		});
+	}
+	if (roster.basis === 'saved' && roster.not_in_saved_roster_count > 0) {
+		notices.push({
+			code: 'payroll_outside_finalized_roster',
+			label: 'Employees outside the finalized roster',
+			detail: `${roster.not_in_saved_roster_count} employee(s) match today’s payroll eligibility but have no Payroll Slip or Logged Hours in this finalized month and are not in its saved roster. They are not included, and no historical cost is invented for them.`,
+			severity: 'info',
+		});
+	}
+	if (employmentIssueRows.length > 0) {
+		notices.push({
+			code: 'payroll_employment_issue',
+			label: 'Employment dates need review',
+			detail: `${employmentIssueRows.length} employee(s) have missing, invalid, or out-of-employment work dates for ${monthLabel}. Their cost is unknown until the payroll owner reviews the dates; Payroll Generate and Finalize name the affected people.`,
+			severity: 'warning',
+		});
+	}
 	if (totals.missing_slip_count > 0) {
 		notices.push({
 			code: 'payroll_slip_missing',
-			label: 'Payroll Slips missing for employees with a Salary Profile',
-			detail: `${totals.missing_slip_count} employee(s) have a Salary Profile covering the month but no Payroll Slip; their cost stays an estimate until Generate and Finalize.`,
+			label: 'Payroll Slips missing from the finalized roster',
+			detail: locked
+				? `${totals.missing_slip_count} employee(s) in the finalized run’s saved roster have no Payroll Slip. Their cost is unknown, not zero; no current Salary Profile is used to fill a finalized month. Ask the payroll owner to review this gap.`
+				: `${totals.missing_slip_count} employee(s) have a Salary Profile covering the month but no Payroll Slip; their cost stays an estimate until Generate and Finalize.`,
 			severity: 'warning',
 		});
 	}
@@ -980,7 +1040,7 @@ function payrollNotices(
 		notices.push({
 			code: 'payroll_allocation_missing',
 			label: 'Finalized Payroll Slips without a frozen allocation',
-			detail: `${totals.allocation_missing_count} finalized Payroll Slip(s) predate saved Project allocations; their cost stays an estimate until a reviewed reconstruction.`,
+			detail: `${totals.allocation_missing_count} finalized Payroll Slip(s) have no saved Project allocation. Their recorded slip cost is stated on the employee row, but Project attribution is unknown and no current Salary Profile is used to price it. Propose a reviewed reconstruction to attribute the recorded cost; paid slips prevent reopening.`,
 			severity: 'warning',
 		});
 	}
@@ -994,7 +1054,7 @@ function payrollNotices(
 			code: 'payroll_allocation_missing',
 			label: 'Finalized Payroll Slips without a frozen allocation',
 			detail:
-				'The month is finalized but no Payroll Slip has a saved Project allocation; employee cost is an estimate pending a reviewed reconstruction.',
+				'The month is finalized but no Payroll Slip has a saved Project allocation; recorded slip cost is preserved, while Project attribution stays unknown pending a reviewed reconstruction.',
 			severity: 'warning',
 		});
 	}
@@ -1187,11 +1247,20 @@ export async function freezeMonthAllocations(
 	if (slips.length === 0) {
 		return { allocations: 0, total: 0 };
 	}
-	const [employees, profiles, hours] = await Promise.all([
-		loadEmployees(db),
-		loadProfiles(db),
+	const [liveRoster, frozenRoster, hours] = await Promise.all([
+		loadPayrollRunRoster(db, monthDay),
+		loadFrozenPayrollRunRoster(db, monthDay),
 		loadMonthHours(db, monthDay),
 	]);
+	const liveById = new Map(
+		liveRoster.members.map((member) => [member.employee_id, member])
+	);
+	const frozenById = new Map(
+		(frozenRoster?.members ?? []).map((member) => [
+			member.employee_id,
+			member,
+		])
+	);
 
 	let total = R(0);
 	for (const slip of slips) {
@@ -1203,17 +1272,19 @@ export async function freezeMonthAllocations(
 		);
 		const version =
 			Number(num((existing as DbRow[])[0] ?? {}, 'version') ?? 0) + 1;
-		const profile = profileForMonth(profiles.get(slip.employeeId), monthDay);
-		const payStream =
-			profile &&
-			String(
-				profile.salary_type ?? profile.pay_type ?? 'monthly'
-			).toLowerCase() === 'contract'
-				? 'contract'
+		// The saved snapshot is the immutable Finalize-time identity and stream;
+		// the live roster is only the same-transaction fallback when the caller
+		// freezes before (or without) saving a snapshot.
+		const frozenMember = frozenById.get(slip.employeeId) ?? null;
+		const liveMember = liveById.get(slip.employeeId) ?? null;
+		const member = frozenMember ?? liveMember;
+		const payStream = frozenMember
+			? payStreamOf(frozenMember.salary_type)
+			: liveMember
+				? payStreamOf(liveMember.salary_type)
 				: 'payroll';
-		const employee = employees.get(slip.employeeId);
-		const employeeCode = employee?.code ?? `#${slip.employeeId}`;
-		const employeeName = employee?.name ?? `Employee #${slip.employeeId}`;
+		const employeeCode = member?.employee_code ?? `#${slip.employeeId}`;
+		const employeeName = member?.name ?? `Employee #${slip.employeeId}`;
 		const outcome = allocateEmployerCost(
 			slip.employerCost,
 			hours.byEmployee.get(slip.employeeId) ?? []

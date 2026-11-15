@@ -16,6 +16,7 @@ const mockDb = {
 
 vi.mock('@/utils/database', () => ({
 	dbConnect: mockDbConnect,
+	withTransaction: vi.fn(),
 }));
 
 let currentUser: Record<string, unknown> | null = null;

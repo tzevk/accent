@@ -418,8 +418,8 @@ export function DecisionView(props: DecisionViewProps) {
 						</DecisionLink>{' '}
 						<span className="text-gray-500">
 							(estimate excluded from confirmed cost
-							{data.payroll.missing_pricing_count > 0
-								? `, ${data.payroll.missing_pricing_count} unknown pricing`
+							{data.payroll.unpriced_count > 0
+								? `, ${data.payroll.unpriced_count} unpriced unknown`
 								: ''}
 							)
 						</span>

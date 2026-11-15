@@ -878,9 +878,9 @@ function closePayload(): ClosePayload {
 			],
 			warnings: [
 				{
-					code: 'payroll_finalization_pending',
-					label: 'Payroll finalization pending',
-					detail: 'One position is estimated.',
+					code: 'payroll_slip_missing',
+					label: 'Payroll Slips missing for employees with a Salary Profile',
+					detail: 'One employee has no Payroll Slip for this finalized month.',
 					severity: 'warning',
 				},
 			],
@@ -1334,8 +1334,6 @@ describe('DecisionView payroll and currency coverage', () => {
 		});
 		expect(link).toHaveAttribute('href', '#decision-payroll');
 		expect(link).toHaveTextContent('₹4,955.00');
-		const row = screen.getByTestId('decision-review-payroll');
-		expect(row).toHaveTextContent('1 unknown pricing');
 	});
 
 	it('keeps an unsupported conversion without a combined total', () => {

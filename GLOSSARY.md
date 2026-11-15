@@ -85,7 +85,7 @@ The set of Employees a workforce report covers — live Employee records (`isDel
 _Avoid_: Active employees, Payroll staff (when meaning this roster), Headcount
 
 **Salary Type**:
-Which pay stream an Employee is paid through, held on the pay agreement: `employee_salary_profile.salary_type` — `monthly`, `hourly`, `daily`, `contract`, `lumpsum`, `custom` (`payroll` is the query selector for everything that is not `contract`; legacy `salary_structures.pay_type` is its read-only predecessor). Payroll decides stream membership on this field, never on the Employee record: `salary_type = 'contract'` EXISTS for the contract stream, NOT EXISTS for the payroll stream. So a `Payroll`-typed Employee with no Salary Profile belongs to neither stream and silently vanishes from a payroll run while still appearing on the Attendance report's roster (ADR-0015).
+The pay-agreement category: monthly, hourly, daily, contract, lumpsum, or custom. Contract selects the Contract pay stream; other categories select the Payroll stream. The Employee's Salary Profile determines this category, not their Employee Type. An eligible Employee without a covering Salary Profile remains a payroll-completeness issue and prevents finalization.
 _Avoid_: Employee Type, Employment status, Pay type
 
 **Salary Profile**:
@@ -103,6 +103,10 @@ _Avoid_: Payslip, Salary Slip, Payroll Record — the self-service path segment 
 **Payroll Run**:
 The month-level lifecycle record for one pay period (month/year) — starts `draft`, becomes `finalized`, which locks its slips against regeneration; only a super-admin can reopen a finalized run, and only while no slip in the month is `paid`. Payment is tracked per-slip, not on the run: the run's `paid` state is derived (every slip of the month paid), never a stored transition. Canonical table `payroll_runs`.
 _Avoid_: Month (ambiguous), Pay cycle, Batch
+
+**Payroll Run Roster**:
+The Employees expected to be paid for a particular month, based on their employment dates and pay agreements. Finalization validates and saves this set. Later employee changes do not rewrite it; late-discovered work remains a separate review item.
+_Avoid_: Payroll Roster (the workforce-report population), Existing slips, Current active employees
 
 **Component Rate** (was "Payroll Schedule"):
 The versioned rate for a statutory or allowance component (DA, PT, MLWF, bonus, incentive, insurance) with `component_type`, `value`/`value_type`, and `effective_from`/`effective_to`. Canonical table is `payroll_schedules` — the single source for ALL component rates, incl. DA (legacy `da_schedule` retired). Served under `/admin/payroll/rates`.
@@ -397,6 +401,42 @@ _Avoid_: Data cleanup, Automatic mapping, Lead edit
 **Canonical Proposal**:
 The one Proposal that is authoritative for a Lead. Exactly one linked Proposal is evidence-backed; several linked Proposals stay linked and need a reviewer's choice. A canonical Proposal is never chosen by date or title, and choosing one never deletes the others.
 _Avoid_: Latest proposal, Preferred proposal, Duplicate cleanup
+
+**Discipline Cost Rate**:
+A finance-approved internal cost per estimated delivery hour for one discipline. It is a pricing assumption, not an Employee's payroll Hourly Rate or a client billing rate.
+_Avoid_: Salary rate, Billing rate, Hourly Rate
+
+**Proposal Overhead Allowance**:
+The share of Company Overhead included in a Proposal Cost Estimate, calculated as a percentage of estimated labour cost. It is not direct delivery cost or an uncertainty allowance.
+_Avoid_: Contingency, Direct expense, Profit margin
+
+**Proposal Contingency**:
+A reviewed amount reserved for uncertainty in delivering a Proposal, supported by an explanation. A zero amount requires explicit review and is distinct from Company Overhead and required margin.
+_Avoid_: Overhead, Profit, Unspecified buffer
+
+**Proposal Pricing Margin**:
+The share of a Proposal's price remaining after its Proposal Cost Estimate and reviewed Proposal Contingency. The price excludes output GST; this estimated margin is not markup or realized profit.
+_Avoid_: Markup, Actual profit, Profitability estimate (unqualified)
+
+**Minimum Proposal Price**:
+The price required to meet the finance-approved Proposal Pricing Margin using the reviewed cost and contingency assumptions. A lower price requires Pricing Exception Approval rather than changing the calculated minimum.
+_Avoid_: Guaranteed profit, Non-negotiable price, Walk-away price
+
+**Proposal Cost Estimate**:
+The estimated cost of delivering a fixed-price Proposal, including employee effort, direct expenses, supplier work, and an explicit allowance for Company Overhead. It is a pricing assumption, not Incurred Project Cost or cash paid.
+_Avoid_: Actual cost, Payroll cost, Cost to Company
+
+**Proposal Effort Estimate**:
+The estimated hours required to deliver a Proposal, stated by discipline and reviewed by delivery staff. It does not require named Employees and is distinct from Logged Hours.
+_Avoid_: Logged Hours, Attendance, Staffing commitment
+
+**Pricing Exception Approval**:
+An authorized person's reasoned approval to issue a Proposal below its required pricing threshold, bound to one exact Proposal Pricing Revision. The approver must be neither the Proposal creator nor an author of that revision.
+_Avoid_: Self-approval, Proposal acceptance, Client approval
+
+**Proposal Pricing Revision**:
+One version of a Proposal's scope, estimated effort, cost assumptions, price, currency, and validity. Its reviews and approvals apply only to that version, not to later pricing-relevant changes.
+_Avoid_: Current proposal (unqualified), Approval carried forward, Historical actuals
 
 **Stored-Value Inventory**:
 The record of what legacy Leads actually stored before mapping: every distinct stage label and owner name, how many Leads carry it, and whether it was auto-resolved, ambiguous, or unresolved. It exists so no value is classified without evidence (ADR-0031).

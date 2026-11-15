@@ -117,7 +117,15 @@ function buildMonthlyDetailedSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${r.employee_name} (${r.employee_code || r.employee_id})${r.missing_salary_profile ? ' — Salary Profile missing (unpriced)' : ''}`,
+				val: `${r.employee_name} (${r.employee_code || r.employee_id})${
+					r.missing_salary_profile
+						? ' — Salary Profile missing (unpriced)'
+						: !r.cost_known
+							? r.worked_outside_finalized_run
+								? ' — Worked outside finalized payroll (unpriced)'
+								: ' — Cost unavailable in finalized run (unpriced)'
+							: ''
+				}`,
 				tint: TINT_EMP,
 				align: 'left',
 			},
@@ -141,10 +149,10 @@ function buildMonthlyDetailedSheet(
 				numFmt: '#,##0.##',
 			},
 			{
-				val: r.cost,
+				val: r.cost_known ? r.cost : '—',
 				tint: TINT_GREEN,
 				align: 'right',
-				numFmt: '#,##0.00',
+				numFmt: r.cost_known ? '#,##0.00' : undefined,
 				bold: true,
 			},
 		];
@@ -169,7 +177,7 @@ function buildMonthlyDetailedSheet(
 	totalRow.height = 20;
 	ws.mergeCells(rowNum, 1, rowNum, 5);
 	const lbl = totalRow.getCell(1);
-	lbl.value = `${data.payroll.missing_pricing_count > 0 ? 'Employee cost — partial' : 'Grand Total — Company Cost'} for ${data.month_label}`;
+	lbl.value = `${data.payroll.unpriced_count > 0 ? 'Employee cost — partial' : 'Grand Total — Company Cost'} for ${data.month_label}`;
 	setFont(lbl, { bold: true, size: 10 });
 	lbl.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 5; c++) box(totalRow.getCell(c));
@@ -285,7 +293,15 @@ function buildMonthlyByEmployeeSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${r.employee_name} (${r.employee_code || r.employee_id})${r.missing_salary_profile ? ' — Salary Profile missing (unpriced)' : ''}`,
+				val: `${r.employee_name} (${r.employee_code || r.employee_id})${
+					r.missing_salary_profile
+						? ' — Salary Profile missing (unpriced)'
+						: !r.cost_known
+							? r.worked_outside_finalized_run
+								? ' — Worked outside finalized payroll (unpriced)'
+								: ' — Cost unavailable in finalized run (unpriced)'
+							: ''
+				}`,
 				tint: TINT_YELLOW,
 				align: 'left',
 			},
@@ -304,10 +320,10 @@ function buildMonthlyByEmployeeSheet(
 				numFmt: '#,##0.##',
 			},
 			{
-				val: r.cost,
+				val: r.cost_known ? r.cost : '—',
 				tint: TINT_GREEN,
 				align: 'right',
-				numFmt: '#,##0.00',
+				numFmt: r.cost_known ? '#,##0.00' : undefined,
 				bold: true,
 			},
 			{ val: r.project_count, tint: TINT_AMBER_LIGHT, align: 'center' },
@@ -333,7 +349,7 @@ function buildMonthlyByEmployeeSheet(
 	ws.mergeCells(rn, 1, rn, 5);
 	const l = tr.getCell(1);
 	l.value =
-		data.payroll.missing_pricing_count > 0
+		data.payroll.unpriced_count > 0
 			? 'Employee cost — partial'
 			: 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
@@ -444,8 +460,14 @@ function buildMonthlyByProjectSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${[r.project_code, r.project_name].filter(Boolean).join(' – ')}${r.missing_salary_profile_count > 0 ? ` — Partial: ${r.missing_salary_profile_count} missing Salary Profile(s)` : ''}`,
-				tint: TINT_YELLOW,
+				val: `${[r.project_code, r.project_name].filter(Boolean).join(' – ')}${
+					r.missing_salary_profile_count > 0
+						? ` — Partial: ${r.missing_salary_profile_count} missing Salary Profile(s)`
+						: !r.cost_known
+							? ` — Unpriced: ${r.unknown_cost_count} employee(s) with unknown cost`
+							: ''
+				}`,
+				tint: TINT_PROJ,
 				align: 'left',
 			},
 			{ val: r.client_name || '—', tint: TINT_BLUE, align: 'left' },
@@ -456,10 +478,10 @@ function buildMonthlyByProjectSheet(
 				numFmt: '#,##0.##',
 			},
 			{
-				val: r.cost,
+				val: r.cost_known ? r.cost : '—',
 				tint: TINT_GREEN,
 				align: 'right',
-				numFmt: '#,##0.00',
+				numFmt: r.cost_known ? '#,##0.00' : undefined,
 				bold: true,
 			},
 			{ val: r.employee_count, tint: TINT_AMBER_LIGHT, align: 'center' },
@@ -485,7 +507,7 @@ function buildMonthlyByProjectSheet(
 	ws.mergeCells(rn, 1, rn, 3);
 	const l = tr.getCell(1);
 	l.value =
-		data.payroll.missing_pricing_count > 0
+		data.payroll.unpriced_count > 0
 			? 'Employee cost — partial'
 			: 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
@@ -526,12 +548,19 @@ export function buildMonthlyWorkbook(
 	buildMonthlyDetailedSheet(wb, data);
 	buildMonthlyByEmployeeSheet(wb, data);
 	buildMonthlyByProjectSheet(wb, data);
-	if (data.payroll.missing_pricing_count > 0) {
+	const payrollWarnings = data.coverage.filter(
+		(notice) =>
+			notice.code.startsWith('payroll_') && notice.severity === 'warning'
+	);
+	if (payrollWarnings.length > 0) {
+		const statement = payrollWarnings
+			.map((notice) => `${notice.label}. ${notice.detail}`)
+			.join(' ');
 		for (const sheet of wb.worksheets) {
 			const notice = sheet.getCell(2, 1);
-			notice.value = `${notice.value} · Partial cost: ${data.payroll.missing_pricing_count} employee(s) have no covering Salary Profile. Their hours remain included; zero is an unpriced placeholder.`;
+			notice.value = `${notice.value} · ${statement}`;
 			notice.alignment = { ...notice.alignment, wrapText: true };
-			sheet.getRow(2).height = 42;
+			sheet.getRow(2).height = Math.min(112, 30 + payrollWarnings.length * 16);
 			setFont(notice, { size: 10, color: 'FF92400E' });
 		}
 	}

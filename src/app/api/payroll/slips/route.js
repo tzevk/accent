@@ -20,6 +20,11 @@ import {
 	auditSnapshot,
 	recordPayrollAudit,
 } from '@/app/api/payroll/_lib/payroll-audit';
+import {
+	COMPANY_SHEET_INCLUDE,
+	companySheetCurrentDate,
+	loadCompanySheetProjection,
+} from '@/app/api/payroll/_lib/company-sheet-projection';
 
 /**
  * GET - Fetch payroll slips
@@ -47,6 +52,46 @@ export async function GET(request) {
 		const employee_id = searchParams.get('employee_id');
 		const payment_status = searchParams.get('payment_status');
 		const salary_type = searchParams.get('salary_type');
+		const includeCompanySheet =
+			searchParams.get('include') === COMPANY_SHEET_INCLUDE;
+
+		// The company-sheet projection is opt-in and month-scoped. Refuse a
+		// missing or malformed month before touching the database, so an empty
+		// month can never be mistaken for "no attendance". Ordinary listing
+		// requests keep their existing month handling untouched.
+		let companySheetMonth = null;
+		if (includeCompanySheet) {
+			const rawMonth = String(month ?? '').trim();
+			if (!rawMonth) {
+				return NextResponse.json(
+					{
+						success: false,
+						error:
+							'Month is required for include=company-sheet (format: YYYY-MM-01)',
+					},
+					{ status: 400 }
+				);
+			}
+			const period = payrollPeriod(rawMonth);
+			if (
+				!period ||
+				(rawMonth !== period.month && rawMonth !== period.month.slice(0, 7))
+			) {
+				return NextResponse.json(
+					{
+						success: false,
+						error:
+							'Invalid month format for include=company-sheet. Use YYYY-MM or YYYY-MM-01',
+					},
+					{ status: 400 }
+				);
+			}
+			companySheetMonth = period.month;
+		}
+
+		// A company-sheet request lists the normalized month its projection
+		// covers; ordinary requests keep passing the caller's value through.
+		const listingMonth = companySheetMonth || month;
 
 		db = await dbConnect();
 
@@ -72,9 +117,9 @@ export async function GET(request) {
     `;
 		const params = [];
 
-		if (month) {
+		if (listingMonth) {
 			query += ` AND ps.month = ?`;
-			params.push(month);
+			params.push(listingMonth);
 		}
 
 		if (slipId) {
@@ -108,7 +153,7 @@ export async function GET(request) {
 		// A single-slip lookup knows its month only from the row it just fetched, and
 		// must still resolve the scheduled DA the month listing would have used.
 		// A DA lookup must never break the listing, so a failure reads as "no DA".
-		const daMonth = month || rows[0]?.month || null;
+		const daMonth = listingMonth || rows[0]?.month || null;
 		let scheduledDA = 0;
 		if (daMonth) {
 			try {
@@ -131,9 +176,31 @@ export async function GET(request) {
 			};
 		});
 
+		// The opt-in projection reads only the returned Payroll Slips' Employees,
+		// the selected month's Attendance Records and the month's active Holiday
+		// Master rows. It never fetches a directory, per-row histories, or a row
+		// set wider than the listing's. Source failures keep the money rows and
+		// are reported as unavailable attendance instead of a failed request.
+		const companySheet = includeCompanySheet
+			? await loadCompanySheetProjection(db, {
+					month: companySheetMonth,
+					slips: normalizedRows,
+					currentDate: companySheetCurrentDate(),
+				})
+			: null;
+
+		const data = companySheet
+			? normalizedRows.map((row) => ({
+					...row,
+					company_sheet: companySheet.rowsBySlipId.get(row.id) ?? null,
+				}))
+			: normalizedRows;
+
 		return NextResponse.json({
 			success: true,
-			data: normalizedRows,
+			data,
+			// Month-level sources and issues; each row carries its own projection.
+			...(companySheet ? { company_sheet: companySheet.meta } : {}),
 		});
 	} catch (error) {
 		console.error('GET /api/payroll/slips error:', error);
