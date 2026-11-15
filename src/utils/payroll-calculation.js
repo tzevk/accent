@@ -4,6 +4,11 @@ import PAYROLL_CONFIG, {
 	calculateProfessionalTax,
 } from './payroll-config';
 import { R, add, div, mul, pctOf, roundR, sub, toNumber } from '@/lib/money';
+import {
+	SALARY_CTC_MAX,
+	resolveSalaryCtc,
+	validateDailyHours,
+} from '@/lib/salary-ctc';
 
 const hasValue = (value) =>
 	value !== undefined && value !== null && value !== '';
@@ -178,7 +183,8 @@ const integerValue = (value, fallback) => {
  * LEGACY COMPAT (future migration): read-only fallback for rows that still
  * live in `salary_structures`. Canonical `employee_salary_profile` always
  * wins; do not extend this mapping. See docs/adr/0001.
- * CTC is intentionally not considered when selecting Gross.
+ * CTC is intentionally not considered when selecting Gross. A missing legacy
+ * gross stays absent instead of being recorded as a fabricated zero.
  * @param {object|null} canonicalProfile - An `employee_salary_profile` row,
  *   or null when none covers the month.
  * @param {object|null} legacyProfile - A `salary_structures` row, or null
@@ -238,8 +244,10 @@ export function normalizeSalaryProfile(
 	const gross =
 		firstPositive(canonical, ['gross_salary', 'gross']) ||
 		firstPositive(legacy, ['gross_salary', 'gross']);
-	result.gross_salary = hasValue(gross) ? gross : 0;
-	result.gross = result.gross_salary;
+	if (hasValue(gross)) {
+		result.gross_salary = gross;
+		result.gross = result.gross_salary;
+	}
 
 	return result;
 }
@@ -333,11 +341,18 @@ export function calculatePayroll(
 	// Activity Assignments at that rate. Without a logged-hours figure — the
 	// Salary Profile preview has no timesheet — the full month is weighted.
 	// See GLOSSARY.md (CTC, Logged Hours) and docs/adr/0010.
-	const ctcUsed = decimal(
-		firstPositive(profile, ['employer_cost']) ||
-			firstPositive(profile, ['gross_salary', 'gross']) ||
-			0
-	);
+	// Presence-based agreed CTC: canonical employer_cost wins even when it is
+	// an explicit zero; the legacy gross fields are a disclosed fallback only
+	// when canonical CTC is absent. Invalid stored values are rejected rather
+	// than repriced from a different amount.
+	const ctcResolution = resolveSalaryCtc(profile);
+	if (ctcResolution.status === 'invalid') {
+		throw new RangeError(
+			`Invalid monthly CTC in ${ctcResolution.source}: expected a finite amount between 0 and ${SALARY_CTC_MAX} (${ctcResolution.reason}).`
+		);
+	}
+	const ctcUsed =
+		ctcResolution.status === 'resolved' ? ctcResolution.amount : R(0);
 	const standardWorkingDays = number(
 		valueFrom(
 			snapshot,
@@ -349,10 +364,21 @@ export function calculatePayroll(
 			)
 		)
 	);
-	const standardHoursPerDay =
-		number(
-			valueFrom(profile, ['std_hours_per_day', 'standard_hours_per_day'])
-		) || PAYROLL_CONFIG.STANDARD_HOURS_PER_DAY;
+	const hoursValue = valueFrom(profile, [
+		'std_hours_per_day',
+		'standard_hours_per_day',
+	]);
+	const hoursValidation = hasValue(hoursValue)
+		? validateDailyHours(hoursValue)
+		: null;
+	if (hoursValidation && !hoursValidation.valid) {
+		throw new RangeError(
+			`Invalid standard daily hours: expected a finite positive number (${hoursValidation.reason}).`
+		);
+	}
+	const standardHoursPerDay = hoursValidation?.valid
+		? toNumber(hoursValidation.hours)
+		: PAYROLL_CONFIG.STANDARD_HOURS_PER_DAY;
 	const basisHours = number(
 		mul(R(standardWorkingDays), R(standardHoursPerDay)).toDecimalPlaces(2)
 	);
