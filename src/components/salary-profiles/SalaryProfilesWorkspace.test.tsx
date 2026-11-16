@@ -622,6 +622,15 @@ describe('SalaryProfileEditor', () => {
 		expect(
 			within(card).getByRole('button', { name: 'New Salary Revision' })
 		).toBeInTheDocument();
+		expect(within(card).getAllByText(/Used by payroll/).length).toBeGreaterThan(
+			1
+		);
+		expect(
+			within(card).getByText(
+				/Editing is blocked so recorded payroll keeps its terms/
+			)
+		).toBeInTheDocument();
+		expect(within(card).getByText(/Used months:/)).toBeInTheDocument();
 	});
 
 	it('presents no write controls to a read-only payroll identity', async () => {
