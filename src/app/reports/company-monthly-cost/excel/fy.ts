@@ -103,7 +103,7 @@ function buildFYMetricSheet(
 
 	ws.mergeCells(2, 1, 2, totalCols);
 	const sub = ws.getCell(2, 1);
-	sub.value = `${isCost ? 'Monthly cost' : 'Monthly hours'} · ${data.fy_label} · ${data.summary.employee_count} employees · ${data.summary.project_count} projects · Generated ${new Date().toLocaleDateString('en-IN')}`;
+	sub.value = `${isCost ? 'Monthly cost' : 'Monthly hours'} · ${data.fy_label} · ${data.summary.employee_count} employees · ${data.summary.project_count} projects · Generated ${new Date().toLocaleDateString('en-IN')}${isCost ? ' · Cost is the month’s recorded allocation or payroll estimate; unknown months are excluded from partial totals.' : ''}`;
 	setFont(sub, { size: 9, color: 'FF6B7280' });
 	sub.alignment = { vertical: 'middle', horizontal: 'left' };
 
@@ -160,7 +160,7 @@ function buildFYMetricSheet(
 			const reason =
 				r.worked_outside_finalized_run === true
 					? 'worked outside finalized payroll (unpriced)'
-					: 'cost unavailable in finalized run (unpriced)';
+					: 'cost unavailable for this month (unknown, not zero)';
 			make(
 				`${empName} (${empCode})${unknown ? ` — ${reason}` : ''}`,
 				TINT_EMP,
@@ -177,11 +177,7 @@ function buildFYMetricSheet(
 				'unknown_cost_count' in r
 					? `Partial: ${Number(r.unknown_cost_count)} employee(s) with unknown cost`
 					: 'Cost unavailable';
-			make(
-				`${proj}${unknown ? ` — ${unknownNote}` : ''}`,
-				TINT_YELLOW,
-				'left'
-			);
+			make(`${proj}${unknown ? ` — ${unknownNote}` : ''}`, TINT_YELLOW, 'left');
 		}
 		if (hasRate) {
 			make(
@@ -198,13 +194,12 @@ function buildFYMetricSheet(
 			if (isCost) {
 				const v = (r.monthly_cost as Record<string, number>)?.[mKey] ?? 0;
 				const known =
-					(r.monthly_cost_known as Record<string, boolean>)?.[mKey] !==
-					false;
+					(r.monthly_cost_known as Record<string, boolean>)?.[mKey] !== false;
 				make(
-					v === 0 ? '—' : known ? v : `${v.toFixed(2)} *`,
+					known ? v : v === 0 ? '—' : `${v.toFixed(2)} *`,
 					TINT_AMBER_LIGHT,
 					'right',
-					known && v !== 0 ? '#,##0.00' : undefined
+					known ? '#,##0.00' : undefined
 				);
 			} else {
 				const v = (r.monthly_hours as Record<string, number>)?.[mKey] ?? 0;
@@ -257,8 +252,8 @@ function buildFYMetricSheet(
 		if (isCost) {
 			const v = data.totals.monthly_cost[mKey] ?? 0;
 			const known = data.totals.monthly_cost_known[mKey] !== false;
-			c.value = v === 0 ? '—' : known ? v : `${v.toFixed(2)} *`;
-			if (known && v !== 0) c.numFmt = '#,##0.00';
+			c.value = known ? v : v === 0 ? '—' : `${v.toFixed(2)} *`;
+			if (known) c.numFmt = '#,##0.00';
 		} else {
 			c.value = data.totals.monthly_hours[mKey] ?? 0;
 			c.numFmt = '#,##0.##';
