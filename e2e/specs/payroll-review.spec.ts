@@ -83,7 +83,7 @@ test('payroll review separates current attendance from recorded money', async ({
 	await expect(monthInput).toHaveValue(review.monthSlug);
 	await expect(
 		page
-			.getByRole('group', { name: 'Employee Type' })
+			.getByRole('group', { name: 'Pay stream' })
 			.getByRole('button', { name: 'Payroll', exact: true })
 	).toHaveAttribute('aria-pressed', 'true');
 
