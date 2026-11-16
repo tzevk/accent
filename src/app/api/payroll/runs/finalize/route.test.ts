@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 	mockLoadPayrollRunRoster: vi.fn(),
 	mockSavePayrollRunRoster: vi.fn(),
 	mockLoadFrozenPayrollRunRoster: vi.fn(),
+	mockRecordSalaryAgreementUse: vi.fn(),
 	mockFreezeMonthAllocations: vi.fn(),
 }));
 
@@ -30,6 +31,9 @@ vi.mock('@/lib/payroll-run-roster', () => ({
 	loadPayrollRunRoster: mocks.mockLoadPayrollRunRoster,
 	savePayrollRunRoster: mocks.mockSavePayrollRunRoster,
 	loadFrozenPayrollRunRoster: mocks.mockLoadFrozenPayrollRunRoster,
+}));
+vi.mock('@/lib/salary-profile-store', () => ({
+	recordSalaryAgreementUse: mocks.mockRecordSalaryAgreementUse,
 }));
 vi.mock('@/lib/company-expenditure', () => ({
 	freezeMonthAllocations: mocks.mockFreezeMonthAllocations,
@@ -168,6 +172,11 @@ describe('payroll finalize API — roster completeness gate (issue #242)', () =>
 		mocks.mockFreezeMonthAllocations.mockResolvedValue({
 			allocations: 2,
 			total: 300,
+		});
+		mocks.mockRecordSalaryAgreementUse.mockResolvedValue({
+			recorded: true,
+			ambiguous_prior: false,
+			timeline_version: 1,
 		});
 		mocks.mockEnsurePermission.mockImplementation(async () => ({
 			authorized: true,
@@ -407,9 +416,9 @@ describe('payroll finalize API — roster completeness gate (issue #242)', () =>
 			sql.includes('UPDATE payroll_runs')
 		);
 		expect(updateIndex).toBeGreaterThan(-1);
-		expect(mocks.mockSavePayrollRunRoster.mock.invocationCallOrder[0]).toBeGreaterThan(
-			mocks.mockExecute.mock.invocationCallOrder[updateIndex]
-		);
+		expect(
+			mocks.mockSavePayrollRunRoster.mock.invocationCallOrder[0]
+		).toBeGreaterThan(mocks.mockExecute.mock.invocationCallOrder[updateIndex]);
 		expect(
 			mocks.mockFreezeMonthAllocations.mock.invocationCallOrder[0]
 		).toBeGreaterThan(
@@ -464,19 +473,187 @@ describe('payroll finalize API — roster completeness gate (issue #242)', () =>
 		);
 	});
 
-	it('normalises a short YYYY-MM month before loading the roster and slips', async () => {
+	it('normalises a short YYYY-MM month and locks current terms before loading slips', async () => {
 		const res = await POST(jsonRequest({ month: '2026-08' }));
 
 		expect(res.status).not.toBe(400);
 		expect(mocks.mockLoadPayrollRunRoster).toHaveBeenCalledWith(
 			expect.anything(),
-			'2026-08-01'
+			'2026-08-01',
+			{ forUpdate: true }
 		);
 		const slipCalls = mocks.mockExecute.mock.calls.filter(([sql]) =>
 			String(sql).includes('FROM payroll_slips')
 		);
 		expect(slipCalls).toHaveLength(1);
 		expect(slipCalls[0][1]).toEqual(['2026-08-01']);
+	});
+
+	it('names salary ambiguity and unpriced agreements separately from employment review', async () => {
+		mocks.mockLoadPayrollRunRoster.mockResolvedValue(
+			roster([
+				ELIGIBLE_MEMBERS[0],
+				member(12, 'EMP012', 'Ravi Kumar', {
+					salary_profile: null,
+					profile_source: null,
+					profile_id: null,
+					salary_type: null,
+					salary_issue: 'salary_profile_ambiguous',
+					salary_conflict_ids: [21, 22],
+				}),
+				member(13, 'EMP013', 'Meera Nair', {
+					salary_issue: 'salary_ctc_missing',
+					salary_ctc_source: 'none',
+				}),
+			])
+		);
+		state.slips = [MONTH_SLIPS[0]];
+
+		const res = await POST(jsonRequest({ month: '2026-08-01' }));
+
+		expect(res.status).toBe(409);
+		const body = await res.json();
+		expect(body.error).toContain('Ravi Kumar (EMP012)');
+		expect(body.error).toContain('agreement ids 21, 22');
+		expect(body.error).toContain('Meera Nair (EMP013)');
+		expect(body.error).toMatch(/no monthly CTC/);
+		expect(body.error).not.toMatch(/employment-date review/);
+		expect(body.employees_needing_review).toEqual([]);
+		expect(body.employees_with_ambiguous_salaries).toEqual([
+			{
+				employee_id: 12,
+				employee_code: 'EMP012',
+				name: 'Ravi Kumar',
+				conflict_ids: [21, 22],
+			},
+		]);
+		expect(body.employees_with_unpriced_salaries).toEqual([
+			{
+				employee_id: 13,
+				employee_code: 'EMP013',
+				name: 'Meera Nair',
+				reason: 'salary_ctc_missing',
+			},
+		]);
+		// Ambiguous and unpriced members are salary refusals, not missing slips.
+		expect(body.missing_employees).toEqual([]);
+		expect(mocks.mockRecordSalaryAgreementUse).not.toHaveBeenCalled();
+		expect(
+			statements().some((sql) => sql.includes('UPDATE payroll_runs'))
+		).toBe(false);
+	});
+
+	it('records durable source-qualified finalization use for every frozen member', async () => {
+		mocks.mockSavePayrollRunRoster.mockResolvedValue({
+			run_id: 7,
+			month: '2026-08-01',
+			version: 3,
+			frozen_at: null,
+			// Deliberately out of Employee order: use is recorded ascending.
+			members: [
+				{
+					employee_id: 12,
+					employee_code: 'EMP012',
+					name: 'Ravi Kumar',
+					employment_start: '2026-01-01',
+					employment_end: null,
+					profile_date: '2026-08-01',
+					profile_source: 'employee_salary_profile',
+					profile_id: 33,
+					salary_type: 'monthly',
+				},
+				{
+					employee_id: 11,
+					employee_code: 'EMP011',
+					name: 'Asha Rao',
+					employment_start: '2026-01-01',
+					employment_end: null,
+					profile_date: '2026-08-01',
+					profile_source: 'salary_structures',
+					profile_id: 22,
+					salary_type: 'monthly',
+				},
+			],
+		});
+
+		const res = await POST(jsonRequest({ month: '2026-08-01' }));
+
+		expect(res.status).toBe(200);
+		expect(mocks.mockRecordSalaryAgreementUse).toHaveBeenCalledTimes(2);
+		expect(mocks.mockRecordSalaryAgreementUse).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ execute: mocks.mockExecute }),
+			{
+				employeeId: 11,
+				agreementId: 22,
+				agreementSource: 'salary_structures',
+				month: '2026-08-01',
+				evidence: 'payroll_finalization',
+				evidenceContext: { payroll_run_id: 7, roster_version: 3 },
+				actorId: 9,
+			}
+		);
+		expect(mocks.mockRecordSalaryAgreementUse).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({ execute: mocks.mockExecute }),
+			{
+				employeeId: 12,
+				agreementId: 33,
+				agreementSource: 'employee_salary_profile',
+				month: '2026-08-01',
+				evidence: 'payroll_finalization',
+				evidenceContext: { payroll_run_id: 7, roster_version: 3 },
+				actorId: 9,
+			}
+		);
+		// Use evidence joins the same transaction after the snapshot and freeze,
+		// before the finalize audit.
+		expect(
+			mocks.mockRecordSalaryAgreementUse.mock.invocationCallOrder[0]
+		).toBeGreaterThan(
+			mocks.mockSavePayrollRunRoster.mock.invocationCallOrder[0]
+		);
+		expect(
+			mocks.mockRecordSalaryAgreementUse.mock.invocationCallOrder[1]
+		).toBeGreaterThan(
+			mocks.mockFreezeMonthAllocations.mock.invocationCallOrder[0]
+		);
+		expect(auditInsert()).toBeDefined();
+	});
+
+	it('rolls back the finalize when durable use recording fails', async () => {
+		mocks.mockSavePayrollRunRoster.mockResolvedValue({
+			run_id: 7,
+			month: '2026-08-01',
+			version: 1,
+			frozen_at: null,
+			members: [
+				{
+					employee_id: 11,
+					employee_code: 'EMP011',
+					name: 'Asha Rao',
+					employment_start: '2026-01-01',
+					employment_end: null,
+					profile_date: '2026-08-01',
+					profile_source: 'employee_salary_profile',
+					profile_id: 11,
+					salary_type: 'monthly',
+				},
+			],
+		});
+		mocks.mockRecordSalaryAgreementUse.mockRejectedValue(
+			new Error('employee_salary_payroll_use is missing')
+		);
+
+		const res = await POST(jsonRequest({ month: '2026-08-01' }));
+
+		expect(res.status).toBe(500);
+		const body = await res.json();
+		expect(body.success).toBe(false);
+		expect(body.details).toMatch(/employee_salary_payroll_use is missing/);
+		// The audit is the last write: a failed use record aborts it, and the
+		// transaction rolls the status, snapshot and allocation writes back.
+		expect(auditInsert()).toBeUndefined();
 	});
 });
 
@@ -518,6 +695,11 @@ describe('payroll finalize API — the transition is audited (issue #243)', () =
 		mocks.mockFreezeMonthAllocations.mockResolvedValue({
 			allocations: 2,
 			total: 300,
+		});
+		mocks.mockRecordSalaryAgreementUse.mockResolvedValue({
+			recorded: true,
+			ambiguous_prior: false,
+			timeline_version: 1,
 		});
 		mocks.mockEnsurePermission.mockImplementation(async () => ({
 			authorized: true,
@@ -563,12 +745,14 @@ describe('payroll finalize API — the transition is audited (issue #243)', () =
 		// finalize they asked for — or the lock it put on the month.
 		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const realImplementation = mocks.mockExecute.getMockImplementation()!;
-		mocks.mockExecute.mockImplementation(async (sql: string, params?: unknown[]) => {
-			if (String(sql).includes('INSERT INTO payroll_audit_logs')) {
-				return Promise.reject(new Error('payroll_audit_logs is missing'));
+		mocks.mockExecute.mockImplementation(
+			async (sql: string, params?: unknown[]) => {
+				if (String(sql).includes('INSERT INTO payroll_audit_logs')) {
+					return Promise.reject(new Error('payroll_audit_logs is missing'));
+				}
+				return realImplementation(sql, params);
 			}
-			return realImplementation(sql, params);
-		});
+		);
 
 		const res = await POST(jsonRequest({ month: '2026-08-01' }));
 
