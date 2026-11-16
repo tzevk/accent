@@ -35,6 +35,19 @@ const pdfAmount = (v) => {
 };
 
 /**
+ * The one sentence a printed slip adds when its salary history cannot name a
+ * single agreement. It never changes a recorded amount; it only stops the
+ * document from implying a confirmed Basic it does not have.
+ */
+export function slipSalaryContextNotice(context) {
+	if (context?.state === 'unavailable')
+		return 'SALARY AGREEMENT FOR THIS MONTH COULD NOT BE CONFIRMED; RECORDED SLIP AMOUNTS ARE SHOWN UNCHANGED';
+	if (context?.state === 'ambiguous')
+		return 'MORE THAN ONE SALARY AGREEMENT COVERS THIS MONTH; RECORDED SLIP AMOUNTS ARE SHOWN UNCHANGED';
+	return '';
+}
+
+/**
  * Render one salary slip on the given jsPDF page.
  * Uses landscape A4, offset by yStart.
  * Draws everything inside a single outer box with equal spacing.
@@ -381,8 +394,10 @@ function renderSlip(doc, slip, yStart) {
 	y += netH;
 
 	// ─── Footer ───
+	const salaryNotice = slipSalaryContextNotice(slip.salary_context);
+	const footerH = salaryNotice ? 12 : 7;
 	doc.setFillColor(243, 229, 245);
-	doc.rect(margin, y, tableW, 7, 'FD');
+	doc.rect(margin, y, tableW, footerH, 'FD');
 	doc.setFont('helvetica', 'normal');
 	doc.setFontSize(6);
 	doc.setTextColor(100, 18, 109);
@@ -392,8 +407,12 @@ function renderSlip(doc, slip, yStart) {
 		y + 4.5,
 		{ align: 'center' }
 	);
+	if (salaryNotice) {
+		doc.setTextColor(146, 64, 14);
+		doc.text(salaryNotice, pageW / 2, y + 9, { align: 'center' });
+	}
 
-	y += 7;
+	y += footerH;
 
 	// ─── Draw Outer Box ───
 	doc.setDrawColor(100, 18, 109);

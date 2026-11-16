@@ -8,6 +8,7 @@ import {
 import { linkedEmployeeId } from '@/app/api/me/_lib/session-employee';
 import { normalizeSlips, renderSlipsPdf } from '@/lib/slip-pdf';
 import { slipPdfFilename } from '@/lib/payroll';
+import { readSlipSalaryContexts } from '@/lib/payroll-slip-salary';
 
 /**
  * GET /api/me/payslips/pdf?month=YYYY-MM — the signed-in employee's own Payroll
@@ -17,6 +18,10 @@ import { slipPdfFilename } from '@/lib/payroll';
  * permission is required, the Employee is the session's own, and a month whose
  * Payroll Run is still draft is not downloadable. Rendering goes through the
  * shared slip renderer, so this is the document an admin would export.
+ *
+ * Basic/DA come from the slip's own recorded/confirmed salary context, not a
+ * joined current profile, so a later Salary Revision cannot re-price an older
+ * document or multiply it through a second active agreement.
  */
 export async function GET(request) {
 	const user = await getCurrentUser(request);
@@ -62,25 +67,34 @@ export async function GET(request) {
               e.uan as uan_number,
               e.pf_no as pf_number,
               e.esi_no as esic_number,
-              e.pan as pan_number,
-              ss_inner.basic_salary as structure_basic_salary,
-              sp_inner.basic as profile_basic,
-              sp_inner.basic_plus_da as profile_basic_plus_da
+              e.pan as pan_number
          FROM payroll_slips ps
          JOIN employees e ON e.id = ps.employee_id AND e.isDelete = 0
-         LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
-         LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
          ${SLIP_VISIBILITY.join}
         WHERE ps.employee_id = ?
           AND ps.month = ?
           AND ${SLIP_VISIBILITY.where}
-        LIMIT 1`,
+        ORDER BY ps.id ASC`,
 			[employeeId, period.month, ...SLIP_VISIBILITY.params]
 		);
 
 		if (slips.length === 0) return notFound();
 
-		const normalizedSlips = await normalizeSlips(db, slips, period.month);
+		// One context per slip from its own recorded provenance or the one
+		// agreement that covers the slip month. This read no longer joins an
+		// active profile, so a second historical agreement cannot multiply the
+		// document or let an arbitrary/current row re-price Basic.
+		const contexts = await readSlipSalaryContexts(db, slips);
+		const contextualSlips = slips.map((slip, index) => ({
+			...slip,
+			salary_context: contexts[index],
+		}));
+
+		const normalizedSlips = await normalizeSlips(
+			db,
+			contextualSlips,
+			period.month
+		);
 		const pdfBuffer = renderSlipsPdf(normalizedSlips);
 		const filename = slipPdfFilename(normalizedSlips[0]);
 

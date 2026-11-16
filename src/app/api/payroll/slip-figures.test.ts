@@ -26,7 +26,8 @@ vi.mock('@/lib/slip-pdf', async (importOriginal) => ({
 
 const { GET: getSlips } = await import('@/app/api/payroll/slips/route');
 const { GET: getBulkPdf } = await import('@/app/api/payroll/bulk-pdf/route');
-const { renderSlipsPdf } = await import('@/lib/slip-pdf');
+const { renderSlipsPdf, slipSalaryContextNotice } =
+	await import('@/lib/slip-pdf');
 const { slipFigures, normalizedSlipFigures } = await import('@/lib/payroll');
 
 const grant = grantFor(mocks.mockEnsurePermission);
@@ -35,14 +36,14 @@ const MONTH = '2026-08-01';
 
 /**
  * A Payroll Slip is a snapshot, so its own columns are the money. Row 1 is the
- * case that used to drift: the slip stored Basic 27000 while the Salary Profile
- * and the legacy Salary Structure now say 18000, and the slip's own totals were
- * computed from the stored 27000 — reading the profile back in is how the
- * printed slip stopped adding up.
+ * case that used to drift: the slip stored Basic 27000 while its recorded
+ * Salary Profile now says 18000, and the slip's own totals were computed from
+ * the stored 27000 — reading a profile back in is how the printed slip stopped
+ * adding up.
  *
- * Rows 2 and 3 have no Basic of their own, so the canonical sources repair them
- * (Salary Profile Basic, then Salary Profile Basic+DA, and the legacy Salary
- * Structure last — ADR-0001). Row 3 also has no `total_earnings`, so its Gross
+ * Rows 2 and 3 have no Basic of their own, so their recorded/confirmed salary
+ * context repairs it (a canonical Basic, then Basic+DA — see
+ * `@/lib/payroll-slip-salary`). Row 3 also has no `total_earnings`, so its Gross
  * falls back to the stored `gross`.
  */
 const SLIP_ROWS = [
@@ -54,9 +55,7 @@ const SLIP_ROWS = [
 		basic: '27000.00',
 		da_used: '0.00',
 		da: '0.00',
-		structure_basic_salary: '18000.00',
-		profile_basic: '18000.00',
-		profile_basic_plus_da: '21000.00',
+		salary_context: { figure_basic: 18000 },
 		hra: '9000.00',
 		total_earnings: '54000.00',
 		total_deductions: '2000.00',
@@ -70,9 +69,7 @@ const SLIP_ROWS = [
 		basic: '0.00',
 		da_used: '0.00',
 		da: '0.00',
-		structure_basic_salary: '0.00',
-		profile_basic: '45000.00',
-		profile_basic_plus_da: '48000.00',
+		salary_context: { figure_basic: 45000 },
 		total_earnings: null,
 		gross: '47500.00',
 		total_deductions: '2000.00',
@@ -86,9 +83,7 @@ const SLIP_ROWS = [
 		basic: null,
 		da_used: null,
 		da: '1500.00',
-		structure_basic_salary: '40000.00',
-		profile_basic: null,
-		profile_basic_plus_da: '52000.00',
+		salary_context: { figure_basic: 52000 },
 		total_earnings: '39000.00',
 		total_deductions: null,
 		net_pay: null,
@@ -104,11 +99,62 @@ const SLIP_ROWS = [
 		basic: '20000.00',
 		da_used: '1000.00',
 		da: '1000.00',
-		profile_basic: '26000.00',
-		profile_basic_plus_da: '28000.00',
+		salary_context: { figure_basic: 26000 },
 		total_earnings: '26000.00',
 		total_deductions: '1500.00',
 		net_pay: '24500.00',
+	},
+];
+
+/**
+ * The recorded/confirmed agreements behind those slips. The shared reader
+ * resolves one context per slip from these rows; `slipFigures` then consumes
+ * only that context's Basic fallback, never a joined current profile.
+ */
+const PROFILES = [
+	{
+		id: 101,
+		employee_id: 7,
+		effective_from: MONTH,
+		effective_to: null,
+		is_active: 1,
+		cancelled_at: null,
+		salary_type: 'monthly',
+		basic: '18000.00',
+		basic_plus_da: '18000.00',
+	},
+	{
+		id: 102,
+		employee_id: 9,
+		effective_from: MONTH,
+		effective_to: null,
+		is_active: 1,
+		cancelled_at: null,
+		salary_type: 'monthly',
+		basic: '45000.00',
+		basic_plus_da: '48000.00',
+	},
+	{
+		id: 103,
+		employee_id: 11,
+		effective_from: MONTH,
+		effective_to: null,
+		is_active: 1,
+		cancelled_at: null,
+		salary_type: 'monthly',
+		basic: null,
+		basic_plus_da: '52000.00',
+	},
+	{
+		id: 104,
+		employee_id: 14,
+		effective_from: MONTH,
+		effective_to: null,
+		is_active: 1,
+		cancelled_at: null,
+		salary_type: 'monthly',
+		basic: '26000.00',
+		basic_plus_da: '28000.00',
 	},
 ];
 
@@ -133,6 +179,23 @@ const FIXED_DA = [
 		effective_to: null,
 	},
 ];
+
+/**
+ * Every route reads the slips, then resolves their recorded/confirmed contexts
+ * and the month's DA rate; anything else (a run or audit lookup) gets empty
+ * rows. Both suites stub through here, so a test that changes only the DA rate
+ * cannot drop the context read the Basic fallback comes from.
+ */
+const stubQueries = (daRows: unknown[]) => {
+	mocks.mockExecute.mockImplementation(async (sql: unknown) => {
+		const text = String(sql);
+		if (text.includes('FROM payroll_schedules')) return [daRows, undefined];
+		if (text.includes('FROM employee_salary_profile'))
+			return [PROFILES, undefined];
+		if (text.includes('FROM payroll_slips')) return [SLIP_ROWS, undefined];
+		return [[], undefined];
+	});
+};
 
 /** The six figures the shared derivation reads off a raw slip row. */
 const rawFigures = (row: Record<string, unknown>) => {
@@ -273,15 +336,7 @@ describe('Payroll Slip figures are derived once (issue #251)', () => {
 			execute: mocks.mockExecute,
 			release: vi.fn(),
 		});
-		// Both routes read the slips first and the month's DA rate second; anything
-		// else (a run or audit lookup) gets empty rows.
-		mocks.mockExecute.mockImplementation(async (sql: unknown) => {
-			const text = String(sql);
-			if (text.includes('FROM payroll_schedules'))
-				return [PERCENTAGE_DA, undefined];
-			if (text.includes('FROM payroll_slips')) return [SLIP_ROWS, undefined];
-			return [[], undefined];
-		});
+		stubQueries(PERCENTAGE_DA);
 	});
 
 	it('hands the listing and the PDF export the same six figures per slip', async () => {
@@ -303,6 +358,11 @@ describe('Payroll Slip figures are derived once (issue #251)', () => {
 
 		expect(rendered).toHaveLength(4);
 		expect(rendered.map(normalizedFigures)).toEqual(EXPECTED);
+		// The PDF is handed each slip's recorded/confirmed context, never a joined
+		// current profile; that context is the only profile-derived Basic input.
+		expect(rendered.map((slip) => slip.salary_context?.figure_basic)).toEqual([
+			18000, 45000, 52000, 26000,
+		]);
 		// Same figures figure for figure — the tripwire is the literals above, this
 		// is the promise that the two renderers cannot drift apart again.
 		expect(rendered.map(normalizedFigures)).toEqual(
@@ -325,12 +385,7 @@ describe('Payroll Slip figures are derived once (issue #251)', () => {
 	});
 
 	it("lets the month's fixed DA rate re-split the snapshot, Basic+DA intact", async () => {
-		mocks.mockExecute.mockImplementation(async (sql: unknown) => {
-			const text = String(sql);
-			if (text.includes('FROM payroll_schedules')) return [FIXED_DA, undefined];
-			if (text.includes('FROM payroll_slips')) return [SLIP_ROWS, undefined];
-			return [[], undefined];
-		});
+		stubQueries(FIXED_DA);
 
 		const listed = await listedSlips();
 
@@ -359,5 +414,16 @@ describe('Payroll Slip figures are derived once (issue #251)', () => {
 		});
 		expect(normalizedFigures(listed[0]).gross).toBe(54000);
 		expect(normalizedFigures(listed[0]).net).toBe(52000);
+	});
+
+	it('prints a disclosure when the salary history cannot name one agreement', () => {
+		expect(slipSalaryContextNotice({ state: 'recorded' })).toBe('');
+		expect(slipSalaryContextNotice({ state: 'confirmed' })).toBe('');
+		expect(slipSalaryContextNotice({ state: 'unavailable' })).toContain(
+			'COULD NOT BE CONFIRMED'
+		);
+		expect(slipSalaryContextNotice({ state: 'ambiguous' })).toContain(
+			'MORE THAN ONE SALARY AGREEMENT'
+		);
 	});
 });
