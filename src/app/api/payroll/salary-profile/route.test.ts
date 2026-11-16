@@ -1,16 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { grantFor } from '../test-perms';
-import { payrollAuditRows } from '../audit-rows';
+import { NextResponse } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-	mockDbConnect: vi.fn(),
 	mockEnsurePermission: vi.fn(),
+	mockWithDb: vi.fn(),
+	mockWithTransaction: vi.fn(),
+	mockRunSalaryCommand: vi.fn(),
+	mockReadSalaryTimeline: vi.fn(),
+	mockGetPermissionsFor: vi.fn(),
 }));
 
-vi.mock('@/utils/database', () => ({ dbConnect: mocks.mockDbConnect }));
+vi.mock('@/utils/database', () => ({
+	withDb: mocks.mockWithDb,
+	withTransaction: mocks.mockWithTransaction,
+}));
 vi.mock('@/utils/api-permissions', () => ({
 	ensurePermission: mocks.mockEnsurePermission,
-	RESOURCES: { PAYROLL: 'payroll', EMPLOYEES: 'employees' },
+	RESOURCES: { PAYROLL: 'payroll' },
 	PERMISSIONS: {
 		READ: 'read',
 		CREATE: 'create',
@@ -18,42 +24,73 @@ vi.mock('@/utils/api-permissions', () => ({
 		DELETE: 'delete',
 	},
 }));
+vi.mock('@/utils/permissions', () => ({
+	getPermissionsFor: mocks.mockGetPermissionsFor,
+}));
+vi.mock('@/lib/salary-profile-commands', () => ({
+	runSalaryCommand: mocks.mockRunSalaryCommand,
+	readSalaryTimeline: mocks.mockReadSalaryTimeline,
+}));
 
-const { POST, DELETE } = await import('@/app/api/payroll/salary-profile/route');
+// Dynamic import after the hoisted mocks: the repository's payroll route tests
+// use this to guarantee the route module sees its faked collaborators.
+const { POST, GET } = await import('@/app/api/payroll/salary-profile/route');
 
-const grant = grantFor(mocks.mockEnsurePermission);
+const connection = { execute: vi.fn() };
 
-/**
- * `grant()` authorizes without a user, and the audit trail must name a real
- * performer — so give the mocked gate a session user for the write tests.
- */
-const signedInAs = (id: number) =>
+const TIMELINE = {
+	employee: { id: 11, employee_code: 'EMP011', full_name: 'Asha Rao' },
+	server_date: '2026-11-15',
+	as_of: '2026-11-15',
+	month: '2026-11-01',
+	timeline_version: 5,
+	permissions: { can_read: true, can_update: true, can_delete: false },
+	use: {
+		used: true,
+		ambiguous: false,
+		unknown_history: false,
+		months: ['2026-11-01'],
+		ambiguous_months: [],
+		agreements: [],
+	},
+	basis: {
+		month: '2026-11-01',
+		working_days: 22,
+		std_hours_per_day: 8,
+		basis_hours: 176,
+		std_hours_source: 'agreement',
+	},
+	leave_usage: {
+		as_of: '2026-11-15',
+		year: 2026,
+		month: '2026-11-01',
+		pl_total: 21,
+		used: 2,
+		month_used: 0,
+		balance: 19,
+		months_recorded: 1,
+		source: 'employee_attendance_summary',
+	},
+	agreements: [],
+	current: {
+		state: 'selected',
+		agreement_source: 'employee_salary_profile',
+		agreement_id: 71,
+		agreement_ids: [],
+	},
+	legacy_current: {
+		state: 'unavailable',
+		agreement_source: null,
+		agreement_id: null,
+		agreement_ids: [],
+	},
+};
+
+const signedInAs = (id = 9) =>
 	mocks.mockEnsurePermission.mockImplementation(async () => ({
 		authorized: true,
 		user: { id },
 	}));
-
-const connection = {
-	query: vi.fn(),
-	execute: vi.fn(),
-	release: vi.fn(),
-};
-
-/** The profile as it stood before the edit. */
-const PRIOR_PROFILE = {
-	id: 55,
-	employee_id: 7,
-	gross: 50000,
-	gross_salary: 50000,
-	basic: 30000,
-	effective_from: '2026-04-01',
-	effective_to: null,
-	is_manual_override: 0,
-	created_at: '2026-04-01 09:00:00',
-	updated_at: '2026-04-01 09:00:00',
-};
-
-const rows = (result: unknown[]) => [result, undefined];
 
 const jsonRequest = (body: unknown) =>
 	new Request('http://localhost/api/payroll/salary-profile', {
@@ -62,206 +99,269 @@ const jsonRequest = (body: unknown) =>
 		body: JSON.stringify(body),
 	});
 
-/**
- * The audit entries the route wrote, with their columns named. This route
- * writes over the caller's pooled connection, so they live on its execute mock.
- */
-const auditRows = () => payrollAuditRows(connection.execute);
-
-describe('salary-profile API — edits are audited (issue #243)', () => {
+describe('salary-profile route — command mapping (issue #437)', () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
-		mocks.mockDbConnect.mockResolvedValue(connection);
-		connection.query.mockResolvedValue([[], undefined]);
-		connection.execute.mockResolvedValue([[], undefined]);
+		mocks.mockWithDb.mockImplementation(async (fn: (db: unknown) => unknown) =>
+			fn(connection)
+		);
+		mocks.mockWithTransaction.mockImplementation(
+			async (fn: (db: unknown) => unknown) => fn(connection)
+		);
+		signedInAs();
+		mocks.mockGetPermissionsFor.mockReturnValue(['read', 'update', 'delete']);
+		mocks.mockRunSalaryCommand.mockResolvedValue({
+			ok: true,
+			operation: 'correct',
+			agreement_id: 71,
+			timeline_version: 5,
+			classification: 'current',
+			effective_from: '2026-11-01',
+			effective_to: null,
+		});
+		mocks.mockReadSalaryTimeline.mockResolvedValue({
+			ok: true,
+			timeline: TIMELINE,
+		});
 	});
 
 	it('denies a caller without payroll:update', async () => {
-		grant();
-
-		const res = await POST(
-			jsonRequest({ employee_id: 7, gross_salary: 60000 })
+		mocks.mockEnsurePermission.mockResolvedValue(
+			NextResponse.json(
+				{ success: false, error: 'Forbidden: missing permission' },
+				{ status: 403 }
+			)
 		);
 
-		expect(res.status).toBe(403);
-		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+		const response = await POST(
+			jsonRequest({ operation: 'correct', employee_id: 11 })
+		);
+
+		expect(response.status).toBe(403);
+		expect(mocks.mockWithTransaction).not.toHaveBeenCalled();
 	});
 
-	it('denies an employees-only caller: a pay agreement is payroll data', async () => {
-		grant('employees:update');
-
-		const res = await POST(
-			jsonRequest({ employee_id: 7, gross_salary: 60000 })
+	it('requires payroll:delete for cancellation', async () => {
+		mocks.mockEnsurePermission.mockImplementation(
+			async (_request: Request, _resource: string, permission: string) =>
+				permission === 'update'
+					? NextResponse.json(
+							{ success: false, error: 'Forbidden' },
+							{ status: 403 }
+						)
+					: { authorized: true, user: { id: 9 } }
 		);
-
-		expect(res.status).toBe(403);
-		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
-	});
-
-	it('audits a new Salary Profile as a create, attributed to the session user', async () => {
-		grant('payroll:update');
-		signedInAs(3);
-		connection.query
-			.mockResolvedValueOnce(rows([{ id: 7 }])) // the employee exists
-			.mockResolvedValueOnce(rows([])) // no profile for that effective_from
-			.mockResolvedValueOnce(rows({ insertId: 61, affectedRows: 1 }));
-
-		const res = await POST(
-			jsonRequest({
-				employee_id: 7,
-				gross_salary: 60000,
-				effective_from: '2026-09-01',
-			})
-		);
-
-		expect(res.status).toBe(200);
-		expect((await res.json()).success).toBe(true);
-
-		const [audit] = auditRows();
-		expect(audit).toMatchObject({
-			entityType: 'salary_profile',
-			entityId: 61, // the row the INSERT created
-			employeeId: 7,
-			action: 'create',
-			oldValues: null, // a create displaces nothing
-		});
-		expect(audit.newValues).toMatchObject({
-			employee_id: 7,
-			gross_salary: 60000,
-			effective_from: '2026-09-01',
-		});
-		expect(audit.performedBy).toBe(3);
-	});
-
-	it('audits an edit with the gross and flags it displaced', async () => {
-		grant('payroll:update');
-		signedInAs(3);
-		connection.query
-			.mockResolvedValueOnce(rows([{ id: 7 }]))
-			.mockResolvedValueOnce(rows([PRIOR_PROFILE])) // read before the UPDATE
-			.mockResolvedValueOnce(rows({ affectedRows: 1 }));
-
-		const res = await POST(
-			jsonRequest({ id: 55, employee_id: 7, gross_salary: 72000 })
-		);
-
-		expect(res.status).toBe(200);
-
-		const [audit] = auditRows();
-		expect(audit).toMatchObject({
-			entityType: 'salary_profile',
-			entityId: 55,
-			employeeId: 7,
-			action: 'update',
-		});
-		// oldValues is the real prior row, free of the row's own history noise.
-		expect(audit.oldValues).toEqual({
-			id: 55,
-			employee_id: 7,
-			gross: 50000,
-			gross_salary: 50000,
-			basic: 30000,
-			effective_from: '2026-04-01',
+		mocks.mockRunSalaryCommand.mockResolvedValue({
+			ok: true,
+			operation: 'cancel',
+			agreement_id: 72,
+			timeline_version: 6,
+			classification: 'cancelled',
+			effective_from: '2026-12-01',
 			effective_to: null,
-			is_manual_override: 0,
 		});
-		expect(audit.newValues).toMatchObject({
-			id: 55,
-			gross_salary: 72000,
-		});
-		expect(audit.performedBy).toBe(3);
-	});
 
-	it('audits the existing profile an employee+effective_from save overwrote', async () => {
-		grant('payroll:update');
-		signedInAs(3);
-		connection.query
-			.mockResolvedValueOnce(rows([{ id: 7 }]))
-			.mockResolvedValueOnce(rows([PRIOR_PROFILE])) // the reused lookup
-			.mockResolvedValueOnce(rows({ affectedRows: 1 }));
-
-		const res = await POST(
+		const response = await POST(
 			jsonRequest({
-				employee_id: 7,
-				gross_salary: 72000,
-				effective_from: '2026-04-01',
+				operation: 'cancel',
+				employee_id: 11,
+				agreement_id: 72,
+				expected_timeline_version: 5,
 			})
 		);
 
-		expect(res.status).toBe(200);
-		// Only one lookup happens before the UPDATE, and that read is what the
-		// audit trail records.
-		const lookups = connection.query.mock.calls.filter(([sql]) =>
-			String(sql).includes('SELECT * FROM employee_salary_profile')
+		expect(response.status).toBe(200);
+		expect(mocks.mockEnsurePermission).toHaveBeenCalledWith(
+			expect.any(Request),
+			'payroll',
+			'delete'
 		);
-		expect(lookups).toHaveLength(1);
+	});
 
-		const [audit] = auditRows();
-		expect(audit).toMatchObject({
-			entityId: 55,
-			action: 'update',
-			oldValues: { gross_salary: 50000 },
+	it('uses the authenticated actor, never request actor fields, and returns the command DTO', async () => {
+		const response = await POST(
+			jsonRequest({
+				operation: 'correct',
+				employee_id: 11,
+				agreement_id: 71,
+				expected_timeline_version: 4,
+				effective_from: '2026-11-01',
+				employer_cost: 27500,
+				std_hours_per_day: 8,
+				performed_by: 999,
+				actor_id: 444,
+			})
+		);
+
+		expect(response.status).toBe(200);
+		expect(mocks.mockEnsurePermission).toHaveBeenCalledWith(
+			expect.any(Request),
+			'payroll',
+			'update'
+		);
+		expect(mocks.mockRunSalaryCommand).toHaveBeenCalledWith(
+			connection,
+			expect.objectContaining({
+				operation: 'correct',
+				employee_id: 11,
+				agreement_id: 71,
+			}),
+			{ actorId: 9 }
+		);
+		const body = await response.json();
+		expect(body).toEqual({
+			success: true,
+			data: {
+				operation: 'correct',
+				agreement_id: 71,
+				timeline_version: 5,
+				classification: 'current',
+				effective_from: '2026-11-01',
+				effective_to: null,
+			},
 		});
 	});
 
-	it('writes no entry when the id matched nothing to update', async () => {
-		grant('payroll:update');
-		signedInAs(3);
-		connection.query
-			.mockResolvedValueOnce(rows([{ id: 7 }]))
-			.mockResolvedValueOnce(rows([])) // the profile does not exist
-			.mockResolvedValueOnce(rows({ affectedRows: 0 }));
+	it('maps core conflicts to their HTTP status, code and details', async () => {
+		mocks.mockRunSalaryCommand.mockResolvedValue({
+			ok: false,
+			code: 'date_conflict',
+			status: 409,
+			message: 'Another agreement already starts on this date',
+			details: { effective_from: '2026-12-01' },
+		});
 
-		const res = await POST(
-			jsonRequest({ id: 999, employee_id: 7, gross_salary: 72000 })
-		);
-
-		// Existing response contract is untouched; there is simply nothing that
-		// was mutated to attribute.
-		expect(res.status).toBe(200);
-		expect(auditRows()).toHaveLength(0);
-	});
-
-	it('audits the profile it deleted', async () => {
-		grant('payroll:delete');
-		signedInAs(3);
-		connection.query
-			.mockResolvedValueOnce(rows([PRIOR_PROFILE])) // read before the DELETE
-			.mockResolvedValueOnce(rows({ affectedRows: 1 }));
-
-		const res = await DELETE(
-			new Request('http://localhost/api/payroll/salary-profile?id=55', {
-				method: 'DELETE',
+		const response = await POST(
+			jsonRequest({
+				operation: 'revise',
+				employee_id: 11,
+				agreement_id: 71,
+				expected_timeline_version: 4,
+				effective_from: '2026-12-01',
+				employer_cost: 30000,
+				std_hours_per_day: 8,
 			})
 		);
 
-		expect(res.status).toBe(200);
-
-		const [audit] = auditRows();
-		expect(audit).toMatchObject({
-			entityType: 'salary_profile',
-			entityId: 55,
-			employeeId: 7,
-			action: 'delete',
-			newValues: null,
-			oldValues: { gross_salary: 50000 },
+		expect(response.status).toBe(409);
+		await expect(response.json()).resolves.toEqual({
+			success: false,
+			error: 'Another agreement already starts on this date',
+			code: 'date_conflict',
+			details: { effective_from: '2026-12-01' },
 		});
 	});
 
-	it('writes no entry for a delete that removed nothing', async () => {
-		grant('payroll:delete');
-		signedInAs(3);
-		connection.query
-			.mockResolvedValueOnce(rows([]))
-			.mockResolvedValueOnce(rows({ affectedRows: 0 }));
+	it('rejects an unknown operation and malformed JSON before opening a transaction', async () => {
+		const unknown = await POST(jsonRequest({ operation: 'delete' }));
+		expect(unknown.status).toBe(400);
 
-		const res = await DELETE(
-			new Request('http://localhost/api/payroll/salary-profile?id=999', {
-				method: 'DELETE',
+		const malformed = await POST(
+			new Request('http://localhost/api/payroll/salary-profile', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: '{',
 			})
 		);
+		expect(malformed.status).toBe(400);
+		expect(mocks.mockWithTransaction).not.toHaveBeenCalled();
+	});
 
-		expect(res.status).toBe(404);
-		expect(auditRows()).toHaveLength(0);
+	it('refuses a write when the session has no performer identity', async () => {
+		mocks.mockEnsurePermission.mockResolvedValue({
+			authorized: true,
+			user: null,
+		});
+
+		const response = await POST(
+			jsonRequest({ operation: 'correct', employee_id: 11 })
+		);
+
+		expect(response.status).toBe(401);
+		expect(mocks.mockWithTransaction).not.toHaveBeenCalled();
+	});
+});
+
+describe('salary-profile route — payroll-authorized timeline read (issue #437)', () => {
+	beforeEach(() => {
+		vi.resetAllMocks();
+		mocks.mockWithDb.mockImplementation(async (fn: (db: unknown) => unknown) =>
+			fn(connection)
+		);
+		mocks.mockWithTransaction.mockImplementation(
+			async (fn: (db: unknown) => unknown) => fn(connection)
+		);
+		signedInAs();
+		mocks.mockGetPermissionsFor.mockReturnValue(['read', 'update']);
+		mocks.mockReadSalaryTimeline.mockResolvedValue({
+			ok: true,
+			timeline: TIMELINE,
+		});
+	});
+
+	const getRequest = (query: string) =>
+		new Request(`http://localhost/api/payroll/salary-profile?${query}`);
+
+	it('returns the timeline and passes session-derived permissions to the reader', async () => {
+		const response = await GET(
+			getRequest('employee_id=11&date=2026-11-15&month=2026-11')
+		);
+
+		expect(response.status).toBe(200);
+		expect(mocks.mockEnsurePermission).toHaveBeenCalledWith(
+			expect.any(Request),
+			'payroll',
+			'read'
+		);
+		expect(mocks.mockReadSalaryTimeline).toHaveBeenCalledWith(connection, 11, {
+			asOf: '2026-11-15',
+			month: '2026-11',
+			permissions: { update: true, delete: false },
+		});
+		await expect(response.json()).resolves.toEqual({
+			success: true,
+			data: TIMELINE,
+		});
+	});
+
+	it('denies a payroll-only reader without payroll:read', async () => {
+		mocks.mockEnsurePermission.mockResolvedValue(
+			NextResponse.json(
+				{ success: false, error: 'Forbidden: missing permission' },
+				{ status: 403 }
+			)
+		);
+
+		const response = await GET(getRequest('employee_id=11'));
+
+		expect(response.status).toBe(403);
+		expect(mocks.mockWithDb).not.toHaveBeenCalled();
+	});
+
+	it('rejects a missing or malformed employee id', async () => {
+		const missing = await GET(getRequest(''));
+		expect(missing.status).toBe(400);
+
+		const malformed = await GET(getRequest('employee_id=abc'));
+		expect(malformed.status).toBe(400);
+		expect(mocks.mockWithDb).not.toHaveBeenCalled();
+	});
+
+	it('maps a missing Employee to 404', async () => {
+		mocks.mockReadSalaryTimeline.mockResolvedValue({
+			ok: false,
+			code: 'employee_not_found',
+			status: 404,
+			message: 'Employee 11 does not exist',
+		});
+
+		const response = await GET(getRequest('employee_id=11'));
+
+		expect(response.status).toBe(404);
+		await expect(response.json()).resolves.toEqual({
+			success: false,
+			error: 'Employee 11 does not exist',
+			code: 'employee_not_found',
+		});
 	});
 });

@@ -29,10 +29,14 @@ export type SalaryStoreDb = {
 	 * mysql2 `execute` result tuple. For a read the first element is the rows
 	 * array; for a write it is a `ResultSetHeader`. The second element is the
 	 * field list, which these helpers never need.
+	 *
+	 * `params` is a mutable array because mysql2 `execute` takes
+	 * `ExecuteValues[]`; a `readonly` array would make a real `PoolConnection`
+	 * unassignable. Every helper builds its own parameter array.
 	 */
 	execute(
 		sql: string,
-		params?: ReadonlyArray<string | number | boolean | null>
+		params?: Array<string | number | boolean | null>
 	): Promise<[unknown, unknown]>;
 };
 

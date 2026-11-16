@@ -79,9 +79,33 @@ export function auditSnapshot(row) {
 }
 
 /**
+ * The entry `recordPayrollAudit` writes. `entityType`, `entityId`, `action`
+ * and `performedBy` are required; the rest default to null (or false for
+ * `required`). `performedBy` is coerced with `Number.parseInt`: a numeric
+ * string is accepted, and anything that is not a positive integer skips the
+ * write (or rejects when `required` is true). `oldValues`/`newValues` are
+ * `JSON.stringify`-ed into the `json` columns, so they must be JSON-compatible
+ * objects or NULL.
+ *
+ * @typedef {Object} PayrollAuditEntry
+ * @property {string} entityType
+ * @property {number} entityId
+ * @property {string} action
+ * @property {number|null} [employeeId]
+ * @property {number|null} [payrollRunId]
+ * @property {number|null} [month]
+ * @property {number|null} [year]
+ * @property {number|string|null} performedBy
+ * @property {Record<string, unknown>|null} [oldValues]
+ * @property {Record<string, unknown>|null} [newValues]
+ * @property {boolean} [required]
+ */
+
+/**
  * Write one audit entry for a payroll mutation that already landed.
  *
  * @param db Connection the caller holds — its pool checkout or open transaction.
+ * @param {PayrollAuditEntry} entry The attributed change to record.
  * @param entry.entityType  One of PAYROLL_AUDIT_ENTITY.
  * @param entry.entityId    Id of the row actually mutated (insertId for an
  *                          INSERT, the row's id for an UPDATE/DELETE).
