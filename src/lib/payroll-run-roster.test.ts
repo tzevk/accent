@@ -129,9 +129,7 @@ describe('month employment eligibility', () => {
 	it('falls back to hire_date only when joining_date is missing', () => {
 		const fromHire = onlyMember(
 			build({
-				employees: [
-					employee({ joining_date: null, hire_date: '2026-10-12' }),
-				],
+				employees: [employee({ joining_date: null, hire_date: '2026-10-12' })],
 				canonical_profiles: [profile()],
 			})
 		);
@@ -246,9 +244,7 @@ describe('employment date issues', () => {
 	it('names missing employment dates on a plausible payroll candidate', () => {
 		const member = onlyMember(
 			build({
-				employees: [
-					employee({ joining_date: null, hire_date: null }),
-				],
+				employees: [employee({ joining_date: null, hire_date: null })],
 			})
 		);
 
@@ -315,6 +311,7 @@ describe('Salary Profile selection', () => {
 						id: 10,
 						gross_salary: 20_000,
 						effective_from: '2026-09-01',
+						effective_to: '2026-10-14',
 					}),
 					profile({
 						id: 11,
@@ -327,6 +324,7 @@ describe('Salary Profile selection', () => {
 
 		expect(member.profile_date).toBe('2026-10-15');
 		expect(member.profile_id).toBe(11);
+		expect(member.salary_issue).toBeNull();
 		expect(member.salary_profile?.gross_salary).toBe(24_000);
 	});
 
@@ -355,6 +353,43 @@ describe('Salary Profile selection', () => {
 		expect(member.salary_profile?.gross_salary).toBe(20_000);
 	});
 
+	it('reports overlapping covering agreements as ambiguous instead of choosing one', () => {
+		const member = onlyMember(
+			build({
+				employees: [employee()],
+				canonical_profiles: [
+					profile({ id: 10, effective_from: '2026-01-01' }),
+					profile({ id: 11, effective_from: '2026-04-01' }),
+				],
+				// A period-effective legacy row must not hide a canonical conflict.
+				legacy_profiles: [profile({ id: 21, effective_from: '2026-01-01' })],
+			})
+		);
+
+		expect(member.issue).toBeNull();
+		expect(member.salary_issue).toBe('salary_profile_ambiguous');
+		expect(member.salary_conflict_ids).toEqual([10, 11]);
+		expect(member.salary_profile).toBeNull();
+		expect(member.profile_source).toBeNull();
+		expect(member.profile_id).toBeNull();
+		expect(member.salary_type).toBeNull();
+	});
+
+	it('refuses to freeze an ambiguous salary without naming an employment problem', () => {
+		const roster = build({
+			employees: [employee()],
+			canonical_profiles: [
+				profile({ id: 10, effective_from: '2026-01-01' }),
+				profile({ id: 11, effective_from: '2026-04-01' }),
+			],
+		});
+
+		expect(() => freezePayrollRunMembers(roster)).toThrow(
+			/Asha Rao \(EMP-1\).*overlapping Salary Profiles.*10, 11/s
+		);
+		expect(() => freezePayrollRunMembers(roster)).not.toThrow(/employment/i);
+	});
+
 	it('selects the canonical profile over a newer legacy row', () => {
 		const member = onlyMember(
 			build({
@@ -379,6 +414,152 @@ describe('Salary Profile selection', () => {
 		expect(member.profile_source).toBe('employee_salary_profile');
 		expect(member.profile_id).toBe(10);
 		expect(member.salary_profile?.gross_salary).toBe(20_000);
+	});
+
+	it('falls back to the period-effective legacy agreement only when no canonical agreement covers the anchor', () => {
+		const member = onlyMember(
+			build({
+				employees: [
+					employee({
+						employee_type: 'Permanent',
+						joining_date: '2025-04-01',
+					}),
+				],
+				canonical_profiles: [profile({ id: 10, effective_from: '2026-11-01' })],
+				legacy_profiles: [
+					profile({
+						id: 20,
+						gross_salary: 50_000,
+						effective_from: '2025-04-01',
+					}),
+				],
+			})
+		);
+
+		expect(member.profile_date).toBe('2026-10-01');
+		expect(member.profile_source).toBe('salary_structures');
+		expect(member.profile_id).toBe(20);
+		expect(member.salary_issue).toBeNull();
+		expect(member.salary_ctc_source).toBe('gross_salary');
+	});
+
+	it('does not let a future agreement fill an uncovered historical anchor', () => {
+		const member = onlyMember(
+			build({
+				employees: [employee()],
+				canonical_profiles: [profile({ id: 10, effective_from: '2026-11-01' })],
+			})
+		);
+
+		expect(member.salary_issue).toBe('salary_profile_missing');
+		expect(member.salary_profile).toBeNull();
+		expect(member.profile_id).toBeNull();
+	});
+
+	it('treats an explicit canonical zero CTC as a real salary', () => {
+		const member = onlyMember(
+			build({
+				employees: [employee()],
+				canonical_profiles: [
+					profile({ id: 10, employer_cost: 0, gross_salary: null }),
+				],
+				legacy_profiles: [profile({ id: 20, gross_salary: 90_000 })],
+			})
+		);
+
+		expect(member.salary_issue).toBeNull();
+		expect(member.profile_source).toBe('employee_salary_profile');
+		expect(member.salary_ctc_source).toBe('employer_cost');
+		expect(member.salary_profile?.employer_cost).toBe(0);
+	});
+
+	it('reports a covering agreement with no CTC without inventing a gross', () => {
+		const member = onlyMember(
+			build({
+				employees: [employee()],
+				canonical_profiles: [
+					profile({
+						id: 10,
+						employer_cost: null,
+						gross_salary: null,
+						gross: null,
+					}),
+				],
+			})
+		);
+
+		expect(member.profile_id).toBe(10);
+		expect(member.salary_profile).not.toBeNull();
+		expect(member.salary_issue).toBe('salary_ctc_missing');
+		expect(member.salary_ctc_source).toBe('none');
+	});
+
+	it('reports an invalid canonical CTC instead of falling through to legacy gross', () => {
+		const member = onlyMember(
+			build({
+				employees: [employee()],
+				canonical_profiles: [profile({ id: 10, employer_cost: -1 })],
+				legacy_profiles: [profile({ id: 20, gross_salary: 90_000 })],
+			})
+		);
+
+		expect(member.salary_issue).toBe('salary_ctc_invalid');
+		expect(member.salary_ctc_source).toBe('none');
+	});
+
+	it('ignores a cancelled canonical agreement and uses the legacy fallback', () => {
+		const member = onlyMember(
+			build({
+				employees: [
+					employee({
+						employee_type: 'Permanent',
+						joining_date: '2025-04-01',
+					}),
+				],
+				canonical_profiles: [
+					profile({
+						id: 10,
+						effective_from: '2026-01-01',
+						is_active: 0,
+						cancelled_at: '2026-03-01 10:00:00',
+					}),
+				],
+				legacy_profiles: [
+					profile({
+						id: 20,
+						gross_salary: 50_000,
+						effective_from: '2025-04-01',
+					}),
+				],
+			})
+		);
+
+		expect(member.profile_source).toBe('salary_structures');
+		expect(member.profile_id).toBe(20);
+		expect(member.salary_issue).toBeNull();
+	});
+
+	it('reports competing legacy agreements as ambiguous when no canonical agreement covers', () => {
+		const member = onlyMember(
+			build({
+				employees: [
+					employee({
+						employee_type: 'Permanent',
+						joining_date: '2025-04-01',
+					}),
+				],
+				canonical_profiles: [profile({ id: 10, effective_from: '2026-11-01' })],
+				legacy_profiles: [
+					profile({ id: 20, effective_from: '2025-04-01' }),
+					profile({ id: 21, effective_from: '2026-01-01' }),
+				],
+			})
+		);
+
+		expect(member.salary_issue).toBe('salary_profile_ambiguous');
+		expect(member.salary_conflict_ids).toEqual([20, 21]);
+		expect(member.profile_source).toBeNull();
+		expect(member.salary_profile).toBeNull();
 	});
 });
 
@@ -485,9 +666,7 @@ describe('work and slip evidence', () => {
 						joining_date: '2025-01-01',
 					}),
 				],
-				assignments: [
-					assignment({ employee_id: null, user_employee_id: 7 }),
-				],
+				assignments: [assignment({ employee_id: null, user_employee_id: 7 })],
 			})
 		);
 
@@ -501,9 +680,7 @@ describe('work and slip evidence', () => {
 				canonical_profiles: [profile()],
 				assignments: [
 					assignment({
-						daily_entries: JSON.stringify([
-							{ date: '2026-10-03', hours: 8 },
-						]),
+						daily_entries: JSON.stringify([{ date: '2026-10-03', hours: 8 }]),
 					}),
 				],
 			})
@@ -582,6 +759,20 @@ describe('freezePayrollRunMembers', () => {
 			/Asha Rao \(EMP-1\).*no Salary Profile/s
 		);
 	});
+
+	it('refuses a covering agreement with no usable CTC, not as an employment problem', () => {
+		const roster = build({
+			employees: [employee()],
+			canonical_profiles: [
+				profile({ employer_cost: null, gross_salary: null, gross: null }),
+			],
+		});
+
+		expect(() => freezePayrollRunMembers(roster)).toThrow(
+			/Asha Rao \(EMP-1\).*no monthly CTC/s
+		);
+		expect(() => freezePayrollRunMembers(roster)).not.toThrow(/employment/i);
+	});
 });
 
 interface StoredSnapshot {
@@ -628,8 +819,7 @@ function saveDb() {
 			if (sql.includes('SELECT month, version, frozen_at')) {
 				const found = stored.find(
 					(row) =>
-						row.runId === Number(params[0]) &&
-						row.version === Number(params[1])
+						row.runId === Number(params[0]) && row.version === Number(params[1])
 				);
 				return [
 					found
@@ -755,9 +945,7 @@ describe('loadFrozenPayrollRunRoster', () => {
 	it('returns null for a locked run that predates snapshots', async () => {
 		const db = frozenDb({ locked: true });
 
-		await expect(
-			loadFrozenPayrollRunRoster(db, '2026-10')
-		).resolves.toBeNull();
+		await expect(loadFrozenPayrollRunRoster(db, '2026-10')).resolves.toBeNull();
 	});
 
 	it('rejects a malformed stored roster instead of inventing members', async () => {
@@ -866,5 +1054,232 @@ describe('loadPayrollRunRoster', () => {
 
 		expect(roster.month).toBe('2026-10-01');
 		expect(roster.members.map((member) => member.employee_id)).toEqual([1]);
+	});
+
+	it('locks scoped Employees ascending before re-reading their current terms', async () => {
+		const calls: Array<{
+			sql: string;
+			params: Array<string | number | boolean | null>;
+		}> = [];
+		const db: PayrollRunRosterDb = {
+			execute: async (sql, params = []) => {
+				const text = String(sql);
+				calls.push({ sql: text, params: [...params] });
+				if (text.includes('FROM employee_salary_timelines')) {
+					return [[{ employee_id: 2, version: 1 }], undefined];
+				}
+				if (text.includes('SELECT id, joining_date, hire_date, isDelete')) {
+					return [
+						[
+							{
+								id: 2,
+								joining_date: '2026-01-01',
+								hire_date: null,
+								isDelete: 0,
+							},
+						],
+						undefined,
+					];
+				}
+				if (text.includes('CONCAT_WS')) {
+					return [
+						[
+							employee({
+								id: 2,
+								employee_id: 'EMP-2',
+								name: 'Ravi Kumar',
+							}),
+						],
+						undefined,
+					];
+				}
+				if (text.includes('FROM employee_salary_profile')) {
+					return [[profile({ id: 12, employee_id: 2 })], undefined];
+				}
+				if (text.includes('FROM salary_structures')) return [[], undefined];
+				if (text.includes('FROM payroll_slips')) return [[], undefined];
+				if (text.includes('FROM user_activity_assignments'))
+					return [[], undefined];
+				throw new Error(`unexpected SQL: ${text.slice(0, 80)}`);
+			},
+		};
+
+		const roster = await loadPayrollRunRoster(db, '2026-10', {
+			employeeIds: [2],
+			forUpdate: true,
+		});
+
+		expect(roster.members).toHaveLength(1);
+		expect(roster.members[0]).toMatchObject({
+			employee_id: 2,
+			profile_source: 'employee_salary_profile',
+			profile_id: 12,
+			salary_issue: null,
+		});
+
+		const lockIndex = calls.findIndex((call) =>
+			call.sql.includes('SELECT id, joining_date, hire_date, isDelete')
+		);
+		const employeeIndex = calls.findIndex((call) =>
+			call.sql.includes('CONCAT_WS')
+		);
+		expect(lockIndex).toBe(0);
+		expect(employeeIndex).toBeGreaterThan(lockIndex);
+		expect(calls[lockIndex].params).toEqual([2]);
+		expect(calls[lockIndex].sql).toContain('FOR UPDATE');
+		const timelineCall = calls.find((call) =>
+			call.sql.includes('FROM employee_salary_timelines')
+		);
+		expect(timelineCall?.sql).toContain('FOR UPDATE');
+		expect(timelineCall?.params).toEqual([2]);
+		expect(calls[employeeIndex].sql).toContain('FOR UPDATE');
+		expect(calls[employeeIndex].params).toEqual([2]);
+		const profileCall = calls.find((call) =>
+			call.sql.includes('FROM employee_salary_profile')
+		);
+		expect(profileCall?.sql).toContain('FOR UPDATE');
+		expect(profileCall?.params).toEqual([2]);
+	});
+
+	it('locks a stable all-population roster ascending from the candidate snapshot', async () => {
+		const calls: Array<{
+			sql: string;
+			params: Array<string | number | boolean | null>;
+		}> = [];
+		const db: PayrollRunRosterDb = {
+			execute: async (sql, params = []) => {
+				const text = String(sql);
+				calls.push({ sql: text, params: [...params] });
+				if (
+					text.includes('FROM employees') &&
+					text.includes('ORDER BY id') &&
+					!text.includes('CONCAT_WS') &&
+					!text.includes('joining_date')
+				) {
+					// The plain candidate snapshot deliberately needs sorting.
+					return [[{ id: 5 }, { id: 2 }], undefined];
+				}
+				if (text.includes('FROM employee_salary_timelines')) {
+					return [
+						[
+							{ employee_id: 2, version: 0 },
+							{ employee_id: 5, version: 2 },
+						],
+						undefined,
+					];
+				}
+				if (text.includes('SELECT id, joining_date, hire_date, isDelete')) {
+					return [
+						[
+							{ id: 2, joining_date: '2026-01-01', isDelete: 0 },
+							{ id: 5, joining_date: '2026-01-01', isDelete: 0 },
+						],
+						undefined,
+					];
+				}
+				if (text.includes('CONCAT_WS')) {
+					return [
+						[
+							employee({
+								id: 2,
+								employee_id: 'EMP-2',
+								name: 'Ravi Kumar',
+							}),
+							employee({
+								id: 5,
+								employee_id: 'EMP-5',
+								name: 'Meera Nair',
+							}),
+						],
+						undefined,
+					];
+				}
+				if (text.includes('FROM employee_salary_profile')) {
+					return [[], undefined];
+				}
+				if (text.includes('FROM salary_structures')) return [[], undefined];
+				if (text.includes('FROM payroll_slips')) return [[], undefined];
+				if (text.includes('FROM user_activity_assignments'))
+					return [[], undefined];
+				throw new Error(`unexpected SQL: ${text.slice(0, 80)}`);
+			},
+		};
+
+		await loadPayrollRunRoster(db, '2026-10', { forUpdate: true });
+
+		const candidateIndex = calls.findIndex((call) =>
+			call.sql.includes('ORDER BY id')
+		);
+		const lockIndex = calls.findIndex((call) =>
+			call.sql.includes('SELECT id, joining_date, hire_date, isDelete')
+		);
+		expect(candidateIndex).toBe(0);
+		expect(lockIndex).toBeGreaterThan(candidateIndex);
+		// The snapshot is not itself locking; the sorted ids it returned are.
+		expect(calls[candidateIndex].sql).not.toContain('FOR UPDATE');
+		expect(calls[lockIndex].params).toEqual([2, 5]);
+		const timelineCall = calls.find((call) =>
+			call.sql.includes('FROM employee_salary_timelines')
+		);
+		expect(timelineCall?.params).toEqual([2, 5]);
+		const employeeCall = calls.find((call) => call.sql.includes('CONCAT_WS'));
+		expect(employeeCall?.params).toEqual([2, 5]);
+		const profileCall = calls.find((call) =>
+			call.sql.includes('FROM employee_salary_profile')
+		);
+		expect(profileCall?.params).toEqual([2, 5]);
+	});
+
+	it('scopes plain reads to the requested Employees without locking', async () => {
+		const calls: Array<{
+			sql: string;
+			params: Array<string | number | boolean | null>;
+		}> = [];
+		const db: PayrollRunRosterDb = {
+			execute: async (sql, params = []) => {
+				const text = String(sql);
+				calls.push({ sql: text, params: [...params] });
+				if (text.includes('CONCAT_WS')) {
+					return [
+						[
+							employee({
+								id: 2,
+								employee_id: 'EMP-2',
+								name: 'Ravi Kumar',
+							}),
+						],
+						undefined,
+					];
+				}
+				if (text.includes('FROM employee_salary_profile')) {
+					return [[profile({ id: 12, employee_id: 2 })], undefined];
+				}
+				if (text.includes('FROM salary_structures')) return [[], undefined];
+				if (text.includes('FROM payroll_slips')) return [[], undefined];
+				if (text.includes('FROM user_activity_assignments'))
+					return [[], undefined];
+				throw new Error(`unexpected SQL: ${text.slice(0, 80)}`);
+			},
+		};
+
+		const roster = await loadPayrollRunRoster(db, '2026-10', {
+			employeeIds: [2],
+		});
+
+		expect(roster.members.map((member) => member.employee_id)).toEqual([2]);
+		expect(calls.some((call) => call.sql.includes('FOR UPDATE'))).toBe(false);
+		expect(
+			calls.some((call) => call.sql.includes('employee_salary_timelines'))
+		).toBe(false);
+		const employeeCall = calls.find((call) => call.sql.includes('CONCAT_WS'));
+		expect(employeeCall?.params).toEqual([2]);
+		const slipCall = calls.find((call) =>
+			call.sql.includes('FROM payroll_slips')
+		);
+		expect(slipCall?.params).toEqual(['2026-10-01', 2]);
+		const assignmentCall = calls.find((call) =>
+			call.sql.includes('FROM user_activity_assignments')
+		);
+		expect(assignmentCall?.params).toEqual([2, 2]);
 	});
 });

@@ -127,18 +127,16 @@ describe('payroll runs API — month status, totals and derived paid indicator (
 			execute: mocks.mockExecute,
 			release: vi.fn(),
 		});
-		mocks.mockExecute.mockImplementation(
-			async (sql: string) => {
-				const text = String(sql);
-				if (text.includes('FROM payroll_runs')) {
-					return [state.run ? [state.run] : [], undefined];
-				}
-				if (text.includes('FROM payroll_slips')) {
-					return [state.slips, undefined];
-				}
-				return [[], undefined];
+		mocks.mockExecute.mockImplementation(async (sql: string) => {
+			const text = String(sql);
+			if (text.includes('FROM payroll_runs')) {
+				return [state.run ? [state.run] : [], undefined];
 			}
-		);
+			if (text.includes('FROM payroll_slips')) {
+				return [state.slips, undefined];
+			}
+			return [[], undefined];
+		});
 		mocks.mockLoadPayrollRunRoster.mockResolvedValue(roster());
 		mocks.mockLoadFrozenPayrollRunRoster.mockResolvedValue(null);
 	});
@@ -186,6 +184,8 @@ describe('payroll runs API — month status, totals and derived paid indicator (
 			slip_count: 0,
 			missing_slip_count: 0,
 			missing_profile_count: 0,
+			ambiguous_salary_count: 0,
+			unpriced_salary_count: 0,
 			employment_issue_count: 0,
 			unexpected_slip_count: 0,
 			excluded_count: 0,
@@ -326,6 +326,8 @@ describe('payroll runs API — month status, totals and derived paid indicator (
 			slip_count: 2,
 			missing_slip_count: 0,
 			missing_profile_count: 0,
+			ambiguous_salary_count: 0,
+			unpriced_salary_count: 0,
 			employment_issue_count: 0,
 			unexpected_slip_count: 0,
 			excluded_count: 0,
@@ -372,9 +374,50 @@ describe('payroll runs API — month status, totals and derived paid indicator (
 			slip_count: 2,
 			missing_slip_count: 1, // 14 has no slip
 			missing_profile_count: 1, // 12
+			ambiguous_salary_count: 0,
+			unpriced_salary_count: 0,
 			employment_issue_count: 1, // 13
 			unexpected_slip_count: 1, // slip for 99
 			excluded_count: 1,
+			can_finalize: false,
+		});
+	});
+
+	it('counts salary ambiguity and unpriced agreements apart from employment review', async () => {
+		grant('payroll:read');
+		state = { run: DRAFT_RUN, slips: monthSlips([11]) };
+		mocks.mockLoadPayrollRunRoster.mockResolvedValue(
+			roster([
+				ELIGIBLE_MEMBERS[0],
+				member(12, 'EMP012', 'Ravi Kumar', {
+					salary_profile: null,
+					profile_source: null,
+					profile_id: null,
+					salary_type: null,
+					salary_issue: 'salary_profile_ambiguous',
+					salary_conflict_ids: [21, 22],
+				}),
+				member(13, 'EMP013', 'Meera Nair', {
+					salary_issue: 'salary_ctc_missing',
+					salary_ctc_source: 'none',
+				}),
+			])
+		);
+
+		const res = await GET(runRequest('2026-08-01'));
+
+		const body = await res.json();
+		expect(body.data.readiness).toEqual({
+			basis: 'live',
+			eligible_count: 1,
+			slip_count: 1,
+			missing_slip_count: 0,
+			missing_profile_count: 0,
+			ambiguous_salary_count: 1,
+			unpriced_salary_count: 1,
+			employment_issue_count: 0,
+			unexpected_slip_count: 0,
+			excluded_count: 0,
 			can_finalize: false,
 		});
 	});
@@ -400,6 +443,8 @@ describe('payroll runs API — month status, totals and derived paid indicator (
 			slip_count: 1,
 			missing_slip_count: 1,
 			missing_profile_count: 0,
+			ambiguous_salary_count: 0,
+			unpriced_salary_count: 0,
 			employment_issue_count: 0,
 			unexpected_slip_count: 0,
 			excluded_count: 0,
@@ -425,6 +470,8 @@ describe('payroll runs API — month status, totals and derived paid indicator (
 			slip_count: 2,
 			missing_slip_count: 0,
 			missing_profile_count: 0,
+			ambiguous_salary_count: 0,
+			unpriced_salary_count: 0,
 			employment_issue_count: 0,
 			unexpected_slip_count: 0,
 			excluded_count: 0,

@@ -13,11 +13,15 @@ import {
 	isRunLocked,
 	findMonthSlips,
 	summarizeSlipRows,
+	salaryIssueOf,
+	salaryIssueLabel,
+	SALARY_ISSUE,
 } from '@/app/api/payroll/_lib/payroll-run';
 import {
 	loadPayrollRunRoster,
 	savePayrollRunRoster,
 } from '@/lib/payroll-run-roster';
+import { recordSalaryAgreementUse } from '@/lib/salary-profile-store';
 import {
 	PAYROLL_AUDIT_ACTION,
 	PAYROLL_AUDIT_ENTITY,
@@ -31,8 +35,7 @@ const nameList = (employees) =>
 		.map((employee) => `${employee.name} (${employee.employee_code})`)
 		.join(', ');
 
-const countLabel = (count, one, many) =>
-	`${count} ${count === 1 ? one : many}`;
+const countLabel = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
 /**
  * POST - Finalize the month's Payroll Run, locking the month.
@@ -46,16 +49,26 @@ const countLabel = (count, one, many) =>
  * Completeness is checked against the shared monthly roster:
  *  - employment-date issues that make a person's month ambiguous,
  *  - employees without a Salary Profile for the month,
+ *  - competing Salary Profiles that make the month's salary ambiguous,
+ *  - a Salary Profile with no usable explicit/legacy monthly CTC,
  *  - eligible employees with no Payroll Slip,
  *  - slips belonging to nobody the roster expects.
  * Every gap is named; none of them is silently dropped.
  *
  * The whole write is one transaction holding `SELECT ... FOR UPDATE` on the
- * run row, so concurrent Generate/Finalize/Reopen for the same month
- * serialise. After the guarded `draft → finalized` transition the validated
- * roster is saved and every slip's employer-cost allocation is frozen in the
- * same transaction. A failure in either write rolls the run transition back;
- * freezing is a postcondition of finalizing, never a prerequisite.
+ * run row, then the shared sorted Employee locks and current salary reads, so
+ * concurrent Generate/Finalize/Reopen and salary commands for the same month
+ * or Employee serialise. After the guarded `draft → finalized` transition the
+ * validated roster is saved, every slip's employer-cost allocation is frozen,
+ * and durable source-qualified finalization use is recorded for each frozen
+ * member — all in the same transaction. A failure in any of those writes rolls
+ * the run transition, roster, allocations and use evidence back; freezing is a
+ * postcondition of finalizing, never a prerequisite.
+ *
+ * Completeness separates employment-date review from salary readiness: a
+ * missing covering agreement, competing covering agreements and an agreement
+ * with no usable CTC are distinct refusals and are never reported as an
+ * employment-date problem.
  */
 export async function POST(request) {
 	// RBAC check
@@ -106,21 +119,40 @@ export async function POST(request) {
 				};
 			}
 
-			const roster = await loadPayrollRunRoster(db, period.month);
+			// The run row lock is held; this takes the sorted Employee locks and
+			// re-reads current terms under them, so a salary correction either
+			// commits before this roster read or waits for the use evidence below.
+			const roster = await loadPayrollRunRoster(db, period.month, {
+				forUpdate: true,
+			});
 			const members = roster.members;
 
 			// Employment-date review: an inactive employee with a known start and
 			// no exit, a missing/inverted start, or work/slip evidence outside the
 			// employment window. Never silently omitted and never guessed at.
 			const review = members.filter((member) => member.issue);
-			// Profile gaps among otherwise-employed candidates. A Payroll/Contract
-			// employee with no agreement, or month work with no agreement, cannot
-			// be priced at all.
-			const withoutProfiles = members.filter(
-				(member) => !member.issue && !member.salary_profile
+			const salaryReady = members.filter((member) => !member.issue);
+			// Ordinary missing salary: no covering canonical/legacy agreement. A
+			// Payroll/Contract employee with no agreement, or month work with no
+			// agreement, cannot be priced at all.
+			const withoutProfiles = salaryReady.filter(
+				(member) => salaryIssueOf(member) === SALARY_ISSUE.MISSING_PROFILE
 			);
-			const eligible = members.filter(
-				(member) => !member.issue && member.salary_profile
+			// Competing covering agreements: no row is chosen, so nothing prices.
+			// This is not an employment-date problem.
+			const ambiguousSalaries = salaryReady.filter(
+				(member) => salaryIssueOf(member) === SALARY_ISSUE.AMBIGUOUS_PROFILE
+			);
+			// A covering agreement whose explicit/legacy CTC is missing or invalid.
+			const unpricedSalaries = salaryReady.filter((member) => {
+				const issue = salaryIssueOf(member);
+				return (
+					issue === SALARY_ISSUE.MISSING_CTC ||
+					issue === SALARY_ISSUE.INVALID_CTC
+				);
+			});
+			const eligible = salaryReady.filter(
+				(member) => salaryIssueOf(member) === null
 			);
 
 			const slips = await findMonthSlips(db, period.month);
@@ -141,6 +173,8 @@ export async function POST(request) {
 				eligible.length === 0 ||
 				review.length > 0 ||
 				withoutProfiles.length > 0 ||
+				ambiguousSalaries.length > 0 ||
+				unpricedSalaries.length > 0 ||
 				missing.length > 0 ||
 				unexpected.length > 0
 			) {
@@ -149,7 +183,7 @@ export async function POST(request) {
 					problems.push(
 						`no employees are eligible for payroll in ${formatMonth(
 							month
-						)} — add a Salary Profile or correct employment dates before locking an empty Payroll Run`
+						)} — add a Salary Profile, resolve ambiguous salary history, or correct employment dates before locking an empty Payroll Run`
 					);
 				}
 				if (missing.length > 0) {
@@ -170,6 +204,38 @@ export async function POST(request) {
 						)} no Salary Profile for the month and cannot be paid — ${nameList(
 							withoutProfiles
 						)}`
+					);
+				}
+				if (ambiguousSalaries.length > 0) {
+					problems.push(
+						`${countLabel(
+							ambiguousSalaries.length,
+							'employee has',
+							'employees have'
+						)} overlapping Salary Profiles for the month and cannot be priced — ${ambiguousSalaries
+							.map(
+								(member) =>
+									`${member.name} (${member.employee_code}): agreement ids ${
+										(member.salary_conflict_ids ?? []).join(', ') || 'unknown'
+									}`
+							)
+							.join(', ')}`
+					);
+				}
+				if (unpricedSalaries.length > 0) {
+					problems.push(
+						`${countLabel(
+							unpricedSalaries.length,
+							'employee has',
+							'employees have'
+						)} a Salary Profile without a usable monthly CTC — ${unpricedSalaries
+							.map(
+								(member) =>
+									`${member.name} (${member.employee_code}): ${salaryIssueLabel(
+										salaryIssueOf(member)
+									)}`
+							)
+							.join(', ')}`
 					);
 				}
 				if (review.length > 0) {
@@ -223,6 +289,22 @@ export async function POST(request) {
 							employee_type: member.employee_type,
 							name: member.name,
 						})),
+						employees_with_ambiguous_salaries: ambiguousSalaries.map(
+							(member) => ({
+								employee_id: member.employee_id,
+								employee_code: member.employee_code,
+								name: member.name,
+								conflict_ids: [...(member.salary_conflict_ids ?? [])],
+							})
+						),
+						employees_with_unpriced_salaries: unpricedSalaries.map(
+							(member) => ({
+								employee_id: member.employee_id,
+								employee_code: member.employee_code,
+								name: member.name,
+								reason: salaryIssueOf(member),
+							})
+						),
 						employees_needing_review: review.map((member) => ({
 							employee_id: member.employee_id,
 							employee_code: member.employee_code,
@@ -295,6 +377,29 @@ export async function POST(request) {
 				period.month,
 				finalizedBy
 			);
+
+			// Durable, source-qualified use for every frozen member, in ascending
+			// Employee id (the roster loader already holds those locks): a later
+			// salary correction must see that this month was finalized from these
+			// terms, even after these slips are deleted or the run is reopened.
+			// Any failure here rolls the status, snapshot and allocations back too.
+			const frozenMembers = [...frozenRoster.members].sort(
+				(left, right) => left.employee_id - right.employee_id
+			);
+			for (const member of frozenMembers) {
+				await recordSalaryAgreementUse(db, {
+					employeeId: member.employee_id,
+					agreementId: member.profile_id,
+					agreementSource: member.profile_source,
+					month: period.month,
+					evidence: 'payroll_finalization',
+					evidenceContext: {
+						payroll_run_id: run.id,
+						roster_version: frozenRoster.version,
+					},
+					actorId: finalizedBy,
+				});
+			}
 
 			// The month is now locked, so who locked it and on what numbers is the
 			// entry a dispute starts from.
