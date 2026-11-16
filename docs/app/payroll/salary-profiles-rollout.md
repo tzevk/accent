@@ -259,12 +259,15 @@ use the same protocol. Do not switch the database or session default as a
 substitute.
 
 **Verification status:** the protocol is implemented and integrated, with the
-isolated caller set above. The integration records source/route/store/command/
-backfill verification plus project TypeScript and lint, but that is not the
-owned real-contention proof. The full real-contention run (#446) remains
-pending, and the earlier six-worker evidence is the REPEATABLE READ deadlock,
-not proof of the corrected protocol. Do not call the deadlock fix verified until
-the parent cites the owned contention run.
+isolated caller set above, and proven by the owned real-contention run: on the
+disposable MariaDB 10.11.15 target all six scenarios passed in 1.4 s. Each
+scenario proves the loser is blocked on the Employee mutex from InnoDB's own
+monitor (`LOCK WAIT` plus the blocked `SELECT ... FROM employees ... FOR
+UPDATE`); MariaDB 10.11.15 does not list a first-locking-read waiter in
+`INNODB_TRX`, so the isolation assertion runs whenever that row is exposed and
+the post-write assertion is the operative READ COMMITTED check. The earlier
+six-worker evidence remains the REPEATABLE READ deadlock that motivated the
+change.
 
 ## Rollback limits
 
@@ -313,15 +316,20 @@ Recorded verification, not a production claim:
   months. A range whose unpriced months disagree reads **Mixed salary causes**,
   is counted incomplete/unpriced, and is excluded from priced totals; a single
   month never reads mixed and no cause is rendered as zero.
-- The full real-contention proof (#446) is **not** complete. A real six-worker
-  run exposed an actual cross-Employee supremum-gap deadlock on the eligible-
-  start index under REPEATABLE READ. The explicit READ COMMITTED protocol is
-  implemented and integrated (see above), but it is not verified by an owned
-  contention run. Do not describe concurrent bulk salary creation as verified.
-- Real browser, authentication, desktop/mobile visual inspection and the full
-  end-to-end salary journey (#447) remain pending and unverified. The browser-
-  Back unsaved guard (#458) is implemented and integrated, but this guide makes
-  no real-browser or visual claim.
+- The owned real-contention proof (#446) is complete: six scenarios passed in
+  1.4 s on the disposable MariaDB 10.11.15 target. The earlier six-worker run
+  exposed a real cross-Employee supremum-gap deadlock on the eligible-start
+  index under REPEATABLE READ; the explicit READ COMMITTED protocol removed it
+  and the proof now observes the real `LOCK WAIT` in InnoDB's monitor.
+- The owned real-auth browser journey (#447) passed in Chromium on the same
+  disposable database: directory search and filters, missing versus explicit
+  zero, create, same-identity correction with stale-version retention, single-
+  employee generation, used protection, revision, cancellation, recorded slip
+  read and the dirty browser-Back `Stay` prompt, with independent database
+  readback and desktop 1440 / mobile 390 screenshots. The browser-Back guard
+  (#458) is integrated and covered there. The journey refreshes its session
+  between phases because the API budget is per session and the automated run is
+  denser than a human session.
 - No production migration, deployment, merge or production database operation
   has been performed. PR #454 remains open and unmerged.
 
