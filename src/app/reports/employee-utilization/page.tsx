@@ -160,6 +160,7 @@ const COST_STATUS_LABELS: Record<Exclude<CostStatus, 'priced'>, string> = {
 	ambiguous: 'Ambiguous profiles',
 	'ctc-missing': 'No CTC',
 	'ctc-invalid': 'Invalid CTC',
+	mixed: 'Mixed salary causes',
 };
 
 const COST_STATUS_TITLES: Record<Exclude<CostStatus, 'priced'>, string> = {
@@ -171,17 +172,23 @@ const COST_STATUS_TITLES: Record<Exclude<CostStatus, 'priced'>, string> = {
 		'The covering Salary Profile has no monthly CTC. Cost is unknown, not zero.',
 	'ctc-invalid':
 		"The covering Salary Profile's CTC is invalid. Cost is unknown and is not repriced from a gross field.",
+	mixed:
+		'The months in this range have no usable salary for different reasons (no covering profile, ambiguous profiles, a missing CTC or an invalid CTC). Cost is unknown, not zero; a single month’s cause does not describe the range.',
 };
 
 /** The month's salary population, stated without hiding gaps. */
 function utilizationSalaryCounts(
-	summary: UtilizationData['totals']['salary']
+	summary: UtilizationData['totals']['salary'],
+	mixedCostCount: number
 ): string {
 	return [
 		`missing: ${summary.missing_count}`,
 		`ambiguous: ${summary.ambiguous_count}`,
 		`no CTC: ${summary.ctc_missing_count}`,
 		`invalid CTC: ${summary.ctc_invalid_count}`,
+		// A range row with several distinct causes fits no single bucket; the
+		// totals leave it out of them, so it is stated on its own.
+		...(mixedCostCount > 0 ? [`mixed causes: ${mixedCostCount}`] : []),
 	].join(', ');
 }
 
@@ -720,6 +727,12 @@ export default function EmployeeUtilizationPage() {
 	// bench cost descending) — the search filter preserves that order.
 	const rows = useMemo(() => data?.rows ?? [], [data]);
 	const totals = data?.totals ?? null;
+	// Rows whose months were unpriceable for more than one reason: no single
+	// cause bucket describes them, but they still count as unpriced.
+	const mixedCostCount = useMemo(
+		() => rows.filter((row) => row.cost_status === 'mixed').length,
+		[rows]
+	);
 	// The team trend: server-computed over each month's whole roster, so the
 	// chart ignores the band/search filters by design.
 	const trend = useMemo(() => data?.trend ?? [], [data]);
@@ -1024,12 +1037,14 @@ export default function EmployeeUtilizationPage() {
 										Hours stay visible.
 									</p>
 								)}
-								{(totals.salary.missing_count > 0 ||
+								{(mixedCostCount > 0 ||
+									totals.salary.missing_count > 0 ||
 									totals.salary.ambiguous_count > 0 ||
 									totals.salary.ctc_missing_count > 0 ||
 									totals.salary.ctc_invalid_count > 0) && (
 									<p>
-										Salary evidence — {utilizationSalaryCounts(totals.salary)}.
+										Salary evidence —{' '}
+										{utilizationSalaryCounts(totals.salary, mixedCostCount)}.
 									</p>
 								)}
 								{totals.salary.legacy_fallback_count > 0 && (

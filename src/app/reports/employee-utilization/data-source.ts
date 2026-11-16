@@ -141,13 +141,19 @@ export type UtilizationState = 'no_time_logged';
  * `priced` rows carry costs. The other states are explicit gaps: `no-profile`
  * means no covering agreement (`missing`), and the remaining states name why a
  * covering agreement could not price the month. None of them is a zero.
+ *
+ * `mixed` is the range lens's aggregate gap: its months could not be priced
+ * for more than one distinct reason, so no single month's cause names the
+ * row. A cause every unpriced month shares is reported as itself, never as
+ * `mixed`; a single month never reads `mixed`.
  */
 export type CostStatus =
 	| 'priced'
 	| 'no-profile'
 	| 'ambiguous'
 	| 'ctc-missing'
-	| 'ctc-invalid';
+	| 'ctc-invalid'
+	| 'mixed';
 
 /** Minimal attendance input for capacity: one entry per recorded day. */
 export interface UtilizationAttendance {
@@ -256,7 +262,14 @@ export interface UtilizationRow {
 	fractional_cost: number | null;
 	bench_cost: number | null;
 	cost_status: CostStatus;
-	/** Period-effective salary evidence for this month; never a latest fallback. */
+	/**
+	 * Period-effective salary evidence for this month; never a latest fallback.
+	 * A range row's evidence is composed from its month segments (see
+	 * `composeRangeSalaryEvidence`): identity fields read null/'none' when the
+	 * months disagree, `legacy_fallback` covers any legacy-priced month of a
+	 * fully priced range, and `availability` names the range's gap cause
+	 * beside `cost_status`.
+	 */
 	salary: ReportSalaryEvidence;
 }
 
@@ -739,7 +752,9 @@ export function buildUtilizationTotals(
 		bench_cost: hasCost ? round2(toNumber(bench)) : null,
 		salary: summarizeReportSalary(
 			rows.map((row) => ({
-				evidence: row.salary,
+				// A range row unpriced for several distinct reasons has no one
+				// cause to count; it still counts as unpriced and incomplete.
+				evidence: row.cost_status === 'mixed' ? null : row.salary,
 				unpriced: row.cost_status !== 'priced',
 			}))
 		),
@@ -1667,6 +1682,71 @@ function entriesInWindow(
 	return scoped;
 }
 
+/** The segments' common value, or null when they disagree. */
+function sharedRangeValue<T>(left: T, right: T): T | null {
+	return left === right ? left : null;
+}
+
+/**
+ * Compose a range row's salary evidence from the segments merged so far. A
+ * range has no single month's agreement, so identity fields survive only
+ * while every segment agrees and read null/'none' otherwise. Availability
+ * names the earliest unpriced segment's cause; the range's `cost_status`
+ * reads `mixed` when the unpriced months disagree. `legacy_fallback` is true
+ * only for a fully priced range with a legacy-priced month, so a canonical
+ * month cannot hide a legacy one and an unpriced range never claims a basis
+ * for an amount it does not show.
+ */
+function composeRangeSalaryEvidence(
+	base: UtilizationRow,
+	segment: UtilizationRow
+): ReportSalaryEvidence {
+	const earlier = base.salary;
+	const later = segment.salary;
+	const basePriced = base.cost_status === 'priced';
+	const segmentPriced = segment.cost_status === 'priced';
+	const availability: ReportSalaryEvidence['availability'] = basePriced
+		? segmentPriced
+			? 'available'
+			: later.availability
+		: earlier.availability;
+	return {
+		availability,
+		// The first unpriced segment witnesses the gap; an all-priced range
+		// keeps its first month's selection date.
+		anchor: basePriced && !segmentPriced ? later.anchor : earlier.anchor,
+		profile_id: sharedRangeValue(earlier.profile_id, later.profile_id),
+		profile_source: sharedRangeValue(
+			earlier.profile_source,
+			later.profile_source
+		),
+		salary_type: sharedRangeValue(earlier.salary_type, later.salary_type),
+		// `none` also covers "the months used different CTC sources": no single
+		// source describes the range, and it can never claim a canonical zero.
+		ctc_source:
+			sharedRangeValue(earlier.ctc_source, later.ctc_source) ?? 'none',
+		legacy_fallback:
+			availability === 'available' &&
+			(earlier.legacy_fallback || later.legacy_fallback),
+		conflict_ids: [
+			...new Set([...earlier.conflict_ids, ...later.conflict_ids]),
+		].sort((a, b) => a - b),
+	};
+}
+
+/**
+ * The range's gap cause: an unpriced row names the cause all its unpriced
+ * months share, and `mixed` when they do not.
+ */
+function mergedRangeCostStatus(
+	base: UtilizationRow,
+	segment: UtilizationRow
+): CostStatus {
+	if (base.cost_status === 'priced') return segment.cost_status;
+	if (segment.cost_status === 'priced') return base.cost_status;
+	return base.cost_status === segment.cost_status ? base.cost_status : 'mixed';
+}
+
 /**
  * Sum two segments of one employee's range row. The hours are the range's
  * Logged Hours and capacity on the report's capacity calendar, the percent
@@ -1674,6 +1754,11 @@ function entriesInWindow(
  * pro-rated costs added — a range's cost is whole only when every segment of
  * it is priced, because the profile covering one month need not cover the
  * next.
+ *
+ * The gap is named honestly: an unpriced range reports the cause its unpriced
+ * months share, `mixed` when they disagree, and its salary evidence is
+ * composed across segments so no one month's agreement stands in for the
+ * range.
  */
 function mergeRangeRow(
 	base: UtilizationRow,
@@ -1686,8 +1771,8 @@ function mergeRangeRow(
 		toNumber(add(R(base.capacity_hours), R(segment.capacity_hours)))
 	);
 	const percent = utilizationPercent(logged, capacity);
-	const priced =
-		base.cost_status === 'priced' && segment.cost_status === 'priced';
+	const costStatus = mergedRangeCostStatus(base, segment);
+	const priced = costStatus === 'priced';
 	return {
 		...base,
 		capacity_hours: capacity,
@@ -1713,7 +1798,8 @@ function mergeRangeRow(
 					toNumber(add(R(base.bench_cost ?? 0), R(segment.bench_cost ?? 0)))
 				)
 			: null,
-		cost_status: priced ? 'priced' : 'no-profile',
+		cost_status: costStatus,
+		salary: composeRangeSalaryEvidence(base, segment),
 	};
 }
 
