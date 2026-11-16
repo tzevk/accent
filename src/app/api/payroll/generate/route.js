@@ -15,6 +15,7 @@ import {
 	payrollGenerationRefusal,
 } from '@/utils/payroll-calculator';
 import { loadPayrollRunRoster } from '@/lib/payroll-run-roster';
+import { SALARY_WRITE_ISOLATION } from '@/lib/salary-write-isolation';
 import {
 	payrollPeriod,
 	findPayrollRun,
@@ -184,25 +185,9 @@ export async function POST(request) {
 		// The month's Payroll Run is the lock for the month. Payroll Slips record
 		// against the month itself — they carry no FK to the run — so the row lock
 		// taken here is what serialises this insert batch against Finalize.
-		const outcome = await withTransaction(async (db) => {
-			let run = await findPayrollRun(db, period, { forUpdate: true });
-			if (isRunLocked(run)) {
-				return {
-					status: 409,
-					body: {
-						success: false,
-						error: `The Payroll Run for ${formatMonth(
-							periodMonth
-						)} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`,
-					},
-				};
-			}
-
-			if (!run) {
-				await createDraftPayrollRun(db, period);
-				// Re-read with the lock: a concurrent first Generate may have created
-				// (and then finalized) the row between the insert and this lookup.
-				run = await findPayrollRun(db, period, { forUpdate: true });
+		const outcome = await withTransaction(
+			async (db) => {
+				let run = await findPayrollRun(db, period, { forUpdate: true });
 				if (isRunLocked(run)) {
 					return {
 						status: 409,
@@ -214,83 +199,102 @@ export async function POST(request) {
 						},
 					};
 				}
+
 				if (!run) {
-					throw new Error(
-						`The Payroll Run for ${formatMonth(
-							periodMonth
-						)} could not be created.`
-					);
+					await createDraftPayrollRun(db, period);
+					// Re-read with the lock: a concurrent first Generate may have created
+					// (and then finalized) the row between the insert and this lookup.
+					run = await findPayrollRun(db, period, { forUpdate: true });
+					if (isRunLocked(run)) {
+						return {
+							status: 409,
+							body: {
+								success: false,
+								error: `The Payroll Run for ${formatMonth(
+									periodMonth
+								)} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`,
+							},
+						};
+					}
+					if (!run) {
+						throw new Error(
+							`The Payroll Run for ${formatMonth(
+								periodMonth
+							)} could not be created.`
+						);
+					}
 				}
-			}
 
-			const bonusIds = Array.isArray(bonus_employee_ids)
-				? bonus_employee_ids
-				: null;
+				const bonusIds = Array.isArray(bonus_employee_ids)
+					? bonus_employee_ids
+					: null;
 
-			// Generate for all eligible employees
-			if (all) {
-				const results = await generateMonthlyPayroll(
-					periodMonth,
-					salary_type || null,
-					!!include_bonus,
-					bonusIds,
-					{ db, payrollRunId: run.id, actorId }
-				);
+				// Generate for all eligible employees
+				if (all) {
+					const results = await generateMonthlyPayroll(
+						periodMonth,
+						salary_type || null,
+						!!include_bonus,
+						bonusIds,
+						{ db, payrollRunId: run.id, actorId }
+					);
+
+					return {
+						status: 200,
+						body: {
+							success: true,
+							message: `Payroll generation completed for ${periodMonth}`,
+							results,
+							run,
+						},
+					};
+				}
+
+				// Generate for multiple employees (batch-optimized)
+				if (
+					employee_ids &&
+					Array.isArray(employee_ids) &&
+					employee_ids.length > 0
+				) {
+					const results = await generatePayrollSlipsBatch(
+						employee_ids,
+						periodMonth,
+						!!include_bonus,
+						bonusIds,
+						{ db, payrollRunId: run.id, actorId }
+					);
+
+					return {
+						status: 200,
+						body: {
+							success: true,
+							message: `Payroll generation completed for ${employee_ids.length} employees`,
+							results,
+							run,
+						},
+					};
+				}
+
+				// Generate for single employee
+				const slip = await generatePayrollSlip(employee_id, periodMonth, {
+					include_bonus: !!include_bonus,
+					db,
+					payrollRunId: run.id,
+					actorId,
+				});
 
 				return {
-					status: 200,
+					status: 201,
 					body: {
 						success: true,
-						message: `Payroll generation completed for ${periodMonth}`,
-						results,
+						message: 'Payroll slip generated successfully',
+						data: slip,
 						run,
 					},
 				};
-			}
-
-			// Generate for multiple employees (batch-optimized)
-			if (
-				employee_ids &&
-				Array.isArray(employee_ids) &&
-				employee_ids.length > 0
-			) {
-				const results = await generatePayrollSlipsBatch(
-					employee_ids,
-					periodMonth,
-					!!include_bonus,
-					bonusIds,
-					{ db, payrollRunId: run.id, actorId }
-				);
-
-				return {
-					status: 200,
-					body: {
-						success: true,
-						message: `Payroll generation completed for ${employee_ids.length} employees`,
-						results,
-						run,
-					},
-				};
-			}
-
-			// Generate for single employee
-			const slip = await generatePayrollSlip(employee_id, periodMonth, {
-				include_bonus: !!include_bonus,
-				db,
-				payrollRunId: run.id,
-				actorId,
-			});
-
-			return {
-				status: 201,
-				body: {
-					success: true,
-					message: 'Payroll slip generated successfully',
-					data: slip,
-					run,
-				},
-			};
-		});
+			},
+			{ isolation: SALARY_WRITE_ISOLATION }
+		);
 
 		return NextResponse.json(outcome.body, { status: outcome.status });
 	} catch (error) {

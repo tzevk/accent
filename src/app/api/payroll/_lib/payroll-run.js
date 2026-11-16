@@ -11,6 +11,7 @@
 import { R, add, sub, toNumber } from '@/lib/money';
 import { ptAdjustmentFor, slipFigures } from '@/lib/payroll';
 import { withTransaction } from '@/utils/database';
+import { SALARY_WRITE_ISOLATION } from '@/lib/salary-write-isolation';
 import {
 	loadFrozenPayrollRunRoster,
 	loadPayrollRunRoster,
@@ -188,20 +189,9 @@ export async function withPayrollRunWriteLock(month, fn) {
 		throw new Error(`Invalid month format. Use YYYY-MM-01`);
 	}
 
-	return withTransaction(async (db) => {
-		let run = await findPayrollRun(db, period, { forUpdate: true });
-		if (isRunLocked(run)) {
-			throw Object.assign(
-				new Error(
-					`The Payroll Run for ${period.month} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`
-				),
-				{ code: 'payroll_run_locked', status: 409 }
-			);
-		}
-
-		if (!run) {
-			await createDraftPayrollRun(db, period);
-			run = await findPayrollRun(db, period, { forUpdate: true });
+	return withTransaction(
+		async (db) => {
+			let run = await findPayrollRun(db, period, { forUpdate: true });
 			if (isRunLocked(run)) {
 				throw Object.assign(
 					new Error(
@@ -210,16 +200,30 @@ export async function withPayrollRunWriteLock(month, fn) {
 					{ code: 'payroll_run_locked', status: 409 }
 				);
 			}
-		}
 
-		if (!run) {
-			throw new Error(
-				`The Payroll Run for ${period.month} could not be created.`
-			);
-		}
+			if (!run) {
+				await createDraftPayrollRun(db, period);
+				run = await findPayrollRun(db, period, { forUpdate: true });
+				if (isRunLocked(run)) {
+					throw Object.assign(
+						new Error(
+							`The Payroll Run for ${period.month} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`
+						),
+						{ code: 'payroll_run_locked', status: 409 }
+					);
+				}
+			}
 
-		return fn(db, run);
-	});
+			if (!run) {
+				throw new Error(
+					`The Payroll Run for ${period.month} could not be created.`
+				);
+			}
+
+			return fn(db, run);
+		},
+		{ isolation: SALARY_WRITE_ISOLATION }
+	);
 }
 
 /**

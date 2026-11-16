@@ -3,10 +3,13 @@
  *
  * The cross-feature per-Employee mutex is the `employees.id` row. Lock order is
  * `payroll_runs` (held by Generate/Finalize) -> `employees` ascending -> salary
- * timeline/profile/use rows. Under MariaDB REPEATABLE READ a plain consistent
- * SELECT after taking the Employee lock may still answer from a snapshot taken
- * before the lock, so every write-path profile/use read must pass
- * `{ forUpdate: true }` (or run after `lockSalaryEmployees`).
+ * timeline/profile/use rows. Salary write transactions run at MariaDB READ
+ * COMMITTED (`beginSalaryWriteTransaction` / `SALARY_WRITE_ISOLATION`), which
+ * removes the REPEATABLE READ gap locks that deadlocked independent Employees.
+ * The write path still reads profiles/legacy profiles/use evidence with
+ * `{ forUpdate: true }` (or after `lockSalaryEmployees`): those reads are
+ * current reads that take exclusive row locks under the per-Employee mutex, so
+ * a waiter sees every commit that completed before it acquired the mutex.
  *
  * These helpers never begin, commit, roll back or release a connection and
  * never touch Payroll Slips or Runs. A failed statement leaves the caller's

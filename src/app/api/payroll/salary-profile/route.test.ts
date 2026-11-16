@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextResponse } from 'next/server';
+import { SALARY_WRITE_ISOLATION } from '@/lib/salary-write-isolation';
 
 const mocks = vi.hoisted(() => ({
 	mockEnsurePermission: vi.fn(),
@@ -194,6 +195,10 @@ describe('salary-profile route — command mapping (issue #437)', () => {
 		);
 
 		expect(response.status).toBe(200);
+		expect(mocks.mockWithTransaction).toHaveBeenCalledWith(
+			expect.any(Function),
+			{ isolation: SALARY_WRITE_ISOLATION }
+		);
 		expect(mocks.mockEnsurePermission).toHaveBeenCalledWith(
 			expect.any(Request),
 			'payroll',

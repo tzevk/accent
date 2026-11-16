@@ -38,6 +38,7 @@ import type {
 	SalaryAgreementSource,
 	SalaryProfileRow,
 } from '../../src/lib/salary-profile-timeline.ts';
+import { SALARY_WRITE_ISOLATION_SQL } from '../../src/lib/salary-write-isolation.ts';
 import {
 	isSalaryCtcPresent,
 	resolveSalaryCtc,
@@ -1552,6 +1553,10 @@ async function applyWithConnection(
 		(left, right) => left[0].employee_id - right[0].employee_id
 	);
 	for (const employeeUnits of employeeGroups) {
+		// Use evidence/timeline writes must run at READ COMMITTED for the same
+		// reason the application salary writers do: REPEATABLE READ `FOR UPDATE`
+		// gap locks on absent rows deadlock independent Employees.
+		await connection.query(SALARY_WRITE_ISOLATION_SQL);
 		await connection.execute('START TRANSACTION');
 		try {
 			const result = await applySalaryUsePlan(

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { grantFor } from '../test-perms';
 import { PayrollGenerationError } from '@/utils/payroll-calculator';
+import { SALARY_WRITE_ISOLATION } from '@/lib/salary-write-isolation';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -148,6 +149,10 @@ describe('payroll generate API — roster eligibility and Payroll Run lock (issu
 		const res = await POST(jsonRequest({ month: '2026-08-01', all: true }));
 
 		expect(res.status).toBe(200);
+		expect(mocks.mockWithTransaction).toHaveBeenCalledWith(
+			expect.any(Function),
+			{ isolation: SALARY_WRITE_ISOLATION }
+		);
 		const body = await res.json();
 		expect(body.success).toBe(true);
 		expect(body.run).toMatchObject({ id: 7, status: 'draft' });

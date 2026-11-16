@@ -11,6 +11,7 @@ import {
 	runSalaryCommand,
 	type SalaryCommandInput,
 } from '@/lib/salary-profile-commands';
+import { SALARY_WRITE_ISOLATION } from '@/lib/salary-write-isolation';
 
 const OPERATIONS: Record<string, true> = {
 	'create-initial': true,
@@ -71,10 +72,12 @@ export async function POST(request: Request) {
 	}
 
 	try {
-		const outcome = await withTransaction((db) =>
-			runSalaryCommand(db, body as unknown as SalaryCommandInput, {
-				actorId,
-			})
+		const outcome = await withTransaction(
+			(db) =>
+				runSalaryCommand(db, body as unknown as SalaryCommandInput, {
+					actorId,
+				}),
+			{ isolation: SALARY_WRITE_ISOLATION }
 		);
 		if (!outcome.ok) {
 			return failure(
