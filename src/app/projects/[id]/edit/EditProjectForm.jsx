@@ -39,6 +39,11 @@ import {
 	LockOpenIcon,
 } from '@heroicons/react/24/outline';
 import { fetchJSON } from '@/utils/http';
+import {
+	div as divideMoney,
+	mul as multiplyMoney,
+	toNumber as moneyToNumber,
+} from '@/lib/money';
 import { useSession } from '@/context/SessionContext';
 import Image from 'next/image';
 import { normalizeDate, formatWeekHeaderDate } from '@/utils/date';
@@ -249,6 +254,128 @@ const DOCUMENTATION_STATUS_OPTIONS = [
 	'Finalized',
 ];
 
+/** A date input value; the only anchor this page sends to salary reads. */
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Established monthly basis; mirrors PAYROLL_CONFIG working standards. */
+const DEFAULT_STANDARD_WORKING_DAYS = 26;
+const DEFAULT_STANDARD_HOURS_PER_DAY = 8;
+const STANDARD_WORKING_DAYS_FIELDS = [
+	'std_working_days',
+	'standard_working_days',
+];
+const STANDARD_HOURS_PER_DAY_FIELDS = [
+	'std_hours_per_day',
+	'standard_hours_per_day',
+];
+
+function finiteNumberOrNull(value) {
+	if (value === null || value === undefined || value === '') return null;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function positiveNumberOrNull(value) {
+	const parsed = finiteNumberOrNull(value);
+	return parsed !== null && parsed > 0 ? parsed : null;
+}
+
+/**
+ * Resolve one agreement standard-days/hours field across its aliases.
+ *
+ * The established monthly basis applies only when every alias is absent. A
+ * present-but-invalid explicit value returns null so the caller leaves the
+ * rate blank instead of silently pricing it at the default.
+ */
+function resolveStandardValue(profile, fieldNames, fallback) {
+	for (const fieldName of fieldNames) {
+		const raw = profile[fieldName];
+		if (raw === null || raw === undefined) continue;
+		if (typeof raw === 'string' && raw.trim() === '') continue;
+		return positiveNumberOrNull(raw);
+	}
+	return fallback;
+}
+
+function parseCustomRateSource(value) {
+	if (!value) return null;
+	if (typeof value === 'object') return value;
+	if (typeof value !== 'string') return null;
+	try {
+		return JSON.parse(value);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Derive the editable manhours RT/HR default from one date-resolved batch entry.
+ *
+ * Only a selected agreement with a usable profile may price work. Monthly
+ * agreements use the entry's resolved canonical CTC (explicit zero valid) over
+ * the agreement's standard days/hours, keeping the established 26 × 8 basis
+ * when those fields are absent. Retire the old gross-first/newest-row estimate.
+ * Missing, invalid, ambiguous or unavailable pay leaves the rate blank instead
+ * of inventing zero.
+ */
+function resolveProjectSalaryRate(entry) {
+	const empty = { rate: '', salary_type: 'monthly' };
+	if (!entry || entry.state !== 'selected' || !entry.profile) return empty;
+
+	const profile = entry.profile;
+	const salaryType =
+		typeof profile.salary_type === 'string' && profile.salary_type.trim()
+			? profile.salary_type.trim()
+			: 'monthly';
+	const resolved = { rate: '', salary_type: salaryType };
+
+	if (salaryType === 'hourly') {
+		resolved.rate = finiteNumberOrNull(profile.hourly_rate) ?? '';
+		return resolved;
+	}
+	if (salaryType === 'daily') {
+		resolved.rate = finiteNumberOrNull(profile.daily_rate) ?? '';
+		return resolved;
+	}
+	if (salaryType === 'custom') {
+		const custom = parseCustomRateSource(profile.lumpsum_description);
+		resolved.rate =
+			finiteNumberOrNull(custom?.hourly_rate) ??
+			finiteNumberOrNull(profile.hourly_rate) ??
+			'';
+		return resolved;
+	}
+
+	const ctc = entry.ctc;
+	const monthlyCtc =
+		ctc?.status === 'resolved' && ctc.source === 'employer_cost'
+			? finiteNumberOrNull(ctc.amount)
+			: null;
+	// Agreement basis: 26 × 8 only when neither alias is stored. An explicit
+	// invalid value is left invalid, never replaced by the default.
+	const workingDays = resolveStandardValue(
+		profile,
+		STANDARD_WORKING_DAYS_FIELDS,
+		DEFAULT_STANDARD_WORKING_DAYS
+	);
+	const hoursPerDay = resolveStandardValue(
+		profile,
+		STANDARD_HOURS_PER_DAY_FIELDS,
+		DEFAULT_STANDARD_HOURS_PER_DAY
+	);
+	if (monthlyCtc === null || workingDays === null || hoursPerDay === null) {
+		return resolved;
+	}
+
+	resolved.rate = moneyToNumber(
+		divideMoney(
+			monthlyCtc,
+			multiplyMoney(workingDays, hoursPerDay)
+		).toDecimalPlaces(2)
+	);
+	return resolved;
+}
+
 export default function EditProjectForm() {
 	const router = useRouter();
 	const params = useParams();
@@ -321,6 +448,10 @@ export default function EditProjectForm() {
 		return (projectRights.editableSections || []).includes(sectionId);
 	};
 	const canReadUsers = isSuperAdmin || can(RESOURCES.USERS, PERMISSIONS.READ);
+	// Salary reads stay payroll-authorized: project/employee access alone never
+	// fetches pay, and without this grant the manhours rate stays blank.
+	const canReadPayroll =
+		isSuperAdmin || can(RESOURCES.PAYROLL, PERMISSIONS.READ);
 
 	// Signature-authorisation toggles for the Documents Issued tab
 	// (field permissions on projects > documents_issued). Unset = 'edit'
@@ -791,9 +922,11 @@ export default function EditProjectForm() {
 	const [selectedMonths, setSelectedMonths] = useState([]);
 	const [monthRangeStart, setMonthRangeStart] = useState('');
 	const [monthRangeEnd, setMonthRangeEnd] = useState('');
-	// State for employees with salary profiles (for rate lookup)
+	// State for employees with date-resolved manhours rate defaults
 	const [employeesWithRates, setEmployeesWithRates] = useState([]);
 	const [employeesLoading, setEmployeesLoading] = useState(false);
+	// Employee master is stable across date edits; only salary defaults change.
+	const employeeMasterRef = useRef(null);
 	// Cache for attendance hours to avoid re-fetching
 	const [attendanceHoursCache, setAttendanceHoursCache] = useState({});
 	// New entry form for adding employee hours within a month
@@ -1777,8 +1910,7 @@ export default function EditProjectForm() {
 
 	// Software Master, Users, and Document Master are now loaded via /api/projects/[id]/init-data
 
-	// Fetch employees with their salary profiles for manhours rate lookup
-	// Function to fetch attendance hours for an employee for a given year
+	// Fetch attendance hours for one employee for a given year (manhours prefill)
 	const fetchAttendanceHours = async (
 		employeeId,
 		year = new Date().getFullYear()
@@ -1870,137 +2002,115 @@ export default function EditProjectForm() {
 		return null;
 	};
 
+	// Resolve manhours rate defaults for the project's own date. The employee
+	// roster is cached; changing the selected project date re-resolves salary
+	// without falling back to today or the newest agreement.
 	useEffect(() => {
+		let cancelled = false;
+
 		const fetchEmployeesWithRates = async () => {
 			setEmployeesLoading(true);
 			try {
-				// Fetch employees list from employee master
-				const empRes = await fetch('/api/employee-master/list?limit=2000');
-				if (!empRes.ok) {
-					throw new Error(`HTTP ${empRes.status}: ${empRes.statusText}`);
-				}
-				const empJson = await empRes.json();
+				let master = employeeMasterRef.current;
+				if (!master) {
+					// Fetch employees list from employee master
+					const empRes = await fetch('/api/employee-master/list?limit=2000');
+					if (!empRes.ok) {
+						throw new Error(`HTTP ${empRes.status}: ${empRes.statusText}`);
+					}
+					const empJson = await empRes.json();
 
-				if (!empJson || typeof empJson !== 'object') {
-					console.error('Invalid response format:', empJson);
-					setEmployeesWithRates([]);
-					setEmployeesLoading(false);
+					if (!empJson || typeof empJson !== 'object') {
+						console.error('Invalid response format:', empJson);
+						if (!cancelled) {
+							setEmployeesWithRates([]);
+							setEmployeesLoading(false);
+						}
+						return;
+					}
+
+					if (!(empJson?.success && Array.isArray(empJson.data))) {
+						console.error(
+							'Failed to fetch employees - invalid response structure:',
+							empJson
+						);
+						if (!cancelled) {
+							setEmployeesWithRates([]);
+							setEmployeesLoading(false);
+						}
+						return;
+					}
+					master = empJson.data;
+					employeeMasterRef.current = master;
+				}
+
+				// Set employees immediately without rates so the picker is responsive.
+				const basicEmployeesData = master.map((emp) => ({
+					id: emp.id,
+					name:
+						emp.full_name ||
+						`${emp.first_name || ''} ${emp.last_name || ''}`.trim() ||
+						emp.email ||
+						`Employee ${emp.id}`,
+					employee_id: emp.employee_id,
+					email: emp.email,
+					department: emp.department,
+					workplace: emp.workplace,
+					rate: '',
+					salary_type: 'monthly',
+				}));
+				if (cancelled) return;
+				setEmployeesWithRates(basicEmployeesData);
+				setEmployeesLoading(false);
+
+				const asOfDate = String(form.start_date || '').trim();
+				if (
+					!canReadPayroll ||
+					!DATE_ONLY_PATTERN.test(asOfDate) ||
+					master.length === 0
+				) {
 					return;
 				}
 
-				if (empJson?.success && Array.isArray(empJson.data)) {
-					// First, set employees immediately without rates so UI is responsive
-					const basicEmployeesData = empJson.data.map((emp) => ({
-						id: emp.id,
-						name:
-							emp.full_name ||
-							`${emp.first_name || ''} ${emp.last_name || ''}`.trim() ||
-							emp.email ||
-							`Employee ${emp.id}`,
-						employee_id: emp.employee_id,
-						email: emp.email,
-						department: emp.department,
-						workplace: emp.workplace,
-						rate: 0,
-						salary_type: 'monthly',
-					}));
-					setEmployeesWithRates(basicEmployeesData);
-					setEmployeesLoading(false);
-
-					// Then fetch salary profiles in batches to get rates
-					const batchSize = 10;
-					const updatedEmployees = [...basicEmployeesData];
-
-					for (let i = 0; i < empJson.data.length; i += batchSize) {
-						const batch = empJson.data.slice(i, i + batchSize);
-
-						await Promise.all(
-							batch.map(async (emp, batchIndex) => {
-								try {
-									const salaryRes = await fetch(
-										`/api/payroll/salary-profile?employee_id=${emp.id}`
-									);
-									const salaryJson = await salaryRes.json();
-
-									const latestProfile = salaryJson?.data?.[0] || null;
-
-									let rate = 0;
-									let salaryType = 'monthly';
-
-									if (latestProfile) {
-										salaryType = latestProfile.salary_type || 'monthly';
-
-										if (salaryType === 'hourly') {
-											rate = parseFloat(latestProfile.hourly_rate) || 0;
-										} else if (salaryType === 'daily') {
-											rate = parseFloat(latestProfile.daily_rate) || 0;
-										} else if (salaryType === 'custom') {
-											try {
-												const customData = latestProfile.lumpsum_description
-													? JSON.parse(latestProfile.lumpsum_description)
-													: {};
-												rate =
-													parseFloat(customData.hourly_rate) ||
-													parseFloat(latestProfile.hourly_rate) ||
-													0;
-											} catch {
-												rate = parseFloat(latestProfile.hourly_rate) || 0;
-											}
-										} else {
-											const grossSalary =
-												parseFloat(latestProfile.gross_salary) ||
-												parseFloat(latestProfile.employer_cost) ||
-												0;
-											const stdWorkingDays =
-												parseFloat(latestProfile.std_working_days) || 26;
-											const stdHoursPerDay =
-												parseFloat(latestProfile.std_hours_per_day) || 8;
-											rate =
-												grossSalary > 0
-													? parseFloat(
-															(
-																grossSalary /
-																(stdWorkingDays * stdHoursPerDay)
-															).toFixed(2)
-														)
-													: 0;
-										}
-									}
-
-									const globalIndex = i + batchIndex;
-									updatedEmployees[globalIndex] = {
-										...updatedEmployees[globalIndex],
-										rate: rate,
-										salary_type: salaryType,
-									};
-								} catch (err) {
-									console.error(
-										`Failed to fetch salary for employee ${emp.id}:`,
-										err
-									);
-								}
-							})
-						);
-
-						// Update state after each batch
-						setEmployeesWithRates([...updatedEmployees]);
-					}
-				} else {
+				// One period-effective batch read, anchored on the project's own
+				// start date. No date-less call means no server-today fallback.
+				const salaryRes = await fetch(
+					`/api/payroll/salary-profile/batch?date=${encodeURIComponent(asOfDate)}&full=1`
+				);
+				const salaryJson = await salaryRes.json();
+				if (cancelled) return;
+				if (!salaryJson?.success || !salaryJson.data) {
 					console.error(
-						'Failed to fetch employees - invalid response structure:',
-						empJson
+						'Failed to fetch date-resolved salary profiles:',
+						salaryJson
 					);
-					setEmployeesWithRates([]);
-					setEmployeesLoading(false);
+					return;
 				}
+
+				const ratesByEmployeeId = new Map();
+				Object.entries(salaryJson.data).forEach(([key, entry]) => {
+					const employeeId = Number(entry?.employee_id ?? key);
+					if (!Number.isFinite(employeeId)) return;
+					ratesByEmployeeId.set(employeeId, resolveProjectSalaryRate(entry));
+				});
+
+				setEmployeesWithRates(
+					basicEmployeesData.map((employee) => {
+						const resolved = ratesByEmployeeId.get(Number(employee.id));
+						return resolved ? { ...employee, ...resolved } : employee;
+					})
+				);
 			} catch (error) {
 				console.error('Failed to fetch employees with rates:', error);
-				setEmployeesLoading(false);
+				if (!cancelled) setEmployeesLoading(false);
 			}
 		};
 
 		fetchEmployeesWithRates();
-	}, []);
+		return () => {
+			cancelled = true;
+		};
+	}, [canReadPayroll, form.start_date]);
 
 	// Load project team members from project data
 	useEffect(() => {
