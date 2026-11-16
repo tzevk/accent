@@ -11,6 +11,7 @@ export default defineConfig({
 		include: [
 			'src/**/*.test.{js,jsx,ts,tsx}',
 			'scripts/e2e/**/*.test.ts',
+			'scripts/payroll/salary-use-backfill.test.ts',
 		],
 	},
 	resolve: {
