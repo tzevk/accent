@@ -36,6 +36,7 @@ vi.mock('@/utils/client-rbac', () => ({
 }));
 
 import EmployeeHub from '@/components/EmployeeHub';
+import { formatDate } from '@/lib/format';
 
 function renderHub(search = '') {
 	window.history.pushState({}, '', `/employees${search}`);
@@ -161,6 +162,63 @@ const savedProfile = {
 	lumpsum_description: null,
 };
 
+/**
+ * One resolve payload per Employee: a covering agreement plus the shared
+ * state/CTC projection. Tests override only the fields they exercise.
+ */
+function salaryResolution(
+	employeeId: number,
+	overrides: Record<string, unknown> = {}
+) {
+	const name =
+		employeeId === 1
+			? 'Alice Worker'
+			: employeeId === 2
+				? 'Bob Builder'
+				: 'Carol Director';
+	return {
+		employee_id: employeeId,
+		state: 'selected',
+		anchor: '2026-11-16',
+		source: 'employee_salary_profile',
+		agreement_id: 11,
+		conflict_ids: [],
+		conflict_source: null,
+		salary_type: 'monthly',
+		pay_stream: 'payroll',
+		effective_from: '2026-01-01',
+		effective_to: null,
+		classification: 'current',
+		ctc: {
+			status: 'resolved',
+			amount: 56000,
+			source: 'employer_cost',
+			legacy_fallback: false,
+			invalid_reason: null,
+		},
+		timeline_version: 3,
+		used: false,
+		use_ambiguous: false,
+		use_unknown_history: false,
+		use_months: [],
+		profile: savedProfile,
+		employee: {
+			id: employeeId,
+			employee_id: `ATS00${employeeId}`,
+			full_name: name,
+			department: null,
+			employee_type: null,
+			status: 'active',
+			joining_date: null,
+			hire_date: null,
+			exit_date: null,
+		},
+		...overrides,
+	};
+}
+
+let salaryResolutions: Record<string, unknown> = {};
+
 let aliceAccount: {
 	linked_user_id: number | null;
 	linked_username: string | null;
@@ -174,6 +232,7 @@ describe('EmployeeHub', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		aliceAccount = null;
+		salaryResolutions = {};
 		rbacMock.payrollRead = false;
 		rbacMock.superAdmin = false;
 		rbacMock.payrollUpdate = false;
@@ -222,17 +281,29 @@ describe('EmployeeHub', () => {
 						dayDetails: [],
 					});
 				}
-				if (url.startsWith('/api/payroll/salary-profile?employee_id=')) {
-					const employeeId = new URL(url, 'http://localhost').searchParams.get(
-						'employee_id'
-					);
+				if (url.startsWith('/api/payroll/salary-profile/resolve')) {
+					const employeeId =
+						new URL(url, 'http://localhost').searchParams.get('employee_id') ||
+						'';
+					const resolution = salaryResolutions[employeeId];
+					if (!resolution) {
+						return response(
+							{ success: false, error: 'Employee not found' },
+							false
+						);
+					}
 					return response({
 						success: true,
-						data: employeeId === '1' ? [savedProfile] : [],
+						period: {
+							kind: 'date',
+							date: '2026-11-16',
+							month: null,
+							start: '2026-11-16',
+							end: '2026-11-16',
+						},
+						as_of: '2026-11-16',
+						data: resolution,
 					});
-				}
-				if (url.startsWith('/api/payroll/salary-profile')) {
-					return response({ success: true, data: savedProfile });
 				}
 				if (url.startsWith('/api/payroll/schedules/current')) {
 					return response({ success: true, data: {} });
@@ -515,13 +586,16 @@ describe('EmployeeHub', () => {
 		).not.toBeInTheDocument();
 		expect(
 			screen.queryByRole('button', {
-				name: /View salary profile for Alice Worker/,
+				name: /View salary summary for Alice Worker/,
 			})
 		).not.toBeInTheDocument();
 		expect(
 			screen.queryByRole('button', {
-				name: /View salary profile for Bob Builder/,
+				name: /View salary summary for Bob Builder/,
 			})
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('link', { name: /salary workspace/i })
 		).not.toBeInTheDocument();
 
 		openEmployee('Alice Worker', 'Edit');
@@ -628,109 +702,217 @@ describe('EmployeeHub', () => {
 		expect(cells[5]).toHaveAttribute('title', 'Mumbai');
 	});
 
-	it('expands a Payroll row to the persisted salary figures with payroll:read', async () => {
+	it('expands every employee row to an authorized salary summary and workspace link', async () => {
 		rbacMock.payrollRead = true;
+		salaryResolutions = {
+			'1': salaryResolution(1),
+			'2': salaryResolution(2, {
+				salary_type: 'contract',
+				pay_stream: 'contract',
+				effective_from: '2026-02-01',
+				effective_to: '2026-12-31',
+			}),
+			'3': salaryResolution(3, {
+				state: 'unavailable',
+				source: null,
+				agreement_id: null,
+				salary_type: null,
+				pay_stream: null,
+				effective_from: null,
+				effective_to: null,
+				classification: null,
+				ctc: {
+					status: 'missing',
+					amount: null,
+					source: 'none',
+					legacy_fallback: false,
+					invalid_reason: null,
+				},
+				profile: null,
+				timeline_version: 0,
+			}),
+		};
 		renderHub();
 		await screen.findByText('Alice Worker');
 
-		// The expand control renders on Payroll rows only.
-		expect(
-			screen.queryByRole('button', {
-				name: /View salary profile for Bob Builder/,
-			})
-		).not.toBeInTheDocument();
-		expect(
-			screen.queryByRole('button', {
-				name: /View salary profile for Carol Director/,
-			})
-		).not.toBeInTheDocument();
+		// Employee Type never decides salary eligibility: a Payroll, a Contract
+		// and an untyped employee all offer the authorized summary.
+		for (const name of ['Alice Worker', 'Bob Builder', 'Carol Director']) {
+			expect(
+				screen.getByRole('button', { name: `View salary summary for ${name}` })
+			).toBeVisible();
+		}
 
 		fireEvent.click(
 			screen.getByRole('button', {
-				name: /View salary profile for Alice Worker/,
+				name: 'View salary summary for Alice Worker',
 			})
 		);
 		const panel = await screen.findByTestId('inline-salary-1');
-		expect(within(panel).getByText('₹42,750.00')).toBeVisible(); // persisted net pay
-		expect(within(panel).getByText('₹50,000.00')).toBeVisible(); // persisted earnings
-		expect(within(panel).getAllByText('₹56,000.00').length).toBeGreaterThan(0); // persisted CTC (tile + employer column)
-		expect(within(panel).getAllByText('₹1,000.00').length).toBeGreaterThan(0); // loan EMI
+		expect(await within(panel).findByText('₹56,000.00')).toBeVisible();
+		expect(within(panel).getByText(/Recorded employer cost/)).toBeVisible();
+		expect(within(panel).getByText('monthly')).toBeVisible();
+		expect(within(panel).getByText('Payroll')).toBeVisible();
 		expect(
-			within(panel).getByText('Total Employer Contributions')
+			within(panel).getByText(
+				new RegExp(`Effective ${formatDate('2026-01-01')}`)
+			)
 		).toBeVisible();
-		expect(within(panel).getByText(/Effective:/)).toBeVisible();
-		expect(within(panel).getByText(/Privilege Leave:/)).toBeVisible();
+		expect(
+			within(panel).getByRole('link', { name: /Open salary workspace/ })
+		).toHaveAttribute('href', '/admin/payroll/salary-profiles/1');
+		// A payroll reader gets the summary and history link, not a writer.
+		expect(
+			within(panel).queryByRole('button', { name: /Edit|Correct|Cancel/ })
+		).not.toBeInTheDocument();
+		expect(screen.queryByLabelText('Gross Salary *')).not.toBeInTheDocument();
 
-		const profileCalls = fetchMock.mock.calls.filter(([url]) =>
-			String(url).startsWith('/api/payroll/salary-profile?employee_id=')
-		);
-		expect(profileCalls.length).toBe(1);
-		expect(String(profileCalls[0][0])).toContain('employee_id=1');
-
-		// One row expands at a time; a Payroll row without a profile offers the editor.
+		// The Contract employee reads the Contract stream at the same anchor.
 		fireEvent.click(
 			screen.getByRole('button', {
-				name: /View salary profile for Dave Payroll/,
+				name: 'View salary summary for Bob Builder',
 			})
 		);
+		const contractPanel = await screen.findByTestId('inline-salary-2');
+		expect(await within(contractPanel).findByText('contract')).toBeVisible();
+		expect(within(contractPanel).getByText('Contract')).toBeVisible();
 		expect(
-			await screen.findByText('No salary profile found for this employee.')
+			within(contractPanel).getByText(
+				new RegExp(`Effective ${formatDate('2026-02-01')}`)
+			)
 		).toBeVisible();
+		expect(
+			within(contractPanel).getByRole('link', { name: /Open salary workspace/ })
+		).toHaveAttribute('href', '/admin/payroll/salary-profiles/2');
+
+		// An employee without a covering agreement is explicit, never zero.
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: 'View salary summary for Carol Director',
+			})
+		);
+		const emptyPanel = await screen.findByTestId('inline-salary-3');
+		expect(
+			await within(emptyPanel).findByText(/No salary agreement covers/)
+		).toBeVisible();
+		expect(within(emptyPanel).queryByText(/₹/)).not.toBeInTheDocument();
+		expect(
+			within(emptyPanel).getByRole('link', { name: /Open salary workspace/ })
+		).toHaveAttribute('href', '/admin/payroll/salary-profiles/3');
 		expect(screen.queryByTestId('inline-salary-1')).not.toBeInTheDocument();
+
+		const resolveCalls = fetchMock.mock.calls
+			.map(([url]) => String(url))
+			.filter((url) => url.startsWith('/api/payroll/salary-profile/resolve'));
+		expect(resolveCalls).toEqual([
+			expect.stringContaining('employee_id=1'),
+			expect.stringContaining('employee_id=2'),
+			expect.stringContaining('employee_id=3'),
+		]);
 	});
 
-	it('offers the Salary Profile tab in edit mode only for a Payroll employee', async () => {
+	it('discloses a legacy gross fallback instead of presenting it as an explicit CTC', async () => {
 		rbacMock.payrollRead = true;
+		salaryResolutions = {
+			'1': salaryResolution(1, {
+				ctc: {
+					status: 'resolved',
+					amount: 50000,
+					source: 'gross_salary',
+					legacy_fallback: true,
+					invalid_reason: null,
+				},
+			}),
+		};
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: 'View salary summary for Alice Worker',
+			})
+		);
+		const panel = await screen.findByTestId('inline-salary-1');
+		expect(await within(panel).findByText('₹50,000.00')).toBeVisible();
+		expect(
+			within(panel).getByText(/Legacy gross salary reference/)
+		).toBeVisible();
+		expect(
+			within(panel).queryByText(/Recorded employer cost/)
+		).not.toBeInTheDocument();
+	});
+
+	it('reports an ambiguous agreement without showing a salary figure', async () => {
+		rbacMock.payrollRead = true;
+		salaryResolutions = {
+			'1': salaryResolution(1, {
+				state: 'ambiguous',
+				agreement_id: null,
+				conflict_ids: [11, 12],
+				salary_type: null,
+				pay_stream: null,
+				effective_from: null,
+				effective_to: null,
+				classification: null,
+				ctc: {
+					status: 'missing',
+					amount: null,
+					source: 'none',
+					legacy_fallback: false,
+					invalid_reason: null,
+				},
+				profile: null,
+			}),
+		};
+		renderHub();
+		await screen.findByText('Alice Worker');
+
+		fireEvent.click(
+			screen.getByRole('button', {
+				name: 'View salary summary for Alice Worker',
+			})
+		);
+		const panel = await screen.findByTestId('inline-salary-1');
+		expect(
+			await within(panel).findByText(/2 conflicting agreements/)
+		).toBeVisible();
+		expect(within(panel).queryByText(/₹/)).not.toBeInTheDocument();
+		expect(
+			within(panel).getByRole('link', { name: /Open salary workspace/ })
+		).toHaveAttribute('href', '/admin/payroll/salary-profiles/1');
+	});
+
+	it('never embeds a salary editor in the employee editor', async () => {
+		rbacMock.payrollRead = true;
+		rbacMock.payrollUpdate = true;
 		rbacMock.superAdmin = true;
 		renderHub();
 		await screen.findByText('Alice Worker');
 
-		openEmployee('Alice Worker', 'View');
-		const viewNav = await sectionRail();
-		expect(
-			within(viewNav).queryByRole('button', { name: 'Salary Profile' })
-		).not.toBeInTheDocument();
-
-		fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-		const nav = await sectionRail();
-		expect(
-			within(nav).getByRole('button', { name: 'Salary Profile' })
-		).toBeVisible();
-	});
-
-	it('offers the Contract Pay tab in edit mode only for a Contract employee', async () => {
-		rbacMock.payrollRead = true;
-		renderHub();
-		await screen.findByText('Bob Builder');
-
-		openEmployee('Bob Builder', 'View');
-		const viewNav = await sectionRail();
-		expect(
-			within(viewNav).queryByRole('button', { name: 'Contract Pay' })
-		).not.toBeInTheDocument();
-
-		fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-		const nav = await sectionRail();
-		expect(
-			within(nav).queryByRole('button', { name: 'Salary Profile' })
-		).not.toBeInTheDocument();
-		expect(
-			within(nav).getByRole('button', { name: 'Contract Pay' })
-		).toBeVisible();
-	});
-
-	it('offers no pay tab when editing an employee with no pay Employee Type', async () => {
-		rbacMock.payrollRead = true;
-		renderHub();
-		await screen.findByText('Carol Director');
-
-		openEmployee('Carol Director', 'Edit');
+		openEmployee('Alice Worker', 'Edit');
 		const nav = await sectionRail();
 		expect(
 			within(nav).queryByRole('button', { name: 'Salary Profile' })
 		).not.toBeInTheDocument();
 		expect(
 			within(nav).queryByRole('button', { name: 'Contract Pay' })
+		).not.toBeInTheDocument();
+		expect(screen.queryByLabelText('Gross Salary *')).not.toBeInTheDocument();
+		expect(
+			fetchMock.mock.calls.some(([url]) =>
+				String(url).startsWith('/api/payroll/')
+			)
+		).toBe(false);
+
+		fireEvent.click(screen.getByRole('button', { name: 'Select Bob Builder' }));
+		expect(
+			within(nav).queryByRole('button', { name: 'Contract Pay' })
+		).not.toBeInTheDocument();
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Select Carol Director' })
+		);
+		expect(
+			within(nav).queryByRole('button', { name: 'Salary Profile' })
 		).not.toBeInTheDocument();
 	});
 
@@ -755,32 +937,33 @@ describe('EmployeeHub', () => {
 		expect(runCalls).toEqual([]);
 	});
 
-	it("opens the Salary Profile tab from the panel's edit link", async () => {
+	it('sends the salary summary to the employee workspace instead of an embedded editor', async () => {
 		rbacMock.payrollRead = true;
+		salaryResolutions = { '1': salaryResolution(1) };
 		renderHub();
 		await screen.findByText('Alice Worker');
 
 		fireEvent.click(
-			screen.getByRole('button', { name: /View salary profile for Alice/ })
+			screen.getByRole('button', { name: /View salary summary for Alice/ })
 		);
-		fireEvent.click(
-			await screen.findByRole('button', { name: 'Edit Salary Profile →' })
-		);
-
-		// The salary agreement form is the active section, not Personal
-		// Information: its fields render without another click.
-		expect(await screen.findByLabelText('Gross Salary *')).toBeVisible();
+		const panel = await screen.findByTestId('inline-salary-1');
+		expect(
+			within(panel).getByRole('link', { name: /Open salary workspace/ })
+		).toHaveAttribute('href', '/admin/payroll/salary-profiles/1');
+		expect(screen.queryByLabelText('Gross Salary *')).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', { name: /Edit Salary Profile/ })
+		).not.toBeInTheDocument();
 	});
 
-	it('opens the row edit on the first section, not the pay tab', async () => {
+	it("opens the row edit on the employee's own fields", async () => {
 		rbacMock.payrollRead = true;
 		renderHub();
 		await screen.findByText('Alice Worker');
 
 		openEmployee('Alice Worker', 'Edit');
 		await sectionRail();
-		// The tab exists in the rail, but the editor still starts on the
-		// employee's own fields.
+		// Employee editing is unchanged: no salary surface in the section rail.
 		expect(
 			await screen.findByRole('heading', { name: 'Personal Information' })
 		).toBeVisible();

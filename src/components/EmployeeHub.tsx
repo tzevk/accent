@@ -1,12 +1,6 @@
 'use client';
 
-import {
-	Fragment,
-	useCallback,
-	useEffect,
-	useState,
-	type ReactNode,
-} from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
 	ChevronLeftIcon,
@@ -23,15 +17,12 @@ import {
 import AccessGuard from '@/components/AccessGuard';
 import EmployeeAvatar from '@/components/employees/EmployeeAvatar';
 import EmployeeEditor from '@/components/employees/EmployeeEditor';
-import ContractPaySection from '@/components/employees/ContractPaySection';
 import InlineSalaryPanel from '@/components/employees/InlineSalaryPanel';
 import SalaryStructureExportButton from '@/components/employees/SalaryStructureExportButton';
-import SalaryProfileSection, {
-	type SalaryProfileRecord,
-} from '@/components/employees/SalaryProfileSection';
 import Navbar from '@/components/Navbar';
 import { formatDate } from '@/lib/format';
 import { apiGet } from '@/lib/api-client';
+import type { SalaryProfileResolution } from '@/lib/salary-profile-directory';
 import {
 	useEmployeeDirectory,
 	type EmployeeRecord,
@@ -67,53 +58,20 @@ function statusBadgeClass(value: unknown): string {
 }
 
 /**
- * The Employee Types the hub serves pay sections for (ADR-0030). One place
- * names both values, so the filter, the `?type=` deep link, the editor tab and
- * the row expand control cannot drift apart.
+ * Employee Type filter values. This is employee master data only: an
+ * agreement's Salary Type, never Employee Type, decides the pay stream.
  */
-const PAY_TYPES = {
-	salary: 'Payroll',
+const EMPLOYEE_TYPES = {
+	payroll: 'Payroll',
 	contract: 'Contract',
 } as const;
 
-const PAY_TYPE_VALUES: readonly string[] = Object.values(PAY_TYPES);
-
-/**
- * Route-owned pay section for the editor, per selected employee: a Payroll
- * employee gets the Salary Profile tab (overrides for a super admin or a
- * payroll:update holder), a Contract employee gets the Contract Pay tab, and
- * any other Employee Type gets no extra tab. The editor renders the section
- * in edit mode only, so view mode keeps today's behavior.
- */
-function paySectionFor(
-	employee: EmployeeRecord | null,
-	canOverride: boolean
-): { key: string; label: string; render: () => ReactNode } | undefined {
-	if (!employee) return undefined;
-	if (employee.employee_type === PAY_TYPES.salary) {
-		return {
-			key: 'salary',
-			label: 'Salary Profile',
-			render: () => (
-				<SalaryProfileSection employee={employee} canOverride={canOverride} />
-			),
-		};
-	}
-	if (employee.employee_type === PAY_TYPES.contract) {
-		return {
-			key: 'contract',
-			label: 'Contract Pay',
-			render: () => <ContractPaySection employee={employee} />,
-		};
-	}
-	return undefined;
-}
+const EMPLOYEE_TYPE_VALUES: readonly string[] = Object.values(EMPLOYEE_TYPES);
 
 export default function EmployeeHub() {
 	const directory = useEmployeeDirectory();
 	const { setFilter, refresh, refreshAll } = directory;
 	const {
-		user,
 		can,
 		RESOURCES,
 		PERMISSIONS,
@@ -121,29 +79,23 @@ export default function EmployeeHub() {
 	} = useSessionRBAC();
 	const canPayrollRead =
 		!rbacLoading && can(RESOURCES.PAYROLL, PERMISSIONS.READ);
-	const canOverrideSalary = Boolean(
-		user?.is_super_admin || can(RESOURCES.PAYROLL, PERMISSIONS.UPDATE)
-	);
 	const [mode, setMode] = useState<'list' | 'add' | 'edit' | 'view'>('list');
 	const [actionMessage, setActionMessage] = useState('');
 	const [actionError, setActionError] = useState('');
 	const [expandedSalaryId, setExpandedSalaryId] = useState<
 		number | string | null
 	>(null);
-	// True when the editor was opened from a pay entry point (the inline
-	// panel's edit link), so it mounts on the pay tab instead of the first
-	// section. The editor unmounts per open, so each open sets its own value.
-	const [startOnPaySection, setStartOnPaySection] = useState(false);
 
-	// One row expands at a time; the profile endpoint enforces payroll:read
-	// server-side (ADR-0019), so the query runs only for a granted session.
+	// One row expands at a time. The resolve route enforces payroll:read
+	// server-side (no employees fallback), so an employees-only session never
+	// fetches or shows a salary figure.
 	const inlineQuery = useQuery({
-		queryKey: ['salary-profile', expandedSalaryId],
+		queryKey: ['salary-profile-resolve', expandedSalaryId],
 		queryFn: async () => {
-			const data = (await apiGet('/api/payroll/salary-profile', {
+			const data = (await apiGet('/api/payroll/salary-profile/resolve', {
 				employee_id: expandedSalaryId,
-			})) as { success?: boolean; data?: SalaryProfileRecord[] };
-			return data.data?.[0] ?? null;
+			})) as { success?: boolean; data?: SalaryProfileResolution };
+			return data.data ?? null;
 		},
 		enabled: expandedSalaryId !== null && canPayrollRead,
 		staleTime: 0,
@@ -153,8 +105,8 @@ export default function EmployeeHub() {
 	// filter changes never write the URL.
 	useEffect(() => {
 		const seeded = new URLSearchParams(window.location.search).get('type');
-		const payType = PAY_TYPE_VALUES.find((type) => type === seeded);
-		if (payType) setFilter('employeeType', payType);
+		const employeeType = EMPLOYEE_TYPE_VALUES.find((type) => type === seeded);
+		if (employeeType) setFilter('employeeType', employeeType);
 	}, [setFilter]);
 
 	const handleSaved = useCallback(
@@ -171,26 +123,22 @@ export default function EmployeeHub() {
 
 	const showList = () => {
 		setMode('list');
-		setStartOnPaySection(false);
 		form.startNewEmployee();
 	};
 	const openAdd = () => {
 		form.startNewEmployee();
-		setStartOnPaySection(false);
 		setActionMessage('');
 		setActionError('');
 		setMode('add');
 	};
-	const openEdit = (employee: EmployeeRecord, onPaySection = false) => {
+	const openEdit = (employee: EmployeeRecord) => {
 		form.openEmployee(employee);
-		setStartOnPaySection(onPaySection);
 		setActionMessage('');
 		setActionError('');
 		setMode('edit');
 	};
 	const openView = (employee: EmployeeRecord) => {
 		form.openEmployee(employee);
-		setStartOnPaySection(false);
 		setActionMessage('');
 		setActionError('');
 		setMode('view');
@@ -218,14 +166,9 @@ export default function EmployeeHub() {
 		}
 	};
 
-	// Pay-flavored controls stay behind payroll:read (ADR-0019): the salary
-	// profile endpoint enforces the grant server-side with no employees
-	// fallback, so the hub never becomes a salary surface for an
-	// employees-only reader.
-	const extraSection = canPayrollRead
-		? paySectionFor(form.selectedEmployee, canOverrideSalary)
-		: undefined;
-
+	// Pay-flavored controls stay behind payroll:read (ADR-0019): the resolve
+	// route enforces the grant server-side with no employees fallback, so the
+	// hub never becomes a salary surface for an employees-only reader.
 	return (
 		<AccessGuard
 			resource="employees"
@@ -279,8 +222,6 @@ export default function EmployeeHub() {
 							onBack={showList}
 							onEdit={() => setMode('edit')}
 							workplaces={directory.workplaces}
-							extraSection={extraSection}
-							startOnExtraSection={startOnPaySection}
 						/>
 					) : (
 						<>
@@ -368,7 +309,7 @@ export default function EmployeeHub() {
 										className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
 									>
 										<option value="">All Types</option>
-										{PAY_TYPE_VALUES.map((type) => (
+										{EMPLOYEE_TYPE_VALUES.map((type) => (
 											<option key={type} value={type}>
 												{type}
 											</option>
@@ -536,28 +477,29 @@ export default function EmployeeHub() {
 															</td>
 															<td className="whitespace-nowrap px-3 py-3 text-right">
 																<div className="flex justify-end gap-0.5">
-																	{canPayrollRead &&
-																		employee.employee_type ===
-																			PAY_TYPES.salary && (
-																			<button
-																				type="button"
-																				aria-label={`View salary profile for ${employeeName(employee)}`}
-																				onClick={() =>
-																					setExpandedSalaryId((current) =>
-																						current === employee.id
-																							? null
-																							: employee.id
-																					)
-																				}
-																				className={`rounded-lg p-2 ${
-																					expandedSalaryId === employee.id
-																						? 'bg-[#64126D] text-white'
-																						: 'text-green-600 hover:bg-green-50'
-																				}`}
-																			>
-																				<CurrencyRupeeIcon className="h-4 w-4" />
-																			</button>
-																		)}
+																	{canPayrollRead && (
+																		<button
+																			type="button"
+																			aria-label={`View salary summary for ${employeeName(employee)}`}
+																			aria-expanded={
+																				expandedSalaryId === employee.id
+																			}
+																			onClick={() =>
+																				setExpandedSalaryId((current) =>
+																					current === employee.id
+																						? null
+																						: employee.id
+																				)
+																			}
+																			className={`rounded-lg p-2 ${
+																				expandedSalaryId === employee.id
+																					? 'bg-[#64126D] text-white'
+																					: 'text-green-600 hover:bg-green-50'
+																			}`}
+																		>
+																			<CurrencyRupeeIcon className="h-4 w-4" />
+																		</button>
+																	)}
 																	<button
 																		type="button"
 																		aria-label={`View ${employeeName(employee)}`}
@@ -592,7 +534,7 @@ export default function EmployeeHub() {
 																<td colSpan={9} className="px-6 py-4">
 																	<InlineSalaryPanel
 																		employee={employee}
-																		profile={inlineQuery.data}
+																		resolution={inlineQuery.data}
 																		loading={
 																			inlineQuery.isPending ||
 																			inlineQuery.isFetching
@@ -602,9 +544,7 @@ export default function EmployeeHub() {
 																				? inlineQuery.error.message
 																				: ''
 																		}
-																		onOpenEditor={(employee) =>
-																			openEdit(employee, true)
-																		}
+																		workspaceHref={`/admin/payroll/salary-profiles/${employee.id}`}
 																	/>
 																</td>
 															</tr>

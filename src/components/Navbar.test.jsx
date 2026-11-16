@@ -27,8 +27,8 @@ vi.mock('@/utils/client-rbac', () => ({
 			((resource === 'payroll' && rbacMock.payrollRead) ||
 				(resource === 'admin' && rbacMock.adminRead) ||
 				(resource === 'projects' && rbacMock.projectsRead)),
-		RESOURCES: { ADMIN: 'admin', PAYROLL: 'payroll' },
-		PERMISSIONS: { READ: 'read' },
+		RESOURCES: { ADMIN: 'admin', PAYROLL: 'payroll', PROJECTS: 'projects' },
+		PERMISSIONS: { READ: 'read', UPDATE: 'update' },
 	}),
 }));
 
@@ -54,24 +54,19 @@ describe('Navbar payroll group', () => {
 		});
 	});
 
-	it('deep-links Salary Profiles to the hub filtered to Payroll', async () => {
+	it('opens Salary Profiles and Contract Pay in the shared salary workspace', async () => {
 		await openPayrollGroup();
 
 		expect(
 			screen.getByRole('link', { name: 'Salary Profiles' })
-		).toHaveAttribute('href', '/employees?type=Payroll');
-	});
-
-	it('deep-links Contract Pay to the hub filtered to Contract', async () => {
-		await openPayrollGroup();
-
+		).toHaveAttribute('href', '/admin/payroll/salary-profiles?stream=payroll');
 		expect(screen.getByRole('link', { name: 'Contract Pay' })).toHaveAttribute(
 			'href',
-			'/employees?type=Contract'
+			'/admin/payroll/salary-profiles?stream=contract'
 		);
 	});
 
-	it('keeps the payroll run entries beside the deep links', async () => {
+	it('keeps the payroll run entries beside the workspace links', async () => {
 		await openPayrollGroup();
 
 		expect(screen.getByRole('link', { name: 'Payroll Run' })).toHaveAttribute(
@@ -81,7 +76,7 @@ describe('Navbar payroll group', () => {
 		expect(screen.getByRole('link', { name: 'Component Rates' })).toBeVisible();
 	});
 
-	it('hides the hub deep links from a session without payroll:read', async () => {
+	it('hides the salary workspace entries from a session without payroll:read', async () => {
 		rbacMock.superAdmin = false;
 		rbacMock.payrollRead = false;
 		await openPayrollGroup();
@@ -96,15 +91,49 @@ describe('Navbar payroll group', () => {
 		expect(screen.getByRole('link', { name: 'Payroll Run' })).toBeVisible();
 	});
 
-	it('shows the hub deep links to a payroll:read holder who is not a super admin', async () => {
+	it('shows the salary workspace entries to a payroll:read holder who is not a super admin', async () => {
 		rbacMock.superAdmin = false;
 		await openPayrollGroup();
 
 		expect(screen.getByRole('link', { name: 'Salary Profiles' })).toBeVisible();
 		expect(screen.getByRole('link', { name: 'Contract Pay' })).toBeVisible();
 	});
-});
 
+	it('admits a payroll-only session to Payroll without unrelated Admin groups', async () => {
+		rbacMock.superAdmin = false;
+		rbacMock.payrollRead = true;
+		rbacMock.adminRead = false;
+		render(<Navbar />);
+
+		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
+		expect(screen.getByRole('button', { name: 'Payroll' })).toBeVisible();
+		expect(
+			screen.queryByRole('button', { name: 'Cash & Expenses' })
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', { name: 'Monitoring' })
+		).not.toBeInTheDocument();
+
+		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Payroll' }));
+		expect(
+			screen.getByRole('link', { name: 'Salary Profiles' })
+		).toHaveAttribute('href', '/admin/payroll/salary-profiles?stream=payroll');
+		expect(screen.getByRole('link', { name: 'Payroll Run' })).toBeVisible();
+	});
+
+	it('keeps the other Admin groups for an admin:read holder', async () => {
+		rbacMock.superAdmin = false;
+		rbacMock.payrollRead = false;
+		rbacMock.adminRead = true;
+		render(<Navbar />);
+
+		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
+		expect(
+			screen.getByRole('button', { name: 'Cash & Expenses' })
+		).toBeVisible();
+		expect(screen.getByRole('button', { name: 'Monitoring' })).toBeVisible();
+	});
+});
 
 describe('Navbar Projects entry', () => {
 	const projectAccessResponse = (hasAccess) => ({
