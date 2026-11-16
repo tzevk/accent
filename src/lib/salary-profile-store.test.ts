@@ -211,6 +211,22 @@ class FakeSalaryDb implements SalaryStoreDb {
 
 		if (
 			text.startsWith('select') &&
+			text.includes('from employee_salary_payroll_use') &&
+			text.includes('agreement_source_key = ?')
+		) {
+			const [employeeId, month, agreementSource, agreementId] = values;
+			const match = this.uses.find(
+				(row) =>
+					row.employee_id === Number(employeeId) &&
+					monthKey(row.month) === String(month) &&
+					(row.agreement_source ?? '') === String(agreementSource) &&
+					(row.agreement_id ?? 0) === Number(agreementId)
+			);
+			return [match ? [{ id: match.id }] : [], []];
+		}
+
+		if (
+			text.startsWith('select') &&
 			text.includes('from employee_salary_payroll_use')
 		) {
 			const employeeId = Number(values[0]);
@@ -272,7 +288,20 @@ class FakeSalaryDb implements SalaryStoreDb {
 					(row.agreement_id ?? 0) === (agreementId ?? 0) &&
 					(row.agreement_source ?? '') === (agreementSource ?? '')
 			);
-			if (duplicate) return [{ affectedRows: 0 }, []];
+			if (duplicate) {
+				// MariaDB 10.11.15 through mysql2 (which connects with
+				// CLIENT_FOUND_ROWS) reports an unchanged duplicate
+				// `INSERT ... ON DUPLICATE KEY UPDATE` as the matched row:
+				// affectedRows 1 with the OK packet's insertId left at 0.
+				// A plain INSERT instead raises the unique-key error.
+				if (!text.includes('on duplicate key update')) {
+					throw Object.assign(
+						new Error(`Duplicate entry for employee ${employeeId} salary use`),
+						{ code: 'ER_DUP_ENTRY', errno: 1062 }
+					);
+				}
+				return [{ affectedRows: 1, insertId: 0 }, []];
+			}
 			this.uses.push({
 				id: this.nextUseId++,
 				employee_id: employeeId,
@@ -498,6 +527,57 @@ describe('durable payroll use', () => {
 			timeline_version: 1,
 		});
 		expect(db.uses).toHaveLength(1);
+	});
+
+	it('reports a duplicate exact use as unrecorded and keeps the first evidence', async () => {
+		// Production reality: mysql2 connects with CLIENT_FOUND_ROWS, so MariaDB
+		// answers an unchanged duplicate with affectedRows 1 and insertId 0. The
+		// consumer (`--apply` summary, generation/finalization writers) must not
+		// read that as "recorded" or it advances the timeline twice.
+		const db = new FakeSalaryDb({
+			employees: [{ id: 1, joining_date: null, hire_date: null, isDelete: 0 }],
+		});
+
+		const first = await recordSalaryAgreementUse(db, {
+			employeeId: 1,
+			agreementId: 10,
+			agreementSource: 'employee_salary_profile',
+			month: '2026-10',
+			evidence: 'payroll_generation',
+			evidenceContext: { slip_id: 5 },
+			actorId: 9,
+		});
+		expect(first).toEqual({
+			recorded: true,
+			ambiguous_prior: false,
+			timeline_version: 1,
+		});
+
+		const repeat = await recordSalaryAgreementUse(db, {
+			employeeId: 1,
+			agreementId: 10,
+			agreementSource: 'employee_salary_profile',
+			month: '2026-10',
+			evidence: 'payroll_finalization',
+			evidenceContext: { payroll_run_id: 77 },
+			actorId: 44,
+		});
+
+		expect(repeat).toEqual({
+			recorded: false,
+			ambiguous_prior: false,
+			timeline_version: 1,
+		});
+		expect(db.timelines).toHaveLength(1);
+		expect(db.timelines[0].version).toBe(1);
+		expect(db.uses).toHaveLength(1);
+		expect(db.uses[0]).toMatchObject({
+			evidence: 'payroll_generation',
+			first_used_by: 9,
+		});
+		expect(JSON.parse(String(db.uses[0].evidence_context))).toEqual({
+			slip_id: 5,
+		});
 	});
 
 	it('does not advance or record anything when the slip insert fails first', async () => {
@@ -827,5 +907,40 @@ describe('durable payroll use', () => {
 		});
 		expect(again).toEqual({ recorded: false, timeline_version: 1 });
 		expect(db.uses).toHaveLength(1);
+	});
+
+	it('reports a duplicate unknown-month ambiguity as unrecorded and keeps the first evidence', async () => {
+		// Same found-rows trap as exact use: MariaDB reports the matched row
+		// (affectedRows 1) for an unchanged duplicate, so a replay must not count
+		// the ambiguity twice or advance the timeline version again.
+		const db = new FakeSalaryDb({
+			employees: [{ id: 1, joining_date: null, hire_date: null, isDelete: 0 }],
+		});
+
+		const first = await recordSalaryUseAmbiguity(db, {
+			employeeId: 1,
+			month: null,
+			evidence: 'legacy_audit',
+			evidenceContext: { note: 'month unprovable' },
+			actorId: 9,
+		});
+		expect(first).toEqual({ recorded: true, timeline_version: 1 });
+
+		const repeat = await recordSalaryUseAmbiguity(db, {
+			employeeId: 1,
+			month: null,
+			evidence: 'legacy_audit',
+			evidenceContext: { note: 'replayed' },
+			actorId: 44,
+		});
+
+		expect(repeat).toEqual({ recorded: false, timeline_version: 1 });
+		expect(db.timelines).toHaveLength(1);
+		expect(db.timelines[0].version).toBe(1);
+		expect(db.uses).toHaveLength(1);
+		expect(db.uses[0]).toMatchObject({ first_used_by: 9 });
+		expect(JSON.parse(String(db.uses[0].evidence_context))).toEqual({
+			note: 'month unprovable',
+		});
 	});
 });

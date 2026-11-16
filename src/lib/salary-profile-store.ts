@@ -118,6 +118,13 @@ const USE_SOURCES: readonly SalaryUseSource[] = [
 const USE_COLUMNS = `id, employee_id, month, agreement_id, agreement_source,
   evidence, is_ambiguous, evidence_context, first_used_by, first_used_at`;
 
+/**
+ * `month_key` generated-column sentinel for unknown-month (NULL) evidence;
+ * mirrors `IFNULL(month, '1000-01-01')` in
+ * `migrations/20261115140000_salary_profile_revisions.ts`.
+ */
+const UNKNOWN_MONTH_KEY = '1000-01-01';
+
 function asRow(value: unknown): Record<string, unknown> | null {
 	return value !== null && typeof value === 'object' && !Array.isArray(value)
 		? (value as Record<string, unknown>)
@@ -579,6 +586,45 @@ function validateAgreementSource(
 }
 
 /**
+ * Lock one durable-use identity and report whether that row already exists.
+ *
+ * mysql2 connects with `CLIENT_FOUND_ROWS`, so MariaDB answers an unchanged
+ * duplicate `INSERT ... ON DUPLICATE KEY UPDATE` with the *matched* row
+ * (`affectedRows` 1, `insertId` 0). `affectedRows` therefore cannot tell a
+ * created row from an existing one. Every writer holds the cross-feature
+ * Employee lock first, so this locking read of the unique key
+ * (employee + month + source-qualified agreement) is the authoritative
+ * "already recorded" answer for both recording helpers below.
+ */
+async function lockSalaryUseIdentity(
+	db: SalaryStoreDb,
+	input: {
+		employeeId: number;
+		month: string | null;
+		agreementSource: SalaryAgreementSource | null;
+		agreementId: number | null;
+	}
+): Promise<boolean> {
+	const [result] = await db.execute(
+		`SELECT id
+       FROM employee_salary_payroll_use
+      WHERE employee_id = ?
+        AND month_key = ?
+        AND agreement_source_key = ?
+        AND agreement_key = ?
+      LIMIT 1
+      FOR UPDATE`,
+		[
+			input.employeeId,
+			input.month ?? UNKNOWN_MONTH_KEY,
+			input.agreementSource ?? '',
+			input.agreementId ?? 0,
+		]
+	);
+	return rowsOf(result).length > 0;
+}
+
+/**
  * Record durable payroll use for one exact source-qualified agreement/month.
  * Runs after a successful slip insert or committed finalization, in the same
  * transaction, after the Employee lock. Duplicate evidence is a no-op; the
@@ -629,24 +675,30 @@ export async function recordSalaryAgreementUse(
 		throw new Error(`Employee ${employeeId} does not exist`);
 	}
 
-	const [insertResult] = await db.execute(
-		`INSERT INTO employee_salary_payroll_use
+	const recorded = !(await lockSalaryUseIdentity(db, {
+		employeeId,
+		month,
+		agreementSource: input.agreementSource,
+		agreementId,
+	}));
+	if (recorded) {
+		await db.execute(
+			`INSERT INTO employee_salary_payroll_use
         (employee_id, month, agreement_id, agreement_source, evidence,
          is_ambiguous, evidence_context, first_used_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE id = id`,
-		[
-			employeeId,
-			month,
-			agreementId,
-			input.agreementSource,
-			input.evidence,
-			0,
-			contextJson(input.evidenceContext),
-			actor,
-		]
-	);
-	const recorded = affectedRowsOf(insertResult) > 0;
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			[
+				employeeId,
+				month,
+				agreementId,
+				input.agreementSource,
+				input.evidence,
+				0,
+				contextJson(input.evidenceContext),
+				actor,
+			]
+		);
+	}
 
 	const [ambiguousRows] = await db.execute(
 		`SELECT 1
@@ -744,24 +796,30 @@ export async function recordSalaryUseAmbiguity(
 		throw new Error(`Employee ${employeeId} does not exist`);
 	}
 
-	const [insertResult] = await db.execute(
-		`INSERT INTO employee_salary_payroll_use
+	const recorded = !(await lockSalaryUseIdentity(db, {
+		employeeId,
+		month,
+		agreementSource,
+		agreementId,
+	}));
+	if (recorded) {
+		await db.execute(
+			`INSERT INTO employee_salary_payroll_use
         (employee_id, month, agreement_id, agreement_source, evidence,
          is_ambiguous, evidence_context, first_used_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE id = id`,
-		[
-			employeeId,
-			month,
-			agreementId,
-			agreementSource,
-			input.evidence,
-			1,
-			contextJson(input.evidenceContext),
-			actor,
-		]
-	);
-	const recorded = affectedRowsOf(insertResult) > 0;
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			[
+				employeeId,
+				month,
+				agreementId,
+				agreementSource,
+				input.evidence,
+				1,
+				contextJson(input.evidenceContext),
+				actor,
+			]
+		);
+	}
 	if (!recorded) {
 		return { recorded: false, timeline_version: lock.timeline_version };
 	}
