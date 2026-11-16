@@ -35,10 +35,9 @@ function fyCell(
 	if (metric === 'hours')
 		return hours > 0 ? formatNumber(hours).replace(/\.00$/, '') : '—';
 	const cost = row.monthly_cost[monthKey] ?? 0;
-	if (cost === 0) return '—';
-	return row.monthly_cost_known[monthKey] === false
-		? `${formatCurrency(cost)} *`
-		: formatCurrency(cost);
+	const known = row.monthly_cost_known[monthKey] !== false;
+	if (!known) return cost === 0 ? '—' : `${formatCurrency(cost)} *`;
+	return formatCurrency(cost);
 }
 
 function fyTotalCell(
@@ -51,10 +50,9 @@ function fyTotalCell(
 		return hours > 0 ? formatNumber(hours).replace(/\.00$/, '') : '—';
 	}
 	const cost = totals.monthly_cost[monthKey] ?? 0;
-	if (cost === 0) return '—';
-	return totals.monthly_cost_known[monthKey] === false
-		? `${formatCurrency(cost)} *`
-		: formatCurrency(cost);
+	const known = totals.monthly_cost_known[monthKey] !== false;
+	if (!known) return cost === 0 ? '—' : `${formatCurrency(cost)} *`;
+	return formatCurrency(cost);
 }
 
 /** A row's known subtotal; `*` marks a partial figure with unknown cost. */
@@ -159,7 +157,7 @@ export function FyView({
 									<div className="mt-1 text-xs font-medium text-amber-900">
 										{r.worked_outside_finalized_run
 											? 'Worked in month — not included in finalized payroll'
-											: 'Cost unavailable in finalized run'}
+											: 'Cost unavailable for this month — unknown, not zero'}
 									</div>
 								)}
 								{r.employment_issue && (
@@ -219,9 +217,7 @@ export function FyView({
 							{fyTotalLabel(metric, totals)}
 						</td>
 						{data.month_keys.map((mKey) => {
-							const text = totals
-								? fyTotalCell(metric, totals, mKey)
-								: '—';
+							const text = totals ? fyTotalCell(metric, totals, mKey) : '—';
 							return (
 								<td
 									key={mKey}
@@ -300,7 +296,7 @@ export function FyView({
 									<div className="mt-1 text-xs font-medium text-amber-900">
 										{r.worked_outside_finalized_run
 											? 'Worked in month — not included in finalized payroll'
-											: 'Cost unavailable in finalized run'}
+											: 'Cost unavailable for this month — unknown, not zero'}
 									</div>
 								)}
 								{r.employment_issue && (
@@ -347,9 +343,7 @@ export function FyView({
 							{fyTotalLabel(metric, totals)}
 						</td>
 						{data.month_keys.map((mKey) => {
-							const text = totals
-								? fyTotalCell(metric, totals, mKey)
-								: '—';
+							const text = totals ? fyTotalCell(metric, totals, mKey) : '—';
 							return (
 								<td
 									key={mKey}
@@ -439,8 +433,8 @@ export function FyView({
 							)}
 							{!r.cost_known && (
 								<div className="mt-1 text-xs font-medium text-amber-900">
-									Partial cost · {r.unknown_cost_count} employee(s) with
-									unknown cost
+									Partial cost · {r.unknown_cost_count} employee(s) with unknown
+									cost
 								</div>
 							)}
 						</td>

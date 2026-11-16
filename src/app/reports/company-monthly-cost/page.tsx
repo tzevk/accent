@@ -42,6 +42,8 @@ import type {
 import { expenditureMonths, monthLabel, projectKey } from './views/helpers';
 import { MonthlyView } from './views/monthly-view';
 import { FyView } from './views/fy-view';
+import { SalaryDisclosure } from './views/salary-disclosure';
+import { monthlyTotalIsPartial } from './salary-display/salary-display';
 
 /** Payroll membership and employment evidence the Monthly view discloses. */
 const MONTHLY_ROSTER_NOTICE_CODES: Record<string, true> = {
@@ -404,6 +406,12 @@ function CompanyMonthlyCostInner() {
 
 	const monthlyTotals = monthlyData?.totals;
 	const fyTotals = fyData?.totals;
+	const monthlyPartial = monthlyData
+		? monthlyTotalIsPartial(monthlyData.payroll, monthlyData.salary)
+		: false;
+	const fyPartial = fyData
+		? !fyData.summary.cost_known || !fyData.totals.cost_known
+		: false;
 	const generatedAt = new Date().toLocaleString('en-IN', {
 		day: '2-digit',
 		month: 'short',
@@ -538,8 +546,9 @@ function CompanyMonthlyCostInner() {
 								Company Monthly Cost
 							</h1>
 							<p className="mt-0.5 text-xs text-gray-500">
-								Monthly expenditure, including salary estimates, with confirmed
-								cost and missing Salary Profiles shown separately
+								Monthly expenditure, including salary estimates, with
+								unavailable salary terms, legacy basis and partial totals
+								disclosed separately
 							</p>
 							{sampleMode && (
 								<p
@@ -758,49 +767,20 @@ function CompanyMonthlyCostInner() {
 							{viewMode === 'monthly'
 								? monthlyData?.month_label || selectedMonth
 								: fyData?.fy_label || `FY ${selectedFy}`}
+							{fyPartial && viewMode === 'fy' ? ' — Partial' : ''}
 						</h2>
 						<p className="text-[9pt] text-gray-600">
-							Total cost to company across all projects &amp; employees ·
-							Generated {generatedAt}
+							Total cost to company across all projects &amp; employees
+							{viewMode === 'fy'
+								? `; cost is the month’s recorded allocation or payroll estimate${fyPartial ? ', and unknown months are excluded from this partial total' : ''}`
+								: ''}{' '}
+							· Generated {generatedAt}
 						</p>
 					</div>
 				</div>
-				{viewMode === 'monthly' &&
-					monthlyData &&
-					monthlyData.payroll.missing_pricing_count > 0 && (
-						<section
-							aria-label="Missing salary profiles"
-							role="status"
-							className="mx-auto mb-3 max-w-[1600px] rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-						>
-							<p className="font-semibold">
-								Partial employee cost for {monthlyData.month_label}
-							</p>
-							<p className="mt-1">
-								{monthlyData.payroll.missing_pricing_count} employee(s) have no
-								Salary Profile covering this month. Their hours and projects
-								stay visible. Their cost is shown as unavailable (—), not
-								confirmed zero cost. Totals include calculated costs only and
-								may be understated. Add the covering Salary Profiles to price
-								the remaining work.
-							</p>
-							<details className="mt-2">
-								<summary className="cursor-pointer font-medium underline underline-offset-2">
-									Employees missing salary profiles
-								</summary>
-								<ul className="mt-2 list-inside list-disc">
-									{monthlyData.employee_rows.map(
-										(row) =>
-											row.missing_salary_profile && (
-												<li key={row.employee_id}>
-													{row.employee_name} ({row.employee_code})
-												</li>
-											)
-									)}
-								</ul>
-							</details>
-						</section>
-					)}
+				{viewMode === 'monthly' && monthlyData && (
+					<SalaryDisclosure data={monthlyData} />
+				)}
 				{viewMode === 'monthly' &&
 					monthlyData &&
 					monthlyData.coverage.some(
@@ -832,19 +812,22 @@ function CompanyMonthlyCostInner() {
 					>
 						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-4 shadow-sm sm:col-span-2 md:col-span-1 print:p-1.5">
 							<p className="text-sm font-semibold text-[#64126D]">
-								{monthlyData?.payroll.unpriced_count
-									? 'Employee cost — partial estimate'
-									: 'Estimated employee cost'}{' '}
+								<span>
+									{monthlyPartial
+										? 'Employee cost — partial estimate'
+										: 'Estimated employee cost'}
+								</span>{' '}
 								· {monthlyData?.month_label}
 							</p>
 							<p className="mt-1 text-2xl font-bold tabular-nums text-[#64126D] print:text-base">
 								{formatCurrency(monthlyTotals.total_cost)}
 							</p>
 							<p className="mt-1 text-sm text-gray-700">
-								Full-period total across all employees and projects; employee
-								cost is an estimate until payroll is finalized.
-								{monthlyData?.payroll.unpriced_count
-									? ' Unpriced positions are shown as unavailable, so this partial total may be understated.'
+								Full-period total across all employees and projects; cost is
+								recorded where payroll is finalized and a payroll estimate
+								elsewhere.
+								{monthlyPartial
+									? ' Unpriced or otherwise incomplete positions are shown as unavailable, so this partial total may be understated.'
 									: ''}
 							</p>
 						</div>
@@ -883,14 +866,17 @@ function CompanyMonthlyCostInner() {
 					<div className="mx-auto mb-3 grid max-w-[1600px] grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5 print:mb-1 print:grid-cols-5">
 						<div className="rounded-xl border border-purple-200 bg-[#64126D]/5 p-4 shadow-sm sm:col-span-2 md:col-span-1 print:p-1.5">
 							<p className="text-sm font-semibold text-[#64126D]">
-								Estimated employee cost · {fyData.fy_label}
+								{fyPartial
+									? `Employee cost — partial · ${fyData.fy_label}`
+									: `Estimated employee cost · ${fyData.fy_label}`}
 							</p>
 							<p className="mt-1 text-2xl font-bold tabular-nums text-[#64126D] print:text-base">
 								{formatCurrency(fyData.summary.total_cost)}
 							</p>
 							<p className="mt-1 text-sm text-gray-700">
-								Full-year total across all employees and projects; employee cost
-								is an estimate until payroll is finalized.
+								Full-year total across all employees and projects; cost is the
+								month&apos;s recorded allocation or payroll estimate. Unknown
+								monthly cost is excluded, so a partial total is understated.
 							</p>
 						</div>
 						<div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm print:p-1.5">
@@ -980,14 +966,14 @@ function CompanyMonthlyCostInner() {
 				</div>
 				{viewMode !== 'expenditure' && (
 					<p className="mx-auto mt-2 max-w-[1600px] text-[10px] leading-relaxed text-gray-500 print:hidden">
-						Hours are summed from daily activity logs per project; cost =
-						payroll hourly rate in force that month × hours logged that month
-						(hourly/daily rate when set, else gross salary ÷ standard working
-						days × hours per day). Monthly view shows total cost to company for
-						the selected month; FY view shows Apr–Mar matrix with company
-						monthly totals. These employee-cost views are estimates until a
-						month&apos;s payroll is finalized; the Expenditure view carries the
-						recognized company cost.
+						Hours are summed from daily activity logs per project; cost uses the
+						month-effective payroll terms — explicit employer-cost CTC where
+						available, otherwise the disclosed legacy gross basis, never a
+						future agreement. Monthly view shows total cost to company for the
+						selected month; FY view shows the Apr–Mar matrix with company
+						monthly totals. Rows without a usable salary or payroll price stay
+						unavailable (—) and are excluded from the partial totals; the
+						Expenditure view carries the recognized company cost.
 					</p>
 				)}
 			</main>

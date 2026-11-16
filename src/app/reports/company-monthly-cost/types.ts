@@ -3,6 +3,15 @@ import type {
 	PayrollEmploymentIssue,
 	PayrollExpenditure,
 } from '@/lib/company-expenditure/types';
+import type {
+	CostSalaryAvailability,
+	CostSalaryEvidence,
+	CostSalarySummary,
+} from './employee-cost-data-source';
+
+// The report payload is the canonical output DTO; the UI mirror reuses its
+// salary vocabulary rather than declaring a second metadata convention.
+export type { CostSalaryAvailability, CostSalaryEvidence, CostSalarySummary };
 
 export interface FinancialYearOption {
 	year: number;
@@ -36,6 +45,8 @@ export interface MonthlyRow {
 	cost: number;
 	cost_known: boolean;
 	missing_salary_profile: boolean;
+	/** The canonical salary evidence behind this row, stated even when unpriced. */
+	salary: CostSalaryEvidence;
 	in_saved_roster: boolean | null;
 	worked_outside_finalized_run: boolean;
 	employment_issue: PayrollEmploymentIssue | null;
@@ -54,6 +65,8 @@ export interface MonthlyEmployeeRow {
 	cost_known: boolean;
 	project_count: number;
 	missing_salary_profile: boolean;
+	/** The employee's canonical salary evidence for the month. */
+	salary: CostSalaryEvidence;
 	in_saved_roster: boolean | null;
 	worked_outside_finalized_run: boolean;
 	employment_issue: PayrollEmploymentIssue | null;
@@ -70,6 +83,8 @@ export interface MonthlyProjectRow {
 	cost_known: boolean;
 	employee_count: number;
 	missing_salary_profile_count: number;
+	/** Distinct employees on this Project by salary availability state. */
+	salary_availability_counts: Record<CostSalaryAvailability, number>;
 	unknown_cost_count: number;
 }
 
@@ -82,6 +97,8 @@ export interface MonthlyCompanyCostData {
 	employee_rows: MonthlyEmployeeRow[];
 	project_rows: MonthlyProjectRow[];
 	payroll: PayrollExpenditure;
+	/** The month's salary population behind the employee-cost totals. */
+	salary: CostSalarySummary;
 	/** The month's payroll coverage disclosures. */
 	coverage: CoverageNotice[];
 	totals: {

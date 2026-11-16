@@ -3,6 +3,12 @@
 import Link from 'next/link';
 import { formatNumber, formatCurrency } from '@/lib/format';
 import { ProjectWiseMonthlyReport } from './project-wise-monthly-report';
+import { projectKey } from './helpers';
+import {
+	costRowDisclosure,
+	monthlyTotalIsPartial,
+	projectSalaryNotes,
+} from '../salary-display/salary-display';
 import type {
 	BreakdownTab,
 	MonthlyCompanyCostData,
@@ -35,6 +41,27 @@ export function MonthlyView({
 			</div>
 		);
 	}
+	const partial = monthlyTotalIsPartial(data.payroll, data.salary);
+	// The payload counts availability per Project, not the CTC source. Detail
+	// rows still carry each employee's evidence, so the legacy-basis count is
+	// derived from those rows rather than guessed.
+	const legacyByProject = new Map<string, number>();
+	for (const section of sections) {
+		const legacyEmployees = new Set<number>();
+		for (const row of section.rows) {
+			if (row.salary.legacy_fallback) legacyEmployees.add(row.employee_id);
+		}
+		if (legacyEmployees.size > 0) {
+			legacyByProject.set(
+				projectKey(
+					section.project.project_id,
+					section.project.project_code,
+					section.project.project_name
+				),
+				legacyEmployees.size
+			);
+		}
+	}
 	if (breakdown === 'detailed') {
 		return (
 			<ProjectWiseMonthlyReport
@@ -42,7 +69,7 @@ export function MonthlyView({
 				month={data.month}
 				monthLabel={data.month_label}
 				totalCost={data.totals.total_cost}
-				partial={data.payroll.unpriced_count > 0}
+				partial={partial}
 			/>
 		);
 	}
@@ -85,46 +112,46 @@ export function MonthlyView({
 					</tr>
 				</thead>
 				<tbody className="divide-y divide-gray-200">
-					{employeeRows.map((r) => (
-						<tr key={r.employee_id} className="hover:bg-purple-50/40">
-							<td className="px-3 py-2.5 text-center tabular-nums text-gray-600">
-								{r.sr_no}
-							</td>
-							<td className="px-3 py-2.5">
-								<div className="font-medium text-[#4A1254]">
-									{r.employee_name}
-								</div>
-								<div className="text-xs text-gray-600">{r.employee_code}</div>
-							</td>
-							<td className="px-3 py-2.5 text-gray-700">
-								{r.department || '—'}
-							</td>
-							<td className="px-3 py-2.5 text-gray-700">
-								{r.designation || '—'}
-							</td>
-							<td className="px-3 py-2.5 text-right font-mono tabular-nums">
-								{r.hourly_rate > 0 ? formatCurrency(r.hourly_rate) : '—'}
-							</td>
-							<td className="px-3 py-2.5 text-right font-mono tabular-nums">
-								{formatNumber(r.hours).replace(/\.00$/, '')}
-							</td>
-							<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
-								{r.cost_known ? formatCurrency(r.cost) : '—'}
-								{!r.cost_known && (
-									<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
-										{r.worked_outside_finalized_run
-											? 'Worked in month — not included in finalized payroll'
-											: r.missing_salary_profile
-												? 'Unpriced · Salary Profile missing'
-												: 'Cost unavailable in the finalized run'}
-									</span>
-								)}
-							</td>
-							<td className="px-3 py-2.5 text-center tabular-nums">
-								{r.project_count}
-							</td>
-						</tr>
-					))}
+					{employeeRows.map((r) => {
+						const disclosure = costRowDisclosure(r);
+						const note = disclosure.unavailableReason ?? disclosure.basisNote;
+						return (
+							<tr key={r.employee_id} className="hover:bg-purple-50/40">
+								<td className="px-3 py-2.5 text-center tabular-nums text-gray-600">
+									{r.sr_no}
+								</td>
+								<td className="px-3 py-2.5">
+									<div className="font-medium text-[#4A1254]">
+										{r.employee_name}
+									</div>
+									<div className="text-xs text-gray-600">{r.employee_code}</div>
+								</td>
+								<td className="px-3 py-2.5 text-gray-700">
+									{r.department || '—'}
+								</td>
+								<td className="px-3 py-2.5 text-gray-700">
+									{r.designation || '—'}
+								</td>
+								<td className="px-3 py-2.5 text-right font-mono tabular-nums">
+									{r.hourly_rate > 0 ? formatCurrency(r.hourly_rate) : '—'}
+								</td>
+								<td className="px-3 py-2.5 text-right font-mono tabular-nums">
+									{formatNumber(r.hours).replace(/\.00$/, '')}
+								</td>
+								<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
+									{r.cost_known ? formatCurrency(r.cost) : '—'}
+									{note && (
+										<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
+											{note}
+										</span>
+									)}
+								</td>
+								<td className="px-3 py-2.5 text-center tabular-nums">
+									{r.project_count}
+								</td>
+							</tr>
+						);
+					})}
 				</tbody>
 				<tfoot>
 					<tr className="border-t-2 border-[#64126D]/40 bg-[#64126D]/10 font-bold">
@@ -132,7 +159,7 @@ export function MonthlyView({
 							colSpan={5}
 							className="px-3 py-2.5 text-right text-sm uppercase text-[#4A1254]"
 						>
-							{data.payroll.unpriced_count > 0
+							{partial
 								? 'Employee cost — partial · full-period total'
 								: 'Full-period grand total'}
 						</td>
@@ -183,56 +210,62 @@ export function MonthlyView({
 				</tr>
 			</thead>
 			<tbody className="divide-y divide-gray-200">
-				{projectRows.map((r) => (
-					<tr
-						key={`${r.project_id ?? r.project_code}-${r.sr_no}`}
-						className="hover:bg-purple-50/40"
-					>
-						<td className="px-3 py-2.5 text-center tabular-nums text-gray-600">
-							{r.sr_no}
-						</td>
-						<td className="px-3 py-2.5">
-							{r.project_id ? (
-								<Link
-									href={`/projects/${r.project_id}`}
-									className="font-medium text-[#4A1254] hover:underline"
-								>
-									{r.project_code
-										? `${r.project_code} – ${r.project_name}`
-										: r.project_name}
-								</Link>
-							) : (
-								<span className="font-medium text-[#4A1254]">
-									{r.project_name}
-								</span>
-							)}
-						</td>
-						<td className="px-3 py-2.5 text-gray-700">
-							{r.client_name || '—'}
-						</td>
-						<td className="px-3 py-2.5 text-right font-mono tabular-nums">
-							{formatNumber(r.hours).replace(/\.00$/, '')}
-						</td>
-						<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
-							{r.cost_known ? formatCurrency(r.cost) : '—'}
-							{!r.cost_known && (
-								<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
-									Unpriced · {r.unknown_cost_count} employee(s) with
-									unknown cost
-								</span>
-							)}
-							{r.missing_salary_profile_count > 0 && (
-								<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
-									Partial · {r.missing_salary_profile_count} missing Salary
-									Profile(s)
-								</span>
-							)}
-						</td>
-						<td className="px-3 py-2.5 text-center tabular-nums">
-							{r.employee_count}
-						</td>
-					</tr>
-				))}
+				{projectRows.map((r) => {
+					const key = projectKey(r.project_id, r.project_code, r.project_name);
+					const notes = projectSalaryNotes(
+						r.salary_availability_counts,
+						legacyByProject.get(key) ?? 0
+					);
+					return (
+						<tr
+							key={`${r.project_id ?? r.project_code}-${r.sr_no}`}
+							className="hover:bg-purple-50/40"
+						>
+							<td className="px-3 py-2.5 text-center tabular-nums text-gray-600">
+								{r.sr_no}
+							</td>
+							<td className="px-3 py-2.5">
+								{r.project_id ? (
+									<Link
+										href={`/projects/${r.project_id}`}
+										className="font-medium text-[#4A1254] hover:underline"
+									>
+										{r.project_code
+											? `${r.project_code} – ${r.project_name}`
+											: r.project_name}
+									</Link>
+								) : (
+									<span className="font-medium text-[#4A1254]">
+										{r.project_name}
+									</span>
+								)}
+							</td>
+							<td className="px-3 py-2.5 text-gray-700">
+								{r.client_name || '—'}
+							</td>
+							<td className="px-3 py-2.5 text-right font-mono tabular-nums">
+								{formatNumber(r.hours).replace(/\.00$/, '')}
+							</td>
+							<td className="bg-purple-50/60 px-3 py-2.5 text-right font-mono font-semibold tabular-nums text-[#64126D]">
+								{r.cost_known ? formatCurrency(r.cost) : '—'}
+								{!r.cost_known && (
+									<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
+										Unpriced · {r.unknown_cost_count} employee(s) with unknown
+										cost
+									</span>
+								)}
+								{notes.length > 0 && (
+									<span className="mt-1 block font-sans text-xs font-medium text-amber-900">
+										Partial · {notes.join(' · ')}
+									</span>
+								)}
+							</td>
+							<td className="px-3 py-2.5 text-center tabular-nums">
+								{r.employee_count}
+							</td>
+						</tr>
+					);
+				})}
 			</tbody>
 			<tfoot>
 				<tr className="border-t-2 border-[#64126D]/40 bg-[#64126D]/10 font-bold">
@@ -240,7 +273,7 @@ export function MonthlyView({
 						colSpan={3}
 						className="px-3 py-2.5 text-right text-sm uppercase text-[#4A1254]"
 					>
-						{data.payroll.unpriced_count > 0
+						{partial
 							? 'Employee cost — partial · full-period total'
 							: 'Full-period grand total'}
 					</td>
