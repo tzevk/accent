@@ -85,27 +85,31 @@ The set of Employees a workforce report covers — live Employee records (`isDel
 _Avoid_: Active employees, Payroll staff (when meaning this roster), Headcount
 
 **Salary Type**:
-The pay-agreement category: monthly, hourly, daily, contract, lumpsum, or custom. Contract selects the Contract pay stream; other categories select the Payroll stream. The Employee's Salary Profile determines this category, not their Employee Type. An eligible Employee without a covering Salary Profile remains a payroll-completeness issue and prevents finalization.
+The pay-agreement category: monthly, hourly, daily, contract, lumpsum, or custom. Contract selects the Contract pay stream; every other supported category selects the Payroll stream. The Employee's Salary Profile determines this category, not their Employee Type. An eligible Employee without a covering Salary Profile remains a payroll-completeness issue and prevents finalization. An unsupported stored value remains readable; changing it requires deliberately choosing a supported type, never a silent conversion.
 _Avoid_: Employee Type, Employment status, Pay type
 
 **Salary Profile**:
-The employee's current pay agreement — gross, derived allowances (basic/da/hra/conveyance/call allowance), applicability flags (PF/ESIC/PT/MLWF/retention/bonus/incentive/insurance), and PL/loan/advance. The input to payroll. Canonical table is `employee_salary_profile`.
-_Avoid_: Salary Structure, Compensation, Package
+The Employee's dated pay agreement for a period — explicit monthly CTC, Salary Type, standard daily hours, supported earnings/deduction/applicability settings, leave entitlement and loan/advance instructions. The input to payroll. Canonical table is `employee_salary_profile`; a legacy Salary Structure is a read-only fallback only when no canonical agreement covers the period. Stored `gross`, `gross_salary` and `contract_amount` are legacy references, not the agreed CTC.
+_Avoid_: Salary Structure, Compensation, Package, Gross
 
 **Salary Revision**:
-A dated version of an Employee's Salary Profile that preserves the agreed terms for that period. Later revisions retain earlier terms and leave recorded Payroll Slip amounts unchanged.
-_Avoid_: Salary overwrite, Salary Structure
+A dated successor Salary Profile that preserves the agreed terms for its period. Revisions retain earlier agreements and leave recorded Payroll Slip amounts unchanged. Current, Scheduled and Previous are date-derived classifications; Cancelled follows retained cancellation state. They are not instructions to deactivate older rows, and Previous/Cancelled agreements are read-only. An unused Scheduled revision can be cancelled with retained evidence and restored predecessor coverage.
+_Avoid_: Salary overwrite, Salary Structure, Salary Correction
 
 **Salary Correction**:
-A fix to mistaken values in an existing Salary Revision, not a change to the Employee's agreed salary. It keeps the same agreement rather than creating another Salary Revision.
-_Avoid_: Salary hike, New salary agreement
+A fix to mistaken values in a newly saved, unused Salary Revision, not a change to the Employee's agreed salary and not a hike. It keeps the same agreement identity and records before/after terms; ordinary editing stops once payroll uses the agreement or its month.
+_Avoid_: Salary hike, New salary agreement, Salary Revision
+
+**Salary Use Protection**:
+Durable Employee/month/source-qualified-agreement evidence that committed payroll generation or finalization has priced the agreed terms, so that month cannot be silently repriced. It survives deleting a draft Payroll Slip, reopening a run and cancelling another agreement. Unknown-month evidence blocks every salary timeline write for that Employee; conflicting or ambiguous evidence blocks writes in the affected range, rather than being treated as unused.
+_Avoid_: Payroll Run lock, Audit log, Salary snapshot
 
 **Salary Structure** (legacy):
-An earlier 25-column pay agreement in `salary_structures` (+ `salary_structure_components`). Superseded by Salary Profile; kept as read-only fallback until migration. Do not write new rows from payroll UI.
+An earlier 25-column pay agreement in `salary_structures` (+ `salary_structure_components`). Superseded by Salary Profile; kept as a read-only, period-effective fallback when no canonical agreement covers the period. Do not write new rows from the payroll UI or convert legacy terms into invented canonical history.
 _Avoid_: Salary Profile (when meaning the legacy table)
 
 **Payroll Slip**:
-A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot, and the hours basis it was priced with (CTC, Basis Hours, Hourly Rate, Logged Hours). Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips". It is a snapshot: every reader shows its stored figures (`slipFigures`), a later Salary Profile revision never re-prices a past month, and only the month's DA Component Rate stays authoritative (ADR-0009).
+A computed monthly instance for one employee and month (YYYY-MM-01) — earnings, deductions, net pay, employer cost, attendance snapshot, and the hours basis it was priced with (CTC, Basis Hours, Hourly Rate, Logged Hours). New slips also record the source-qualified Salary Profile agreement identity and Salary Type they were priced from; committed generation or finalization records Salary Use Protection. Stored in `payroll_slips` (UNIQUE month+employee), produced by `computePayroll`/`generatePayrollSlip`. The employee's own view of them is "My Payroll Slips". It is a snapshot: every reader shows its stored figures (`slipFigures`), a later Salary Profile revision never re-prices a past month, and only the month's DA Component Rate stays authoritative (ADR-0009).
 _Avoid_: Payslip, Salary Slip, Payroll Record — the self-service path segment `/api/me/payslips` is a kept exception (a URL, not a name for the entity)
 
 **Payroll Run**:
@@ -131,16 +135,22 @@ derived. Never the Salary Profile's agreed `gross_salary`, and never CTC itself.
 \_Avoid*: CTC, Basic, Salary (ambiguous)
 
 **CTC**:
-Cost to company — the monthly pay base in `employee_salary_profile.employer_cost`
-(falling back to `gross_salary`, then `gross`). Apportioned over the month's
-Basis Hours to give the Hourly Rate (ADR-0010); the employer contributions it
-adds (PF/ESIC employer, gratuity, insurance) stay display-only.
+Cost to company — the agreement's explicit monthly
+`employee_salary_profile.employer_cost`. A present zero is a real agreed CTC,
+not a request to fall back. Only when canonical CTC is absent do readers use the
+established positive-only `gross_salary`, then `gross` fallback and disclose
+that legacy basis; an invalid canonical value is never replaced by a legacy
+amount. Apportioned over the month's Basis Hours to give the Hourly Rate
+(ADR-0010); the employer contributions it adds (PF/ESIC employer, gratuity,
+insurance) stay display-only.
 _Avoid_: Gross, Package
 
 **Basis Hours**:
 The payroll month's payable hours — working days (Sundays and active
-`holiday_master` dates excluded) × the Salary Profile's `std_hours_per_day`
-(default 8). The divisor that turns the month's CTC into its Hourly Rate.
+`holiday_master` dates excluded) × the agreement's standard daily hours. New
+agreements require a positive `std_hours_per_day`; an older agreement without
+one keeps the calculation's 8-hour default. The divisor that turns the month's
+CTC into its Hourly Rate.
 _Avoid_: Standard hours, Capacity (that is net of leave)
 
 **Hourly Rate**:
@@ -169,7 +179,16 @@ _Avoid_: Manhours (ambiguous), Planned hours, Assigned hours
 _Avoid_: Attendance %, Allocation %, Productivity
 
 **Monthly Cost**:
-CTC-based monthly price of an Employee — `employee_salary_profile.employer_cost` (stored CTC), falling back to `gross_salary` then `gross`. Profile picked by `pickActiveProfile` (effective-range cover, else latest active). In the Employee Utilization report a month the employment window only partly covers is pro-rated by employed working days ÷ the month's working days, 2dp — a full-month window reproduces the full CTC, and the row is marked partial ("Partial (window)") with the covered dates.
+CTC-based monthly price of an Employee, resolved from the one Salary Profile
+agreement covering the payroll anchor — present `employer_cost` (including
+zero), else the positive legacy `gross_salary` then `gross` fallback with its
+source disclosed. A future-only agreement never fills a historical gap, so a
+missing cover reads unavailable (never zero) and two or more covering
+agreements read ambiguous; there is no latest-salary fallback. In the Employee
+Utilization report a month the employment window only partly covers is
+pro-rated by employed working days ÷ the month's working days, 2dp — a
+full-month window reproduces the full CTC, and the row is marked partial
+("Partial (window)") with the covered dates.
 _Avoid_: Gross, Salary (ambiguous), Hourly rate
 
 **Company Incurred Cost**:

@@ -1,6 +1,11 @@
 # Salary Profiles workspace design
 
-Status: approved by the user on 2026-11-15. Not implemented.
+Status: approved by the user on 2026-11-15. Implemented in issue #434 on
+`integration/434-salary-profiles`; PR #454 is open and unmerged for human
+review. No production migration or deployment has been performed. The shipped
+operator workflow is in the [Payroll operator guide](operator-guide.md#salary-profiles-workspace)
+and the database cutover is in the
+[Salary Profiles migration and rollout](salary-profiles-rollout.md).
 
 ## Job and scope
 
@@ -51,9 +56,9 @@ These details were approved with the final design brief:
 
 ## Required reader and data work
 
-The current API can overwrite same-date entries and hard-delete salary agreements. Historical reports can fall back to the latest profile. Slip, PDF and export queries can join multiple active profiles and duplicate a slip. These paths must obey the new rules end to end.
+The previous API could overwrite same-date entries and hard-delete salary agreements, historical reports could fall back to the latest profile, and slip/PDF/export readers could join multiple active profiles. The shipped commands now reject same-date conflicts, retain cancellation instead of deleting, validate the timeline version under a per-Employee lock, and record durable payroll use. The shared readers select the one covering agreement, return unavailable or ambiguous instead of the latest salary, and keep one slip/document per recorded identity.
 
-Existing ambiguous or overlapping agreements require review; do not silently close periods or manufacture old salary values. A historical period with no confirmed agreement stays explicitly unavailable. Preserve supported legacy Salary Types without silently converting existing agreements.
+Existing ambiguous or overlapping agreements require review; do not silently close periods or manufacture old salary values. A historical period with no confirmed agreement stays explicitly unavailable. Supported legacy Salary Types remain readable; an unsupported stored type must be deliberately replaced with a supported type on save, never silently converted during migration or load.
 
 ## Boundaries and proof
 

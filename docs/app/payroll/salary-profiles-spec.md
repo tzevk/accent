@@ -1,3 +1,10 @@
+> **Status (2026-11-16):** implemented in issue #434 on
+> `integration/434-salary-profiles`. PR #454 is open and unmerged for review;
+> no production migration or deployment has been performed. The problem
+> statement below records the pre-implementation gap, not current behavior.
+> Shipped operation is in the [Payroll operator guide](operator-guide.md#salary-profiles-workspace)
+> and rollout is in [Salary Profiles migration and rollout](salary-profiles-rollout.md).
+
 ## Problem Statement
 
 Payroll operators must open employee records to create or update Salary Profiles. Payroll and Contract use separate editors. Employee Type controls the editor, although Salary Type controls the actual pay stream.

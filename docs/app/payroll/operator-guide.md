@@ -3,6 +3,12 @@
 The month's payroll in one page: what must be true before a run, how a run is
 started, locked and paid, and what to check when a number looks wrong.
 
+> **Status (2026-11-16):** the Salary Profiles workspace (#434) is implemented
+> on `integration/434-salary-profiles`. PR #454 is open for human review; no
+> production migration, deployment or merge has been performed. The
+> migration/cutover procedure and its current verification state are in
+> [Salary Profiles migration and rollout](salary-profiles-rollout.md).
+
 The money is **hours-based**
 ([ADR-0010](../../adr/0010-hours-logged-pay-basis.md)): a Payroll Slip pays the
 Salary Profile's CTC apportioned over the month's working hours, at the hours
@@ -11,16 +17,22 @@ the employee logged on project activities.
 ```
 Gross (base)  = Hourly Rate × Logged Hours
 Hourly Rate   = CTC ÷ Basis Hours
-Basis Hours   = month's working days × std_hours_per_day (default 8)
+Basis Hours   = month's working days × std_hours_per_day (legacy default 8)
 Logged Hours  = Σ user_activity_assignments.daily_entries.hours, that calendar month
 ```
 
-- **CTC** = `employee_salary_profile.employer_cost`, falling back to
-  `gross_salary`, then `gross` — the same chain the utilization and cost
-  reports call Monthly Cost.
+- **CTC** = the agreement's explicit monthly `employer_cost`. A present zero is
+  a real agreed CTC, not a request to fall back. Only when canonical CTC is
+  absent do readers use the established legacy `gross_salary`, then `gross`
+  chain, and they disclose that legacy basis. An invalid canonical value is
+  reported as unusable; it is never replaced by a legacy amount. The legacy
+  fallback is positive-only, so a stored legacy zero is treated as absent, not
+  as an agreed zero. The same presence-based rule is used by payroll, the
+  workspace estimate, the utilization report and the cost reports.
 - **Working days** exclude Sundays and active `holiday_master` holidays
   (`getWorkingDaysForMonth`), so Basis Hours change month to month and the
-  rate with them.
+  rate with them. New agreements require a positive standard daily hours value;
+  an older agreement without one keeps the calculation's 8-hour default.
 - **Attendance** (`employee_attendance`) is printed on the slip (Total/Present
   days, PL used, absent days) but no longer adds or subtracts money: no
   overtime premium, no absence pro-rata. Unpaid absence costs pay only because
@@ -62,12 +74,158 @@ Logged Hours  = Σ user_activity_assignments.daily_entries.hours, that calendar 
 | HRA / Conveyance / Call (20/10/10 %) | ₹2,600 / ₹1,300 / ₹1,300                                         |
 | Net Pay                              | Gross base + Other Allowances − PF/ESIC/PT/MLWF/TDS/loan/advance |
 
-### Editing the Salary Profile
+### Salary Profiles workspace
 
-Gross Salary on `/employees?type=Payroll` is stored exactly as entered: the
-editor saves the amount you type and never recalculates it. Scrolling the
-pointer over the field can no longer step the amount — the input loses focus on
-wheel, so a stray scroll leaves the entered agreement unchanged.
+Every Salary Profile write now happens in the dedicated Payroll workspace.
+Employee pages keep an authorized salary summary and a link; they do not embed
+a salary editor ([ADR-0036](../../adr/0036-effective-dated-salary-revisions.md)).
+
+| Screen                    | Route                                            | Requires       | Purpose                                                                 |
+| ------------------------- | ------------------------------------------------ | -------------- | ----------------------------------------------------------------------- |
+| Salary Profiles directory | `/admin/payroll/salary-profiles`                 | `payroll:read` | search Employees, choose an as-of date, filter Payroll/Contract/Missing |
+| Salary Profile editor     | `/admin/payroll/salary-profiles/[employeeId]`    | `payroll:read` | agreement history, terms, estimate and permitted actions                |
+| Employee salary summary   | `/employees` row → rupee button → workspace link | `payroll:read` | read-only summary for the requested anchor                              |
+
+`?stream=payroll|contract|missing` preselects the directory tab and
+`?date=YYYY-MM-DD` preselects the as-of date. The Payroll navigation group
+links **Salary Profiles** and **Contract Pay** to those views, the Payroll Run
+header links to the directory, and every Employee hub salary summary links to
+the shared editor.
+
+**Pay stream comes from Salary Type, never Employee Type.** Salary Type
+`contract` is the Contract stream; every other supported type is Payroll.
+Employee Type remains a directory category. An Employee with no covering
+agreement stays listed, so a Missing Profile filter cannot hide its owner.
+Missing means no covering canonical or legacy agreement on the as-of date;
+ambiguous history is reported separately because it is neither a stream nor a
+missing profile.
+
+**Agreement states.** The editor classifies retained agreements against the
+as-of date:
+
+- **Current** — covers the as-of date.
+- **Scheduled** — starts after it.
+- **Previous** — ended before it; read-only.
+- **Cancelled** — retained with its cancellation reason; never prices payroll or
+  reports and is read-only.
+
+The canonical Salary Profile in `employee_salary_profile` is the authoritative
+pay agreement. A legacy `salary_structures` entry can still supply a read-only,
+period-effective fallback when no canonical agreement covers the date. It is
+labelled **Legacy structure**, is never a second writable source, and is never
+rewritten into invented canonical history.
+
+**Actions.** The editor exposes only the actions the server will accept:
+
+- **Create Salary Profile** — used when no active canonical agreement exists,
+  including after a retained cancellation. With no canonical, legacy or
+  recorded-payroll history, the first agreement may use the verified joining
+  date; otherwise it starts prospectively on a month boundary.
+- **Edit agreement** — a Salary Correction. It keeps the same agreement
+  identity and records before/after terms. Only an unused Current or Scheduled
+  agreement can be corrected.
+- **New Salary Revision** — records a genuine change. It creates a dated
+  successor, keeps the predecessor readable, and is offered on the latest active
+  canonical agreement. A revision cannot skip a Scheduled successor.
+- **Cancel scheduled agreement** — removes an unused future revision from
+  effective selection, keeps the retained row and reason, and restores the
+  predecessor's coverage up to the next agreement. With more than one future
+  revision scheduled, only the chosen unused schedule is cancelled and the
+  predecessor reconnects to the next retained schedule. A Current agreement
+  cannot be cancelled through this action.
+
+A **Salary Correction is not a hike**, and a **Salary Revision is not a
+correction**. The editor reviews before/after terms before either save.
+
+**Dates.** A revision starts on the first day of a month. Current-month
+revisions and scheduled dates are permitted only while the target month is not
+used by payroll; earlier months are always refused. More than one future month
+can be scheduled in chronological order, and effective selection is date-based
+without a cron or page visit. Adjoining periods are maintained automatically: the predecessor
+ends the day before its successor starts, and operators never edit end dates.
+A correction can repair an unused Current or Scheduled agreement without moving
+its recorded start; a Current agreement that started in an earlier month cannot
+be moved to a new date, and an earlier-month hike is always refused.
+
+The only mid-month start is the first-agreement joining exception. An Employee
+with no canonical agreement, no legacy row and no recorded payroll use may start
+on the verified joining date, including a mid-month joining date. A later first
+agreement starts on a month boundary and cannot precede employment start.
+Existing legacy or recorded history disqualifies the joining-date backdate:
+legacy-only onboarding starts prospectively on a month boundary, leaving the
+historical legacy terms to earlier periods. Date checks use the server payroll
+calendar, not the browser timezone.
+
+**Monthly CTC and pay settings.** The explicit **Monthly CTC** is the required
+main input and maps to `employee_salary_profile.employer_cost`. Zero is a valid
+agreed amount. Missing, non-finite, negative and out-of-range values are
+rejected, and a value with more than two decimal places is refused rather than
+silently rounded. Standard daily hours must be finite and positive.
+
+`gross`, `gross_salary` and `contract_amount` are retained only as read-only
+legacy references. They are not alternative CTC inputs, are never recalculated
+from the preview, and new CTC-first agreements leave them unset. Contract pay
+still uses monthly CTC ÷ Basis Hours × Logged Hours; a stored Contract amount
+is not an alternative pay base.
+
+The editor groups supported terms as **Agreement** (Salary Type, dates, monthly
+CTC, standard hours, working days and times), **Allowances, deductions and
+applicability**, **Leave, loan and advance**, **Contract terms** (Contract
+only), **Remarks**, and read-only recorded legacy amounts. A revision copies
+the predecessor's supported settings unless changed. Missing and genuine zero
+values stay visually distinct, and Component Rates remain the source of derived
+components at the selected effective date. Live Privilege Leave usage and balance are attendance-
+derived and **read-only**; saving salary terms never writes that usage.
+
+**Estimate versus saved Payroll Slip.** The estimate explains
+`Hourly Rate = Monthly CTC ÷ Basis Hours` and
+`Estimated gross = Hourly Rate × Logged Hours`. It labels assumed hours when no
+timesheet exists and is always marked **Estimate only — not a generated Payroll
+Slip**. Saving salary terms never regenerates or reprices an existing slip,
+including a draft. The saved slip keeps its own snapshot.
+
+**Payroll-use protection is permanent.** Committed generation (including a
+draft slip) and committed finalization record durable Employee/month/agreement
+use evidence. Deleting a draft slip, reopening a finalized run or cancelling
+another agreement does not remove that evidence or unlock the month. Previewing
+payroll marks nothing used, and a failed or rolled-back generation records no
+use. Generating or finalizing a future payroll month records use for that
+month, so it can block cancelling or moving the Scheduled agreement that covers
+it before the month arrives. A used agreement can still be superseded by a
+later revision in an unused month. If prior use has no provable month, all
+timeline writes are blocked until the ambiguity is reviewed.
+
+**Conflicts and recovery.** Every write carries the timeline version the editor
+loaded. A stale save returns a conflict and preserves the entered values; use
+**Reload latest terms** before retrying. Conflicting start dates, overlaps and
+ambiguous history are refused instead of overwriting another operator. Duplicate
+submissions are disabled while a save is in flight.
+
+**Unsaved salary changes.** A dirty draft is guarded on every exit path.
+In-app links and mode changes (opening another agreement, starting a new
+agreement, revision or cancellation, or switching the viewed terms) warn with a
+confirmation prompt before discarding the draft. Browser Back opens an in-app **Unsaved salary changes**
+panel with **Stay** and **Discard**: Stay keeps the draft and re-arms the guard;
+Discard leaves to the previous page, or to the workspace when there is no page
+behind the editor. Reload, tab close and address-bar navigation use the
+browser's `beforeunload` confirmation. Escape on the panel chooses Stay.
+
+**Concurrent salary writes.** Salary changes are serialized per Employee. The
+salary-write protocol uses explicit READ COMMITTED, so independent Employees do
+not share the eligible-start/use-index gap locks that produced a
+cross-Employee deadlock under REPEATABLE READ. The per-Employee mutex,
+`FOR UPDATE` current reads, expected-version conflicts and atomic audit/use
+writes are unchanged. There is no retry loop and no global serialization; do not
+change the session or server-wide isolation level. The shared helper/caller
+opt-in and rollback consequences are recorded in
+[Salary Profiles migration and rollout](salary-profiles-rollout.md#salary-write-isolation).
+
+**Permissions.** `payroll:read` admits the directory and editor. Creation,
+correction and revision require `payroll:update`; scheduled cancellation
+requires `payroll:delete`; super admins bypass. The admin shell admits a
+payroll-only reader without granting any salary data of its own, and every API
+authorizes each request. `employees:read` alone neither opens the workspace nor
+shows the salary summary, and employee access never grants salary write.
 
 ## The month's lifecycle
 
@@ -93,8 +251,9 @@ as arrears ([ADR-0008](../../adr/0008-payroll-run-lock-and-route-tree.md)).
 | Payroll Run (dashboard)                        | `/admin/payroll`                                  | admin, super-admin         | month picker, Payroll\|Contract toggle, Generate, Finalize, Reopen, Mark month paid, exports, per-employee review |
 | Payroll Slip                                   | `/admin/payroll/slips/[id]`                       | admin, super-admin         | the printable slip document (Print, Download PDF)                                                                 |
 | Component Rates / DA Rates                     | `/admin/payroll/rates`, `/admin/payroll/rates/da` | admin, super-admin         | effective-dated component rates: allowances, PF/ESIC/PT/MLWF, insurance, bonus, incentive, TDS                    |
-| Salary Profiles (master data)                  | `/employees?type=Payroll`                         | admin, super-admin         | pay agreements: CTC/gross, salary type, `std_hours_per_day`, statutory flags, loan/advance                        |
-| Contract Pay (master data)                     | `/employees?type=Contract`                        | admin, super-admin         | contract pay: contract amount, duration, TDS — the editor's Contract Pay tab                                      |
+| Salary Profiles (workspace)                    | `/admin/payroll/salary-profiles`                  | `payroll:read`             | search Employees, filter Payroll/Contract/Missing, open the editor                                                |
+| Salary Profile editor                          | `/admin/payroll/salary-profiles/[employeeId]`     | `payroll:read`             | dated agreements, monthly CTC, settings, history, estimate, permitted actions                                     |
+| Contract Pay view                              | `/admin/payroll/salary-profiles?stream=contract`  | `payroll:read`             | the same workspace filtered to Salary Type `contract`                                                             |
 | Salary-slip table (per-slip payment + remarks) | `/reports`                                        | payroll-permissioned users | `PUT /api/payroll/slips` per slip                                                                                 |
 | My Payroll Slips                               | `/user/payslips`                                  | employee                   | own finalized slips + PDF                                                                                         |
 | Daily hours entry                              | project → Edit → **My Activities** tab            | employee / PM              | the pay numerator (`daily_entries`)                                                                               |
@@ -112,15 +271,15 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
 
 ## Before the run — prerequisites
 
-| Prerequisite                                                                                       | Where                                                                                     | If missing                                                                                                                                                                                           |
-| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Joining Date (or Hire Date), plus Exit Date for a leaver                                           | `/employees` — employment details                                                         | Missing or inconsistent dates require review. Do not use the date the record was entered as the joining date.                                                                                        |
-| Salary Profile with CTC and `std_hours_per_day`                                                    | `/employees` — Salary Profile tab (`Payroll`) / Contract Pay tab (`Contract`)             | Finalize blocks and names the employee: neither a profile nor a legacy `salary_structures` row → nothing to compute (ADR-0001). Without `employer_cost` the CTC chain falls back to the agreed gross |
-| Component Rates for the month                                                                      | `/admin/payroll/rates`                                                                    | DA falls back to the frozen config default (0 fixed); PT uses the statutory slab                                                                                                                     |
-| Holidays published                                                                                 | Attendance → Holiday Master                                                               | Basis Hours count a holiday as a working day                                                                                                                                                         |
-| Attendance entered                                                                                 | Attendance module                                                                         | Slip shows the standard working days as present and 0 absent — money is unaffected                                                                                                                   |
-| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id`, then the linked user's employee. An unresolvable row cannot establish payroll ownership.                                                                   |
-| Daily hours logged by staff                                                                        | project → Edit → **My Activities** (nudged by the dashboard's "Activity Update Required") | No hours-based pay (allowance-only at best) — HR's main pre-finalize check                                                                                                                           |
+| Prerequisite                                                                                       | Where                                                                                     | If missing                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Joining Date (or Hire Date), plus Exit Date for a leaver                                           | `/employees` — employment details                                                         | Missing or inconsistent dates require review. Do not use the date the record was entered as the joining date.                                                                                                                                                                                                                                                                                               |
+| Salary Profile with monthly CTC and `std_hours_per_day`                                            | `/admin/payroll/salary-profiles` — the Employee's editor                                  | Finalize blocks and names the employee: neither a covering canonical agreement nor a period-effective legacy `salary_structures` row → nothing to compute (ADR-0001). A present canonical CTC, including zero, prices the month; only an absent canonical value falls back to the legacy gross and discloses that basis. Competing covering agreements block pricing as ambiguous rather than choosing one. |
+| Component Rates for the month                                                                      | `/admin/payroll/rates`                                                                    | DA falls back to the frozen config default (0 fixed); PT uses the statutory slab                                                                                                                                                                                                                                                                                                                            |
+| Holidays published                                                                                 | Attendance → Holiday Master                                                               | Basis Hours count a holiday as a working day                                                                                                                                                                                                                                                                                                                                                                |
+| Attendance entered                                                                                 | Attendance module                                                                         | Slip shows the standard working days as present and 0 absent — money is unaffected                                                                                                                                                                                                                                                                                                                          |
+| Login account linked to the employee (`users.employee_id`), or `employee_id` on the assignment row | User Master / employee record                                                             | Assignment rows resolve by `employee_id`, then the linked user's employee. An unresolvable row cannot establish payroll ownership.                                                                                                                                                                                                                                                                          |
+| Daily hours logged by staff                                                                        | project → Edit → **My Activities** (nudged by the dashboard's "Activity Update Required") | No hours-based pay (allowance-only at best) — HR's main pre-finalize check                                                                                                                                                                                                                                                                                                                                  |
 
 ## Running the month
 
@@ -132,6 +291,11 @@ every payroll API additionally checks `RESOURCES.PAYROLL` (generate needs
    **Employees who already have a slip are skipped** (`results.skipped`).
    To recompute, reopen an unpaid finalized run if needed, then delete the affected draft slip and generate again.
    `{ employee_id, preview: true }` checks the same eligibility and calculates one slip without saving it.
+   A committed generation writes each slip's exact source-qualified agreement
+   identity and durable Employee/month use in the same transaction. A preview
+   writes neither, and a failed generation rolls both back. Competing covering
+   agreements, a missing agreement or a missing/invalid CTC refuse the Employee
+   with a named reason instead of choosing a row or inventing an amount.
 3. **Review**: the **Payroll** stream opens the company sheet grid described
    below; the **Contract** stream keeps its existing
    `Days / Present / Hrs Logged / Rate/Hr / Basic … Gross / PF … Deductions /
@@ -149,7 +313,9 @@ Net Pay / Status` table, totals and Payment tile. Click a Full Name or
    Select the Salary Profile covering the later of employment start and the month's first day.
    The pay formula and full-month Basis Hours do not change; Logged Hours determine hours-based pay.
    Finalization saves the validated employee roster and freezes Project allocations atomically.
-   If either save fails, neither the run lock nor its snapshots commit.
+   It also records durable source-qualified use for every member of the frozen
+   roster, retained after those slips are deleted or the run is reopened.
+   If any step fails, the run lock, snapshots and use evidence all roll back.
 5. **Pay** — per-slip `pending/processed/paid/hold` + date + reference from
    `/reports`, or the dashboard's **Mark month paid** with a payment date for
    the whole month. The run badge reads `paid` automatically only when 100 % of
@@ -163,9 +329,13 @@ Net Pay / Status` table, totals and Payment tile. Click a Full Name or
    `draft` (refused while any slip in the month is paid), then delete the
    affected slip(s) on `/reports` (**Delete** per row, or **Delete all**), then
    **Generate Payroll Slips** again. Slip deletion is refused while the month's
-   run is locked. Every run transition, payment change, slip deletion, Salary
-   Profile edit and Component Rate edit is written to `payroll_audit_logs` with
-   performer and old → new values.
+   run is locked. Deletion does not remove the durable use evidence, so the
+   month stays protected against current-month salary rewrites. A Salary
+   Correction or Salary Revision never regenerates existing slips, including
+   drafts; use this explicit regenerate flow when recorded pay must change.
+   Every run transition, payment change, slip deletion, salary creation,
+   correction, revision, cancellation and Component Rate edit is written to
+   `payroll_audit_logs` with performer and old → new values.
 8. **Employees** see their slips at `/user/payslips` once the month's run is
    finalized (months with no run row — historical slips — stay visible).
 
@@ -227,19 +397,27 @@ Review it with the payroll owner; paid runs cannot reopen, so pay corrections be
 
 ## When a number looks wrong
 
-| Symptom                                  | Cause                                                                                           | Fix                                                                                                              |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| ₹0 net pay                               | No `daily_entries` hours in that month, or the login/employee link is missing                   | Have the hours logged, then Reopen → delete the slip on `/reports` → Generate                                    |
-| Rate differs from last month             | Basis Hours follow the month's working days                                                     | Expected; compare `Hrs Logged × Rate/Hr` against Gross                                                           |
-| `Hrs Logged 0` / `Rate —` on an old slip | Slip generated before the hours basis existed (columns NULL)                                    | Historical snapshot — leave it, or regenerate a draft month                                                      |
-| Gross ≠ CTC                              | Pay follows logged hours; CTC is the _full month_ equivalent (`full_month_gross`)               | Expected                                                                                                         |
-| Employer cost counts a bonus twice       | A slip generated before the #305 correction stored the double count in its snapshot             | Historical snapshot — correct it only via Reopen → delete the slip on `/reports` → Generate                      |
-| Finalize refuses                         | Missing profiles/slips, employment-date issues, or slips outside monthly eligibility            | Review the named employees. Correct dates/profiles, then generate missing slips or remove incorrect draft slips. |
-| Reopen refused                           | A slip in the month is paid, or you are not a super-admin                                       | Corrections become next month's arrears                                                                          |
-| Slip deletion refused                    | The month's run is finalized/paid                                                               | Reopen first (super-admin)                                                                                       |
-| Company column shows `Not available`     | No recorded value or confirmed company mapping exists for that field                            | Expected. It is not a zero; do not infer a value from a similar field or current profile                         |
-| Attendance counts differ from the slip   | The grid shows current Attendance Records; the Payroll Slip keeps its frozen snapshot           | Expected. Pay follows the recorded Payroll Slip; attendance display changes do not reprice it                    |
-| Days Paid differs from Payable Day       | Company Days Paid includes paid leave, holidays and Weekly Off; Payable Day is a payroll credit | Expected. Use Payable Day only where payroll documentation names it                                              |
+| Symptom                                    | Cause                                                                                           | Fix                                                                                                                                                |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ₹0 net pay                                 | No `daily_entries` hours in that month, or the login/employee link is missing                   | Have the hours logged, then Reopen → delete the slip on `/reports` → Generate                                                                      |
+| Rate differs from last month               | Basis Hours follow the month's working days                                                     | Expected; compare `Hrs Logged × Rate/Hr` against Gross                                                                                             |
+| `Hrs Logged 0` / `Rate —` on an old slip   | Slip generated before the hours basis existed (columns NULL)                                    | Historical snapshot — leave it, or regenerate a draft month                                                                                        |
+| Gross ≠ CTC                                | Pay follows logged hours; CTC is the _full month_ equivalent (`full_month_gross`)               | Expected                                                                                                                                           |
+| Employer cost counts a bonus twice         | A slip generated before the #305 correction stored the double count in its snapshot             | Historical snapshot — correct it only via Reopen → delete the slip on `/reports` → Generate                                                        |
+| Finalize refuses                           | Missing profiles/slips, employment-date issues, or slips outside monthly eligibility            | Review the named employees. Correct dates/profiles, then generate missing slips or remove incorrect draft slips.                                   |
+| Reopen refused                             | A slip in the month is paid, or you are not a super-admin                                       | Corrections become next month's arrears                                                                                                            |
+| Slip deletion refused                      | The month's run is finalized/paid                                                               | Reopen first (super-admin)                                                                                                                         |
+| Edit agreement is unavailable              | Payroll used the agreement or its month, it is Previous/Cancelled, or it is a Legacy structure  | Read-only by design. Use **New Salary Revision** on the latest active agreement in a later unused month; do not delete history                     |
+| New Salary Revision is refused             | Earlier month, used target month, a Scheduled successor would be skipped, or a stale timeline   | Choose an unused later month; revise the latest agreement; reload latest terms before retrying                                                     |
+| Cancel scheduled agreement is unavailable  | The agreement is Current, already used, or not the future schedule being cancelled              | Cancellation is only for an unused Scheduled agreement; correct an unused Current agreement or supersede it with a revision                        |
+| Salary summary says unavailable            | No covering canonical or legacy agreement exists for that Employee and date                     | Open the workspace and review the gap; add an agreement only from a permitted date, and never infer today's pay                                    |
+| Salary summary says ambiguous              | Two or more active agreements cover the same date                                               | Review the conflicting agreement history; new writes in the affected range are refused until it is resolved                                        |
+| CTC reads not recorded or invalid          | No explicit canonical CTC exists, or the stored canonical value is unusable                     | Record an explicit monthly CTC. A labelled legacy gross is reference only; never treat missing as zero                                             |
+| Estimate differs from the saved slip       | The estimate is a full-period preview; the slip is a recorded snapshot priced from actual hours | Expected. Generate or regenerate explicitly when recorded pay must change                                                                          |
+| Utilization range says Mixed salary causes | The range's unpriced months have different salary causes                                        | The range is counted incomplete and excluded from priced totals; read each month's cause. A single month never reads mixed, and no cause is a zero |
+| Company column shows `Not available`       | No recorded value or confirmed company mapping exists for that field                            | Expected. It is not a zero; do not infer a value from a similar field or current profile                                                           |
+| Attendance counts differ from the slip     | The grid shows current Attendance Records; the Payroll Slip keeps its frozen snapshot           | Expected. Pay follows the recorded Payroll Slip; attendance display changes do not reprice it                                                      |
+| Days Paid differs from Payable Day         | Company Days Paid includes paid leave, holidays and Weekly Off; Payable Day is a payroll credit | Expected. Use Payable Day only where payroll documentation names it                                                                                |
 
 ## Where the code lives
 
@@ -256,11 +434,27 @@ Review it with the payroll owner; paid runs cannot reopen, so pay corrections be
 | Company-sheet grid (Payroll stream)                         | `src/components/payroll/PayrollCompanySheetGrid.tsx`                                   |
 | Slip figures shared by every reader                         | `src/lib/payroll.js`                                                                   |
 | Slip document (screen) / PDF                                | `src/components/payroll/PayrollSlipDocument.jsx`, `src/lib/slip-pdf.js`                |
+| Salary directory, batch and resolve reads                   | `src/lib/salary-profile-directory.ts`                                                  |
+| Salary command core (create/correct/revise/cancel)          | `src/lib/salary-profile-commands/`                                                     |
+| Timeline/use store and serialization                        | `src/lib/salary-profile-store.ts`, `src/lib/salary-profile-timeline.ts`                |
+| CTC resolution shared by payroll and reports                | `src/lib/salary-ctc.ts`                                                                |
+| Workspace UI                                                | `src/components/salary-profiles/`                                                      |
+| Salary Profile route                                        | `src/app/api/payroll/salary-profile/route.ts`                                          |
+| Salary schema, use ledger and conservative backfill         | `migrations/20261115140000_salary_profile_revisions.ts`                                |
+| Salary-use rollout audit CLI                                | `scripts/payroll/salary-use-backfill.ts`                                               |
 | Hours-basis slip columns (ADR-0010)                         | `migrations/20260925120000_add_slip_hours_basis_columns.js`                            |
 
-Apply `20261109120000_payroll_run_rosters.ts` before starting the updated application.
-Use the normal migration command for the target environment (`npm run migrate` for development).
-The migration adds the roster snapshot table only; it does not change existing payroll rows or invent historical rosters.
+Apply both `20261109120000_payroll_run_rosters.ts` and
+`20261115140000_salary_profile_revisions.ts` before starting application code
+that depends on them. Use the normal migration command for the target
+environment (`npm run migrate` for development) and verify
+`npm run migrate:status`, separately from any application deployment. Never put
+a migration in a build or Vercel deployment. The salary migration adds the
+timeline/use tables, agreement cancellation state, slip provenance and audit
+actions, and backfills conservative use evidence; it does not rewrite existing
+agreements, slips, rosters or salary audit rows. See
+[Salary Profiles migration and rollout](salary-profiles-rollout.md) for the
+cutover order and rollback limitations.
 
 ## Related
 
@@ -272,6 +466,10 @@ The migration adds the roster snapshot table only; it does not change existing p
   lock, route tree, audit.
 - [ADR-0001](../../adr/0001-payroll-salary-profile-canonical.md) — Salary
   Profile is canonical; `salary_structures` is legacy fallback.
+- [ADR-0036](../../adr/0036-effective-dated-salary-revisions.md) — dated Salary
+  Revisions, unused-entry corrections and payroll-use protection.
+- [Salary Profiles migration and rollout](salary-profiles-rollout.md) — schema
+  ordering, backfill review, ambiguity handling and rollback limits.
 - [Daily activity entries](../../explanations/activity-daily-entries.md) — the
   `daily_entries` data model and every write path for logged hours.
 - [RBAC permissions system](../../explanations/RBAC_PERMISSIONS_SYSTEM.md) —
