@@ -161,6 +161,7 @@ const mockUsers = [
 
 const mockSalaryProfiles = [
 	{
+		id: 1,
 		employee_id: 1,
 		gross: '0',
 		gross_salary: '20000',
@@ -173,6 +174,7 @@ const mockSalaryProfiles = [
 		tds_percentage: '10',
 		effective_from: '2026-01-01',
 		effective_to: null,
+		cancelled_at: null,
 	},
 ];
 

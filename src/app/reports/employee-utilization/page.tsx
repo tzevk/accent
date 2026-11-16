@@ -29,117 +29,21 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatCurrency, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
-import type { RosterDisclosure } from '@/lib/payroll-roster';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 import { bandText, NO_TIME_LOGGED_LABEL, partialWindowLabel } from './labels';
+import type {
+	DepartmentSummary,
+	TrendPoint,
+	UtilizationBand,
+	UtilizationData,
+	UtilizationMeta,
+	UtilizationRow,
+} from './data-source';
 
-// ─── Client-safe API types (mirror the server payload, no server import) ──
-
-type UtilizationBand = 'under' | 'healthy' | 'over';
-
-type CostStatus = 'priced' | 'no-profile';
-
-/** Missing timesheet evidence for the month — the Logged Hours are 0. */
-type UtilizationState = 'no_time_logged';
-
-/**
- * One trailing-month cell: the month, whether the employment window covered
- * it, and that month's utilization (`null` when the month had no capacity).
- * A cell whose month is not employed is blank, never an em dash.
- */
-interface TrailingMonth {
-	month: string;
-	employed: boolean;
-	utilization_percent: number | null;
-}
-
-/** One team-trend point: capacity-weighted utilization and priced Bench Cost. */
-interface TrendPoint {
-	month: string;
-	utilization_percent: number | null;
-	bench_cost: number | null;
-}
-
-interface UtilizationRow {
-	employee_id: number;
-	employee_code: string;
-	employee_name: string;
-	/** Raw `employees.department`; null = unset (rendered as "Unassigned"). */
-	department: string | null;
-	month: string;
-	capacity_hours: number;
-	logged_hours: number;
-	utilization_percent: number | null;
-	utilization_band: UtilizationBand | null;
-	/** Set when the month's Logged Hours are 0; never changes band or order. */
-	state: UtilizationState | null;
-	/** Resolved employment window; null = open bound. */
-	employment_start: string | null;
-	employment_end: string | null;
-	/** The window does not cover the whole month — a chip names the dates. */
-	is_partial_window: boolean;
-	/** The viewed month and the two before it, oldest first. */
-	trailing: TrailingMonth[];
-	/** Every employed month of the trailing window is under 80 (min two). */
-	chronic_under: boolean;
-	/** Null when no salary profile covers the month — blank, never zero. */
-	monthly_cost: number | null;
-	fractional_cost: number | null;
-	bench_cost: number | null;
-	cost_status: CostStatus;
-}
-
-interface UtilizationTotals {
-	employee_count: number;
-	priced_count: number;
-	unpriced_count: number;
-	/**
-	 * The viewed month's rows with zero Logged Hours — month-wide even when a
-	 * band filter narrows the other counts (the rollup's scope).
-	 */
-	no_logged_count: number;
-	capacity_hours: number;
-	logged_hours: number;
-	utilization_percent: number | null;
-	monthly_cost: number | null;
-	fractional_cost: number | null;
-	bench_cost: number | null;
-}
-
-interface UtilizationMeta {
-	months: string[];
-	latest_month: string | null;
-	current_month: string;
-	flags: { value: UtilizationBand; label: string }[];
-}
-
-/** One department's rollup over the viewed month's roster — the summary table. */
-interface DepartmentSummary {
-	/** Raw `employees.department`; null = the unset bucket ("Unassigned"). */
-	department: string | null;
-	headcount: number;
-	/** Σ logged ÷ Σ capacity × 100; null when the department credits no capacity. */
-	capacity_weighted_utilization: number | null;
-	logged_hours: number;
-	capacity_hours: number;
-	/** Sums the department's priced rows; null when none is priced. */
-	bench_cost: number | null;
-	no_logged_count: number;
-}
-
-interface UtilizationData {
-	month: string;
-	month_label: string;
-	flag: UtilizationBand | null;
-	rows: UtilizationRow[];
-	totals: UtilizationTotals;
-	/** The six months ending at the viewed month, oldest first. */
-	trend: TrendPoint[];
-	/** What the month's roster filter dropped; null when it dropped nobody. */
-	disclosure: RosterDisclosure | null;
-	/** The month's department rollup, computed before the band filter. */
-	departments: DepartmentSummary[];
-}
+// ─── API payload types ─────────────────────────────────────────────────
+// The page renders the producer's payload verbatim, so it reuses the
+// canonical exported types (type-only, erased before the client bundle)
+// instead of keeping a second DTO mirror that can drift from the server.
 
 /** One activity/discipline pair inside a bucket: the hours logged under it. */
 interface ProjectBreakdownActivity {

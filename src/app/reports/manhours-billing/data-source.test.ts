@@ -8,9 +8,7 @@ import {
 	parseProjectManhoursList,
 	collectManhoursTabMonths,
 	fyKeyToCalendarMonthMap,
-	resolveMonthlySalary,
 	resolveHourlyRate,
-	pickActiveProfile,
 	buildBillingRows,
 	buildTotals,
 	buildAnnualBillingRows,
@@ -23,10 +21,11 @@ import { parseDailyEntries } from '@/lib/logged-hours';
 
 function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
 	return {
+		id: 1,
 		employee_id: 1,
 		gross: 0,
 		gross_salary: 20000,
-		employer_cost: 22000,
+		employer_cost: null,
 		hourly_rate: 0,
 		daily_rate: 0,
 		std_hours_per_day: 8,
@@ -35,6 +34,7 @@ function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
 		tds_percentage: 10,
 		effective_from: '2026-01-01',
 		effective_to: null,
+		cancelled_at: null,
 		...overrides,
 	};
 }
@@ -164,26 +164,14 @@ describe('collectManhoursTabMonths', () => {
 	});
 });
 
-describe('resolveMonthlySalary', () => {
-	it('prefers gross_salary over gross over employer_cost', () => {
-		expect(resolveMonthlySalary(profile())).toBe(20000);
-		expect(
-			resolveMonthlySalary(
-				profile({ gross_salary: 0, gross: 15000, employer_cost: 22000 })
-			)
-		).toBe(15000);
-		expect(
-			resolveMonthlySalary(
-				profile({ gross_salary: 0, gross: 0, employer_cost: 22000 })
-			)
-		).toBe(22000);
-	});
-});
-
 describe('resolveHourlyRate', () => {
-	it('divides monthly gross by standard working days × hours per day', () => {
-		// 20000 / (26 × 8) = 96.15
+	it('divides the resolved monthly CTC by standard working days × hours per day', () => {
+		// Legacy gross fallback 20000 / (26 × 8) = 96.15
 		expect(resolveHourlyRate(profile())).toBe(96.15);
+		// Canonical CTC wins when present, even when it is lower than gross.
+		expect(
+			resolveHourlyRate(profile({ employer_cost: 18000, gross_salary: 25000 }))
+		).toBe(86.54);
 	});
 
 	it('uses the stored hourly rate for hourly salary types', () => {
@@ -216,47 +204,17 @@ describe('resolveHourlyRate', () => {
 		).toBe(100);
 	});
 
-	it('returns 0 when there is no gross salary', () => {
+	it('keeps an explicit zero as zero and reports missing CTC as null', () => {
 		expect(
 			resolveHourlyRate(
 				profile({ gross_salary: 0, gross: 0, employer_cost: 0 })
 			)
 		).toBe(0);
-	});
-});
-
-describe('pickActiveProfile', () => {
-	const older = profile({
-		employee_id: 1,
-		gross_salary: 18000,
-		effective_from: '2025-01-01',
-		effective_to: '2025-12-31',
-	});
-	const current = profile({
-		employee_id: 1,
-		gross_salary: 20000,
-		effective_from: '2026-01-01',
-		effective_to: null,
-	});
-
-	it('picks the profile whose effective range covers the month', () => {
-		expect(pickActiveProfile([older, current], '2026-08')?.gross_salary).toBe(
-			20000
-		);
-		expect(pickActiveProfile([older, current], '2025-06')?.gross_salary).toBe(
-			18000
-		);
-	});
-
-	it('falls back to the latest profile when none covers the month', () => {
-		const late = profile({ gross_salary: 25000, effective_from: '2027-01-01' });
-		expect(pickActiveProfile([older, late], '2026-08')?.gross_salary).toBe(
-			25000
-		);
-	});
-
-	it('returns null for an empty list', () => {
-		expect(pickActiveProfile([], '2026-08')).toBeNull();
+		expect(
+			resolveHourlyRate(
+				profile({ gross_salary: null, gross: null, employer_cost: null })
+			)
+		).toBeNull();
 	});
 });
 
@@ -547,6 +505,8 @@ describe('buildTotals', () => {
 		accent_amount: 0,
 		pnl_after_deductions: 0,
 		pnl_tds: 0,
+		pricing_source: 'salary',
+		salary: null,
 		...overrides,
 	});
 
@@ -579,6 +539,16 @@ describe('buildTotals', () => {
 			total_accent_amount: 3700,
 			total_pnl_after_deductions: 1069.23,
 			total_pnl_tds: 776.92,
+			salary: {
+				available_count: 0,
+				missing_count: 0,
+				ambiguous_count: 0,
+				ctc_missing_count: 0,
+				ctc_invalid_count: 0,
+				legacy_fallback_count: 0,
+				unpriced_count: 0,
+				complete: true,
+			},
 		});
 	});
 
@@ -591,6 +561,16 @@ describe('buildTotals', () => {
 			total_accent_amount: 0,
 			total_pnl_after_deductions: 0,
 			total_pnl_tds: 0,
+			salary: {
+				available_count: 0,
+				missing_count: 0,
+				ambiguous_count: 0,
+				ctc_missing_count: 0,
+				ctc_invalid_count: 0,
+				legacy_fallback_count: 0,
+				unpriced_count: 0,
+				complete: true,
+			},
 		});
 	});
 });
@@ -857,5 +837,297 @@ describe('buildAnnualBillingRows & buildAnnualTotals', () => {
 		expect(totals.total_pnl).toBe(222000); // 30000 + 192000
 		expect(totals.monthly_hours.apr).toBe(260); // 100 + 160
 		expect(totals.monthly_hours.may).toBe(280); // 120 + 160
+	});
+});
+
+describe('period-effective salary source', () => {
+	const employees = new Map([
+		[
+			1,
+			{
+				employee_id: 1,
+				employee_code: 'ATS0001',
+				name: 'Alice',
+				designation: 'Engineer',
+			},
+		],
+	]);
+
+	/** A profile with an explicit agreement identity (selection needs one). */
+	function datedProfile(
+		id: number,
+		overrides: Partial<SalaryProfile> = {}
+	): SalaryProfile {
+		return { ...profile(overrides), id } as SalaryProfile;
+	}
+
+	function billingRows(
+		profiles: SalaryProfile[],
+		date = '2026-08-01',
+		month = '2026-08'
+	): BillingEmployeeRow[] {
+		return buildBillingRows(
+			[
+				{
+					id: 'a1',
+					user_id: 10,
+					user_employee_id: 1,
+					employee_id: null,
+					daily_entries: JSON.stringify([{ date, hours: 10 }]),
+				},
+			],
+			employees,
+			profiles,
+			new Map(),
+			month
+		);
+	}
+
+	it('never prices a month from a future-only agreement', () => {
+		const rows = billingRows([
+			datedProfile(9, {
+				employer_cost: 30000,
+				gross_salary: 0,
+				gross: 0,
+				effective_from: '2026-10-01',
+			}),
+		]);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].employee_charges).toBe(0);
+		expect(rows[0].amount).toBe(0);
+		expect(rows[0].pricing_source).toBe('unavailable');
+		expect(rows[0].salary.availability).toBe('missing');
+		expect(rows[0].salary.profile_id).toBeNull();
+		const totals = buildTotals(rows);
+		expect(totals.salary).toEqual({
+			available_count: 0,
+			missing_count: 1,
+			ambiguous_count: 0,
+			ctc_missing_count: 0,
+			ctc_invalid_count: 0,
+			legacy_fallback_count: 0,
+			unpriced_count: 1,
+			complete: false,
+		});
+	});
+
+	it('keeps an explicit canonical zero instead of a positive legacy gross', () => {
+		const rows = billingRows([
+			datedProfile(3, {
+				employer_cost: 0,
+				gross_salary: 25000,
+				gross: 25000,
+			}),
+		]);
+		expect(rows[0].employee_charges).toBe(0);
+		expect(rows[0].amount).toBe(0);
+		expect(rows[0].pricing_source).toBe('salary');
+		expect(rows[0].salary).toMatchObject({
+			availability: 'available',
+			ctc_source: 'employer_cost',
+			legacy_fallback: false,
+			profile_id: 3,
+		});
+	});
+
+	it('reports ambiguous covering agreements and picks none', () => {
+		const rows = billingRows([
+			datedProfile(4, { effective_from: '2026-01-01' }),
+			datedProfile(5, { effective_from: '2026-01-01' }),
+		]);
+		expect(rows[0].pricing_source).toBe('unavailable');
+		expect(rows[0].employee_charges).toBe(0);
+		expect(rows[0].salary.availability).toBe('ambiguous');
+		expect(rows[0].salary.conflict_ids).toEqual([4, 5]);
+		expect(rows[0].salary.profile_id).toBeNull();
+	});
+
+	it('reports a present invalid CTC as unavailable, not a legacy substitute', () => {
+		const rows = billingRows([
+			datedProfile(6, { employer_cost: -1, gross_salary: 25000 }),
+		]);
+		expect(rows[0].pricing_source).toBe('unavailable');
+		expect(rows[0].employee_charges).toBe(0);
+		expect(rows[0].salary).toMatchObject({
+			availability: 'ctc-invalid',
+			ctc_source: 'employer_cost',
+			legacy_fallback: false,
+		});
+	});
+
+	it('discloses a legacy gross CTC fallback instead of inventing agreed CTC', () => {
+		const rows = billingRows([
+			datedProfile(10, {
+				employer_cost: null as unknown as number,
+				gross_salary: 20800,
+				gross: 0,
+			}),
+		]);
+		expect(rows[0].pricing_source).toBe('salary');
+		expect(rows[0].employee_charges).toBe(100);
+		expect(rows[0].salary).toMatchObject({
+			availability: 'available',
+			ctc_source: 'gross_salary',
+			legacy_fallback: true,
+		});
+	});
+
+	it('prices an older month from its own agreement, not a later hike', () => {
+		const rows = billingRows(
+			[
+				datedProfile(7, {
+					employer_cost: 18000,
+					gross_salary: 0,
+					gross: 0,
+					effective_from: '2026-01-01',
+					effective_to: '2026-09-30',
+				}),
+				datedProfile(8, {
+					employer_cost: 26000,
+					gross_salary: 0,
+					gross: 0,
+					effective_from: '2026-10-01',
+				}),
+			],
+			'2026-08-02',
+			'2026-08'
+		);
+		expect(rows[0].employee_charges).toBe(86.54);
+		expect(rows[0].salary.profile_id).toBe(7);
+	});
+
+	it('keeps a recorded project rate while disclosing the salary gap', () => {
+		const rows = buildBillingRows(
+			[
+				{
+					id: 'a1',
+					user_id: 10,
+					user_employee_id: 1,
+					employee_id: null,
+					daily_entries: JSON.stringify([{ date: '2026-08-01', hours: 10 }]),
+				},
+			],
+			employees,
+			[
+				datedProfile(9, {
+					employer_cost: 30000,
+					effective_from: '2026-10-01',
+				}),
+			],
+			new Map([[1, { rate_employee: 430, rate_client: 480 }]]),
+			'2026-08'
+		);
+		expect(rows[0].employee_charges).toBe(430);
+		expect(rows[0].pricing_source).toBe('project');
+		expect(rows[0].salary.availability).toBe('missing');
+		// The recorded allocation prices the money: the salary gap is not a
+		// zero contribution to this total.
+		const totals = buildTotals(rows);
+		expect(totals.salary.missing_count).toBe(1);
+		expect(totals.salary.unpriced_count).toBe(0);
+		expect(totals.salary.complete).toBe(true);
+	});
+
+	it('prices every FY month from its own agreement', () => {
+		const annualEmployees = new Map([
+			[
+				1,
+				{
+					employee_id: 1,
+					employee_code: 'ATS0001',
+					name: 'Alice',
+					designation: 'Engineer',
+				},
+			],
+		]);
+		const rows = buildAnnualBillingRows(
+			[
+				{
+					employee_id: 1,
+					user_employee_id: null,
+					daily_entries: JSON.stringify([
+						{ date: '2026-04-02', hours: 10 },
+						{ date: '2026-10-02', hours: 10 },
+					]),
+				},
+			],
+			annualEmployees,
+			[
+				datedProfile(11, {
+					employer_cost: 18000,
+					gross_salary: 0,
+					gross: 0,
+					effective_from: '2026-01-01',
+					effective_to: '2026-09-30',
+				}),
+				datedProfile(12, {
+					employer_cost: 26000,
+					gross_salary: 0,
+					gross: 0,
+					effective_from: '2026-10-01',
+				}),
+			],
+			[],
+			2026
+		);
+		expect(rows).toHaveLength(1);
+		const row = rows[0];
+		// 18000 / 208h = 86.54 × 10h; 26000 / 208h = 125 × 10h.
+		expect(row.monthly_company_cost.apr).toBe(865.4);
+		expect(row.monthly_company_cost.oct).toBe(1250);
+		expect(row.company_cost).toBe(2115.4);
+		expect(row.rate_employee).toBe(105.77);
+		expect(row.salary_months.apr.profile_id).toBe(11);
+		expect(row.salary_months.oct.profile_id).toBe(12);
+		expect(buildAnnualTotals(rows).salary).toEqual({
+			available_count: 2,
+			missing_count: 0,
+			ambiguous_count: 0,
+			ctc_missing_count: 0,
+			ctc_invalid_count: 0,
+			legacy_fallback_count: 0,
+			unpriced_count: 0,
+			complete: true,
+		});
+	});
+
+	it('leaves an uncovered FY month unpriceable instead of borrowing a future hike', () => {
+		const annualEmployees = new Map([
+			[
+				1,
+				{
+					employee_id: 1,
+					employee_code: 'ATS0001',
+					name: 'Alice',
+					designation: 'Engineer',
+				},
+			],
+		]);
+		const rows = buildAnnualBillingRows(
+			[
+				{
+					employee_id: 1,
+					user_employee_id: null,
+					daily_entries: JSON.stringify([{ date: '2026-04-02', hours: 10 }]),
+				},
+			],
+			annualEmployees,
+			[
+				datedProfile(13, {
+					employer_cost: 30000,
+					effective_from: '2026-10-01',
+				}),
+			],
+			[],
+			2026
+		);
+		expect(rows[0].monthly_company_cost.apr).toBeNull();
+		expect(rows[0].company_cost).toBe(0);
+		expect(rows[0].salary_months.apr.availability).toBe('missing');
+		expect(buildAnnualTotals(rows).salary).toMatchObject({
+			missing_count: 1,
+			unpriced_count: 1,
+			complete: false,
+		});
 	});
 });

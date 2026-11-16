@@ -8,12 +8,13 @@
  * - Logged Hours: uncapped sum of `user_activity_assignments.daily_entries`
  *   hours for the month — overtime counts, so overload reads above 100.
  * - Utilization: logged / capacity × 100, banded under 80 / 80–100 / over 100.
- * - Monthly Cost on a CTC basis (stored `employer_cost` first — a deliberate
- *   divergence from the billing Gross-first convention, so bench
- *   prioritization reflects true burn), Bench Cost = monthly − fractional,
- *   where fractional = the Payroll Slip's rate × logged hours. Fractional +
- *   bench always foots to monthly. Rows with no covering salary profile show
- *   blank (null, never zero) costs with an explicit `no-profile` flag.
+ * - Monthly Cost on the shared canonical CTC basis (`employer_cost` by
+ *   presence, including an explicit zero; legacy gross only when the
+ *   canonical field is absent and disclosed), so bench prioritization
+ *   reflects true burn. Bench Cost = monthly − fractional, where fractional
+ *   = the Payroll Slip's rate × logged hours. Fractional + bench always foots
+ *   to monthly. Rows with no covering/unambiguous agreement or no usable CTC
+ *   show blank (null, never zero) costs with an explicit `cost_status`.
  *
  * Rate (payroll-aligned, ADR-0010): CTC ÷ Basis Hours, where Basis Hours =
  * the month's basis days (every non-Sunday day minus the injected active
@@ -26,8 +27,9 @@
  *
  * Calendar logic is reused verbatim from the timesheet report (`statusKind`,
  * `dayTypeFor`); the weekly-off rule comes from the shared predicate.
- * Profile selection reuses `pickActiveProfile` (effective-range cover, else
- * latest active). Holiday
+ * Profile selection is the shared period-effective agreement selector
+ * (month start, or a verified joining date), with no latest/future fallback;
+ * a missing, ambiguous or unusable CTC leaves cost blank and explicit. Holiday
  * sets are injected by the caller, so this module has no DB dependency.
  *
  * Roster: each month is scoped to the shared payroll roster
@@ -86,8 +88,11 @@ import {
 } from '@/app/reports/timesheet-report/data-source';
 import { isWeeklyOff } from '@/utils/weekly-off';
 import {
-	pickActiveProfile,
+	selectReportSalary,
+	summarizeReportSalary,
 	type SalaryProfile,
+	type ReportSalaryEvidence,
+	type ReportSalarySummary,
 } from '@/app/reports/manhours-billing/data-source';
 import {
 	parseDailyEntries,
@@ -96,6 +101,7 @@ import {
 	type LoggedEntry,
 } from '@/lib/logged-hours';
 import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
+import { resolveSalaryCtc } from '@/lib/salary-ctc';
 import { R, add, sub, mul, div, toNumber } from '@/lib/money';
 import {
 	selectPayrollRoster,
@@ -131,8 +137,17 @@ export type UtilizationBand = 'under' | 'healthy' | 'over';
  */
 export type UtilizationState = 'no_time_logged';
 
-/** `priced` rows carry costs; `no-profile` rows show blank (null) costs. */
-export type CostStatus = 'priced' | 'no-profile';
+/**
+ * `priced` rows carry costs. The other states are explicit gaps: `no-profile`
+ * means no covering agreement (`missing`), and the remaining states name why a
+ * covering agreement could not price the month. None of them is a zero.
+ */
+export type CostStatus =
+	| 'priced'
+	| 'no-profile'
+	| 'ambiguous'
+	| 'ctc-missing'
+	| 'ctc-invalid';
 
 /** Minimal attendance input for capacity: one entry per recorded day. */
 export interface UtilizationAttendance {
@@ -235,12 +250,14 @@ export interface UtilizationRow {
 	trailing: TrailingMonth[];
 	/** Every employed month of the trailing window is under 80 (min two months). */
 	chronic_under: boolean;
-	/** Null when no profile covers the month — blank, never zero. */
+	/** Null when no usable salary agreement prices the month — blank, never zero. */
 	monthly_cost: number | null;
 	/** Utilized portion: CTC hourly rate × logged hours (footing support). */
 	fractional_cost: number | null;
 	bench_cost: number | null;
 	cost_status: CostStatus;
+	/** Period-effective salary evidence for this month; never a latest fallback. */
+	salary: ReportSalaryEvidence;
 }
 
 export interface UtilizationTotals {
@@ -259,6 +276,8 @@ export interface UtilizationTotals {
 	monthly_cost: number | null;
 	fractional_cost: number | null;
 	bench_cost: number | null;
+	/** Salary availability behind these totals, so gaps are not hidden. */
+	salary: ReportSalarySummary;
 }
 
 /** One department's rollup over a month's roster rows — the summary table's row. */
@@ -493,14 +512,13 @@ export function basisDaysInMonth(
 // ─── Cost (CTC basis) ─────────────────────────────────────────────────
 
 /**
- * Monthly cost basis: stored CTC first, then gross salary, then gross.
- * Deliberate divergence from the billing Gross-first order — bench
- * prioritization needs true burn. Contract, lumpsum, hourly, and daily
- * engagements persist their monthly amount into these same stored fields,
- * so every salary type prices through this one rule.
+ * Monthly cost basis: the shared presence-based CTC resolver, so an explicit
+ * canonical zero stays zero and a missing/invalid CTC is null (blank, never a
+ * zero and never a positive legacy substitute).
  */
-export function resolveMonthlyCost(profile: SalaryProfile): number {
-	return profile.employer_cost || profile.gross_salary || profile.gross;
+export function resolveMonthlyCost(profile: SalaryProfile): number | null {
+	const resolved = resolveSalaryCtc(profile);
+	return resolved.status === 'resolved' ? resolved.amount.toNumber() : null;
 }
 
 /**
@@ -509,13 +527,15 @@ export function resolveMonthlyCost(profile: SalaryProfile): number {
  * (8 when unset). Mirrors the Payroll Slip (ADR-0010); the profile's own
  * `std_working_days` and its direct hourly/daily/custom rates never price a
  * row, exactly as they never price a slip. Money math uses this unrounded
- * value; the display rounds via `resolveCtcHourlyRate`.
+ * value; the display rounds via `resolveCtcHourlyRate`. Null when no usable
+ * CTC exists.
  */
 export function computeCtcHourlyRate(
 	profile: SalaryProfile,
 	basisDays: number
-): number {
+): number | null {
 	const monthly = resolveMonthlyCost(profile);
+	if (monthly === null) return null;
 	const hoursPerDay =
 		profile.std_hours_per_day > 0
 			? profile.std_hours_per_day
@@ -524,14 +544,13 @@ export function computeCtcHourlyRate(
 	return basisHours > 0 ? toNumber(div(R(monthly), R(basisHours))) : 0;
 }
 
-/** Display CTC rate: the raw rate rounded to 2dp. */
+/** Display CTC rate: the raw rate rounded to 2dp; null when unavailable. */
 export function resolveCtcHourlyRate(
 	profile: SalaryProfile,
 	basisDays: number
-): number {
-	return toNumber(
-		R(computeCtcHourlyRate(profile, basisDays)).toDecimalPlaces(2)
-	);
+): number | null {
+	const raw = computeCtcHourlyRate(profile, basisDays);
+	return raw === null ? null : toNumber(R(raw).toDecimalPlaces(2));
 }
 
 /**
@@ -573,7 +592,13 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 	// The rate and Capacity share this holiday set but not the calendar:
 	// Basis Days keep 2nd/4th Saturdays, unlike the Capacity weekly-off rule.
 	const basisDays = basisDaysInMonth(month, holidaySet);
-	const profile = pickActiveProfile(input.profiles ?? [], month);
+	const selection = selectReportSalary(
+		input.profiles ?? [],
+		month,
+		employmentStart
+	);
+	const profile = selection.profile;
+	const salary = selection.evidence;
 	// The window leaves days of the month outside it: start after the 1st, or
 	// end before the month's last day (a null bound is open, never partial).
 	const lastDay = daysInMonth(month);
@@ -588,7 +613,15 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 	const trailing = trailingWindow?.trailing ?? [];
 	const chronicUnder = trailingWindow?.chronic_under ?? false;
 
-	if (!profile) {
+	if (profile === null || selection.ctc === null) {
+		const costStatus: CostStatus =
+			salary.availability === 'ambiguous'
+				? 'ambiguous'
+				: salary.availability === 'ctc-invalid'
+					? 'ctc-invalid'
+					: salary.availability === 'ctc-missing'
+						? 'ctc-missing'
+						: 'no-profile';
 		return {
 			employee_id: input.employee_id,
 			employee_code: input.employee_code ?? '',
@@ -608,16 +641,17 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 			monthly_cost: null,
 			fractional_cost: null,
 			bench_cost: null,
-			cost_status: 'no-profile',
+			cost_status: costStatus,
+			salary,
 		};
 	}
 
 	const monthlyCost = proratedMonthlyCost(
-		resolveMonthlyCost(profile),
+		selection.ctc,
 		capacity.employed_working_days,
 		capacity.month_working_days
 	);
-	const rawRate = computeCtcHourlyRate(profile, basisDays);
+	const rawRate = computeCtcHourlyRate(profile, basisDays) ?? 0;
 	const fractionalCost =
 		loggedHours > 0 && rawRate > 0
 			? toNumber(mul(R(rawRate), loggedHours).toDecimalPlaces(2))
@@ -648,6 +682,7 @@ export function buildTeamRow(input: TeamRowInput): UtilizationRow {
 		fractional_cost: fractionalCost,
 		bench_cost: benchCost,
 		cost_status: 'priced',
+		salary,
 	};
 }
 
@@ -702,6 +737,12 @@ export function buildUtilizationTotals(
 		monthly_cost: hasCost ? round2(toNumber(monthly)) : null,
 		fractional_cost: hasCost ? round2(toNumber(fractional)) : null,
 		bench_cost: hasCost ? round2(toNumber(bench)) : null,
+		salary: summarizeReportSalary(
+			rows.map((row) => ({
+				evidence: row.salary,
+				unpriced: row.cost_status !== 'priced',
+			}))
+		),
 	};
 }
 
@@ -1198,9 +1239,10 @@ async function loadSalaryProfilesGrouped(): Promise<
 	const grouped = new Map<number, SalaryProfile[]>();
 	try {
 		const [rows] = (await query(
-			`SELECT employee_id, gross, gross_salary, employer_cost,
+			`SELECT id, employee_id, gross, gross_salary, employer_cost,
 			        hourly_rate, daily_rate, std_hours_per_day, std_working_days,
 			        salary_type, tds_percentage,
+			        DATE_FORMAT(cancelled_at, '%Y-%m-%d %H:%i:%s') AS cancelled_at,
 			        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
 			        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
 			 FROM employee_salary_profile
@@ -1208,20 +1250,31 @@ async function loadSalaryProfilesGrouped(): Promise<
 		)) as [DbRow[], unknown];
 		for (const p of rows) {
 			const employeeId = dbNum(p, 'employee_id');
-			if (!employeeId) continue;
+			const agreementId = dbNum(p, 'id');
+			const effectiveFrom = dbStr(p, 'effective_from');
+			if (!employeeId || !agreementId || !effectiveFrom) continue;
+			/** Nullable DECIMAL: absence stays null, never a manufactured zero. */
+			const nullableNumber = (key: string): number | null => {
+				const value = p[key];
+				if (value === null || value === undefined) return null;
+				if (typeof value === 'string' && value.trim() === '') return null;
+				return dbNum(p, key);
+			};
 			const profile: SalaryProfile = {
+				id: agreementId,
 				employee_id: employeeId,
-				gross: dbNum(p, 'gross'),
-				gross_salary: dbNum(p, 'gross_salary'),
-				employer_cost: dbNum(p, 'employer_cost'),
+				gross: nullableNumber('gross'),
+				gross_salary: nullableNumber('gross_salary'),
+				employer_cost: nullableNumber('employer_cost'),
 				hourly_rate: dbNum(p, 'hourly_rate'),
 				daily_rate: dbNum(p, 'daily_rate'),
 				std_hours_per_day: dbNum(p, 'std_hours_per_day', 8),
 				std_working_days: dbNum(p, 'std_working_days', 26),
 				salary_type: dbStr(p, 'salary_type', 'monthly'),
 				tds_percentage: dbNum(p, 'tds_percentage', 0),
-				effective_from: dbStr(p, 'effective_from', '') || null,
+				effective_from: effectiveFrom,
 				effective_to: dbStr(p, 'effective_to', '') || null,
+				cancelled_at: dbStr(p, 'cancelled_at', '') || null,
 			};
 			const arr = grouped.get(employeeId) || [];
 			arr.push(profile);

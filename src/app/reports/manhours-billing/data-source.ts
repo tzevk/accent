@@ -34,6 +34,13 @@ import {
 	resolveLoggedHoursEmployeeId,
 	type AssignmentResolutionRow,
 } from '@/lib/logged-hours-source';
+import {
+	resolveSalaryAgreementAt,
+	salaryMonthAnchor,
+	type SalaryProfileRow,
+} from '@/lib/salary-profile-timeline';
+import { resolveSalaryCtc, type SalaryCtcSource } from '@/lib/salary-ctc';
+
 // ─── Public types ───────────────────────────────────────────────────
 
 export interface BillingProject {
@@ -73,6 +80,10 @@ export interface BillingEmployeeRow {
 	accent_amount: number;
 	pnl_after_deductions: number;
 	pnl_tds: number;
+	/** Where `employee_charges` came from; `unavailable` is not a confirmed zero. */
+	pricing_source: 'project' | 'salary' | 'unavailable';
+	/** Period-effective salary evidence; null when the row has no Employee. */
+	salary: ReportSalaryEvidence | null;
 }
 
 export interface BillingData {
@@ -94,6 +105,7 @@ export interface BillingData {
 		total_accent_amount: number;
 		total_pnl_after_deductions: number;
 		total_pnl_tds: number;
+		salary: ReportSalarySummary;
 	};
 }
 
@@ -105,10 +117,20 @@ export interface AnnualEmployeeRow {
 	employee_name: string;
 	designation: string;
 	salary_type: string;
+	/** Effective row rate: configured project rate or hours-weighted salary rate. */
 	rate_employee: number;
 	rate_client: number;
 	monthly_hours: Record<string, number>;
 	total_hours: number;
+	/**
+	 * Salary-derived rate per FY month key (apr…mar), only for months whose
+	 * rate came from salary. A configured project rate never appears here.
+	 */
+	monthly_rates: Record<string, number>;
+	/** Company cost per FY month key; null when hours exist but no rate did. */
+	monthly_company_cost: Record<string, number | null>;
+	/** Salary evidence per salary-priced FY month key. */
+	salary_months: Record<string, ReportSalaryEvidence>;
 	company_cost: number;
 	accent_cost: number;
 	pnl: number;
@@ -132,23 +154,75 @@ export interface AnnualBillingData {
 		total_company_cost: number;
 		total_accent_cost: number;
 		total_pnl: number;
+		salary: ReportSalarySummary;
 	};
 }
 
-/** Salary-profile shape used for rate resolution (from employee_salary_profile). */
-export interface SalaryProfile {
+/** One `employee_salary_profile` row as the report reads it. */
+export type SalaryProfile = SalaryProfileRow & {
+	id: number;
 	employee_id: number;
-	gross: number;
-	gross_salary: number;
-	employer_cost: number;
+	/** Absent (null) is not zero: only the shared CTC resolver may interpret it. */
+	gross: number | null;
+	gross_salary: number | null;
+	employer_cost: number | null;
 	hourly_rate: number;
 	daily_rate: number;
 	std_hours_per_day: number;
 	std_working_days: number;
 	salary_type: string;
 	tds_percentage: number;
-	effective_from: string | null;
+	effective_from: string;
 	effective_to: string | null;
+};
+
+/** Why a report row's month has, or has not, a usable salary agreement. */
+export type ReportSalaryAvailability =
+	| 'available'
+	| 'missing'
+	| 'ambiguous'
+	| 'ctc-missing'
+	| 'ctc-invalid';
+
+/**
+ * The period-effective salary evidence behind one report month. `available`
+ * includes an explicit canonical zero; every other state is unavailable money.
+ */
+export interface ReportSalaryEvidence {
+	availability: ReportSalaryAvailability;
+	/** Calendar date selection used: month start or a verified joining date. */
+	anchor: string;
+	profile_id: number | null;
+	profile_source: 'employee_salary_profile' | null;
+	salary_type: string | null;
+	ctc_source: SalaryCtcSource;
+	/** True only when the amount came from legacy `gross_salary`/`gross`. */
+	legacy_fallback: boolean;
+	/** Sorted competing agreement ids when `ambiguous`. */
+	conflict_ids: number[];
+}
+
+/** The salary population behind a report total, for partial-total disclosure. */
+export interface ReportSalarySummary {
+	available_count: number;
+	missing_count: number;
+	ambiguous_count: number;
+	ctc_missing_count: number;
+	ctc_invalid_count: number;
+	legacy_fallback_count: number;
+	/** Rows/months that money could not price because salary was unavailable. */
+	unpriced_count: number;
+	/** No salary-dependent row/month is unpriced. */
+	complete: boolean;
+}
+
+/** The one period-effective salary selection a report month reads. */
+export interface ReportSalarySelection {
+	evidence: ReportSalaryEvidence;
+	/** The selected agreement row; null when missing/ambiguous. */
+	profile: SalaryProfile | null;
+	/** Resolved monthly CTC as a number; null when missing/invalid. */
+	ctc: number | null;
 }
 
 /** Per-employee rates from `projects.project_manhours_list` (annual format). */
@@ -257,6 +331,18 @@ function toNum(v: unknown, fallback = 0): number {
 		return Number.isFinite(parsed) ? parsed : fallback;
 	}
 	return fallback;
+}
+
+/** A nullable DECIMAL cell: absent stays null so zero is never manufactured. */
+function nullableNum(row: DbRow, key: string): number | null {
+	const value = row[key];
+	if (value === null || value === undefined) return null;
+	if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+	if (typeof value === 'string' && value.trim() !== '') {
+		const parsed = Number(value);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+	return null;
 }
 
 export function round2(v: number): number {
@@ -381,18 +467,162 @@ export function monthLabel(month: string): string {
 	return `${MONTH_NAMES[monthNumber - 1]} ${year}`;
 }
 
-/** Monthly salary CTC for a profile: gross_salary, else gross, else employer_cost. */
-export function resolveMonthlySalary(profile: SalaryProfile): number {
-	return profile.gross_salary || profile.gross || profile.employer_cost;
+/**
+ * Select the one agreement covering a report month. The anchor is the month
+ * start, or the verified joining date for a mid-month joiner; there is no
+ * latest/future fallback. Ambiguity and missing/invalid CTC are explicit.
+ */
+export function selectReportSalary(
+	profiles: readonly SalaryProfile[],
+	month: string,
+	employmentStart?: string | null
+): ReportSalarySelection {
+	let anchor: string;
+	try {
+		anchor = salaryMonthAnchor(month, employmentStart);
+	} catch {
+		return {
+			profile: null,
+			ctc: null,
+			evidence: {
+				availability: 'missing',
+				anchor: month,
+				profile_id: null,
+				profile_source: null,
+				salary_type: null,
+				ctc_source: 'none',
+				legacy_fallback: false,
+				conflict_ids: [],
+			},
+		};
+	}
+
+	const resolution = resolveSalaryAgreementAt(profiles, anchor);
+	if (resolution.state !== 'selected' || resolution.agreement_id === null) {
+		return {
+			profile: null,
+			ctc: null,
+			evidence: {
+				availability:
+					resolution.state === 'ambiguous' ? 'ambiguous' : 'missing',
+				anchor,
+				profile_id: null,
+				profile_source: null,
+				salary_type: null,
+				ctc_source: 'none',
+				legacy_fallback: false,
+				conflict_ids: [...resolution.conflict_ids],
+			},
+		};
+	}
+
+	const profile =
+		profiles.find((row) => Number(row.id) === resolution.agreement_id) ?? null;
+	if (profile === null) {
+		return {
+			profile: null,
+			ctc: null,
+			evidence: {
+				availability: 'missing',
+				anchor,
+				profile_id: null,
+				profile_source: null,
+				salary_type: null,
+				ctc_source: 'none',
+				legacy_fallback: false,
+				conflict_ids: [],
+			},
+		};
+	}
+
+	const resolved = resolveSalaryCtc(profile);
+	const base = {
+		anchor,
+		profile_id: resolution.agreement_id,
+		profile_source: 'employee_salary_profile' as const,
+		salary_type: resolution.salary_type,
+		conflict_ids: [] as number[],
+	};
+
+	if (resolved.status === 'resolved') {
+		return {
+			profile,
+			ctc: resolved.amount.toNumber(),
+			evidence: {
+				...base,
+				availability: 'available',
+				ctc_source: resolved.source,
+				legacy_fallback: resolved.legacyFallback,
+			},
+		};
+	}
+
+	return {
+		profile,
+		ctc: null,
+		evidence: {
+			...base,
+			availability:
+				resolved.status === 'invalid' ? 'ctc-invalid' : 'ctc-missing',
+			ctc_source: resolved.status === 'invalid' ? resolved.source : 'none',
+			legacy_fallback: false,
+		},
+	};
+}
+
+/** Tally salary availability for a report's totals without hiding gaps. */
+export function summarizeReportSalary(
+	entries: ReadonlyArray<{
+		evidence: ReportSalaryEvidence | null;
+		/** True when money could not be priced from this month's salary. */
+		unpriced: boolean;
+	}>
+): ReportSalarySummary {
+	const summary: ReportSalarySummary = {
+		available_count: 0,
+		missing_count: 0,
+		ambiguous_count: 0,
+		ctc_missing_count: 0,
+		ctc_invalid_count: 0,
+		legacy_fallback_count: 0,
+		unpriced_count: 0,
+		complete: true,
+	};
+	for (const entry of entries) {
+		if (entry.unpriced) summary.unpriced_count++;
+		const evidence = entry.evidence;
+		if (evidence === null) continue;
+		if (evidence.legacy_fallback) summary.legacy_fallback_count++;
+		switch (evidence.availability) {
+			case 'available':
+				summary.available_count++;
+				break;
+			case 'missing':
+				summary.missing_count++;
+				break;
+			case 'ambiguous':
+				summary.ambiguous_count++;
+				break;
+			case 'ctc-missing':
+				summary.ctc_missing_count++;
+				break;
+			case 'ctc-invalid':
+				summary.ctc_invalid_count++;
+				break;
+		}
+	}
+	summary.complete = summary.unpriced_count === 0;
+	return summary;
 }
 
 /**
- * Unrounded hourly rate for a profile — the billing amount is computed from
- * this unrounded value (e.g. 20000 / 208 = 96.1538...) so that multiplying by
- * hours gives the exact salary-apportioned sum matching the Excel template,
- * while the display rate is rounded to 2dp via resolveHourlyRate.
+ * Unrounded hourly rate for a selected agreement — the billing amount is
+ * computed from this unrounded value (e.g. 20000 / 208 = 96.1538...) so that
+ * multiplying by hours gives the exact salary-apportioned sum matching the
+ * Excel template, while the display rate is rounded to 2dp via
+ * resolveHourlyRate. Null means the agreement cannot price the row.
  */
-export function computeRawHourlyRate(profile: SalaryProfile): number {
+export function computeRawHourlyRate(profile: SalaryProfile): number | null {
 	if (profile.salary_type === 'hourly' && profile.hourly_rate > 0) {
 		return profile.hourly_rate;
 	}
@@ -402,49 +632,20 @@ export function computeRawHourlyRate(profile: SalaryProfile): number {
 	if (profile.salary_type === 'custom' && profile.hourly_rate > 0) {
 		return profile.hourly_rate;
 	}
-	const monthly = resolveMonthlySalary(profile);
+	const monthly = resolveSalaryCtc(profile);
+	if (monthly.status !== 'resolved') return null;
 	const days = profile.std_working_days > 0 ? profile.std_working_days : 26;
 	const hoursPerDay =
 		profile.std_hours_per_day > 0 ? profile.std_hours_per_day : 8;
 	const totalHours = days * hoursPerDay;
-	return totalHours > 0 ? monthly / totalHours : 0;
+	if (!(totalHours > 0)) return null;
+	return monthly.amount.toNumber() / totalHours;
 }
 
-/** Display rate: the raw rate rounded to 2dp. */
-export function resolveHourlyRate(profile: SalaryProfile): number {
-	return Math.round(computeRawHourlyRate(profile) * 100) / 100;
-}
-
-/**
- * Pick the salary profile in force for `month` (YYYY-MM): prefer an active
- * profile whose effective range covers the month, falling back to the
- * latest active profile (payroll's convention).
- */
-export function pickActiveProfile(
-	profiles: SalaryProfile[],
-	month: string
-): SalaryProfile | null {
-	if (!profiles || profiles.length === 0) return null;
-	const [y, m] = month.split('-').map(Number);
-	if (!y || !m) return profiles[0];
-
-	// Month date range: YYYY-MM-01 through end of month.
-	const monthStart = `${month}-01`;
-	const lastDay = new Date(y, m, 0).getDate();
-	const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`;
-
-	const covering = profiles.find((p) => {
-		const from = p.effective_from || '1970-01-01';
-		const to = p.effective_to || '9999-12-31';
-		return from <= monthEnd && to >= monthStart;
-	});
-	if (covering) return covering;
-
-	return (
-		[...profiles].sort((a, b) =>
-			(b.effective_from || '').localeCompare(a.effective_from || '')
-		)[0] || null
-	);
+/** Display rate: the raw rate rounded to 2dp; null when unavailable. */
+export function resolveHourlyRate(profile: SalaryProfile): number | null {
+	const raw = computeRawHourlyRate(profile);
+	return raw === null ? null : Math.round(raw * 100) / 100;
 }
 
 export interface EmployeeLookup {
@@ -452,6 +653,8 @@ export interface EmployeeLookup {
 	employee_code: string;
 	name: string;
 	designation: string;
+	/** Verified joining date; a mid-month joiner is read at this day. */
+	employment_start?: string | null;
 }
 
 interface PersonBillingAccumulator {
@@ -569,12 +772,17 @@ export function buildBillingRows(
 	for (const person of peopleMap.values()) {
 		if (person.hours <= 0) continue;
 
-		const profile = person.employeeId
-			? pickActiveProfile(
+		const employee = person.employeeId
+			? employeeIndex.get(person.employeeId)
+			: undefined;
+		const selection = person.employeeId
+			? selectReportSalary(
 					salaryProfiles.filter((p) => p.employee_id === person.employeeId),
-					month
+					month,
+					employee?.employment_start ?? null
 				)
 			: null;
+		const profile = selection?.profile ?? null;
 
 		const config = person.employeeId
 			? manhoursConfig.get(person.employeeId)
@@ -582,11 +790,17 @@ export function buildBillingRows(
 		const tabRateEmployee = person.rateEmployee;
 		const configRate =
 			config && config.rate_employee > 0 ? config.rate_employee : 0;
-		const fallbackRate = profile ? resolveHourlyRate(profile) : 0;
-		const rawFallbackRate = profile ? computeRawHourlyRate(profile) : 0;
+		const fallbackRate = profile ? resolveHourlyRate(profile) : null;
+		const rawFallbackRate = profile ? computeRawHourlyRate(profile) : null;
 
-		const employeeCharges = tabRateEmployee || configRate || fallbackRate;
-		const billingRate = tabRateEmployee || configRate || rawFallbackRate;
+		const employeeCharges = tabRateEmployee || configRate || fallbackRate || 0;
+		const billingRate = tabRateEmployee || configRate || rawFallbackRate || 0;
+		const pricingSource: BillingEmployeeRow['pricing_source'] =
+			tabRateEmployee || configRate
+				? 'project'
+				: fallbackRate !== null
+					? 'salary'
+					: 'unavailable';
 		const clientCharges = person.rateClient || config?.rate_client || 0;
 		const tdsRate = profile?.tds_percentage || person.tdsRate || 10;
 
@@ -619,6 +833,8 @@ export function buildBillingRows(
 			accent_amount: accentAmount,
 			pnl_after_deductions: pnlAfterDeductions,
 			pnl_tds: pnlTds,
+			pricing_source: pricingSource,
+			salary: selection?.evidence ?? null,
 		});
 	}
 
@@ -638,6 +854,7 @@ export function buildTotals(rows: BillingEmployeeRow[]): {
 	total_accent_amount: number;
 	total_pnl_after_deductions: number;
 	total_pnl_tds: number;
+	salary: ReportSalarySummary;
 } {
 	let manhours = R(0);
 	let amount = R(0);
@@ -665,6 +882,55 @@ export function buildTotals(rows: BillingEmployeeRow[]): {
 		total_accent_amount: toNumber(accentAmount.toDecimalPlaces(2)),
 		total_pnl_after_deductions: toNumber(pnlAfterDeductions.toDecimalPlaces(2)),
 		total_pnl_tds: toNumber(pnlTds.toDecimalPlaces(2)),
+		salary: summarizeReportSalary(
+			rows.map((row) => ({
+				evidence: row.salary,
+				unpriced: row.pricing_source === 'unavailable',
+			}))
+		),
+	};
+}
+
+interface AnnualMonthPricing {
+	/** Null when the month has hours but no usable rate (never a guessed zero). */
+	cost: Decimal | null;
+	/** Salary-derived display rate; null for configured project rates. */
+	rate: number | null;
+	evidence: ReportSalaryEvidence | null;
+}
+
+/**
+ * Price one FY month. A configured project rate is a recorded allocation and
+ * wins for every month; otherwise the month's own covering agreement prices
+ * it. A future/absent agreement leaves the month unpriceable, never zero.
+ */
+function priceAnnualMonth(
+	hours: number,
+	configuredRate: number,
+	employee: EmployeeLookup | null,
+	salaryProfiles: readonly SalaryProfile[],
+	calendarMonth: string
+): AnnualMonthPricing {
+	if (configuredRate > 0) {
+		return {
+			cost: mul(R(configuredRate), hours),
+			rate: null,
+			evidence: null,
+		};
+	}
+	if (employee === null) {
+		return { cost: hours > 0 ? null : R(0), rate: null, evidence: null };
+	}
+	const selection = selectReportSalary(
+		salaryProfiles.filter((p) => p.employee_id === employee.employee_id),
+		calendarMonth,
+		employee.employment_start ?? null
+	);
+	const rate = selection.profile ? resolveHourlyRate(selection.profile) : null;
+	return {
+		cost: hours > 0 ? (rate === null ? null : mul(R(rate), hours)) : R(0),
+		rate,
+		evidence: selection.evidence,
 	};
 }
 
@@ -691,23 +957,24 @@ export function buildAnnualBillingRows(
 		const rawEmpId = entry.source_employee_id ?? entry.employee_id;
 		const numEmpId = toNum(rawEmpId);
 		const isInternal = numEmpId > 0 && employeeIndex.has(numEmpId);
-		const internalEmp = isInternal ? employeeIndex.get(numEmpId) : null;
+		const internalEmp = isInternal
+			? (employeeIndex.get(numEmpId) ?? null)
+			: null;
 		const key = String(entry.employee_id || entry.id || numEmpId);
 		peopleSeen.add(key);
 
-		const profile = isInternal
-			? pickActiveProfile(
-					salaryProfiles.filter((p) => p.employee_id === numEmpId),
-					`${fyYear}-04`
-				)
-			: null;
-
-		const rateEmployee =
-			toNum(entry.rate_employee) || (profile ? resolveHourlyRate(profile) : 0);
+		const configuredRate = toNum(entry.rate_employee);
 		const rateClient = toNum(entry.rate_client);
 
 		const monthlyHours: Record<string, number> = {};
+		const monthlyRates: Record<string, number> = {};
+		const monthlyCompanyCost: Record<string, number | null> = {};
+		const salaryMonths: Record<string, ReportSalaryEvidence> = {};
 		let totalHrs = R(0);
+		let companyCost = R(0);
+		let pricedHrs = R(0);
+		let displaySalaryType = entry.salary_type || '';
+
 		for (const mKey of FY_MONTH_KEYS) {
 			let h = entry.monthly_hours ? toNum(entry.monthly_hours[mKey]) : 0;
 			// If not in tab, check daily assignments for that FY calendar month
@@ -722,16 +989,48 @@ export function buildAnnualBillingRows(
 			}
 			monthlyHours[mKey] = round2(h);
 			totalHrs = add(totalHrs, h);
+
+			const pricing = priceAnnualMonth(
+				h,
+				configuredRate,
+				isInternal ? internalEmp : null,
+				salaryProfiles,
+				fyCalendarMonthMap[mKey]
+			);
+			monthlyCompanyCost[mKey] =
+				pricing.cost === null
+					? null
+					: toNumber(pricing.cost.toDecimalPlaces(2));
+			if (pricing.cost !== null) {
+				companyCost = add(companyCost, pricing.cost);
+				if (h > 0) pricedHrs = add(pricedHrs, h);
+			}
+			if (pricing.rate !== null && h > 0) {
+				monthlyRates[mKey] = pricing.rate;
+			}
+			if (pricing.evidence !== null && h > 0) {
+				salaryMonths[mKey] = pricing.evidence;
+				if (!displaySalaryType && pricing.evidence.salary_type) {
+					displaySalaryType = pricing.evidence.salary_type;
+				}
+			}
 		}
 
 		const totalHours = round2(toNumber(totalHrs));
-		const companyCost = toNumber(
-			mul(R(rateEmployee), totalHours).toDecimalPlaces(2)
-		);
+		const companyCostNum = toNumber(companyCost.toDecimalPlaces(2));
+		const pricedHoursNum = toNumber(pricedHrs);
+		const rateEmployee =
+			configuredRate > 0
+				? configuredRate
+				: pricedHoursNum > 0
+					? round2(companyCostNum / pricedHoursNum)
+					: 0;
 		const accentCost = toNumber(
 			mul(R(rateClient), totalHours).toDecimalPlaces(2)
 		);
-		const pnl = toNumber(sub(R(accentCost), R(companyCost)).toDecimalPlaces(2));
+		const pnl = toNumber(
+			sub(R(accentCost), R(companyCostNum)).toDecimalPlaces(2)
+		);
 
 		rows.push({
 			sr_no: 0,
@@ -745,12 +1044,15 @@ export function buildAnnualBillingRows(
 				(entry.salary_type === 'custom'
 					? 'External / Deputation'
 					: 'Deputation Member'),
-			salary_type: entry.salary_type || 'monthly',
+			salary_type: displaySalaryType || 'monthly',
 			rate_employee: rateEmployee,
 			rate_client: rateClient,
 			monthly_hours: monthlyHours,
 			total_hours: totalHours,
-			company_cost: companyCost,
+			monthly_rates: monthlyRates,
+			monthly_company_cost: monthlyCompanyCost,
+			salary_months: salaryMonths,
+			company_cost: companyCostNum,
 			accent_cost: accentCost,
 			pnl,
 		});
@@ -762,7 +1064,14 @@ export function buildAnnualBillingRows(
 		if (peopleSeen.has(key)) continue;
 
 		const monthlyHours: Record<string, number> = {};
+		const monthlyRates: Record<string, number> = {};
+		const monthlyCompanyCost: Record<string, number | null> = {};
+		const salaryMonths: Record<string, ReportSalaryEvidence> = {};
 		let totalHrs = R(0);
+		let companyCost = R(0);
+		let pricedHrs = R(0);
+		let displaySalaryType = '';
+
 		for (const mKey of FY_MONTH_KEYS) {
 			const calMonth = fyCalendarMonthMap[mKey];
 			let h = 0;
@@ -774,21 +1083,36 @@ export function buildAnnualBillingRows(
 			}
 			monthlyHours[mKey] = round2(h);
 			totalHrs = add(totalHrs, h);
+
+			const pricing = priceAnnualMonth(h, 0, emp, salaryProfiles, calMonth);
+			monthlyCompanyCost[mKey] =
+				pricing.cost === null
+					? null
+					: toNumber(pricing.cost.toDecimalPlaces(2));
+			if (pricing.cost !== null) {
+				companyCost = add(companyCost, pricing.cost);
+				if (h > 0) pricedHrs = add(pricedHrs, h);
+			}
+			if (pricing.rate !== null && h > 0) {
+				monthlyRates[mKey] = pricing.rate;
+			}
+			if (pricing.evidence !== null && h > 0) {
+				salaryMonths[mKey] = pricing.evidence;
+				if (!displaySalaryType && pricing.evidence.salary_type) {
+					displaySalaryType = pricing.evidence.salary_type;
+				}
+			}
 		}
 
 		if (gt(totalHrs, 0)) {
-			const profile = pickActiveProfile(
-				salaryProfiles.filter((p) => p.employee_id === emp.employee_id),
-				`${fyYear}-04`
-			);
-			const rateEmployee = profile ? resolveHourlyRate(profile) : 0;
 			const totalHours = round2(toNumber(totalHrs));
-			const companyCost = toNumber(
-				mul(R(rateEmployee), totalHours).toDecimalPlaces(2)
-			);
+			const companyCostNum = toNumber(companyCost.toDecimalPlaces(2));
+			const pricedHoursNum = toNumber(pricedHrs);
+			const rateEmployee =
+				pricedHoursNum > 0 ? round2(companyCostNum / pricedHoursNum) : 0;
 			const accentCost = 0;
 			const pnl = toNumber(
-				sub(R(accentCost), R(companyCost)).toDecimalPlaces(2)
+				sub(R(accentCost), R(companyCostNum)).toDecimalPlaces(2)
 			);
 			rows.push({
 				sr_no: 0,
@@ -797,12 +1121,15 @@ export function buildAnnualBillingRows(
 				employee_code: emp.employee_code,
 				employee_name: emp.name,
 				designation: emp.designation,
-				salary_type: profile?.salary_type || 'monthly',
+				salary_type: displaySalaryType || 'monthly',
 				rate_employee: rateEmployee,
 				rate_client: 0,
 				monthly_hours: monthlyHours,
 				total_hours: totalHours,
-				company_cost: companyCost,
+				monthly_rates: monthlyRates,
+				monthly_company_cost: monthlyCompanyCost,
+				salary_months: salaryMonths,
+				company_cost: companyCostNum,
 				accent_cost: accentCost,
 				pnl,
 			});
@@ -823,6 +1150,7 @@ export function buildAnnualTotals(rows: AnnualEmployeeRow[]): {
 	total_company_cost: number;
 	total_accent_cost: number;
 	total_pnl: number;
+	salary: ReportSalarySummary;
 } {
 	const monthlyHours: Record<string, Decimal> = {};
 	for (const mKey of FY_MONTH_KEYS) {
@@ -832,6 +1160,10 @@ export function buildAnnualTotals(rows: AnnualEmployeeRow[]): {
 	let totalCompanyCost = R(0);
 	let totalAccentCost = R(0);
 	let totalPnl = R(0);
+	const salaryEntries: Array<{
+		evidence: ReportSalaryEvidence | null;
+		unpriced: boolean;
+	}> = [];
 
 	for (const r of rows) {
 		for (const mKey of FY_MONTH_KEYS) {
@@ -844,6 +1176,12 @@ export function buildAnnualTotals(rows: AnnualEmployeeRow[]): {
 		totalCompanyCost = add(totalCompanyCost, r.company_cost);
 		totalAccentCost = add(totalAccentCost, r.accent_cost);
 		totalPnl = add(totalPnl, r.pnl);
+		for (const [mKey, evidence] of Object.entries(r.salary_months)) {
+			salaryEntries.push({
+				evidence,
+				unpriced: r.monthly_company_cost[mKey] === null,
+			});
+		}
 	}
 
 	const roundedMonthlyHours: Record<string, number> = {};
@@ -857,6 +1195,7 @@ export function buildAnnualTotals(rows: AnnualEmployeeRow[]): {
 		total_company_cost: toNumber(totalCompanyCost.toDecimalPlaces(2)),
 		total_accent_cost: toNumber(totalAccentCost.toDecimalPlaces(2)),
 		total_pnl: toNumber(totalPnl.toDecimalPlaces(2)),
+		salary: summarizeReportSalary(salaryEntries),
 	};
 }
 
@@ -999,7 +1338,9 @@ export async function fetchBillingData(
 		const [empRows] = (await query(
 			`SELECT id, employee_id,
 			        CONCAT_WS(' ', first_name, last_name) AS name,
-			        position, designation
+			        position, designation,
+			        DATE_FORMAT(joining_date, '%Y-%m-%d') AS joining_date,
+			        DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date
 			 FROM employees
 			 WHERE isDelete = 0`
 		)) as [DbRow[], unknown];
@@ -1011,6 +1352,7 @@ export async function fetchBillingData(
 				employee_code: s(emp, 'employee_id'),
 				name: s(emp, 'name') || `Employee ${id}`,
 				designation: s(emp, 'position') || s(emp, 'designation') || '',
+				employment_start: s(emp, 'joining_date') || s(emp, 'hire_date') || null,
 			});
 		}
 	} catch {
@@ -1020,9 +1362,10 @@ export async function fetchBillingData(
 	const salaryProfiles: SalaryProfile[] = [];
 	try {
 		const [profileRows] = (await query(
-			`SELECT employee_id, gross, gross_salary, employer_cost,
+			`SELECT id, employee_id, gross, gross_salary, employer_cost,
 			        hourly_rate, daily_rate, std_hours_per_day, std_working_days,
 			        salary_type, tds_percentage,
+			        DATE_FORMAT(cancelled_at, '%Y-%m-%d %H:%i:%s') AS cancelled_at,
 			        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
 			        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
 			 FROM employee_salary_profile
@@ -1030,20 +1373,24 @@ export async function fetchBillingData(
 		)) as [DbRow[], unknown];
 		for (const p of profileRows) {
 			const employeeId = n(p, 'employee_id');
-			if (!employeeId) continue;
+			const agreementId = n(p, 'id');
+			const effectiveFrom = s(p, 'effective_from');
+			if (!employeeId || !agreementId || !effectiveFrom) continue;
 			salaryProfiles.push({
+				id: agreementId,
 				employee_id: employeeId,
-				gross: n(p, 'gross'),
-				gross_salary: n(p, 'gross_salary'),
-				employer_cost: n(p, 'employer_cost'),
+				gross: nullableNum(p, 'gross'),
+				gross_salary: nullableNum(p, 'gross_salary'),
+				employer_cost: nullableNum(p, 'employer_cost'),
 				hourly_rate: n(p, 'hourly_rate'),
 				daily_rate: n(p, 'daily_rate'),
 				std_hours_per_day: n(p, 'std_hours_per_day', 8),
 				std_working_days: n(p, 'std_working_days', 26),
 				salary_type: s(p, 'salary_type', 'monthly'),
 				tds_percentage: n(p, 'tds_percentage', 0),
-				effective_from: s(p, 'effective_from', '') || null,
+				effective_from: effectiveFrom,
 				effective_to: s(p, 'effective_to', '') || null,
+				cancelled_at: s(p, 'cancelled_at', '') || null,
 			});
 		}
 	} catch {
@@ -1116,7 +1463,9 @@ export async function fetchAnnualBillingData(
 		const [empRows] = (await query(
 			`SELECT id, employee_id,
 			        CONCAT_WS(' ', first_name, last_name) AS name,
-			        position, designation
+			        position, designation,
+			        DATE_FORMAT(joining_date, '%Y-%m-%d') AS joining_date,
+			        DATE_FORMAT(hire_date, '%Y-%m-%d') AS hire_date
 			 FROM employees
 			 WHERE isDelete = 0`
 		)) as [DbRow[], unknown];
@@ -1128,6 +1477,7 @@ export async function fetchAnnualBillingData(
 				employee_code: s(emp, 'employee_id'),
 				name: s(emp, 'name') || `Employee ${id}`,
 				designation: s(emp, 'position') || s(emp, 'designation') || '',
+				employment_start: s(emp, 'joining_date') || s(emp, 'hire_date') || null,
 			});
 		}
 	} catch {
@@ -1137,9 +1487,10 @@ export async function fetchAnnualBillingData(
 	const salaryProfiles: SalaryProfile[] = [];
 	try {
 		const [profileRows] = (await query(
-			`SELECT employee_id, gross, gross_salary, employer_cost,
+			`SELECT id, employee_id, gross, gross_salary, employer_cost,
 			        hourly_rate, daily_rate, std_hours_per_day, std_working_days,
 			        salary_type, tds_percentage,
+			        DATE_FORMAT(cancelled_at, '%Y-%m-%d %H:%i:%s') AS cancelled_at,
 			        DATE_FORMAT(effective_from, '%Y-%m-%d') AS effective_from,
 			        DATE_FORMAT(effective_to, '%Y-%m-%d') AS effective_to
 			 FROM employee_salary_profile
@@ -1147,20 +1498,24 @@ export async function fetchAnnualBillingData(
 		)) as [DbRow[], unknown];
 		for (const p of profileRows) {
 			const employeeId = n(p, 'employee_id');
-			if (!employeeId) continue;
+			const agreementId = n(p, 'id');
+			const effectiveFrom = s(p, 'effective_from');
+			if (!employeeId || !agreementId || !effectiveFrom) continue;
 			salaryProfiles.push({
+				id: agreementId,
 				employee_id: employeeId,
-				gross: n(p, 'gross'),
-				gross_salary: n(p, 'gross_salary'),
-				employer_cost: n(p, 'employer_cost'),
+				gross: nullableNum(p, 'gross'),
+				gross_salary: nullableNum(p, 'gross_salary'),
+				employer_cost: nullableNum(p, 'employer_cost'),
 				hourly_rate: n(p, 'hourly_rate'),
 				daily_rate: n(p, 'daily_rate'),
 				std_hours_per_day: n(p, 'std_hours_per_day', 8),
 				std_working_days: n(p, 'std_working_days', 26),
 				salary_type: s(p, 'salary_type', 'monthly'),
 				tds_percentage: n(p, 'tds_percentage', 0),
-				effective_from: s(p, 'effective_from', '') || null,
+				effective_from: effectiveFrom,
 				effective_to: s(p, 'effective_to', '') || null,
+				cancelled_at: s(p, 'cancelled_at', '') || null,
 			});
 		}
 	} catch {
