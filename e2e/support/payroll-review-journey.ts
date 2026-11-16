@@ -363,19 +363,28 @@ export async function sheetViewport(sheet: Locator) {
 
 /**
  * Record any non-read request to a payroll endpoint after authentication.
- * Fixture setup and sign-in happen before this guard is attached.
+ * Fixture setup and sign-in happen before this guard is attached. `stop()`
+ * removes the listener so deliberate later writes are not misreported; the
+ * original read-only journey keeps using only `violations`.
  */
 export function guardPayrollWrites(page: Page): {
 	readonly violations: string[];
+	stop: () => void;
 } {
 	const violations: string[] = [];
-	page.on('request', (request: Request) => {
+	const listener = (request: Request) => {
 		if (request.method() === 'GET' || request.method() === 'HEAD') return;
 		if (request.method() === 'OPTIONS') return;
 		const { pathname } = new URL(request.url());
 		if (pathname === '/api/payroll' || pathname.startsWith('/api/payroll/')) {
 			violations.push(`${request.method()} ${pathname}`);
 		}
-	});
-	return { violations };
+	};
+	page.on('request', listener);
+	return {
+		violations,
+		stop: () => {
+			page.off('request', listener);
+		},
+	};
 }
