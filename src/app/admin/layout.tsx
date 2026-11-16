@@ -29,7 +29,12 @@ export default async function AdminLayout({
 			// Project administrators maintain the shared lead policy, which
 			// lives under /admin. The shell carries no data; every API still
 			// authorizes each request.
-			hasPermission(auth.user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE))
+			hasPermission(auth.user, RESOURCES.PROJECTS, PERMISSIONS.UPDATE) ||
+			// The Salary Profiles workspace lives under /admin/payroll and is
+			// reachable by a minimal payroll role that is neither an admin nor
+			// an employee-master reader. The page itself requires payroll:read
+			// again, and every salary API authorizes independently.
+			hasPermission(auth.user, RESOURCES.PAYROLL, PERMISSIONS.READ))
 	) {
 		return children;
 	}
