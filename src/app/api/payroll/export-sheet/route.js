@@ -12,6 +12,10 @@ import {
 	resolveScheduledDA,
 	slipFigures,
 } from '@/lib/payroll';
+import {
+	readSlipSalaryContexts,
+	slipMatchesSalaryTypeFilter,
+} from '@/lib/payroll-slip-salary';
 
 /** Convert any value to a finite number; returns 0 for NaN/Infinity/null/undefined/strings */
 const safeNum = (v) => {
@@ -58,6 +62,9 @@ export async function GET(request) {
 			'custom',
 			'payroll',
 		];
+		const streamFilter = validSalaryTypes.includes(salaryType)
+			? salaryType
+			: null;
 		db = await dbConnect();
 
 		let query = `SELECT 
@@ -67,26 +74,29 @@ export async function GET(request) {
         e.position,
         e.uan,
         e.pf_no,
-        e.esi_no
+        e.esi_no,
+        e.joining_date
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
       WHERE ps.month = ?`;
 		const params = [month];
 
-		if (salaryType === 'payroll') {
-			// Payroll = everything except contract
-			query += ` AND NOT EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
-		} else if (salaryType === 'contract') {
-			// Contract = only contract
-			query += ` AND EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
-		} else if (salaryType && validSalaryTypes.includes(salaryType)) {
-			query += ` AND EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND (sp.salary_type = ? OR (sp.salary_type IS NULL AND ? = 'monthly')))`;
-			params.push(salaryType, salaryType);
-		}
-
 		query += ` ORDER BY e.employee_id ASC`;
 
-		const [slips] = await db.execute(query, params);
+		const [rawSlips] = await db.execute(query, params);
+
+		// Salary Type comes from each slip's recorded/confirmed context. The
+		// filter therefore cannot move an earlier slip when a later profile
+		// changes stream, and a second active agreement cannot duplicate a row.
+		const contexts = await readSlipSalaryContexts(db, rawSlips);
+		const slips = rawSlips
+			.map((slip, index) => ({
+				...slip,
+				salary_context: contexts[index],
+			}))
+			.filter((slip) =>
+				slipMatchesSalaryTypeFilter(slip.salary_context, streamFilter)
+			);
 
 		if (slips.length === 0) {
 			return NextResponse.json(
@@ -165,36 +175,27 @@ export async function GET(request) {
 			console.log('DA schedule fetch for export skipped:', daErr.message);
 		}
 
-		// Fetch loan and advance data from salary profiles
-		const loanAdvanceMap = {};
-		if (employeeIds.length > 0) {
-			try {
-				const placeholders3 = employeeIds.map(() => '?').join(',');
-				const [salaryRows] = await db.execute(
-					`SELECT employee_id, loan_amount_per_month, loan_active, advance_amount, advance_active
-           FROM employee_salary_profile
-           WHERE employee_id IN (${placeholders3})
-           AND (is_active = 1 OR id IN (
-             SELECT MAX(id) FROM employee_salary_profile WHERE employee_id IN (${placeholders3}) GROUP BY employee_id
-           ))
-           ORDER BY id DESC`,
-					[...employeeIds, ...employeeIds]
-				);
-				for (const row of salaryRows) {
-					if (!loanAdvanceMap[row.employee_id]) {
-						loanAdvanceMap[row.employee_id] = {
-							loan: row.loan_active
-								? parseFloat(row.loan_amount_per_month) || 0
-								: 0,
-							advance: row.advance_active
-								? parseFloat(row.advance_amount) || 0
-								: 0,
-						};
-					}
-				}
-			} catch (laErr) {
-				console.log('Loan/Advance fetch for export skipped:', laErr.message);
-			}
+		// Loan and advance instructions come from the same recorded/confirmed
+		// period-effective canonical agreement as the slip's salary context. A
+		// later/current profile never supplies an earlier month's deduction; when
+		// the context cannot establish them, the slip's stored columns stand.
+		const loanAdvanceBySlip = new Map();
+		for (const slip of slips) {
+			const context = slip.salary_context;
+			const profile =
+				context && context.agreement_source === 'employee_salary_profile'
+					? context.profile
+					: null;
+			loanAdvanceBySlip.set(slip.id, {
+				loan:
+					profile && profile.loan_active
+						? safeNum(profile.loan_amount_per_month)
+						: 0,
+				advance:
+					profile && profile.advance_active
+						? safeNum(profile.advance_amount)
+						: 0,
+			});
 		}
 
 		const workbook = new ExcelJS.Workbook();
@@ -571,7 +572,7 @@ export async function GET(request) {
 				// PT is a flat FEBRUARY_PT in February (src/lib/payroll.js).
 				const isFebruary = isFebruaryMonth(month);
 				const pt = isFebruary ? FEBRUARY_PT : safeNum(slip.pt);
-				const empLoanAdvance = loanAdvanceMap[slip.employee_id] || {
+				const empLoanAdvance = loanAdvanceBySlip.get(slip.id) || {
 					loan: 0,
 					advance: 0,
 				};
