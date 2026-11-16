@@ -341,6 +341,23 @@ describe('salary command core — unused correction (issue #437)', () => {
 		expect(state.canonical[0].contract_amount).toBe('50000.00');
 	});
 
+	it('keeps a legacy Salary Type when a correction does not change it', async () => {
+		const state = createState({
+			canonical: [unusedAgreement({ salary_type: 'custom' })],
+		});
+
+		const outcome = await runSalaryCommand(
+			fakeDb(state),
+			{ ...correctionInput, salary_type: null },
+			{ actorId: 9, now: NOW }
+		);
+
+		expect(outcome.ok).toBe(true);
+		if (!outcome.ok) throw new Error(outcome.message);
+		// The new workspace never converts an agreement it was not asked to change.
+		expect(state.canonical[0].salary_type).toBe('custom');
+	});
+
 	it('keeps a recorded effective_to when the corrected start is unchanged', async () => {
 		const state = createState({
 			canonical: [
