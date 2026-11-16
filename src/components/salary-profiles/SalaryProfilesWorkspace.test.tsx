@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import {
+	act,
+	cleanup,
 	fireEvent,
 	render,
 	screen,
@@ -23,16 +25,21 @@ import type {
 import { SalaryProfileEditor } from './SalaryProfileEditor';
 import { SalaryProfileList } from './SalaryProfileList';
 
-const { routerPush, routerReplace } = vi.hoisted(() => ({
-	routerPush: vi.fn(),
-	routerReplace: vi.fn(),
-}));
+const { routerPush, routerReplace, routerBack, routerState } = vi.hoisted(
+	() => ({
+		routerPush: vi.fn(),
+		routerReplace: vi.fn(),
+		routerBack: vi.fn(),
+		routerState: { pathname: '/admin/payroll/salary-profiles/7' },
+	})
+);
 
 vi.mock('next/navigation', () => ({
+	usePathname: () => routerState.pathname,
 	useRouter: () => ({
 		push: routerPush,
 		replace: routerReplace,
-		back: vi.fn(),
+		back: routerBack,
 		refresh: vi.fn(),
 		prefetch: vi.fn(),
 	}),
@@ -338,6 +345,24 @@ async function openEditor() {
 	await screen.findByRole('heading', { name: 'Asha Rao' });
 }
 
+/**
+ * Puts the jsdom document on the editor URL with a list entry underneath, so a
+ * browser Back gesture has somewhere real to go.
+ */
+function primeEditorHistory() {
+	window.history.replaceState(
+		{ page: 'list' },
+		'',
+		'/admin/payroll/salary-profiles'
+	);
+	window.history.pushState(
+		{ page: 'editor' },
+		'',
+		'/admin/payroll/salary-profiles/7'
+	);
+	routerState.pathname = '/admin/payroll/salary-profiles/7';
+}
+
 async function beginCorrection() {
 	await openEditor();
 	await userEvent.click(screen.getByRole('button', { name: 'Edit agreement' }));
@@ -363,6 +388,8 @@ beforeEach(() => {
 	api.post = null;
 	routerPush.mockReset();
 	routerReplace.mockReset();
+	routerBack.mockReset();
+	routerState.pathname = '/admin/payroll/salary-profiles/7';
 });
 
 /* --------------------------------------------------------------------- tests */
@@ -982,7 +1009,121 @@ describe('SalaryProfileEditor', () => {
 		await userEvent.click(
 			screen.getByRole('button', { name: 'Back to Salary Profiles' })
 		);
-		expect(routerPush).toHaveBeenCalledWith('/admin/payroll/salary-profiles');
+		await waitFor(() =>
+			expect(routerPush).toHaveBeenCalledWith('/admin/payroll/salary-profiles')
+		);
 		confirm.mockRestore();
+	});
+
+	it('keeps the draft and re-arms the guard when browser Back is answered with Stay', async () => {
+		primeEditorHistory();
+		await beginCorrection();
+		fireEvent.change(screen.getByLabelText('Monthly CTC'), {
+			target: { value: '56000' },
+		});
+
+		window.history.back();
+
+		const dialog = await screen.findByRole('dialog', {
+			name: 'Unsaved salary changes',
+		});
+		const stayButton = within(dialog).getByRole('button', { name: 'Stay' });
+		await waitFor(() => expect(stayButton).toHaveFocus());
+		expect(window.location.pathname).toBe('/admin/payroll/salary-profiles/7');
+		expect(
+			screen.getByRole('heading', { name: 'Asha Rao' })
+		).toBeInTheDocument();
+		expect(fieldValue('Monthly CTC')).toBe('56000');
+
+		await userEvent.click(stayButton);
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+		expect(fieldValue('Monthly CTC')).toBe('56000');
+
+		window.history.back();
+
+		const rearmed = await screen.findByRole('dialog', {
+			name: 'Unsaved salary changes',
+		});
+		expect(fieldValue('Monthly CTC')).toBe('56000');
+		expect(window.location.pathname).toBe('/admin/payroll/salary-profiles/7');
+		expect(routerPush).not.toHaveBeenCalled();
+		expect(routerBack).not.toHaveBeenCalled();
+		await userEvent.click(
+			within(rearmed).getByRole('button', { name: 'Stay' })
+		);
+
+		cleanup();
+		await waitFor(() =>
+			expect(window.history.state).toEqual({ page: 'editor' })
+		);
+	});
+
+	it('performs one real back navigation when Discard is chosen twice quickly', async () => {
+		primeEditorHistory();
+		await beginCorrection();
+		fireEvent.change(screen.getByLabelText('Monthly CTC'), {
+			target: { value: '56000' },
+		});
+
+		window.history.back();
+
+		const dialog = await screen.findByRole('dialog', {
+			name: 'Unsaved salary changes',
+		});
+		const discard = within(dialog).getByRole('button', { name: 'Discard' });
+		act(() => {
+			discard.click();
+			discard.click();
+		});
+
+		await waitFor(() =>
+			expect(window.location.pathname).toBe('/admin/payroll/salary-profiles')
+		);
+		expect(window.history.state).toEqual({ page: 'list' });
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+		expect(routerPush).not.toHaveBeenCalled();
+		expect(routerBack).not.toHaveBeenCalled();
+	});
+
+	it('leaves browser Back untouched when the editor has no unsaved changes', async () => {
+		primeEditorHistory();
+		await openEditor();
+
+		expect(window.history.state).toEqual({ page: 'editor' });
+
+		window.history.back();
+
+		await waitFor(() =>
+			expect(window.location.pathname).toBe('/admin/payroll/salary-profiles')
+		);
+		expect(window.history.state).toEqual({ page: 'list' });
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+	});
+
+	it('removes its sentinel after the draft is saved', async () => {
+		primeEditorHistory();
+		await beginCorrection();
+		fireEvent.change(screen.getByLabelText('Monthly CTC'), {
+			target: { value: '55000' },
+		});
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Review correction' })
+		);
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Save correction' })
+		);
+		await waitFor(() => expect(api.postCalls).toHaveLength(1));
+		expect(await screen.findByText(/Agreement corrected/)).toBeInTheDocument();
+
+		await waitFor(() =>
+			expect(window.history.state).toEqual({ page: 'editor' })
+		);
+
+		window.history.back();
+
+		await waitFor(() =>
+			expect(window.location.pathname).toBe('/admin/payroll/salary-profiles')
+		);
+		expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 	});
 });

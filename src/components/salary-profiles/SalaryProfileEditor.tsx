@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
 	ArrowPathIcon,
 	ExclamationCircleIcon,
@@ -19,6 +18,7 @@ import {
 import { SalaryProfileEstimate } from '@/components/salary-profiles/SalaryProfileEstimate';
 import { SalaryProfileFields } from '@/components/salary-profiles/SalaryProfileFields';
 import { SalaryProfileHistory } from '@/components/salary-profiles/SalaryProfileHistory';
+import { useUnsavedNavigationGuard } from '@/components/salary-profiles/useUnsavedNavigationGuard';
 import {
 	UNSAVED_SALARY_MESSAGE,
 	agreementKey,
@@ -74,8 +74,11 @@ function operationCopy(operation: SalaryOperation, agreementId: number | null) {
 	}
 }
 
-function useUnsavedSalaryGuard(dirty: boolean, message: string) {
-	const router = useRouter();
+function useUnsavedSalaryGuard(
+	dirty: boolean,
+	message: string,
+	confirmedLeave: (href: string) => void
+) {
 	useEffect(() => {
 		if (!dirty) return;
 
@@ -88,8 +91,8 @@ function useUnsavedSalaryGuard(dirty: boolean, message: string) {
 		// App leave controls live outside this component (Navbar, Sidebar and
 		// ordinary Links). A capture-phase click listener covers them without
 		// editing those owners' files. Browser reload/close/address-bar
-		// navigation is covered by beforeunload; an App Router SPA back
-		// gesture has no cancellation API, so it is not intercepted here.
+		// navigation is covered by beforeunload; the SPA Back gesture is covered
+		// by the unsaved-navigation guard's sentinel.
 		const handleDocumentClick = (event: MouseEvent) => {
 			if (
 				event.defaultPrevented ||
@@ -118,7 +121,7 @@ function useUnsavedSalaryGuard(dirty: boolean, message: string) {
 			event.preventDefault();
 			event.stopPropagation();
 			if (window.confirm(message)) {
-				router.push(`${url.pathname}${url.search}${url.hash}`);
+				confirmedLeave(`${url.pathname}${url.search}${url.hash}`);
 			}
 		};
 
@@ -128,7 +131,7 @@ function useUnsavedSalaryGuard(dirty: boolean, message: string) {
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			document.removeEventListener('click', handleDocumentClick, true);
 		};
-	}, [dirty, message, router]);
+	}, [dirty, message, confirmedLeave]);
 }
 
 export interface SalaryProfileEditorProps {
@@ -148,7 +151,6 @@ export function SalaryProfileEditor({
 	employeeId,
 	initialDate,
 }: SalaryProfileEditorProps) {
-	const router = useRouter();
 	const validEmployeeId = Number.isInteger(employeeId) && employeeId > 0;
 	const [asOf, setAsOf] = useState(initialDate || todayInput());
 	const [basisMonth, setBasisMonth] = useState(
@@ -203,12 +205,32 @@ export function SalaryProfileEditor({
 		editing && draft && draftIsDirty(draft, editing.baseDraft)
 	);
 	const busy = command.isPending;
+	const leaveGuard = useUnsavedNavigationGuard(
+		isDirty,
+		'/admin/payroll/salary-profiles'
+	);
+	const leaveStayRef = useRef<HTMLButtonElement>(null);
+	const leaveReturnFocusRef = useRef<HTMLElement | null>(null);
 
-	useUnsavedSalaryGuard(isDirty, UNSAVED_SALARY_MESSAGE);
+	useUnsavedSalaryGuard(isDirty, UNSAVED_SALARY_MESSAGE, leaveGuard.leaveFor);
 
 	useEffect(() => {
 		if (reviewing) reviewRef.current?.focus();
 	}, [reviewing]);
+
+	useEffect(() => {
+		if (leaveGuard.promptOpen) {
+			leaveReturnFocusRef.current =
+				document.activeElement instanceof HTMLElement
+					? document.activeElement
+					: null;
+			leaveStayRef.current?.focus();
+			return;
+		}
+		const previous = leaveReturnFocusRef.current;
+		leaveReturnFocusRef.current = null;
+		previous?.focus();
+	}, [leaveGuard.promptOpen]);
 
 	const previewProfile = useMemo(() => {
 		if (editing && draft) return previewProfileFromDraft(draft);
@@ -256,9 +278,9 @@ export function SalaryProfileEditor({
 	const attemptLeave = useCallback(
 		(href: string) => {
 			if (isDirty && !window.confirm(UNSAVED_SALARY_MESSAGE)) return;
-			router.push(href);
+			leaveGuard.leaveFor(href);
 		},
-		[isDirty, router]
+		[isDirty, leaveGuard]
 	);
 
 	const begin = useCallback(
@@ -753,6 +775,52 @@ export function SalaryProfileEditor({
 				>
 					{status}
 				</p>
+			)}
+
+			{leaveGuard.promptOpen && (
+				<section
+					role="dialog"
+					aria-labelledby="salary-leave-heading"
+					aria-describedby="salary-leave-description"
+					onKeyDown={(event) => {
+						if (event.key === 'Escape') {
+							event.preventDefault();
+							leaveGuard.stay();
+						}
+					}}
+					className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4"
+				>
+					<h2
+						id="salary-leave-heading"
+						className="text-lg font-semibold text-gray-900"
+					>
+						Unsaved salary changes
+					</h2>
+					<p
+						id="salary-leave-description"
+						className="mt-1 text-sm text-gray-700"
+					>
+						The browser Back button would discard this draft. Stay to keep
+						editing, or discard the draft and return to the previous page.
+					</p>
+					<div className="mt-3 flex flex-wrap gap-2">
+						<button
+							ref={leaveStayRef}
+							type="button"
+							onClick={leaveGuard.stay}
+							className="rounded-lg bg-[#64126D] px-3 py-2 text-sm font-medium text-white hover:bg-[#52105a]"
+						>
+							Stay
+						</button>
+						<button
+							type="button"
+							onClick={leaveGuard.discard}
+							className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+						>
+							Discard
+						</button>
+					</div>
+				</section>
 			)}
 
 			{cancelTarget && (
