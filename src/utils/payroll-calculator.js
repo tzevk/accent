@@ -19,7 +19,16 @@ import {
 import { sumLoggedHoursForMonth } from '@/lib/logged-hours';
 import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
 import { loadPayrollRunRoster } from '@/lib/payroll-run-roster';
-import { withPayrollRunWriteLock } from '@/app/api/payroll/_lib/payroll-run';
+import {
+	lockSalaryEmployees,
+	recordSalaryAgreementUse,
+} from '@/lib/salary-profile-store';
+import {
+	withPayrollRunWriteLock,
+	salaryIssueOf,
+	salaryIssueLabel,
+	SALARY_ISSUE,
+} from '@/app/api/payroll/_lib/payroll-run';
 
 export { calculatePayroll, normalizeSalaryProfile };
 
@@ -295,7 +304,11 @@ export async function getEmployeeMonthlyHours(
  *   caller inside a transaction reads one snapshot.
  * @returns {Promise<object>} Attendance summary
  */
-export async function getEmployeeAttendance(employeeId, month, existingDb = null) {
+export async function getEmployeeAttendance(
+	employeeId,
+	month,
+	existingDb = null
+) {
 	const db = existingDb || (await dbConnect());
 	const ownsConnection = !existingDb;
 
@@ -462,6 +475,11 @@ function findRosterMember(roster, employeeId) {
  * Why this employee cannot be paid from the month's roster, or null when they
  * can. Single, batch and preview generation all use this same check so none of
  * them can write a slip the shared eligibility rules exclude.
+ *
+ * Salary readiness is distinct from employment dates: no covering agreement,
+ * competing covering agreements, a missing CTC and an invalid CTC are four
+ * different refusals. An explicit zero CTC is resolved, never treated as
+ * missing.
  */
 export function payrollGenerationRefusal(member, employeeId, month) {
 	const who = member?.name
@@ -493,6 +511,53 @@ export function payrollGenerationRefusal(member, employeeId, month) {
 		);
 	}
 
+	const salaryIssue = salaryIssueOf(member);
+	if (salaryIssue === SALARY_ISSUE.MISSING_PROFILE) {
+		return new PayrollGenerationError(
+			`No active salary profile found for ${who}. Please set up salary structure first.`,
+			{
+				status: 400,
+				code: 'payroll_profile_missing',
+				employeeId,
+			}
+		);
+	}
+
+	if (salaryIssue === SALARY_ISSUE.AMBIGUOUS_PROFILE) {
+		const ids = (member.salary_conflict_ids || []).join(', ');
+		return new PayrollGenerationError(
+			`${who} cannot be paid for ${month}: overlapping Salary Profiles need review${
+				ids ? ` (agreement ids ${ids})` : ''
+			}. Resolve the competing agreements before generating payroll.`,
+			{
+				status: 422,
+				code: 'payroll_salary_ambiguous',
+				reviewReason: salaryIssue,
+				employeeId,
+			}
+		);
+	}
+
+	if (
+		salaryIssue === SALARY_ISSUE.MISSING_CTC ||
+		salaryIssue === SALARY_ISSUE.INVALID_CTC
+	) {
+		const missing = salaryIssue === SALARY_ISSUE.MISSING_CTC;
+		return new PayrollGenerationError(
+			`${who} cannot be paid for ${month}: ${salaryIssueLabel(salaryIssue)}. ${
+				missing
+					? 'Enter an explicit monthly CTC (zero is valid).'
+					: 'Correct the invalid monthly CTC.'
+			}`,
+			{
+				status: 422,
+				code: missing ? 'payroll_ctc_missing' : 'payroll_ctc_invalid',
+				reviewReason: salaryIssue,
+				employeeId,
+			}
+		);
+	}
+
 	if (!member.salary_profile) {
 		return new PayrollGenerationError(
 			`No active salary profile found for ${who}. Please set up salary structure first.`,
@@ -501,6 +566,15 @@ export function payrollGenerationRefusal(member, employeeId, month) {
 				code: 'payroll_profile_missing',
 				employeeId,
 			}
+		);
+	}
+
+	// A slip's provenance and durable use need one exact agreement identity.
+	// An eligible roster member always carries it; a hand-built roster that
+	// does not is a programming error, not a pay gap to price as zero.
+	if (!member.profile_id || !member.profile_source) {
+		throw new Error(
+			`${who} has no recorded Salary Profile provenance, so generation cannot record which agreement was used.`
 		);
 	}
 
@@ -540,8 +614,7 @@ export async function calculateEmployeePayroll(
 	try {
 		let profile = options.salaryProfile ?? null;
 		if (!profile) {
-			const roster =
-				options.roster || (await loadPayrollRunRoster(db, month));
+			const roster = options.roster || (await loadPayrollRunRoster(db, month));
 			const member = findRosterMember(roster, employeeId);
 			profile = member && !member.issue ? member.salary_profile : null;
 		}
@@ -641,6 +714,12 @@ const SLIP_INSERT_COLUMNS = [
 	'pl_balance',
 	'payment_status',
 	'remarks',
+	// Exact source-qualified agreement the slip was priced from. Written by the
+	// same transaction that records durable use, so a later salary correction
+	// can never make a historical slip disagree with the agreement it used.
+	'salary_profile_id',
+	'salary_profile_source',
+	'salary_type',
 ];
 
 const SLIP_PLACEHOLDER = `(${SLIP_INSERT_COLUMNS.map(() => '?').join(', ')})`;
@@ -649,7 +728,7 @@ const INSERT_SLIP_SQL = `INSERT INTO payroll_slips (
   ${SLIP_INSERT_COLUMNS.join(', ')}
 ) VALUES ${SLIP_PLACEHOLDER}`;
 
-function payrollToParams(payroll) {
+function payrollToParams(payroll, member = null) {
 	return [
 		payroll.month,
 		payroll.employee_id,
@@ -702,7 +781,57 @@ function payrollToParams(payroll) {
 		n(payroll.pl_balance) || 21,
 		payroll.payment_status || 'pending',
 		payroll.remarks || null,
+		n(member?.profile_id),
+		member?.profile_source ?? null,
+		member?.salary_type ?? null,
 	];
+}
+
+/**
+ * Take the shared per-Employee mutex for a single/batch write, then re-read
+ * the roster's current terms under those same locks.
+ *
+ * Callers already hold the Payroll Run row lock, so the lock order stays
+ * `payroll_runs` -> `employees` ascending -> agreement/use rows. Ids are
+ * deduped and sorted by the shared helper; the roster loader's own lock is
+ * idempotent and preserves that order. Ids that do not exist at all are absent
+ * from the locked scope and therefore from the roster (refused by membership);
+ * soft-deleted ids stay in scope and fall out of the loader's `isDelete = 0`
+ * membership.
+ */
+async function loadLockedEmployeeRoster(db, month, employeeIds) {
+	const requested = [...new Set(employeeIds)].sort(
+		(left, right) => left - right
+	);
+	const locked = await lockSalaryEmployees(db, requested);
+	const scope = locked.locks
+		.map((lock) => lock.employee_id)
+		.sort((left, right) => left - right);
+	return loadPayrollRunRoster(db, month, {
+		employeeIds: scope,
+		forUpdate: true,
+	});
+}
+
+/**
+ * Record durable, source-qualified payroll use for one exact agreement/month.
+ * Runs on the same connection as the slip insert, after the Employee lock, so
+ * a failure removes the slip and the use evidence together. A duplicate is a
+ * no-op; deletion of the slip never removes this row.
+ */
+async function recordGenerationUse(db, member, month, options = {}) {
+	return recordSalaryAgreementUse(db, {
+		employeeId: member.employee_id,
+		agreementId: member.profile_id,
+		agreementSource: member.profile_source,
+		month,
+		evidence: 'payroll_generation',
+		evidenceContext:
+			options.payrollRunId === undefined || options.payrollRunId === null
+				? null
+				: { payroll_run_id: options.payrollRunId },
+		actorId: options.actorId ?? null,
+	});
 }
 
 /**
@@ -715,7 +844,8 @@ function payrollToParams(payroll) {
  * read share the run row lock.
  * @param {number} employeeId - Employee ID
  * @param {Date} month - Payroll month (YYYY-MM-01 format)
- * @param {object} options - Existing connection / roster / bonus options
+ * @param {object} options - Existing connection / bonus options; `payrollRunId`
+ *   and `actorId` are recorded on the durable use evidence
  * @returns {Promise<object>} Generated payroll slip
  */
 export async function generatePayrollSlip(employeeId, month, options = {}) {
@@ -728,12 +858,38 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
 	}
 
 	const db = options.db;
-	const roster = options.roster || (await loadPayrollRunRoster(db, month));
-	const member = findRosterMember(roster, employeeId);
-	const refusal = payrollGenerationRefusal(member, employeeId, month);
+	const requestedId = Number(employeeId);
+	if (!Number.isInteger(requestedId) || requestedId <= 0) {
+		throw new PayrollGenerationError(
+			`Employee ${employeeId} is not on the ${month} payroll roster, so no Payroll Slip can be generated.`,
+			{
+				status: 422,
+				code: 'payroll_member_not_found',
+				employeeId,
+			}
+		);
+	}
+
+	// The run row lock is held; take the Employee lock before reading terms.
+	const roster = await loadLockedEmployeeRoster(db, month, [requestedId]);
+	const member = findRosterMember(roster, requestedId);
+	const refusal = payrollGenerationRefusal(member, requestedId, month);
 	if (refusal) throw refusal;
 
-	const payroll = await calculateEmployeePayroll(employeeId, month, {
+	// An existing slip is never repriced and never re-used by a later generate.
+	// Report the same conflict the insert's unique key would, without reading
+	// the agreement terms a second time.
+	const [existingSlips] = await db.execute(
+		`SELECT id FROM payroll_slips WHERE month = ? AND employee_id = ? LIMIT 1`,
+		[roster.month, requestedId]
+	);
+	if (existingSlips.length > 0) {
+		throw new Error(
+			`Payroll slip already exists for employee ${requestedId} for month ${month}`
+		);
+	}
+
+	const payroll = await calculateEmployeePayroll(requestedId, roster.month, {
 		...options,
 		db,
 		roster,
@@ -742,11 +898,11 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
 
 	if (!payroll) {
 		throw new PayrollGenerationError(
-			`No active salary profile found for employee ${employeeId}. Please set up salary structure first.`,
+			`No active salary profile found for employee ${requestedId}. Please set up salary structure first.`,
 			{
 				status: 400,
 				code: 'payroll_profile_missing',
-				employeeId,
+				employeeId: requestedId,
 			}
 		);
 	}
@@ -754,8 +910,11 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
 	try {
 		const [result] = await db.execute(
 			INSERT_SLIP_SQL,
-			payrollToParams(payroll)
+			payrollToParams(payroll, member)
 		);
+
+		// Same transaction: a failure here rolls the slip back with the use row.
+		await recordGenerationUse(db, member, roster.month, options);
 
 		return {
 			...payroll,
@@ -765,7 +924,7 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
 	} catch (error) {
 		if (error.code === 'ER_DUP_ENTRY') {
 			throw new Error(
-				`Payroll slip already exists for employee ${employeeId} for month ${month}`
+				`Payroll slip already exists for employee ${requestedId} for month ${month}`
 			);
 		}
 
@@ -784,7 +943,7 @@ export async function generatePayrollSlip(employeeId, month, options = {}) {
  */
 async function batchGetAttendance(db, employeeIds, month) {
 	// Get actual working days from holiday_master
-	const workingDaysInfo = await getWorkingDaysForMonth(month);
+	const workingDaysInfo = await getWorkingDaysForMonth(month, db);
 	const standardWorkingDays = workingDaysInfo.workingDays;
 
 	const defaultSummary = () => ({
@@ -1003,14 +1162,22 @@ export function computePayroll(
  * one whose employment window covers a day of the month and who has a Salary
  * Profile selected at max(month start, employment start) — which is what lets
  * a mid-month joiner in and still prices an established employee from the
- * first-of-month agreement. Candidates needing employment-date review or a
- * profile are not written here; Finalize names them instead.
+ * first-of-month agreement. Candidates needing employment-date review, a
+ * missing/ambiguous agreement or an unpriceable CTC are not written here;
+ * Finalize names them instead.
+ *
+ * The caller already holds the Payroll Run row lock. The loader establishes a
+ * stable candidate population, locks those Employees ascending, and re-reads
+ * their current terms `FOR UPDATE` before anything is priced. Each successful
+ * slip insert records exact source-qualified agreement use on the same
+ * connection; any failure rolls the whole batch back.
  *
  * @param {string} month - Payroll month (YYYY-MM-01 format)
  * @param {string|null} salaryType - Optional salary type filter
  * @param {boolean} includeBonus - Add the configured bonus
  * @param {number[]|null} bonusEmployeeIds - Limit the bonus to these employees
- * @param {object} options - `db`: caller's transaction connection
+ * @param {object} options - `db`: caller's transaction connection;
+ *   `payrollRunId`/`actorId` are recorded on the durable use evidence
  * @returns {Promise<object>} Summary of generation results
  */
 export async function generateMonthlyPayroll(
@@ -1048,14 +1215,22 @@ export async function generateMonthlyPayroll(
 		salaryType && validSalaryTypes.includes(salaryType);
 	const isPayrollFilter = salaryType === 'payroll';
 	const isContractFilter = salaryType === 'contract';
-	const roster = options.roster || (await loadPayrollRunRoster(db, month));
+	// The caller holds the Payroll Run row lock. Establish the candidate
+	// population, lock those Employees ascending and re-read their current
+	// terms before pricing anything.
+	const roster = await loadPayrollRunRoster(db, month, { forUpdate: true });
 
 	// ── 1. Eligible roster members for this stream ──
 	// Stream membership lives on the selected Salary Profile, not on
 	// employees.employee_type, so both Payroll and Contract agreements are
-	// covered unless the caller filters one.
+	// covered unless the caller filters one. A salary readiness issue (no
+	// agreement, competing agreements, missing/invalid CTC) is never priced as
+	// zero and never silently becomes a generated slip.
 	const employees = roster.members
-		.filter((member) => !member.issue && member.salary_profile)
+		.filter(
+			(member) =>
+				!member.issue && member.salary_profile && salaryIssueOf(member) === null
+		)
 		.filter((member) => {
 			if (!filterBySalaryType) return true;
 			const memberType = member.salary_type
@@ -1074,7 +1249,14 @@ export async function generateMonthlyPayroll(
 		}));
 
 	if (employees.length === 0) {
-		return { month, total: 0, success: 0, failed: 0, skipped: 0, errors: [] };
+		return {
+			month: roster.month,
+			total: 0,
+			success: 0,
+			failed: 0,
+			skipped: 0,
+			errors: [],
+		};
 	}
 
 	const employeeIds = employees.map((e) => e.employee_id);
@@ -1089,13 +1271,13 @@ export async function generateMonthlyPayroll(
 	const phExisting = employeeIds.map(() => '?').join(',');
 	const [existingSlips] = await db.execute(
 		`SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${phExisting})`,
-		[month, ...employeeIds]
+		[roster.month, ...employeeIds]
 	);
 	const existingSet = new Set(existingSlips.map((r) => r.employee_id));
 	const newIds = employeeIds.filter((id) => !existingSet.has(id));
 
 	const results = {
-		month,
+		month: roster.month,
 		total: employees.length,
 		success: 0,
 		failed: 0,
@@ -1108,9 +1290,9 @@ export async function generateMonthlyPayroll(
 	}
 
 	// ── 3. Batch-fetch effective schedules, attendance and logged hours ──
-	const payrollSchedule = await getEffectivePayrollSchedule(month, db);
-	const attendanceMap = await batchGetAttendance(db, newIds, month);
-	const hoursMap = await batchGetLoggedHours(db, newIds, month);
+	const payrollSchedule = await getEffectivePayrollSchedule(roster.month, db);
+	const attendanceMap = await batchGetAttendance(db, newIds, roster.month);
+	const hoursMap = await batchGetLoggedHours(db, newIds, roster.month);
 
 	// ── 4. Compute all payrolls in memory and batch-insert ──
 	const BATCH_SIZE = 50;
@@ -1154,14 +1336,14 @@ export async function generateMonthlyPayroll(
 				(bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
 			const payroll = computePayroll(
 				empId,
-				month,
+				roster.month,
 				profile,
 				undefined,
 				attendance,
 				empIncludeBonus,
 				payrollSchedule
 			);
-			toInsert.push(payroll);
+			toInsert.push({ payroll, member });
 		} catch (err) {
 			results.failed++;
 			results.errors.push({
@@ -1173,11 +1355,14 @@ export async function generateMonthlyPayroll(
 	}
 
 	// Multi-row INSERT in batches of BATCH_SIZE
+	const inserted = [];
 	for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
 		const batch = toInsert.slice(i, i + BATCH_SIZE);
 		const singlePlaceholder = SLIP_PLACEHOLDER;
 		const allPlaceholders = batch.map(() => singlePlaceholder).join(',');
-		const allParams = batch.flatMap(payrollToParams);
+		const allParams = batch.flatMap(({ payroll, member }) =>
+			payrollToParams(payroll, member)
+		);
 
 		const batchSQL = `INSERT INTO payroll_slips (
         ${SLIP_INSERT_COLUMNS.join(', ')}
@@ -1186,26 +1371,41 @@ export async function generateMonthlyPayroll(
 		try {
 			await db.query(batchSQL, allParams);
 			results.success += batch.length;
+			inserted.push(...batch);
 		} catch (batchErr) {
 			// Fallback: insert one-by-one so partial success is recorded
-			for (const payroll of batch) {
+			for (const entry of batch) {
 				try {
-					await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
+					await db.execute(
+						INSERT_SLIP_SQL,
+						payrollToParams(entry.payroll, entry.member)
+					);
 					results.success++;
+					inserted.push(entry);
 				} catch (singleErr) {
 					if (singleErr.code === 'ER_DUP_ENTRY') {
 						results.skipped++;
 					} else {
 						results.failed++;
 						results.errors.push({
-							employee_id: payroll.employee_id,
-							name: employeeNameMap.get(payroll.employee_id),
+							employee_id: entry.payroll.employee_id,
+							name: employeeNameMap.get(entry.payroll.employee_id),
 							error: singleErr.message,
 						});
 					}
 				}
 			}
 		}
+	}
+
+	// Durable use for exactly the slips this transaction inserted, ascending
+	// Employee id (the loader already holds those locks). A failed evidence
+	// write throws, so the caller's transaction removes every new slip too.
+	inserted.sort(
+		(left, right) => left.member.employee_id - right.member.employee_id
+	);
+	for (const entry of inserted) {
+		await recordGenerationUse(db, entry.member, roster.month, options);
 	}
 
 	return results;
@@ -1216,15 +1416,23 @@ export async function generateMonthlyPayroll(
  * OPTIMIZED: batch-fetches data and inserts in bulk.
  *
  * Every requested id is checked against the shared monthly roster; an id that
- * is not eligible (or needs employment-date review, or has no profile) is
- * refused by name instead of being written. This closes the single/batch path
- * as a bypass around Generate's roster.
+ * is not eligible (or needs employment-date review, has a missing/ambiguous
+ * agreement or an unpriceable CTC) is refused by name instead of being
+ * written. This closes the single/batch path as a bypass around Generate's
+ * roster.
+ *
+ * The caller holds the Payroll Run row lock; this takes the shared Employee
+ * locks for exactly the requested ids, re-reads their current terms
+ * `FOR UPDATE`, and writes each slip together with its exact source-qualified
+ * agreement provenance and durable generation use. An existing slip is skipped
+ * without repricing; any use-evidence failure aborts the batch for rollback.
  *
  * @param {number[]} employeeIds - Array of employee IDs
  * @param {string} month - Payroll month (YYYY-MM-01 format)
  * @param {boolean} includeBonus - Add the configured bonus
  * @param {number[]|null} bonusEmployeeIds - Limit the bonus to these employees
- * @param {object} options - `db`: caller's transaction connection
+ * @param {object} options - `db`: caller's transaction connection;
+ *   `payrollRunId`/`actorId` are recorded on the durable use evidence
  * @returns {Promise<object>} Summary { success, failed, skipped, errors }
  */
 export async function generatePayrollSlipsBatch(
@@ -1253,18 +1461,42 @@ export async function generatePayrollSlipsBatch(
 	}
 
 	const db = options.db;
-	const roster = options.roster || (await loadPayrollRunRoster(db, month));
-	const memberMap = new Map(
-		roster.members.map((member) => [Number(member.employee_id), member])
-	);
+	const numericIds = [];
+	const seenIds = new Set();
+	for (const value of employeeIds) {
+		const id = Number(value);
+		if (Number.isInteger(id) && id > 0 && !seenIds.has(id)) {
+			seenIds.add(id);
+			numericIds.push(id);
+		}
+	}
 
-	// Check existing
-	const ph = employeeIds.map(() => '?').join(',');
-	const [existingSlips] = await db.execute(
-		`SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${ph})`,
-		[month, ...employeeIds]
+	// The run row lock is held; take the sorted Employee locks before reading
+	// agreement terms. Only the requested ids are read and priced.
+	const roster =
+		numericIds.length > 0
+			? await loadLockedEmployeeRoster(db, month, numericIds)
+			: null;
+	const memberMap = new Map(
+		(roster?.members || []).map((member) => [
+			Number(member.employee_id),
+			member,
+		])
 	);
-	const existingSet = new Set(existingSlips.map((r) => r.employee_id));
+	const rosterMonth = roster?.month ?? month;
+
+	// Check existing. A recorded slip is skipped, never repriced or re-used.
+	const existingSet = new Set();
+	if (numericIds.length > 0) {
+		const ph = numericIds.map(() => '?').join(',');
+		const [existingSlips] = await db.execute(
+			`SELECT employee_id FROM payroll_slips WHERE month = ? AND employee_id IN (${ph})`,
+			[rosterMonth, ...numericIds]
+		);
+		for (const row of existingSlips) {
+			existingSet.add(Number(row.employee_id));
+		}
+	}
 
 	const results = {
 		success: 0,
@@ -1278,14 +1510,20 @@ export async function generatePayrollSlipsBatch(
 	const pendingIds = [];
 	for (const employeeId of employeeIds) {
 		const empId = Number(employeeId);
-		if (existingSet.has(empId)) continue;
+		if (Number.isInteger(empId) && empId > 0 && existingSet.has(empId)) {
+			continue;
+		}
 
-		const member = memberMap.get(empId);
-		const refusal = payrollGenerationRefusal(member, empId, month);
+		const member = memberMap.get(empId) || null;
+		const refusal = payrollGenerationRefusal(
+			member,
+			Number.isInteger(empId) && empId > 0 ? empId : employeeId,
+			rosterMonth
+		);
 		if (refusal) {
 			results.failed++;
 			results.errors.push({
-				employee_id: empId,
+				employee_id: Number.isInteger(empId) && empId > 0 ? empId : employeeId,
 				name: member?.name,
 				employee_code: member?.employee_code,
 				reason: refusal.code,
@@ -1301,13 +1539,19 @@ export async function generatePayrollSlipsBatch(
 		return results;
 	}
 
-	// Batch-fetch effective schedules, attendance, and hours.
-	const payrollSchedule = await getEffectivePayrollSchedule(month, db);
-	const attendanceMap = await batchGetAttendance(db, pendingIds, month);
-	const hoursMap = await batchGetLoggedHours(db, pendingIds, month);
+	// The loader locked these Employees ascending; keep inserts and use
+	// evidence in that same order.
+	pendingIds.sort((left, right) => left - right);
+
+	// Batch-fetch effective schedules, attendance, and hours from the same
+	// locked transaction snapshot.
+	const payrollSchedule = await getEffectivePayrollSchedule(rosterMonth, db);
+	const attendanceMap = await batchGetAttendance(db, pendingIds, rosterMonth);
+	const hoursMap = await batchGetLoggedHours(db, pendingIds, rosterMonth);
 
 	for (const empId of pendingIds) {
-		const profile = memberMap.get(empId)?.salary_profile;
+		const member = memberMap.get(empId);
+		const profile = member?.salary_profile;
 		if (!profile) {
 			// Refused above; kept as a guard against a roster changing mid-flight.
 			results.failed++;
@@ -1334,29 +1578,36 @@ export async function generatePayrollSlipsBatch(
 			...(attendanceMap.get(empId) || defaultAtt),
 			loggedHours: hoursMap.get(empId) || 0,
 		};
+
+		let payroll;
 		try {
 			// If bonusEmployeeIds is provided, only include bonus for those specific employees
 			const empIncludeBonus =
 				includeBonus &&
 				(bonusEmployeeIds === null || bonusEmployeeIds.includes(empId));
-			const payroll = computePayroll(
+			payroll = computePayroll(
 				empId,
-				month,
+				rosterMonth,
 				profile,
 				undefined,
 				attendance,
 				empIncludeBonus,
 				payrollSchedule
 			);
-			await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll));
-			results.success++;
+			await db.execute(INSERT_SLIP_SQL, payrollToParams(payroll, member));
 		} catch (err) {
 			if (err.code === 'ER_DUP_ENTRY') results.skipped++;
 			else {
 				results.failed++;
 				results.errors.push({ employee_id: empId, error: err.message });
 			}
+			continue;
 		}
+
+		results.success++;
+		// Same transaction as the insert: a failure here must abort the batch so
+		// neither the slip nor a partial protection set is committed.
+		await recordGenerationUse(db, member, rosterMonth, options);
 	}
 
 	return results;

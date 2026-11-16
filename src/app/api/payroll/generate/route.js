@@ -54,7 +54,13 @@ const memberLabel = (member) =>
  * transaction holding `SELECT ... FOR UPDATE` on the month's Payroll Run row,
  * so Generate and Finalize for the same month cannot interleave: a Generate
  * that starts first either commits its slips before Finalize's completeness
- * check or loses the race and sees the locked run.
+ * check or loses the race and sees the locked run. After that row lock, each
+ * write mode takes the sorted per-Employee locks (scoped for single/batch) and
+ * re-reads current agreement terms under them, closes the documented
+ * unavailability reasons, and commits each slip's exact source-qualified
+ * agreement provenance plus durable Employee/agreement/month use on the same
+ * connection. A failed generation rolls both back; preview takes no write lock
+ * and marks nothing used.
  */
 export async function POST(request) {
 	// RBAC check
@@ -65,6 +71,9 @@ export async function POST(request) {
 	);
 	if (authResult instanceof Response) return authResult;
 	if (!authResult.authorized) return authResult.response;
+
+	// Recorded on the durable payroll-use evidence this transaction writes.
+	const actorId = authResult.user?.id ?? null;
 
 	try {
 		const body = await request.json();
@@ -225,7 +234,7 @@ export async function POST(request) {
 					salary_type || null,
 					!!include_bonus,
 					bonusIds,
-					{ db }
+					{ db, payrollRunId: run.id, actorId }
 				);
 
 				return {
@@ -250,7 +259,7 @@ export async function POST(request) {
 					periodMonth,
 					!!include_bonus,
 					bonusIds,
-					{ db }
+					{ db, payrollRunId: run.id, actorId }
 				);
 
 				return {
@@ -268,6 +277,8 @@ export async function POST(request) {
 			const slip = await generatePayrollSlip(employee_id, periodMonth, {
 				include_bonus: !!include_bonus,
 				db,
+				payrollRunId: run.id,
+				actorId,
 			});
 
 			return {
