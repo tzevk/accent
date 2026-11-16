@@ -1,11 +1,28 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import type { PayrollSalaryEvidence } from '@/lib/company-expenditure/payroll';
 import { PayrollSummary } from './payroll-summary';
 import type { PayrollSummaryProps } from './payroll-summary';
 import type { PayrollEmployeeRow } from './types';
 
 const MONTH = '2026-09';
 const ESTIMATED_TOTAL = 53182;
+
+function salaryEvidence(
+	overrides: Partial<PayrollSalaryEvidence> = {}
+): PayrollSalaryEvidence {
+	return {
+		availability: 'missing',
+		issue: 'salary_profile_missing',
+		profile_id: null,
+		profile_source: null,
+		salary_type: null,
+		ctc_source: 'none',
+		conflict_ids: [],
+		legacy_fallback: false,
+		...overrides,
+	};
+}
 
 function employee(overrides: Partial<PayrollEmployeeRow>): PayrollEmployeeRow {
 	return {
@@ -14,6 +31,7 @@ function employee(overrides: Partial<PayrollEmployeeRow>): PayrollEmployeeRow {
 		employee_name: 'Employee 7',
 		pay_stream: 'unknown',
 		status: 'unknown',
+		salary: salaryEvidence(),
 		recorded_amount: null,
 		estimated_amount: null,
 		slip_amount: null,
@@ -93,6 +111,14 @@ function props(): PayrollSummaryProps {
 				no_project_hours: 104,
 				no_logged_hours: false,
 				missing_pricing: false,
+				salary: salaryEvidence({
+					availability: 'available',
+					issue: null,
+					profile_id: 21,
+					profile_source: 'employee_salary_profile',
+					salary_type: 'monthly',
+					ctc_source: 'employer_cost',
+				}),
 				source: {
 					payroll_slip_id: null,
 					allocation_id: null,
@@ -140,5 +166,135 @@ describe('PayrollSummary draft disclosure', () => {
 		expect(
 			within(estimated as HTMLElement).getByText('Estimated')
 		).toBeInTheDocument();
+	});
+});
+
+function rowFor(name: string): HTMLElement {
+	const row = screen
+		.getAllByRole('row')
+		.find((candidate) => within(candidate).queryByText(name));
+	if (!row) throw new Error(`No employee row for ${name}`);
+	return row;
+}
+
+describe('PayrollSummary salary availability disclosure', () => {
+	it('shows an ambiguity as unknown cost with its conflict ids, never as zero', () => {
+		const fixture = props();
+		const ambiguous = fixture.payrollEmployees.find(
+			(candidate) => candidate.employee_id === 7
+		);
+		if (!ambiguous) throw new Error('Fixture is missing Employee 7');
+		ambiguous.salary = salaryEvidence({
+			availability: 'ambiguous',
+			issue: 'salary_profile_ambiguous',
+			conflict_ids: [31, 32],
+		});
+		render(<PayrollSummary {...fixture} />);
+
+		const row = rowFor('Employee 7');
+		const gap = within(row).getByTestId('payroll-salary-gap');
+		expect(gap).toHaveTextContent(
+			'Cost unknown — several Salary Profiles cover the month'
+		);
+		expect(gap.getAttribute('title')).toContain('Profiles #31, #32');
+		expect(within(row).queryByText('₹0.00')).toBeNull();
+	});
+
+	it('distinguishes a legacy gross fallback from a confirmed canonical zero', () => {
+		const fixture = props();
+		fixture.payrollEmployees = [
+			employee({
+				employee_id: 41,
+				employee_code: 'EMP-41',
+				employee_name: 'Legacy 41',
+				pay_stream: 'payroll',
+				status: 'estimated',
+				estimated_amount: 42000,
+				missing_pricing: false,
+				salary: salaryEvidence({
+					availability: 'available',
+					issue: null,
+					profile_id: 41,
+					profile_source: 'employee_salary_profile',
+					salary_type: 'monthly',
+					ctc_source: 'gross_salary',
+					legacy_fallback: true,
+				}),
+			}),
+			employee({
+				employee_id: 42,
+				employee_code: 'EMP-42',
+				employee_name: 'Zero 42',
+				pay_stream: 'payroll',
+				status: 'estimated',
+				estimated_amount: 0,
+				missing_pricing: false,
+				salary: salaryEvidence({
+					availability: 'available',
+					issue: null,
+					profile_id: 42,
+					profile_source: 'employee_salary_profile',
+					salary_type: 'monthly',
+					ctc_source: 'employer_cost',
+				}),
+			}),
+		];
+		render(<PayrollSummary {...fixture} />);
+
+		const legacy = rowFor('Legacy 41');
+		expect(
+			within(legacy).getByTestId('payroll-salary-legacy')
+		).toHaveTextContent('Legacy gross basis, not agreed CTC');
+		expect(within(legacy).queryByTestId('payroll-salary-zero')).toBeNull();
+
+		const zero = rowFor('Zero 42');
+		expect(within(zero).getByTestId('payroll-salary-zero')).toHaveTextContent(
+			'Confirmed zero employer cost'
+		);
+		expect(within(zero).queryByTestId('payroll-salary-gap')).toBeNull();
+		expect(within(zero).getByText('₹0.00')).toBeInTheDocument();
+	});
+
+	it('renders every salary coverage notice the month carries', () => {
+		const fixture = props();
+		fixture.data.coverage = [
+			{
+				code: 'payroll_salary_ambiguous',
+				label: 'Several Salary Profiles cover this month',
+				detail: 'One employee has overlapping agreements.',
+				severity: 'warning',
+			},
+			{
+				code: 'payroll_salary_ctc_missing',
+				label: 'Salary Profile has no monthly CTC',
+				detail: 'One employee has no agreed CTC.',
+				severity: 'warning',
+			},
+			{
+				code: 'payroll_salary_ctc_invalid',
+				label: 'Salary Profile CTC is invalid',
+				detail: 'One employee has an invalid CTC.',
+				severity: 'warning',
+			},
+			{
+				code: 'payroll_salary_unavailable',
+				label: 'Salary evidence unavailable for this month',
+				detail: 'One employee has no roster salary record.',
+				severity: 'warning',
+			},
+		];
+		render(<PayrollSummary {...fixture} />);
+
+		const notices = screen
+			.getAllByTestId('payroll-notice')
+			.map((notice) => notice.textContent);
+		expect(notices).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining('Several Salary Profiles cover this month'),
+				expect.stringContaining('Salary Profile has no monthly CTC'),
+				expect.stringContaining('Salary Profile CTC is invalid'),
+				expect.stringContaining('Salary evidence unavailable for this month'),
+			])
+		);
 	});
 });

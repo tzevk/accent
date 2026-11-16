@@ -11,10 +11,40 @@
 
 import { Fragment } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import type { PayrollSalaryEvidence } from '@/lib/company-expenditure/payroll';
 import { formatCurrencyIn, formatNumber } from '@/lib/format';
 import { AllocationRevisionPanel } from './allocation-revisions';
 import { PAYROLL_STATUS_LABELS, errorMessage } from './shared';
 import type { PayrollEmployeeRow, ReconciliationPayload } from './types';
+
+/**
+ * The salary outcomes that leave a row's cost unknown. `recorded` and
+ * `not_consulted` are absent: their cost was frozen without a live salary read
+ * and is disclosed by the payroll status instead.
+ */
+const SALARY_GAP_LABELS: Record<
+	Exclude<
+		PayrollSalaryEvidence['availability'],
+		'available' | 'recorded' | 'not_consulted'
+	>,
+	string
+> = {
+	missing: 'Cost unknown — no Salary Profile covers the month',
+	ambiguous: 'Cost unknown — several Salary Profiles cover the month',
+	ctc_missing: 'Cost unknown — Salary Profile has no monthly CTC',
+	ctc_invalid: 'Cost unknown — Salary Profile CTC is invalid',
+	unavailable: 'Cost unknown — no roster salary record',
+};
+
+/** The competing agreements behind an ambiguity, for the chip's tooltip. */
+function salaryConflictTitle(
+	salary: PayrollSalaryEvidence
+): string | undefined {
+	if (salary.conflict_ids.length === 0) return undefined;
+	return `Profiles ${salary.conflict_ids
+		.map((id) => `#${id}`)
+		.join(', ')} cover this month; no single agreement is chosen.`;
+}
 
 export interface PayrollSummaryProps {
 	/** The payroll slice the block reads: figures, notices, and month label. */
@@ -86,6 +116,10 @@ export function PayrollSummary({
 			notice.code === 'payroll_not_finalized' ||
 			notice.code === 'payroll_slip_missing' ||
 			notice.code === 'payroll_pricing_missing' ||
+			notice.code === 'payroll_salary_ambiguous' ||
+			notice.code === 'payroll_salary_ctc_missing' ||
+			notice.code === 'payroll_salary_ctc_invalid' ||
+			notice.code === 'payroll_salary_unavailable' ||
 			notice.code === 'payroll_allocation_missing' ||
 			notice.code === 'payroll_roster_unavailable' ||
 			notice.code === 'payroll_work_outside_finalized_run' ||
@@ -125,6 +159,17 @@ export function PayrollSummary({
 						(No project + No logged hours)
 					</p>
 				</div>
+				{data.payroll.unpriced_count > 0 && (
+					<p
+						data-testid="payroll-partial"
+						className="border-b border-gray-100 px-3 py-2 text-[11px] font-medium text-amber-900"
+					>
+						Recorded and estimated totals are partial:{' '}
+						{data.payroll.unpriced_count} employee cost(s) cannot be calculated
+						and are excluded. Their hours remain visible; a displayed zero is
+						not their actual salary cost.
+					</p>
+				)}
 				{payrollNotices.length > 0 && (
 					<ul
 						data-testid="payroll-notices"
@@ -222,6 +267,17 @@ export function PayrollSummary({
 							{payrollEmployees.map((employee) => {
 								const expanded = expandedEmployee === employee.employee_id;
 								const reconstruction = employee.reconstruction;
+								const salary = employee.salary;
+								const gapLabel =
+									salary.availability === 'available' ||
+									salary.availability === 'recorded' ||
+									salary.availability === 'not_consulted'
+										? null
+										: SALARY_GAP_LABELS[salary.availability];
+								const confirmedZero =
+									salary.availability === 'available' &&
+									salary.ctc_source === 'employer_cost' &&
+									(employee.recorded_amount ?? employee.estimated_amount) === 0;
 								return (
 									<Fragment key={employee.employee_id}>
 										<tr
@@ -314,6 +370,33 @@ export function PayrollSummary({
 																	· allocation unavailable
 																</div>
 															)}
+														{gapLabel && (
+															<div
+																data-testid="payroll-salary-gap"
+																title={salaryConflictTitle(salary)}
+																className="mt-1 inline-block rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900 ring-1 ring-amber-200"
+															>
+																{gapLabel}
+															</div>
+														)}
+														{salary.legacy_fallback && (
+															<div
+																data-testid="payroll-salary-legacy"
+																title="The amount comes from a legacy gross salary field, not the agreed monthly CTC."
+																className="mt-1 inline-block rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-900 ring-1 ring-sky-200"
+															>
+																Legacy gross basis, not agreed CTC
+															</div>
+														)}
+														{confirmedZero && (
+															<div
+																data-testid="payroll-salary-zero"
+																title="The covering agreement states an explicit employer cost of zero."
+																className="mt-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-900 ring-1 ring-emerald-200"
+															>
+																Confirmed zero employer cost
+															</div>
+														)}
 													</div>
 												</div>
 												{/* #308: reconstruction state and its review controls. Pending
