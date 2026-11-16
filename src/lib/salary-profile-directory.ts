@@ -96,6 +96,18 @@ export interface SalaryDirectoryEmployeeRow {
 	exit_date?: string | null;
 }
 
+/**
+ * A database Employee projection whose `id` has already been validated as a
+ * positive integer. The public row type keeps the wider `number | string` id
+ * for build callers; database reads narrow to this shape once.
+ */
+interface SalaryDirectoryEmployeeRecord extends Omit<
+	SalaryDirectoryEmployeeRow,
+	'id'
+> {
+	id: number;
+}
+
 export interface SalaryDirectoryAgreement {
 	agreement_id: number;
 	source: SalaryAgreementSource;
@@ -1047,9 +1059,9 @@ function payrollUseEvidenceFromRow(
 	};
 }
 
-function employeesFromRows(value: unknown): SalaryDirectoryEmployeeRow[] {
+function employeesFromRows(value: unknown): SalaryDirectoryEmployeeRecord[] {
 	return rowsOf(value)
-		.map((row) => {
+		.map((row): SalaryDirectoryEmployeeRecord | null => {
 			const id = positiveInteger(row.id);
 			const employeeId = textValue(row.employee_id);
 			if (id === null || employeeId === null) return null;
@@ -1064,9 +1076,9 @@ function employeesFromRows(value: unknown): SalaryDirectoryEmployeeRow[] {
 				joining_date: dateText(row.joining_date),
 				hire_date: dateText(row.hire_date),
 				exit_date: dateText(row.exit_date),
-			} satisfies SalaryDirectoryEmployeeRow;
+			} satisfies SalaryDirectoryEmployeeRecord;
 		})
-		.filter((row): row is SalaryDirectoryEmployeeRow => row !== null);
+		.filter((row): row is SalaryDirectoryEmployeeRecord => row !== null);
 }
 
 interface LoadedProjection {
@@ -1153,7 +1165,7 @@ async function loadProjection(
 async function loadLiveEmployees(
 	db: SalaryDirectoryDb,
 	ids?: readonly number[]
-): Promise<SalaryDirectoryEmployeeRow[]> {
+): Promise<SalaryDirectoryEmployeeRecord[]> {
 	if (ids === undefined) {
 		const [result] = await db.execute(
 			`SELECT ${EMPLOYEE_COLUMNS}
@@ -1165,7 +1177,7 @@ async function loadLiveEmployees(
 	}
 
 	const sorted = uniqueSorted(ids);
-	const employees: SalaryDirectoryEmployeeRow[] = [];
+	const employees: SalaryDirectoryEmployeeRecord[] = [];
 	for (const chunk of chunks(sorted, EMPLOYEE_QUERY_CHUNK)) {
 		const [result] = await db.execute(
 			`SELECT ${EMPLOYEE_COLUMNS}
@@ -1182,7 +1194,7 @@ async function loadLiveEmployees(
 
 async function loadEmployeesWithAgreements(
 	db: SalaryDirectoryDb
-): Promise<SalaryDirectoryEmployeeRow[]> {
+): Promise<SalaryDirectoryEmployeeRecord[]> {
 	const [result] = await db.execute(
 		`SELECT ${EMPLOYEE_COLUMNS}
        FROM employees e
