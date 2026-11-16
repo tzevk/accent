@@ -22,12 +22,17 @@
  *   outside the known employment window, are named on the member instead of
  *   being silently dropped.
  *
- * Profile selection mirrors the payroll calculator: the newest active
- * canonical `employee_salary_profile` row covering the anchor wins, and the
- * legacy `salary_structures` row is a read-only field fallback. The anchor is
- * `max(month first day, employment start)`, so a mid-month new hire is priced
- * from their joining date without repricing an established employee for a
- * mid-month rate edit.
+ * Profile selection uses the shared period-effective selector. Exactly one
+ * active canonical `employee_salary_profile` agreement must cover the anchor;
+ * two or more covering agreements are ambiguous and no row is chosen. Only
+ * when no canonical agreement covers the anchor may a period-effective legacy
+ * `salary_structures` agreement supply the identity, with legacy fields still
+ * available as the read-only field fallback. The monthly CTC is resolved by
+ * the shared presence-based resolver, so an explicit canonical zero is a real
+ * salary and a missing/invalid CTC is reported without inventing a gross. The
+ * anchor is `max(month first day, employment start)`, so a mid-month new hire
+ * is priced from their joining date without repricing an established employee
+ * for a mid-month rate edit.
  *
  * Finalize snapshots add one append-only version per run. The snapshot keeps
  * only identity and profile provenance — never Salary Profile money, which is
@@ -36,8 +41,17 @@
  * re-finalizing appends the next version instead of overwriting history.
  */
 
-import { hoursByDateForMonth, sumLoggedHoursForMonth } from '@/lib/logged-hours';
+import {
+	hoursByDateForMonth,
+	sumLoggedHoursForMonth,
+} from '@/lib/logged-hours';
 import { resolveLoggedHoursEmployeeId } from '@/lib/logged-hours-source';
+import { resolveSalaryCtc, type SalaryCtcSource } from '@/lib/salary-ctc';
+import {
+	resolveSalaryAgreementAt,
+	salaryMonthAnchor,
+} from '@/lib/salary-profile-timeline';
+import { lockSalaryEmployees } from '@/lib/salary-profile-store';
 import { normalizeSalaryProfile } from '@/utils/payroll-calculation';
 
 export type PayrollRunProfileSource =
@@ -48,6 +62,18 @@ export type PayrollRunMemberIssue =
 	| 'employment_dates_missing'
 	| 'employment_dates_invalid'
 	| 'work_outside_employment';
+
+/**
+ * Salary readiness, deliberately separate from the employment-date `issue`.
+ * `salary_profile_missing` is the ordinary no-agreement gap; ambiguity is a
+ * review state with no chosen agreement; the CTC issues mean a covering
+ * agreement exists but cannot price the month.
+ */
+export type PayrollRunSalaryIssue =
+	| 'salary_profile_missing'
+	| 'salary_profile_ambiguous'
+	| 'salary_ctc_missing'
+	| 'salary_ctc_invalid';
 
 /** One employee in the month's validated payroll roster. */
 export interface PayrollRunMember {
@@ -63,6 +89,12 @@ export interface PayrollRunMember {
 	profile_source: PayrollRunProfileSource | null;
 	profile_id: number | null;
 	salary_type: string | null;
+	/** Salary readiness; `issue` remains employment-date-only. */
+	salary_issue: PayrollRunSalaryIssue | null;
+	/** Sorted covering agreement ids behind an ambiguity; empty otherwise. */
+	salary_conflict_ids: number[];
+	/** CTC source disclosed by the shared resolver; `none` when unresolved. */
+	salary_ctc_source: SalaryCtcSource;
 	issue: PayrollRunMemberIssue | null;
 }
 
@@ -235,6 +267,15 @@ function firstRow(value: unknown): Record<string, unknown> | null {
 	return typeof first === 'object' && first !== null && !Array.isArray(first)
 		? (first as Record<string, unknown>)
 		: null;
+}
+
+/** The object rows of a mysql2 result tuple, ignoring a malformed value. */
+function rowsOf(value: unknown): Array<Record<string, unknown>> {
+	if (!Array.isArray(value)) return [];
+	return value.filter(
+		(row): row is Record<string, unknown> =>
+			typeof row === 'object' && row !== null && !Array.isArray(row)
+	);
 }
 
 function dateTimeText(value: unknown): string | null {
@@ -464,73 +505,105 @@ function profileCoversMonth(
 	return to === null || to >= monthStart;
 }
 
-/**
- * The newest active profile covering `anchor`. `effective_from DESC, id DESC`
- * is the calculator's precedence; an invalid `effective_to` cannot prove the
- * row covers the anchor, so it is not selected.
- */
-function newestCovering(
-	rows: readonly PayrollRunProfileRow[] | undefined,
-	anchor: string
-): PayrollRunProfileRow | null {
-	let best: PayrollRunProfileRow | null = null;
-	let bestFrom = '';
-	let bestId = 0;
-	for (const row of rows ?? []) {
-		if (!profileIsActive(row)) continue;
-		const id = positiveInteger(row.id);
-		if (id === null) continue;
-		const from = parseDay(row.effective_from);
-		if (from === null || from > anchor) continue;
-		const toRaw = text(row.effective_to);
-		const to = parseDay(toRaw);
-		if (toRaw !== null && to === null) continue;
-		if (to !== null && to < anchor) continue;
-		if (best === null || from > bestFrom || (from === bestFrom && id > bestId)) {
-			best = row;
-			bestFrom = from;
-			bestId = id;
-		}
-	}
-	return best;
-}
-
 interface SelectedProfile {
 	salary_profile: Record<string, unknown> | null;
 	profile_source: PayrollRunProfileSource | null;
 	profile_id: number | null;
 	salary_type: string | null;
+	salary_issue: PayrollRunSalaryIssue | null;
+	salary_conflict_ids: number[];
+	salary_ctc_source: SalaryCtcSource;
 }
 
-function selectProfile(
-	canonicalRows: readonly PayrollRunProfileRow[] | undefined,
-	legacyRows: readonly PayrollRunProfileRow[] | undefined,
-	anchor: string
+/** The selection when the anchor has no single usable agreement. */
+function unresolvedProfile(
+	issue: PayrollRunSalaryIssue,
+	conflictIds: readonly number[] = []
 ): SelectedProfile {
-	const canonical = newestCovering(canonicalRows, anchor);
-	const legacy = newestCovering(legacyRows, anchor);
-	if (canonical === null && legacy === null) {
-		return {
-			salary_profile: null,
-			profile_source: null,
-			profile_id: null,
-			salary_type: null,
-		};
-	}
+	return {
+		salary_profile: null,
+		profile_source: null,
+		profile_id: null,
+		salary_type: null,
+		salary_issue: issue,
+		salary_conflict_ids: [...conflictIds].sort((left, right) => left - right),
+		salary_ctc_source: 'none',
+	};
+}
+
+/** Resolve the displayed terms of one selected agreement and its CTC. */
+function selectedProfile(
+	row: Record<string, unknown>,
+	source: PayrollRunProfileSource,
+	legacyFallback: Record<string, unknown> | null
+): SelectedProfile {
 	const normalized = normalizeSalaryProfile(
-		canonical,
-		legacy
+		source === 'employee_salary_profile' ? row : null,
+		source === 'salary_structures' ? row : legacyFallback
 	) as Record<string, unknown>;
-	const chosen = canonical ?? legacy;
+	const ctc = resolveSalaryCtc(normalized);
 	return {
 		salary_profile: normalized,
-		profile_source:
-			canonical !== null ? 'employee_salary_profile' : 'salary_structures',
-		profile_id: positiveInteger(chosen?.id),
+		profile_source: source,
+		profile_id: positiveInteger(row.id),
 		// The schema's default stream is monthly; a blank type must not make a
 		// valid profile impossible to freeze.
 		salary_type: text(normalized.salary_type) ?? 'monthly',
+		salary_issue:
+			ctc.status === 'missing'
+				? 'salary_ctc_missing'
+				: ctc.status === 'invalid'
+					? 'salary_ctc_invalid'
+					: null,
+		salary_conflict_ids: [],
+		salary_ctc_source: ctc.status === 'resolved' ? ctc.source : 'none',
 	};
+}
+
+/**
+ * Select the month's pay terms at `anchor` with the shared covering resolver.
+ *
+ * Canonical ambiguity is decisive: a legacy agreement is never allowed to hide
+ * competing canonical rows. Only an unavailable canonical range falls back to
+ * the period-effective legacy agreement, which then owns the identity while
+ * its fields remain the read-only legacy fallback.
+ */
+function selectProfile(
+	canonicalRows: readonly PayrollRunProfileRow[] | undefined,
+	legacyRows: readonly PayrollRunProfileRow[] | undefined,
+	anchor: string,
+	employeeId: number
+): SelectedProfile {
+	const canonical = resolveSalaryAgreementAt(canonicalRows ?? [], anchor, {
+		source: 'employee_salary_profile',
+		employeeId,
+	});
+	if (canonical.state === 'ambiguous') {
+		return unresolvedProfile(
+			'salary_profile_ambiguous',
+			canonical.conflict_ids
+		);
+	}
+
+	const legacy = resolveSalaryAgreementAt(legacyRows ?? [], anchor, {
+		source: 'salary_structures',
+		employeeId,
+	});
+
+	if (canonical.state === 'selected' && canonical.profile !== null) {
+		return selectedProfile(
+			canonical.profile,
+			'employee_salary_profile',
+			legacy.state === 'selected' ? legacy.profile : null
+		);
+	}
+	if (legacy.state === 'ambiguous') {
+		return unresolvedProfile('salary_profile_ambiguous', legacy.conflict_ids);
+	}
+	if (legacy.state === 'selected' && legacy.profile !== null) {
+		return selectedProfile(legacy.profile, 'salary_structures', null);
+	}
+	return unresolvedProfile('salary_profile_missing');
 }
 
 /* ── logged-hours evidence ─────────────────────────────────────────── */
@@ -658,8 +731,7 @@ export function buildPayrollRunRoster(
 			if (!hasEvidence) {
 				excluded.push({
 					employee_id: employeeId,
-					employee_code:
-						text(employee.employee_id) ?? `#${employeeId}`,
+					employee_code: text(employee.employee_id) ?? `#${employeeId}`,
 					name: memberName(employee, employeeId),
 					reason: exclusionReason(dates.start, dates.end, month),
 				});
@@ -670,24 +742,17 @@ export function buildPayrollRunRoster(
 			if (issue === null) issue = 'work_outside_employment';
 		} else if (
 			issue === null &&
-			hasWorkOutsideEmployment(
-				monthEvidence,
-				monthKey,
-				dates.start,
-				dates.end
-			)
+			hasWorkOutsideEmployment(monthEvidence, monthKey, dates.start, dates.end)
 		) {
 			issue = 'work_outside_employment';
 		}
 
-		const anchor =
-			dates.start !== null && dates.start > monthStart
-				? dates.start
-				: monthStart;
+		const anchor = salaryMonthAnchor(month, dates.start);
 		const profile = selectProfile(
 			canonicalProfiles.get(employeeId),
 			legacyProfiles.get(employeeId),
-			anchor
+			anchor,
+			employeeId
 		);
 
 		members.push({
@@ -702,6 +767,9 @@ export function buildPayrollRunRoster(
 			profile_source: profile.profile_source,
 			profile_id: profile.profile_id,
 			salary_type: profile.salary_type,
+			salary_issue: profile.salary_issue,
+			salary_conflict_ids: profile.salary_conflict_ids,
+			salary_ctc_source: profile.salary_ctc_source,
 			issue,
 		});
 	}
@@ -720,6 +788,68 @@ export function buildPayrollRunRoster(
 /* ── loader ────────────────────────────────────────────────────────── */
 
 /**
+ * Optional read context for generation/finalization write paths.
+ *
+ * Read-only callers pass nothing and keep the existing plain reads. A write
+ * caller holds the Payroll Run row lock first, then asks the loader to take the
+ * cross-feature Employee mutex before its current reads.
+ */
+export interface PayrollRunRosterReadOptions {
+	/**
+	 * Restrict the Employee population and every per-Employee read to these
+	 * ids. Deduped and sorted ascending; invalid ids throw. Absent means every
+	 * non-deleted Employee.
+	 */
+	employeeIds?: readonly (number | string)[];
+	/**
+	 * Establish sorted Employee locks and read the Employee/profile rows
+	 * `FOR UPDATE` on this connection. Only for the transaction that owns the
+	 * Payroll Run lock.
+	 */
+	forUpdate?: boolean;
+}
+
+function employeeIdScope(values: readonly (number | string)[]): number[] {
+	const ids = new Set<number>();
+	for (const value of values) {
+		const id = positiveInteger(value);
+		if (id === null) {
+			throw new RangeError(`Invalid Employee id "${String(value)}"`);
+		}
+		ids.add(id);
+	}
+	return [...ids].sort((left, right) => left - right);
+}
+
+function placeholders(ids: readonly number[]): string {
+	return ids.map(() => '?').join(', ');
+}
+
+/** ` AND column IN (...)` for a scoped read, nothing for an unscoped one. */
+function scopeClause(
+	column: string,
+	ids: readonly number[] | null
+): { sql: string; params: number[] } {
+	if (ids === null) return { sql: '', params: [] };
+	if (ids.length === 0) return { sql: ' AND 1 = 0', params: [] };
+	return {
+		sql: ` AND ${column} IN (${placeholders(ids)})`,
+		params: [...ids],
+	};
+}
+
+function emptyRoster(month: string): PayrollRunRoster {
+	return buildPayrollRunRoster({
+		month,
+		employees: [],
+		canonical_profiles: [],
+		legacy_profiles: [],
+		slip_employee_ids: [],
+		assignments: [],
+	});
+}
+
+/**
  * Load the month's candidates, their active canonical/legacy profiles and the
  * month's slip/Logged Hours evidence, then build the roster.
  *
@@ -729,18 +859,83 @@ export function buildPayrollRunRoster(
  * recorded employee id, then the linked account's canonical `employee_id` — an
  * email or display name never establishes ownership. A missing roster table is
  * not read here: Finalize owns that deployment prerequisite.
+ *
+ * With `forUpdate`, the Employee population is established first and locked
+ * ascending (employees, then salary timelines) before any current terms read,
+ * so a salary command either commits before this transaction prices the
+ * month or waits for the use evidence it writes. The all-population candidate
+ * read is a plain snapshot; only the ids it returned are locked, re-read
+ * `FOR UPDATE` and priced, so a concurrent salary setup cannot smuggle an
+ * unlocked Employee into the roster. Never append `FOR UPDATE` to a
+ * whole-company read from a caller that holds one Employee lock.
  */
 export async function loadPayrollRunRoster(
 	db: PayrollRunRosterDb,
-	month: string
+	month: string,
+	options: PayrollRunRosterReadOptions = {}
 ): Promise<PayrollRunRoster> {
 	const normalized = normalizePayrollRunMonth(month);
+	const scoped =
+		options.employeeIds === undefined
+			? null
+			: employeeIdScope(options.employeeIds);
+	if (scoped !== null && scoped.length === 0) return emptyRoster(normalized);
+
+	let readIds = scoped;
+	if (options.forUpdate) {
+		let population = scoped;
+		if (population === null) {
+			const [idRows] = await db.execute(
+				`SELECT id
+           FROM employees
+          WHERE isDelete = 0
+          ORDER BY id`
+			);
+			const ids: number[] = [];
+			for (const row of rowsOf(idRows)) {
+				const id = positiveInteger(row.id);
+				if (id !== null) ids.push(id);
+			}
+			population = ids;
+		}
+		if (population.length === 0) return emptyRoster(normalized);
+
+		const locked = await lockSalaryEmployees(db, population);
+		if (locked.missing_employee_ids.length > 0) {
+			throw new Error(
+				`Payroll roster Employee(s) ${locked.missing_employee_ids.join(
+					', '
+				)} do not exist`
+			);
+		}
+		readIds = locked.locks
+			.map((lock) => lock.employee_id)
+			.sort((left, right) => left - right);
+		if (readIds.length === 0) return emptyRoster(normalized);
+	}
+
+	const employeeScope = scopeClause('e.id', readIds);
+	const profileScope = scopeClause('employee_id', readIds);
+	const slipScope = scopeClause('employee_id', readIds);
+	const assignmentScope =
+		readIds === null
+			? { sql: '', params: [] as number[] }
+			: {
+					sql: ` AND (uaa.employee_id IN (${placeholders(
+						readIds
+					)}) OR u.employee_id IN (${placeholders(readIds)}))`,
+					params: [...readIds, ...readIds],
+				};
+	const lockSuffix = options.forUpdate ? ' FOR UPDATE' : '';
+
+	// Each `execute` resolves to mysql2's `[rows, fields]` tuple; unwrap the
+	// rows exactly once before `rowsOf` inspects them.
 	const [
-		employeeRows,
-		canonicalRows,
-		legacyRows,
-		slipRows,
-		assignmentRows,
+		[employeeRows],
+		[canonicalRows],
+		[legacyRows],
+		[slipRows],
+		[assignmentRows],
 	] = await Promise.all([
 		db.execute(
 			`SELECT e.id, e.employee_id,
@@ -748,21 +943,25 @@ export async function loadPayrollRunRoster(
               e.employee_type, e.status,
               e.joining_date, e.hire_date, e.exit_date, e.isDelete
          FROM employees e
-        WHERE e.isDelete = 0`
+        WHERE e.isDelete = 0${employeeScope.sql}${lockSuffix}`,
+			employeeScope.params
 		),
 		db.execute(
 			`SELECT *
          FROM employee_salary_profile
-        WHERE is_active = 1`
+        WHERE is_active = 1${profileScope.sql}${lockSuffix}`,
+			profileScope.params
 		),
 		db.execute(
 			`SELECT *
          FROM salary_structures
-        WHERE is_active = 1`
+        WHERE is_active = 1${profileScope.sql}${lockSuffix}`,
+			profileScope.params
 		),
-		db.execute(`SELECT employee_id FROM payroll_slips WHERE month = ?`, [
-			normalized,
-		]),
+		db.execute(
+			`SELECT employee_id FROM payroll_slips WHERE month = ?${slipScope.sql}`,
+			[normalized, ...slipScope.params]
+		),
 		db.execute(
 			`SELECT uaa.employee_id, uaa.daily_entries,
               u.employee_id AS user_employee_id
@@ -770,24 +969,25 @@ export async function loadPayrollRunRoster(
          LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
         WHERE uaa.status <> 'Cancelled'
           AND uaa.daily_entries IS NOT NULL
-          AND uaa.daily_entries NOT IN ('', '[]')`
+          AND uaa.daily_entries NOT IN ('', '[]')${assignmentScope.sql}`,
+			assignmentScope.params
 		),
 	]);
 
-	const slipEmployeeIds: Array<number | string> = [];
-	for (const row of (slipRows[0] ?? []) as Array<Record<string, unknown>>) {
-		const value = row.employee_id;
-		if (typeof value === 'number' || typeof value === 'string')
-			slipEmployeeIds.push(value);
-	}
-
 	return buildPayrollRunRoster({
 		month: normalized,
-		employees: (employeeRows[0] ?? []) as PayrollRunEmployeeRow[],
-		canonical_profiles: (canonicalRows[0] ?? []) as PayrollRunProfileRow[],
-		legacy_profiles: (legacyRows[0] ?? []) as PayrollRunProfileRow[],
-		slip_employee_ids: slipEmployeeIds,
-		assignments: (assignmentRows[0] ?? []) as PayrollRunAssignmentRow[],
+		employees: rowsOf(employeeRows) as unknown as PayrollRunEmployeeRow[],
+		canonical_profiles: rowsOf(
+			canonicalRows
+		) as unknown as PayrollRunProfileRow[],
+		legacy_profiles: rowsOf(legacyRows) as unknown as PayrollRunProfileRow[],
+		slip_employee_ids: rowsOf(slipRows).flatMap((row) => {
+			const value = row.employee_id;
+			return typeof value === 'number' || typeof value === 'string'
+				? [value]
+				: [];
+		}),
+		assignments: rowsOf(assignmentRows) as unknown as PayrollRunAssignmentRow[],
 	});
 }
 
@@ -820,17 +1020,43 @@ function freezeBlockers(roster: PayrollRunRoster): string[] {
 				`${label} has an unresolved employment issue (${member.issue})`
 			);
 		}
-		if (member.salary_profile === null) {
-			blockers.push(`${label} has no Salary Profile`);
+		// Older hand-built rosters do not carry `salary_issue`; a null profile is
+		// still the ordinary missing-agreement gap. Salary problems never become
+		// employment-date messages.
+		const salaryIssue =
+			member.salary_issue ??
+			(member.salary_profile === null ? 'salary_profile_missing' : null);
+		if (salaryIssue === 'salary_profile_missing') {
+			blockers.push(`${label} has no Salary Profile for the month`);
+		} else if (salaryIssue === 'salary_profile_ambiguous') {
+			const ids = (member.salary_conflict_ids ?? []).join(', ');
+			blockers.push(
+				`${label} has overlapping Salary Profiles${
+					ids ? ` (ids ${ids})` : ''
+				} — review the salary timeline`
+			);
+		} else if (salaryIssue === 'salary_ctc_missing') {
+			blockers.push(`${label} has a Salary Profile with no monthly CTC`);
+		} else if (salaryIssue === 'salary_ctc_invalid') {
+			blockers.push(
+				`${label} has an invalid monthly CTC on Salary Profile ${
+					member.profile_id ?? 'unknown'
+				}`
+			);
 		}
-		if (member.profile_source === null) {
-			blockers.push(`${label} has no Salary Profile source`);
-		}
-		if (positiveInteger(member.profile_id) === null) {
-			blockers.push(`${label} has no Salary Profile id`);
-		}
-		if (text(member.salary_type) === null) {
-			blockers.push(`${label} has no salary type`);
+		if (salaryIssue === null) {
+			if (member.salary_profile === null) {
+				blockers.push(`${label} has no Salary Profile`);
+			}
+			if (member.profile_source === null) {
+				blockers.push(`${label} has no Salary Profile source`);
+			}
+			if (positiveInteger(member.profile_id) === null) {
+				blockers.push(`${label} has no Salary Profile id`);
+			}
+			if (text(member.salary_type) === null) {
+				blockers.push(`${label} has no salary type`);
+			}
 		}
 		if (parseDay(member.profile_date) === null) {
 			blockers.push(`${label} has an invalid profile date`);
@@ -933,9 +1159,7 @@ export async function savePayrollRunRoster(
 		throw new Error(`Payroll Run ${runId} has an invalid period`);
 	}
 	if (runMonth !== month) {
-		throw new Error(
-			`Payroll Run ${runId} covers ${runMonth}, not ${month}`
-		);
+		throw new Error(`Payroll Run ${runId} covers ${runMonth}, not ${month}`);
 	}
 
 	const [versionRows] = await db.execute(
@@ -992,11 +1216,7 @@ function frozenMember(
 	version: number
 ): FrozenPayrollRunMember {
 	const where = `Payroll roster snapshot ${runId} v${version}`;
-	if (
-		typeof value !== 'object' ||
-		value === null ||
-		Array.isArray(value)
-	) {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
 		throw new Error(`${where} contains a malformed member`);
 	}
 	const row = value as Record<string, unknown>;
@@ -1010,11 +1230,8 @@ function frozenMember(
 	const startRaw = row.employment_start;
 	const endRaw = row.employment_end;
 	const start =
-		startRaw === null || startRaw === undefined
-			? null
-			: parseDay(startRaw);
-	const end =
-		endRaw === null || endRaw === undefined ? null : parseDay(endRaw);
+		startRaw === null || startRaw === undefined ? null : parseDay(startRaw);
+	const end = endRaw === null || endRaw === undefined ? null : parseDay(endRaw);
 
 	if (
 		employeeId === null ||
@@ -1114,9 +1331,7 @@ export async function loadFrozenPayrollRunRoster(
 		);
 	}
 
-	const members = parsed.map((member) =>
-		frozenMember(member, runId, version)
-	);
+	const members = parsed.map((member) => frozenMember(member, runId, version));
 	const seen = new Set<number>();
 	for (const member of members) {
 		if (seen.has(member.employee_id)) {

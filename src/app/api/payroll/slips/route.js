@@ -8,6 +8,10 @@ import {
 import { formatMonth } from '@/lib/format';
 import { resolveScheduledDA, slipFigures } from '@/lib/payroll';
 import {
+	readSlipSalaryContexts,
+	slipMatchesSalaryTypeFilter,
+} from '@/lib/payroll-slip-salary';
+import {
 	payrollPeriod,
 	findPayrollRun,
 	isRunLocked,
@@ -102,17 +106,9 @@ export async function GET(request) {
              e.department,
              e.grade as designation,
              e.position,
-             e.joining_date,
-                  ss_inner.basic_salary as structure_basic_salary,
-                  ss_inner.gross_salary as structure_gross_salary,
-             sp_inner.gross_salary as profile_gross,
-                  sp_inner.employer_cost as profile_ctc,
-                        sp_inner.basic as profile_basic,
-                        sp_inner.basic_plus_da as profile_basic_plus_da
+             e.joining_date
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
-                LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
-      LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE 1=1
     `;
 		const params = [];
@@ -137,15 +133,26 @@ export async function GET(request) {
 			params.push(payment_status);
 		}
 
-		if (salary_type === 'payroll') {
-			query += ` AND NOT EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
-		} else if (salary_type === 'contract') {
-			query += ` AND EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
-		}
-
+		// Salary Type is resolved from each slip's recorded/confirmed context
+		// after the read, so a later Payroll/Contract change cannot move an
+		// earlier slip between streams (see @/lib/payroll-slip-salary).
 		query += ` ORDER BY ps.month DESC, e.first_name ASC`;
 
-		const [rows] = await db.execute(query, params);
+		const [rawRows] = await db.execute(query, params);
+
+		// One context per slip. The listing no longer joins agreements, so a
+		// second historical active agreement cannot multiply slips or totals.
+		const contexts = await readSlipSalaryContexts(db, rawRows);
+		let rows = rawRows.map((row, index) => ({
+			...row,
+			salary_context: contexts[index],
+		}));
+
+		if (salary_type === 'payroll' || salary_type === 'contract') {
+			rows = rows.filter((row) =>
+				slipMatchesSalaryTypeFilter(row.salary_context, salary_type)
+			);
+		}
 
 		// Normalize BASIC/DA through the shared slip figures, so every reader of
 		// this listing, the Payroll Slip document and the PDFs shows one set of
@@ -165,7 +172,8 @@ export async function GET(request) {
 
 		const normalizedRows = rows.map((row) => {
 			// The fallback chain lives in slipFigures so this listing, the on-screen
-			// Payroll Slip and both PDF exports report the same numbers.
+			// Payroll Slip and both PDF exports report the same numbers. Its only
+			// profile input is this row's recorded/confirmed salary_context.
 			const figures = slipFigures(row, { scheduledDA });
 
 			return {
