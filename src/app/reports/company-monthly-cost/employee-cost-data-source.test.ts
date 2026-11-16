@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-	sumHoursByMonth,
-	buildProjectCostRows,
 	buildProjectCostTotals,
-	resolveHourlyRateOfFY,
 	buildMonthlyAllocationRows,
 	buildMonthlyAllocationEmployeeRows,
 	buildMonthlyAllocationProjectRows,
@@ -12,7 +9,6 @@ import {
 	buildFYAllocationEmployeeRows,
 	buildFYAllocationProjectRows,
 	buildFYAllocationTotals,
-	type SalaryProfile,
 	type ProjectCostRow,
 } from '@/app/reports/company-monthly-cost/employee-cost-data-source';
 
@@ -20,196 +16,51 @@ import type {
 	PayrollEmployeeCost,
 	PayrollProjectShare,
 } from '@/lib/company-expenditure/types';
-function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
+
+/** The salary evidence `loadPayrollMonth` attaches to every row. */
+interface SalaryEvidenceFixture {
+	availability:
+		| 'recorded'
+		| 'not_consulted'
+		| 'available'
+		| 'missing'
+		| 'ambiguous'
+		| 'ctc_missing'
+		| 'ctc_invalid'
+		| 'unavailable';
+	issue:
+		| 'salary_profile_missing'
+		| 'salary_profile_ambiguous'
+		| 'salary_ctc_missing'
+		| 'salary_ctc_invalid'
+		| null;
+	profile_id: number | null;
+	profile_source: 'employee_salary_profile' | 'salary_structures' | null;
+	salary_type: string | null;
+	ctc_source: 'employer_cost' | 'gross_salary' | 'gross' | 'none';
+	conflict_ids: number[];
+	legacy_fallback: boolean;
+}
+
+type PayrollCostRowFixture = PayrollEmployeeCost & {
+	salary: SalaryEvidenceFixture;
+};
+
+function evidence(
+	overrides: Partial<SalaryEvidenceFixture> = {}
+): SalaryEvidenceFixture {
 	return {
-		employee_id: 1,
-		gross: 0,
-		gross_salary: 20000,
-		employer_cost: 22000,
-		hourly_rate: 0,
-		daily_rate: 0,
-		std_hours_per_day: 8,
-		std_working_days: 26,
-		salary_type: 'monthly',
-		tds_percentage: 10,
-		effective_from: '2026-01-01',
-		effective_to: null,
+		availability: 'missing',
+		issue: 'salary_profile_missing',
+		profile_id: null,
+		profile_source: null,
+		salary_type: null,
+		ctc_source: 'none',
+		conflict_ids: [],
+		legacy_fallback: false,
 		...overrides,
 	};
 }
-
-function assignment(
-	overrides: Record<string, unknown> = {}
-): Record<string, unknown> {
-	return {
-		project_id: 10,
-		project_code: 'ATS-001',
-		project_name: 'Tower Layout',
-		client_name: 'Acme Ltd',
-		daily_entries: '[]',
-		...overrides,
-	};
-}
-
-describe('sumHoursByMonth', () => {
-	it('buckets daily-entry hours per calendar month from a JSON string', () => {
-		const raw = JSON.stringify([
-			{ date: '2026-04-01', hours: 8 },
-			{ date: '2026-04-02', hours: '4.5' },
-			{ date: '2026-04-03', hours: 0 },
-			{ date: '2026-05-11', hours: 7 },
-		]);
-		expect(sumHoursByMonth(raw)).toEqual({
-			'2026-04': 12.5,
-			'2026-05': 7,
-		});
-	});
-
-	it('accepts an already-parsed array and ignores malformed entries', () => {
-		expect(
-			sumHoursByMonth([
-				{ date: '2026-06-01', hours: 3 },
-				{ qty_done: 5 },
-				null,
-				{ date: '', hours: 5 },
-				{ date: '2026-06-02' },
-			])
-		).toEqual({ '2026-06': 3 });
-	});
-
-	it('returns an empty object for null / invalid JSON', () => {
-		expect(sumHoursByMonth(null)).toEqual({});
-		expect(sumHoursByMonth('not json')).toEqual({});
-	});
-});
-
-describe('buildProjectCostRows', () => {
-	it('merges assignments per project and costs hours at the salary-derived rate', () => {
-		const rows = buildProjectCostRows(
-			[
-				assignment({
-					daily_entries: JSON.stringify([
-						{ date: '2026-04-01', hours: 8 },
-						{ date: '2026-04-02', hours: 8 },
-					]),
-				}),
-				assignment({
-					daily_entries: JSON.stringify([{ date: '2026-04-20', hours: 4 }]),
-				}),
-			],
-			[profile()],
-			2026
-		);
-		expect(rows).toHaveLength(1);
-		const row = rows[0];
-		expect(row.project_code).toBe('ATS-001');
-		expect(row.sr_no).toBe(1);
-		expect(row.monthly_hours.apr).toBe(20);
-		// Raw rate 20000 / 208 = 96.1538… × 20h = 1923.08 (unrounded-rate math)
-		expect(row.monthly_cost.apr).toBe(1923.08);
-		expect(row.total_hours).toBe(20);
-		expect(row.total_cost).toBe(1923.08);
-		// Display rate is the rounded payroll formula result
-		expect(row.hourly_rate).toBe(96.15);
-	});
-
-	it('uses the stored hourly rate for hourly salary types', () => {
-		const rows = buildProjectCostRows(
-			[
-				assignment({
-					project_id: 11,
-					project_code: 'ATS-002',
-					daily_entries: JSON.stringify([{ date: '2026-07-05', hours: 10 }]),
-				}),
-			],
-			[profile({ salary_type: 'hourly', hourly_rate: 250 })],
-			2026
-		);
-		expect(rows[0].hourly_rate).toBe(250);
-		expect(rows[0].monthly_cost.jul).toBe(2500);
-	});
-
-	it('applies each month’s own effective-dated profile (mid-year raise)', () => {
-		const rows = buildProjectCostRows(
-			[
-				assignment({
-					daily_entries: JSON.stringify([
-						{ date: '2026-04-10', hours: 10 },
-						{ date: '2026-10-15', hours: 4 },
-					]),
-				}),
-			],
-			[
-				profile({ gross_salary: 20800, effective_to: '2026-09-30' }), // 100/hr
-				profile({ gross_salary: 26000, effective_from: '2026-10-01' }), // 125/hr
-			],
-			2026
-		);
-		expect(rows[0].monthly_cost.apr).toBe(1000); // 10h × 100
-		expect(rows[0].monthly_cost.oct).toBe(500); // 4h × 125
-		expect(rows[0].total_cost).toBe(1500);
-		expect(
-			resolveHourlyRateOfFY(
-				[
-					profile({ gross_salary: 20800, effective_to: '2026-09-30' }),
-					profile({ gross_salary: 26000, effective_from: '2026-10-01' }),
-				],
-				2026
-			)
-		).toBe(100); // profile covering FY start (Apr)
-	});
-
-	it('keeps only FY-window months and drops projects with no hours in the FY', () => {
-		const rows = buildProjectCostRows(
-			[
-				// Hours only in FY 2025 → dropped from FY 2026 view
-				assignment({
-					project_id: 12,
-					project_code: 'ATS-OLD',
-					daily_entries: JSON.stringify([{ date: '2025-05-01', hours: 40 }]),
-				}),
-				// Apr 2026 hours land inside FY 2026; Mar 2027 also belongs to it
-				assignment({
-					daily_entries: JSON.stringify([
-						{ date: '2026-04-02', hours: 5 },
-						{ date: '2027-03-28', hours: 3 },
-					]),
-				}),
-			],
-			[profile()],
-			2026
-		);
-		expect(rows).toHaveLength(1);
-		expect(rows[0].monthly_hours.apr).toBe(5);
-		expect(rows[0].monthly_hours.mar).toBe(3);
-		expect(rows[0].total_hours).toBe(8);
-	});
-
-	it('sorts rows by project code and assigns sequential sr_no', () => {
-		const rows = buildProjectCostRows(
-			[
-				assignment({
-					project_id: 22,
-					project_code: 'B-002',
-					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 2 }]),
-				}),
-				assignment({
-					project_id: 21,
-					project_code: 'A-001',
-					daily_entries: JSON.stringify([{ date: '2026-04-01', hours: 2 }]),
-				}),
-			],
-			[profile()],
-			2026
-		);
-		expect(rows.map((r) => r.project_code)).toEqual(['A-001', 'B-002']);
-		expect(rows.map((r) => r.sr_no)).toEqual([1, 2]);
-	});
-
-	it('returns [] when there are no assignments', () => {
-		expect(buildProjectCostRows([], [profile()], 2026)).toEqual([]);
-	});
-});
 
 describe('buildProjectCostTotals', () => {
 	const row = (overrides: Partial<ProjectCostRow> = {}): ProjectCostRow => ({
@@ -265,12 +116,13 @@ describe('monthly salary profile coverage', () => {
 			rounding_adjustment: 0,
 			basis: 'project',
 		};
-		const unpriced: PayrollEmployeeCost = {
+		const unpriced: PayrollCostRowFixture = {
 			employee_id: 1,
 			employee_code: 'EMP-1',
 			employee_name: 'Missing profile',
 			pay_stream: 'unknown',
 			status: 'unknown',
+			salary: evidence(),
 			recorded_amount: null,
 			estimated_amount: null,
 			slip_amount: null,
@@ -304,8 +156,9 @@ describe('monthly salary profile coverage', () => {
 			hours_by_project: [],
 			reconstruction: null,
 		};
-		const recorded: PayrollEmployeeCost = {
+		const recorded: PayrollCostRowFixture = {
 			...unpriced,
+			salary: evidence({ availability: 'recorded', issue: null }),
 			employee_id: 2,
 			employee_code: 'EMP-2',
 			employee_name: 'Recorded employee',
@@ -353,6 +206,7 @@ describe('monthly salary profile coverage', () => {
 				cost: 0,
 				cost_status: 'unknown',
 				missing_salary_profile: true,
+				salary: evidence(),
 			},
 			{
 				project_id: 51,
@@ -360,6 +214,7 @@ describe('monthly salary profile coverage', () => {
 				cost: 0,
 				cost_status: 'unknown',
 				missing_salary_profile: true,
+				salary: evidence(),
 			},
 		]);
 		expect(buildMonthlyAllocationEmployeeRows(rows)).toEqual(
@@ -369,12 +224,14 @@ describe('monthly salary profile coverage', () => {
 					hours: 12,
 					cost: 0,
 					missing_salary_profile: true,
+					salary: evidence(),
 				}),
 				expect.objectContaining({
 					employee_id: 2,
 					hours: 2,
 					cost: 200,
 					missing_salary_profile: false,
+					salary: evidence({ availability: 'recorded', issue: null }),
 				}),
 				expect.objectContaining({
 					employee_id: 3,
@@ -394,6 +251,176 @@ describe('monthly salary profile coverage', () => {
 			estimated_cost: 0,
 			employee_count: 3,
 			project_count: 2,
+		});
+	});
+});
+
+describe('monthly salary availability disclosure', () => {
+	it('distinguishes missing, ambiguous, invalid, canonical zero and legacy fallback salary', () => {
+		const share = (projectId: number, amount: number): PayrollProjectShare => ({
+			project_id: projectId,
+			project_code: `P-${projectId}`,
+			project_name: `Project ${projectId}`,
+			client_name: null,
+			hours: 8,
+			amount,
+			rounding_adjustment: 0,
+			basis: 'project',
+		});
+		const row = (
+			employeeId: number,
+			salary: SalaryEvidenceFixture,
+			options: {
+				estimatedAmount?: number | null;
+				missingPricing?: boolean;
+			} = {}
+		): PayrollCostRowFixture => ({
+			employee_id: employeeId,
+			employee_code: `EMP-${employeeId}`,
+			employee_name: `Employee ${employeeId}`,
+			pay_stream: 'payroll',
+			status:
+				options.estimatedAmount === null
+					? 'unknown'
+					: options.estimatedAmount === undefined
+						? 'unknown'
+						: 'estimated',
+			recorded_amount: null,
+			estimated_amount: options.estimatedAmount ?? null,
+			slip_amount: null,
+			in_saved_roster: null,
+			worked_outside_finalized_run: false,
+			employment_issue: null,
+			logged_hours: 8,
+			project_hours: 8,
+			no_project_hours: 0,
+			no_logged_hours: false,
+			missing_slip: false,
+			missing_pricing: options.missingPricing ?? false,
+			allocation_missing: false,
+			source: {
+				payroll_slip_id: null,
+				allocation_id: null,
+				allocation_version: null,
+				allocation_kind: null,
+				month: '2026-10',
+			},
+			shares: [share(70 + employeeId, options.estimatedAmount ?? 0)],
+			hours_by_project: [],
+			reconstruction: null,
+			salary,
+		});
+
+		const rows = buildMonthlyAllocationRows(
+			[
+				row(1, evidence(), { missingPricing: true }),
+				row(
+					2,
+					evidence({
+						availability: 'ambiguous',
+						issue: 'salary_profile_ambiguous',
+						conflict_ids: [7, 8],
+					}),
+					{ missingPricing: true }
+				),
+				row(
+					3,
+					evidence({
+						availability: 'ctc_invalid',
+						issue: 'salary_ctc_invalid',
+						profile_id: 9,
+						profile_source: 'employee_salary_profile',
+					}),
+					{ missingPricing: true }
+				),
+				row(
+					4,
+					evidence({
+						availability: 'available',
+						issue: null,
+						profile_id: 10,
+						profile_source: 'employee_salary_profile',
+						ctc_source: 'employer_cost',
+					}),
+					{ estimatedAmount: 0 }
+				),
+				row(
+					5,
+					evidence({
+						availability: 'available',
+						issue: null,
+						profile_id: 11,
+						profile_source: 'employee_salary_profile',
+						ctc_source: 'gross_salary',
+						legacy_fallback: true,
+					}),
+					{ estimatedAmount: 1000 }
+				),
+			],
+			new Map()
+		);
+
+		expect(
+			rows.find((candidate) => candidate.employee_id === 1)?.salary
+		).toEqual(evidence());
+		expect(
+			rows.find((candidate) => candidate.employee_id === 2)?.salary
+		).toMatchObject({ availability: 'ambiguous', conflict_ids: [7, 8] });
+		expect(
+			rows.find((candidate) => candidate.employee_id === 3)?.salary
+		).toMatchObject({ availability: 'ctc_invalid' });
+		expect(rows.find((candidate) => candidate.employee_id === 4)).toMatchObject(
+			{
+				cost: 0,
+				cost_status: 'estimated',
+				cost_known: true,
+				salary: { availability: 'available', ctc_source: 'employer_cost' },
+			}
+		);
+		expect(rows.find((candidate) => candidate.employee_id === 5)).toMatchObject(
+			{
+				cost: 1000,
+				cost_known: true,
+				salary: { ctc_source: 'gross_salary', legacy_fallback: true },
+			}
+		);
+
+		const projects = buildMonthlyAllocationProjectRows(rows);
+		expect(projects.find((project) => project.project_id === 72)).toMatchObject(
+			{
+				salary_availability_counts: expect.objectContaining({
+					ambiguous: 1,
+				}),
+			}
+		);
+		expect(projects.find((project) => project.project_id === 73)).toMatchObject(
+			{
+				salary_availability_counts: expect.objectContaining({
+					ctc_invalid: 1,
+				}),
+			}
+		);
+		expect(projects.find((project) => project.project_id === 74)).toMatchObject(
+			{
+				cost_known: true,
+				salary_availability_counts: expect.objectContaining({
+					available: 1,
+				}),
+			}
+		);
+
+		const employeeRows = buildMonthlyAllocationEmployeeRows(rows);
+		expect(
+			employeeRows.find((employee) => employee.employee_id === 2)
+		).toMatchObject({
+			salary: { availability: 'ambiguous', conflict_ids: [7, 8] },
+		});
+		expect(
+			employeeRows.find((employee) => employee.employee_id === 4)
+		).toMatchObject({
+			cost: 0,
+			cost_known: true,
+			salary: { availability: 'available' },
 		});
 	});
 });

@@ -32,7 +32,11 @@ import {
 	loadFrozenPayrollRunRoster,
 	loadPayrollRunRoster,
 	type FrozenPayrollRunRoster,
+	type PayrollRunMember,
+	type PayrollRunProfileSource,
+	type PayrollRunSalaryIssue,
 } from '@/lib/payroll-run-roster';
+import type { SalaryCtcSource } from '@/lib/salary-ctc';
 import { calculatePayroll } from '@/utils/payroll-calculation';
 import {
 	getEffectivePayrollSchedule,
@@ -484,9 +488,8 @@ export async function loadAllocationBasis(
 			: Promise.resolve<string | null>(null),
 	]);
 	const savedMember =
-		frozenRoster?.members.find(
-			(member) => member.employee_id === employeeId
-		) ?? null;
+		frozenRoster?.members.find((member) => member.employee_id === employeeId) ??
+		null;
 	const liveMember =
 		liveRoster?.members.find((member) => member.employee_id === employeeId) ??
 		null;
@@ -534,17 +537,176 @@ export function registerReconstructionSummaryReader(
 	reconstructionSummaryReader = reader;
 }
 
-/* ── the month's interpretation ────────────────────────────────────── */
+/* ── salary availability of the month's cost rows ──────────────────── */
+
+/**
+ * How a row's salary evidence stands. `recorded` is frozen cost, where the
+ * live Salary Profile is never consulted; `not_consulted` is a locked month
+ * priced from other evidence; the remaining states are the draft estimate's
+ * explicit salary outcomes, never a silent zero.
+ */
+export type PayrollSalaryAvailability =
+	| 'recorded'
+	| 'not_consulted'
+	| 'available'
+	| 'missing'
+	| 'ambiguous'
+	| 'ctc_missing'
+	| 'ctc_invalid'
+	| 'unavailable';
+
+/** The salary evidence behind one employee-month cost row. */
+export interface PayrollSalaryEvidence {
+	availability: PayrollSalaryAvailability;
+	/** The shared roster's salary readiness issue, if any. */
+	issue: PayrollRunSalaryIssue | null;
+	/** The selected agreement's identity, when one was selected. */
+	profile_id: number | null;
+	profile_source: PayrollRunProfileSource | null;
+	salary_type: string | null;
+	/** Which field supplied the CTC; `none` when unresolved. */
+	ctc_source: SalaryCtcSource;
+	/** Sorted covering agreement ids behind an ambiguity; empty otherwise. */
+	conflict_ids: number[];
+	/** True only when the amount comes from a legacy gross field, not agreed CTC. */
+	legacy_fallback: boolean;
+}
+
+/** One employee-month cost row with its salary evidence. */
+export interface PayrollEmployeeCostRow extends PayrollEmployeeCost {
+	salary: PayrollSalaryEvidence;
+}
+
+/** The salary population behind the month's rows, for partial-total disclosure. */
+export interface PayrollSalarySummary {
+	available_count: number;
+	missing_count: number;
+	ambiguous_count: number;
+	ctc_missing_count: number;
+	ctc_invalid_count: number;
+	unavailable_count: number;
+	legacy_fallback_count: number;
+	/** Rows whose cost is frozen/recorded, so live salary was not consulted. */
+	recorded_count: number;
+	/** Locked rows priced from other evidence, without a live salary read. */
+	not_consulted_count: number;
+	/**
+	 * Every row whose cost depends on live salary has resolved salary terms.
+	 * Totals stay partial when this is false, even though they exclude the gaps.
+	 */
+	complete: boolean;
+}
 
 export interface PayrollMonthInterpretation {
 	month: string;
 	monthLabel: string;
 	currency: string;
 	totals: PayrollExpenditure;
-	employees: PayrollEmployeeCost[];
+	employees: PayrollEmployeeCostRow[];
+	/** How much of the salary population is priced, and why the rest is not. */
+	salary: PayrollSalarySummary;
 	coverage: CoverageNotice[];
 	/** The membership evidence behind the rows. */
 	roster: PayrollRosterState;
+}
+
+const SALARY_AVAILABILITY_ORDER: PayrollSalaryAvailability[] = [
+	'recorded',
+	'not_consulted',
+	'available',
+	'missing',
+	'ambiguous',
+	'ctc_missing',
+	'ctc_invalid',
+	'unavailable',
+];
+
+function emptySalaryEvidence(
+	availability: PayrollSalaryAvailability
+): PayrollSalaryEvidence {
+	return {
+		availability,
+		issue: null,
+		profile_id: null,
+		profile_source: null,
+		salary_type: null,
+		ctc_source: 'none',
+		conflict_ids: [],
+		legacy_fallback: false,
+	};
+}
+
+/** Map one live roster member's selection to its disclosed salary evidence. */
+function draftSalaryEvidence(
+	member: PayrollRunMember | null
+): PayrollSalaryEvidence {
+	if (member === null) return emptySalaryEvidence('unavailable');
+	const selected: PayrollSalaryAvailability =
+		member.salary_issue === 'salary_profile_missing'
+			? 'missing'
+			: member.salary_issue === 'salary_profile_ambiguous'
+				? 'ambiguous'
+				: member.salary_issue === 'salary_ctc_missing'
+					? 'ctc_missing'
+					: member.salary_issue === 'salary_ctc_invalid'
+						? 'ctc_invalid'
+						: 'available';
+	// A roster row that claims availability without selected terms is not
+	// priceable; disclose the gap instead of deriving an estimate from null.
+	const availability: PayrollSalaryAvailability =
+		selected === 'available' && member.salary_profile === null
+			? 'unavailable'
+			: selected;
+	return {
+		availability,
+		issue: member.salary_issue,
+		profile_id: member.profile_id,
+		profile_source: member.profile_source,
+		salary_type: member.salary_type,
+		ctc_source: member.salary_ctc_source,
+		conflict_ids: [...member.salary_conflict_ids],
+		legacy_fallback:
+			member.salary_ctc_source === 'gross_salary' ||
+			member.salary_ctc_source === 'gross',
+	};
+}
+
+function salarySummaryOf(
+	rows: readonly PayrollEmployeeCostRow[]
+): PayrollSalarySummary {
+	const counts = new Map<PayrollSalaryAvailability, number>(
+		SALARY_AVAILABILITY_ORDER.map(
+			(availability): [PayrollSalaryAvailability, number] => [availability, 0]
+		)
+	);
+	let legacyFallbackCount = 0;
+	for (const row of rows) {
+		counts.set(
+			row.salary.availability,
+			(counts.get(row.salary.availability) ?? 0) + 1
+		);
+		if (row.salary.legacy_fallback) legacyFallbackCount++;
+	}
+	const count = (availability: PayrollSalaryAvailability) =>
+		counts.get(availability) ?? 0;
+	return {
+		available_count: count('available'),
+		missing_count: count('missing'),
+		ambiguous_count: count('ambiguous'),
+		ctc_missing_count: count('ctc_missing'),
+		ctc_invalid_count: count('ctc_invalid'),
+		unavailable_count: count('unavailable'),
+		legacy_fallback_count: legacyFallbackCount,
+		recorded_count: count('recorded'),
+		not_consulted_count: count('not_consulted'),
+		complete:
+			count('missing') +
+				count('ambiguous') +
+				count('ctc_missing') +
+				count('ctc_invalid') +
+				count('unavailable') ===
+			0,
+	};
 }
 
 function monthLabelOf(month: string): string {
@@ -631,13 +793,9 @@ export async function loadPayrollMonth(
 		liveRoster.members.map((member) => [member.employee_id, member])
 	);
 	const savedById = new Map(
-		(frozenRoster?.members ?? []).map((member) => [
-			member.employee_id,
-			member,
-		])
+		(frozenRoster?.members ?? []).map((member) => [member.employee_id, member])
 	);
-	const savedMemberIds =
-		basis === 'saved' ? new Set(savedById.keys()) : null;
+	const savedMemberIds = basis === 'saved' ? new Set(savedById.keys()) : null;
 
 	const population = new Set<number>();
 
@@ -657,14 +815,12 @@ export async function loadPayrollMonth(
 		// that real evidence; today's employee list is never promoted into it.
 		for (const member of frozenRoster?.members ?? [])
 			population.add(member.employee_id);
-		for (const allocation of allocations)
-			population.add(allocation.employeeId);
+		for (const allocation of allocations) population.add(allocation.employeeId);
 	}
 	for (const slip of slips) population.add(slip.employeeId);
-	for (const employeeId of hours.byEmployee.keys())
-		population.add(employeeId);
+	for (const employeeId of hours.byEmployee.keys()) population.add(employeeId);
 
-	const rows: PayrollEmployeeCost[] = [];
+	const rows: PayrollEmployeeCostRow[] = [];
 	for (const employeeId of [...population].sort((a, b) => a - b)) {
 		const slip = slipByEmployee.get(employeeId) ?? null;
 		const allocation = slip ? (allocationBySlip.get(slip.id) ?? null) : null;
@@ -690,12 +846,24 @@ export async function loadPayrollMonth(
 
 		const recorded =
 			slip !== null && allocation !== null && locked ? allocation : null;
-		const draftProfile =
-			basis === 'draft' ? (liveMember?.salary_profile ?? null) : null;
+		// A recorded month is frozen cost: today's agreements are never read.
+		// A locked month without a recorded allocation is unknown for its own
+		// stated reason, not re-priced from live salary.
+		const salary =
+			recorded !== null
+				? emptySalaryEvidence('recorded')
+				: basis === 'draft'
+					? draftSalaryEvidence(liveMember)
+					: emptySalaryEvidence('not_consulted');
 		// An employment-date issue blocks pricing until it is reviewed; the
-		// row stays visible with its evidence instead of disappearing.
+		// row stays visible with its evidence instead of disappearing. A salary
+		// gap or invalid CTC is already unavailable and never priced.
 		const profile =
-			basis === 'draft' && employmentIssue === null ? draftProfile : null;
+			basis === 'draft' &&
+			employmentIssue === null &&
+			salary.availability === 'available'
+				? (liveMember?.salary_profile ?? null)
+				: null;
 		const payStream: PayrollEmployeeCost['pay_stream'] = recorded
 			? recorded.payStream
 			: savedMember
@@ -732,14 +900,15 @@ export async function loadPayrollMonth(
 			runStatus !== null &&
 			(basis === 'saved'
 				? savedMember !== null
-				: basis === 'draft' && draftProfile !== null);
-		// "No Salary Profile covers the month" is a draft statement: a locked
-		// row is never priced from a live profile, so it is unknown for its own
-		// stated reason (outside roster, missing allocation, or legacy roster).
+				: basis === 'draft' && salary.availability === 'available');
+		// Salary-unavailable pricing is a draft statement: a locked row is never
+		// priced from a live profile, so it is unknown for its own stated reason
+		// (outside roster, missing allocation, or legacy roster). Missing,
+		// ambiguous, absent and invalid salary all stay unknown, never zero.
 		const missingPricing =
 			!recorded &&
 			basis === 'draft' &&
-			draftProfile === null &&
+			salary.availability !== 'available' &&
 			(slip !== null || loggedHours > 0);
 		const allocationMissing = slip !== null && locked && allocation === null;
 		const workedOutsideFinalizedRun =
@@ -750,7 +919,9 @@ export async function loadPayrollMonth(
 			loggedHours > 0;
 		const identityMember = savedMember ?? liveMember;
 		const employeeCode =
-			recorded?.employeeCode ?? identityMember?.employee_code ?? `#${employeeId}`;
+			recorded?.employeeCode ??
+			identityMember?.employee_code ??
+			`#${employeeId}`;
 		const employeeName =
 			recorded?.employeeName ??
 			identityMember?.name ??
@@ -813,6 +984,7 @@ export async function loadPayrollMonth(
 			in_saved_roster: inSaved,
 			worked_outside_finalized_run: workedOutsideFinalizedRun,
 			employment_issue: employmentIssue,
+			salary,
 			logged_hours: recorded ? recorded.totalLoggedHours : loggedHours,
 			project_hours: recorded ? recorded.projectHours : projectHours,
 			no_project_hours: recorded ? recorded.noProjectHours : noProjectHours,
@@ -849,9 +1021,8 @@ export async function loadPayrollMonth(
 		basis,
 		member_count: frozenRoster?.members.length ?? null,
 		not_in_saved_roster_count: notInSavedRoster,
-		worked_outside_count: rows.filter(
-			(row) => row.worked_outside_finalized_run
-		).length,
+		worked_outside_count: rows.filter((row) => row.worked_outside_finalized_run)
+			.length,
 	};
 
 	const totals = summarizePayroll(rows);
@@ -870,6 +1041,7 @@ export async function loadPayrollMonth(
 		currency: PAYROLL_CURRENCY,
 		totals,
 		employees: rows,
+		salary: salarySummaryOf(rows),
 		coverage,
 		roster,
 	};
@@ -950,7 +1122,7 @@ export function summarizePayroll(
 
 /** The coverage the employee-cost section discloses, never silently. */
 function payrollNotices(
-	rows: readonly PayrollEmployeeCost[],
+	rows: readonly PayrollEmployeeCostRow[],
 	totals: PayrollExpenditure,
 	runStatus: string | null,
 	allocations: readonly FrozenAllocation[],
@@ -1028,11 +1200,45 @@ function payrollNotices(
 			severity: 'warning',
 		});
 	}
-	if (totals.missing_pricing_count > 0) {
+	const salaryGapCount = (availability: PayrollSalaryAvailability) =>
+		rows.filter((row) => row.salary.availability === availability).length;
+	if (salaryGapCount('missing') > 0) {
 		notices.push({
 			code: 'payroll_pricing_missing',
 			label: 'No Salary Profile covers this month',
-			detail: `${totals.missing_pricing_count} employee(s) have no Salary Profile covering the month, so their cost is unknown, not zero; add the covering profile, then Generate and Finalize.`,
+			detail: `${salaryGapCount('missing')} employee(s) have no Salary Profile covering the month, so their cost is unknown, not zero; add the covering profile, then Generate and Finalize.`,
+			severity: 'warning',
+		});
+	}
+	if (salaryGapCount('ambiguous') > 0) {
+		notices.push({
+			code: 'payroll_salary_ambiguous',
+			label: 'Several Salary Profiles cover this month',
+			detail: `${salaryGapCount('ambiguous')} employee(s) have more than one Salary Profile covering the month, so no single agreement is chosen and their cost is unknown, not zero. Resolve the overlapping agreements, then Generate and Finalize.`,
+			severity: 'warning',
+		});
+	}
+	if (salaryGapCount('ctc_missing') > 0) {
+		notices.push({
+			code: 'payroll_salary_ctc_missing',
+			label: 'Salary Profile has no monthly CTC',
+			detail: `${salaryGapCount('ctc_missing')} employee(s) have a Salary Profile covering the month without an explicit monthly CTC, so their cost is unknown, not zero. Record the agreed CTC, then Generate and Finalize.`,
+			severity: 'warning',
+		});
+	}
+	if (salaryGapCount('ctc_invalid') > 0) {
+		notices.push({
+			code: 'payroll_salary_ctc_invalid',
+			label: 'Salary Profile CTC is invalid',
+			detail: `${salaryGapCount('ctc_invalid')} employee(s) have an invalid monthly CTC in the Salary Profile covering the month, so their cost is unknown, not zero and never repriced from a gross field. Correct the CTC, then Generate and Finalize.`,
+			severity: 'warning',
+		});
+	}
+	if (salaryGapCount('unavailable') > 0) {
+		notices.push({
+			code: 'payroll_salary_unavailable',
+			label: 'Salary evidence unavailable for this month',
+			detail: `${salaryGapCount('unavailable')} employee(s) have payroll evidence in the month but no current roster salary record, so their cost is unknown, not zero. Review the Employee’s record and salary agreement.`,
 			severity: 'warning',
 		});
 	}
@@ -1122,7 +1328,7 @@ export async function loadPayrollDrilldown(
 	employeeId: number | null
 ): Promise<{
 	interpretation: PayrollMonthInterpretation;
-	employees: PayrollEmployeeCost[];
+	employees: PayrollEmployeeCostRow[];
 	totals: PayrollExpenditure;
 }> {
 	const interpretation = await loadPayrollMonth(db, month);
@@ -1256,10 +1462,7 @@ export async function freezeMonthAllocations(
 		liveRoster.members.map((member) => [member.employee_id, member])
 	);
 	const frozenById = new Map(
-		(frozenRoster?.members ?? []).map((member) => [
-			member.employee_id,
-			member,
-		])
+		(frozenRoster?.members ?? []).map((member) => [member.employee_id, member])
 	);
 
 	let total = R(0);

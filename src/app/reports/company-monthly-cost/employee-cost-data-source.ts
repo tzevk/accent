@@ -26,30 +26,41 @@
 
 import type Decimal from 'decimal.js';
 import { query } from '@/utils/database';
-import { R, mul, add, div, toNumber } from '@/lib/money';
+import { R, add, div, toNumber } from '@/lib/money';
 import {
 	FY_MONTHS,
 	FY_MONTH_KEYS,
 	fyKeyToCalendarMonthMap,
 	getFinancialYear,
 	formatFyLabel,
-	computeRawHourlyRate,
-	resolveHourlyRate,
-	pickActiveProfile,
-	type SalaryProfile,
 } from '@/app/reports/manhours-billing/data-source';
-import { parseDailyEntries, parseDailyEntryRecords } from '@/lib/logged-hours';
+import { parseDailyEntryRecords } from '@/lib/logged-hours';
 import {
 	loadPayrollMonth,
 	type CoverageNotice,
 	type PayrollEmployeeCost,
 	type PayrollEmploymentIssue,
 	type PayrollExpenditure,
+	type PayrollMonthInterpretation,
 } from '@/lib/company-expenditure';
 
 export { FY_MONTHS, FY_MONTH_KEYS, getFinancialYear, formatFyLabel };
 
 // ─── Public types ───────────────────────────────────────────────────
+
+/** The salary evidence the shared payroll interpretation attaches to a row. */
+export type CostSalaryEvidence =
+	PayrollMonthInterpretation['employees'][number]['salary'];
+
+/** The month's salary population and its partial-total disclosure. */
+export type CostSalarySummary = PayrollMonthInterpretation['salary'];
+
+/** One row's salary availability state. */
+export type CostSalaryAvailability = CostSalaryEvidence['availability'];
+
+/** A payroll interpretation row, with the salary evidence it already carries. */
+export type CostPayrollEmployeeRow =
+	PayrollMonthInterpretation['employees'][number];
 
 export interface CostEmployee {
 	id: number;
@@ -231,8 +242,14 @@ export interface MonthlyCompanyCostRow {
 	 * Workbooks and screens state the unknown cost rather than printing 0.
 	 */
 	cost_known: boolean;
-	/** Zero is an unpriced placeholder when no covering Salary Profile exists. */
+	/** Zero is an unpriced placeholder when salary terms are unavailable. */
 	missing_salary_profile: boolean;
+	/**
+	 * The salary evidence behind this row, stated even when unpriced. Every
+	 * payload row carries it; a missing field is a contract violation, never a
+	 * confirmed zero.
+	 */
+	salary: CostSalaryEvidence;
 	/** Whether the row is in the finalized run's saved roster; null when none applies. */
 	in_saved_roster: boolean | null;
 	/** Real Logged Hours outside the finalized run's saved roster. */
@@ -266,6 +283,8 @@ export interface MonthlyCompanyCostData {
 		estimated_cost: number;
 		project_count: number;
 		missing_salary_profile: boolean;
+		/** The employee's salary evidence for the month. */
+		salary: CostSalaryEvidence;
 		in_saved_roster: boolean | null;
 		worked_outside_finalized_run: boolean;
 		employment_issue: PayrollEmploymentIssue | null;
@@ -283,6 +302,8 @@ export interface MonthlyCompanyCostData {
 		estimated_cost: number;
 		employee_count: number;
 		missing_salary_profile_count: number;
+		/** Distinct employees on this Project by salary availability state. */
+		salary_availability_counts: Record<CostSalaryAvailability, number>;
 		/** Employees on this Project whose cost is unknown and not stated as zero. */
 		unknown_cost_count: number;
 	}>;
@@ -297,6 +318,8 @@ export interface MonthlyCompanyCostData {
 	};
 	/** The month's employee-cost position and its coverage disclosures. */
 	payroll: PayrollExpenditure;
+	/** The salary population behind the totals, and whether it is complete. */
+	salary: CostSalarySummary;
 	coverage: CoverageNotice[];
 }
 
@@ -326,6 +349,27 @@ function round2(v: number): number {
 }
 
 /**
+ * Count distinct employees per salary availability state, so a Project row
+ * states its salary population instead of implying a complete total.
+ */
+function salaryAvailabilityCounts(
+	byEmployee: ReadonlyMap<number, CostSalaryAvailability>
+): Record<CostSalaryAvailability, number> {
+	const counts: Record<CostSalaryAvailability, number> = {
+		recorded: 0,
+		not_consulted: 0,
+		available: 0,
+		missing: 0,
+		ambiguous: 0,
+		ctc_missing: 0,
+		ctc_invalid: 0,
+		unavailable: 0,
+	};
+	for (const availability of byEmployee.values()) counts[availability] += 1;
+	return counts;
+}
+
+/**
  * Cost ÷ hours as a display rate. Derived money uses the shared Decimal rule
  * (ROUND_HALF_UP) like every other amount — `Math.round` mis-rounds values
  * such as 302.25 / 30 (= 10.075) to 10.07 where the money rule gives 10.08.
@@ -335,20 +379,6 @@ function rateOf(cost: number, hours: number): number {
 }
 
 // ─── Pure helpers (unit-tested) ─────────────────────────────────────
-
-/**
- * Sum daily-entry hours per calendar month (YYYY-MM → hours) across every
- * month in the blob. The canonical parser has already dropped the entries
- * with no day or hours ≤ 0, so each remaining `date` is a `YYYY-MM-DD`.
- */
-export function sumHoursByMonth(raw: unknown): Record<string, number> {
-	const byMonth: Record<string, number> = {};
-	for (const { date, hours } of parseDailyEntries(raw)) {
-		const month = date.slice(0, 7);
-		byMonth[month] = round2((byMonth[month] || 0) + hours);
-	}
-	return byMonth;
-}
 
 export function monthLabel(month: string): string {
 	if (!month || !month.includes('-')) return month;
@@ -369,121 +399,6 @@ export function monthLabel(month: string): string {
 	];
 	if (!y || !m || m < 1 || m > 12) return month;
 	return `${names[m - 1]} ${y}`;
-}
-
-/**
- * Build one row per project the employee logged hours on, for the given
- * financial year. `assignmentRows` must already be filtered to the employee
- * (the fetcher resolves user_id → employee); rows carry project lookup
- * columns plus `daily_entries`. Assignments of the same project are merged.
- * Projects with no hours in the whole FY are dropped.
- */
-export function buildProjectCostRows(
-	assignmentRows: DbRow[],
-	salaryProfiles: SalaryProfile[],
-	fyYear: number = getFinancialYear()
-): ProjectCostRow[] {
-	const calMap = fyKeyToCalendarMonthMap(fyYear);
-
-	interface Group {
-		project_id: number | null;
-		project_code: string;
-		project_name: string;
-		client_name: string;
-		hoursByCalMonth: Record<string, number>;
-	}
-
-	const groups = new Map<string, Group>();
-	for (const row of assignmentRows) {
-		const projectId = n(row, 'project_id') || null;
-		const code = s(row, 'project_code');
-		const name = s(row, 'project_name');
-		const key =
-			projectId != null ? String(projectId) : code || name || 'unknown';
-
-		let group = groups.get(key);
-		if (!group) {
-			group = {
-				project_id: projectId,
-				project_code: code,
-				project_name: name,
-				client_name: s(row, 'client_name'),
-				hoursByCalMonth: {},
-			};
-			groups.set(key, group);
-		}
-		for (const [month, hours] of Object.entries(
-			sumHoursByMonth(row.daily_entries)
-		)) {
-			group.hoursByCalMonth[month] = round2(
-				(group.hoursByCalMonth[month] || 0) + hours
-			);
-		}
-	}
-
-	const rows: ProjectCostRow[] = [];
-	for (const group of groups.values()) {
-		const monthlyHours: Record<string, number> = {};
-		const monthlyCost: Record<string, number> = {};
-		let totalHours = R(0);
-		let totalCost = R(0);
-
-		for (const mKey of FY_MONTH_KEYS) {
-			const calMonth = calMap[mKey];
-			const hours = round2(group.hoursByCalMonth[calMonth] || 0);
-
-			// Payroll rate in force for this specific month (handles raises).
-			const profile = pickActiveProfile(salaryProfiles, calMonth);
-			const rawRate = profile ? computeRawHourlyRate(profile) : 0;
-			const cost =
-				hours > 0 && rawRate > 0
-					? round2(toNumber(mul(R(rawRate), hours).toDecimalPlaces(2)))
-					: 0;
-
-			monthlyHours[mKey] = hours;
-			monthlyCost[mKey] = cost;
-			if (hours > 0) totalHours = add(totalHours, hours);
-			if (cost > 0) totalCost = add(totalCost, cost);
-		}
-
-		if (toNumber(totalHours) <= 0) continue;
-
-		rows.push({
-			sr_no: 0, // assigned after sorting
-			project_id: group.project_id,
-			project_code: group.project_code,
-			project_name:
-				group.project_name ||
-				group.project_code ||
-				(group.project_id ? `Project #${group.project_id}` : 'Unknown project'),
-			client_name: group.client_name,
-			hourly_rate: resolveHourlyRateOfFY(salaryProfiles, fyYear),
-			monthly_hours: monthlyHours,
-			monthly_cost: monthlyCost,
-			total_hours: round2(toNumber(totalHours)),
-			total_cost: round2(toNumber(totalCost)),
-		});
-	}
-
-	rows.sort(
-		(a, b) =>
-			a.project_code.localeCompare(b.project_code) ||
-			a.project_name.localeCompare(b.project_name)
-	);
-	rows.forEach((row, index) => {
-		row.sr_no = index + 1;
-	});
-
-	return rows;
-}
-
-/** Display rate from the profile covering FY start (Apr), like the annual billing grid. */
-export function resolveHourlyRateOfFY(
-	salaryProfiles: SalaryProfile[],
-	fyYear: number
-): number {
-	const profile = pickActiveProfile(salaryProfiles, `${fyYear}-04`);
-	return profile ? resolveHourlyRate(profile) : 0;
 }
 
 export function buildProjectCostTotals(
@@ -738,7 +653,7 @@ function destinationOf(share: {
  * and estimated amounts stated separately.
  */
 export function buildMonthlyAllocationRows(
-	employees: PayrollEmployeeCost[],
+	employees: readonly CostPayrollEmployeeRow[],
 	employeeIndex: Map<number, EmployeeLookup>
 ): MonthlyCompanyCostRow[] {
 	const rows: MonthlyCompanyCostRow[] = [];
@@ -774,9 +689,9 @@ export function buildMonthlyAllocationRows(
 				cost_status: status,
 				cost_known: costKnown,
 				missing_salary_profile: employee.missing_pricing,
+				salary: employee.salary,
 				in_saved_roster: employee.in_saved_roster,
-				worked_outside_finalized_run:
-					employee.worked_outside_finalized_run,
+				worked_outside_finalized_run: employee.worked_outside_finalized_run,
 				employment_issue: employee.employment_issue,
 			});
 		}
@@ -817,6 +732,7 @@ export function buildMonthlyAllocationEmployeeRows(
 				estimated_cost: 0,
 				project_count: 0,
 				missing_salary_profile: false,
+				salary: row.salary,
 				in_saved_roster: row.in_saved_roster,
 				worked_outside_finalized_run: row.worked_outside_finalized_run,
 				employment_issue: row.employment_issue,
@@ -826,8 +742,7 @@ export function buildMonthlyAllocationEmployeeRows(
 		}
 		aggregate.missing_salary_profile ||= row.missing_salary_profile;
 		aggregate.cost_known ||= row.cost_known;
-		aggregate.worked_outside_finalized_run ||=
-			row.worked_outside_finalized_run;
+		aggregate.worked_outside_finalized_run ||= row.worked_outside_finalized_run;
 		aggregate.employment_issue ||= row.employment_issue;
 		aggregate.hours = round2(aggregate.hours + row.hours);
 		aggregate.cost = round2(aggregate.cost + row.cost);
@@ -864,6 +779,7 @@ export function buildMonthlyAllocationProjectRows(
 			_employees: Set<number>;
 			_missingProfiles: Set<number>;
 			_unknownCostEmployees: Set<number>;
+			_salaryByEmployee: Map<number, CostSalaryAvailability>;
 		}
 	>();
 	for (const row of rows) {
@@ -884,10 +800,12 @@ export function buildMonthlyAllocationProjectRows(
 				estimated_cost: 0,
 				employee_count: 0,
 				missing_salary_profile_count: 0,
+				salary_availability_counts: salaryAvailabilityCounts(new Map()),
 				unknown_cost_count: 0,
 				_employees: new Set<number>(),
 				_missingProfiles: new Set<number>(),
 				_unknownCostEmployees: new Set<number>(),
+				_salaryByEmployee: new Map<number, CostSalaryAvailability>(),
 			};
 			grouped.set(key, aggregate);
 		}
@@ -901,17 +819,24 @@ export function buildMonthlyAllocationProjectRows(
 			aggregate.estimated_cost + row.estimated_cost
 		);
 		aggregate._employees.add(row.employee_id);
+		aggregate._salaryByEmployee.set(row.employee_id, row.salary.availability);
 		if (row.missing_salary_profile)
 			aggregate._missingProfiles.add(row.employee_id);
 		if (!row.cost_known) aggregate._unknownCostEmployees.add(row.employee_id);
 	}
 	const result = [...grouped.values()].map((aggregate) => {
-		const { _employees, _missingProfiles, _unknownCostEmployees, ...rest } =
-			aggregate;
+		const {
+			_employees,
+			_missingProfiles,
+			_unknownCostEmployees,
+			_salaryByEmployee,
+			...rest
+		} = aggregate;
 		return {
 			...rest,
 			employee_count: _employees.size,
 			missing_salary_profile_count: _missingProfiles.size,
+			salary_availability_counts: salaryAvailabilityCounts(_salaryByEmployee),
 			unknown_cost_count: _unknownCostEmployees.size,
 		};
 	});
@@ -1034,8 +959,7 @@ export function buildFYAllocationRows(
 						recorded_cost: 0,
 						estimated_cost: 0,
 						cost_known: true,
-						worked_outside_finalized_run:
-							employee.worked_outside_finalized_run,
+						worked_outside_finalized_run: employee.worked_outside_finalized_run,
 						in_saved_roster: employee.in_saved_roster,
 						employment_issue: employee.employment_issue,
 						hourly_rate: 0,
@@ -1103,8 +1027,7 @@ export function buildFYAllocationTotals(
 			monthlyHours[key] = add(monthlyHours[key], row.monthly_hours[key] ?? 0);
 			monthlyCost[key] = add(monthlyCost[key], row.monthly_cost[key] ?? 0);
 			monthlyCostKnown[key] =
-				monthlyCostKnown[key] &&
-				(row.monthly_cost_known[key] ?? true);
+				monthlyCostKnown[key] && (row.monthly_cost_known[key] ?? true);
 		}
 		totalHours = add(totalHours, row.total_hours);
 		totalCost = add(totalCost, row.total_cost);
@@ -1453,6 +1376,7 @@ export async function fetchMonthlyCompanyCost(
 		project_rows,
 		totals,
 		payroll: interpretation.totals,
+		salary: interpretation.salary,
 		coverage: interpretation.coverage,
 	};
 }
