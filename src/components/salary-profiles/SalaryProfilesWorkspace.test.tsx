@@ -614,6 +614,100 @@ describe('SalaryProfileEditor', () => {
 		).not.toBeInTheDocument();
 	});
 
+	it('orders multiple Scheduled agreements by ascending effective date', async () => {
+		api.timeline = timeline({
+			agreements: [
+				agreement({
+					agreement_id: 31,
+					classification: 'scheduled',
+					effective_from: '2026-12-01',
+					actions: ['correct', 'cancel'],
+				}),
+				agreement({
+					agreement_id: 32,
+					classification: 'scheduled',
+					effective_from: '2027-02-01',
+					actions: ['correct', 'cancel'],
+				}),
+			],
+		});
+
+		await openEditor();
+
+		const scheduledGroup = screen
+			.getByRole('heading', { name: 'Scheduled' })
+			.closest('div') as HTMLElement;
+		const scheduled = within(scheduledGroup).getAllByRole('listitem');
+		expect(scheduled).toHaveLength(2);
+		expect(scheduled[0]).toHaveTextContent('01 Dec 2026');
+		expect(scheduled[1]).toHaveTextContent('01 Feb 2027');
+	});
+
+	it('renders a distinct Earnings group and a distinct Deductions group', async () => {
+		await beginCorrection();
+
+		const earnings = screen.getByRole('region', { name: 'Earnings' });
+		const deductions = screen.getByRole('region', { name: 'Deductions' });
+		expect(earnings).not.toBe(deductions);
+		expect(
+			within(earnings).getByRole('heading', { name: 'Earnings' })
+		).toBeInTheDocument();
+		expect(
+			within(deductions).getByRole('heading', { name: 'Deductions' })
+		).toBeInTheDocument();
+		expect(within(earnings).getByText('Basic')).toBeInTheDocument();
+		expect(within(earnings).getByText('Total Earnings')).toBeInTheDocument();
+		expect(within(deductions).getByText('Employee PF')).toBeInTheDocument();
+		expect(
+			within(deductions).getByText('Total Deductions')
+		).toBeInTheDocument();
+		expect(
+			within(earnings).queryByText('Total Deductions')
+		).not.toBeInTheDocument();
+	});
+
+	it('renders editable applicability settings and saves their flags on a correction', async () => {
+		await beginCorrection();
+
+		const pf = screen.getByRole('checkbox', { name: 'PF' });
+		const esic = screen.getByRole('checkbox', { name: 'ESIC' });
+		const professionalTax = screen.getByRole('checkbox', {
+			name: 'Professional Tax',
+		});
+		const mlwf = screen.getByRole('checkbox', { name: 'MLWF' });
+		expect(pf).toBeChecked();
+		expect(esic).not.toBeChecked();
+		expect(professionalTax).toBeEnabled();
+		expect(mlwf).toBeEnabled();
+
+		await userEvent.click(esic);
+		await userEvent.click(professionalTax);
+		await userEvent.click(mlwf);
+		expect(esic).toBeChecked();
+		expect(professionalTax).toBeChecked();
+		expect(mlwf).toBeChecked();
+
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Review correction' })
+		);
+		const review = reviewRegion();
+		expect(within(review).getByText('ESIC applicable')).toBeInTheDocument();
+		expect(
+			within(review).getByText('Professional Tax applicable')
+		).toBeInTheDocument();
+		expect(within(review).getByText('MLWF applicable')).toBeInTheDocument();
+
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Save correction' })
+		);
+		await waitFor(() => expect(api.postCalls).toHaveLength(1));
+		const body = api.postCalls[0];
+		expect(body.pf_applicable).toBe(true);
+		expect(body.esic_applicable).toBe(true);
+		expect(body.pt_applicable).toBe(true);
+		expect(body.mlwf_applicable).toBe(true);
+	});
+
 	it('blocks correction of a used agreement while retaining the revision action', async () => {
 		api.timeline = timeline({
 			use: {
@@ -988,6 +1082,141 @@ describe('SalaryProfileEditor', () => {
 		expect(body.effective_from).toBe('2026-11-03');
 		expect(body.employer_cost).toBe('45000');
 		expect(body).not.toHaveProperty('gross_salary');
+	});
+
+	it('creates a Contract agreement for a Payroll Employee and shows the Contract stream', async () => {
+		const employee = {
+			...timeline().employee,
+			employee_type: 'Payroll',
+		};
+		api.timeline = timeline({
+			employee,
+			agreements: [],
+			current: {
+				state: 'unavailable',
+				agreement_source: null,
+				agreement_id: null,
+				agreement_ids: [],
+			},
+		});
+		api.post = async () => {
+			api.timeline = timeline({
+				employee,
+				timeline_version: 5,
+				agreements: [
+					agreement({
+						agreement_id: 21,
+						salary_type: 'contract',
+						pay_stream: 'contract',
+						effective_from: '2025-04-01',
+						classification: 'current',
+					}),
+				],
+				current: {
+					state: 'selected',
+					agreement_source: 'employee_salary_profile',
+					agreement_id: 21,
+					agreement_ids: [21],
+				},
+			});
+			return jsonResponse({
+				success: true,
+				data: {
+					operation: 'create-initial',
+					agreement_id: 21,
+					timeline_version: 5,
+					classification: 'current',
+					effective_from: '2025-04-01',
+					effective_to: null,
+				},
+			});
+		};
+
+		await openEditor();
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Create Salary Profile' })
+		);
+		await userEvent.selectOptions(
+			screen.getByLabelText('Salary Type'),
+			'contract'
+		);
+		fireEvent.change(screen.getByLabelText('Monthly CTC'), {
+			target: { value: '45000' },
+		});
+		await userEvent.selectOptions(
+			screen.getByLabelText('Contract duration'),
+			'yearly'
+		);
+		fireEvent.change(screen.getByLabelText('Contract end date'), {
+			target: { value: '2027-03-31' },
+		});
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Review new agreement' })
+		);
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Save new agreement' })
+		);
+
+		await waitFor(() => expect(api.postCalls).toHaveLength(1));
+		const body = api.postCalls[0];
+		expect(body.operation).toBe('create-initial');
+		expect(body.employee_id).toBe(7);
+		expect(body.salary_type).toBe('contract');
+		expect(body.contract_duration).toBe('yearly');
+		expect(body.contract_end_date).toBe('2027-03-31');
+
+		expect(
+			await screen.findByText(/Salary Profile created/)
+		).toBeInTheDocument();
+		const contractHeading = await screen.findByRole('heading', {
+			name: 'Contract agreement',
+		});
+		const contractCard = contractHeading.closest('li') as HTMLElement;
+		expect(within(contractCard).getByText('Contract')).toBeInTheDocument();
+		expect(within(contractCard).getByText(/01 Apr 2025/)).toBeInTheDocument();
+	});
+
+	it('groups Contract duration and Contract end date in a Contract terms fieldset', async () => {
+		api.timeline = timeline({
+			employee: {
+				...timeline().employee,
+				employee_type: 'Payroll',
+			},
+			agreements: [],
+			current: {
+				state: 'unavailable',
+				agreement_source: null,
+				agreement_id: null,
+				agreement_ids: [],
+			},
+		});
+
+		await openEditor();
+		await userEvent.click(
+			screen.getByRole('button', { name: 'Create Salary Profile' })
+		);
+		await userEvent.selectOptions(
+			screen.getByLabelText('Salary Type'),
+			'contract'
+		);
+
+		const contractTerms = screen.getByRole('group', {
+			name: 'Contract terms',
+		});
+		expect(contractTerms.tagName).toBe('FIELDSET');
+		expect(
+			within(contractTerms).getByRole('combobox', {
+				name: 'Contract duration',
+			})
+		).toBeInTheDocument();
+		expect(
+			within(contractTerms).getByLabelText('Contract end date')
+		).toHaveAttribute('type', 'date');
+		expect(
+			within(contractTerms).getByText(
+				/Contract pay still uses the agreed monthly CTC/
+			)
+		).toBeInTheDocument();
 	});
 
 	it('warns before leaving with unsaved changes and then honours the confirmation', async () => {
