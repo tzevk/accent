@@ -1174,7 +1174,14 @@ async function correctUnused(
 		}
 	}
 
-	const plan = planRange(state.canonical, agreementId, start, agreementId);
+	const plan: RangePlan =
+		start === targetStart
+			? {
+					postCanonical: state.canonical.map((row) => ({ ...row })),
+					target: { ...target, effective_to: agreementEnd(target) },
+					rangeUpdates: [],
+				}
+			: planRange(state.canonical, agreementId, start, agreementId);
 	const updatedRow: SalaryProfileRow = {
 		...target,
 		...command.settings,

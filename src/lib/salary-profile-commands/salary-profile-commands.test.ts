@@ -341,6 +341,53 @@ describe('salary command core — unused correction (issue #437)', () => {
 		expect(state.canonical[0].contract_amount).toBe('50000.00');
 	});
 
+	it('keeps a recorded effective_to when the corrected start is unchanged', async () => {
+		const state = createState({
+			canonical: [
+				unusedAgreement({
+					effective_from: '2026-11-01',
+					effective_to: '2026-12-31',
+				}),
+			],
+		});
+
+		const outcome = await runSalaryCommand(fakeDb(state), correctionInput, {
+			actorId: 9,
+			now: NOW,
+		});
+
+		expect(outcome.ok).toBe(true);
+		if (!outcome.ok) throw new Error(outcome.message);
+		expect(state.canonical[0].effective_to).toBe('2026-12-31');
+		// No range maintenance: the target write is the only update.
+		expect(state.updates).toHaveLength(1);
+	});
+
+	it('preserves a historical gap before an unchanged start', async () => {
+		const state = createState({
+			canonical: [
+				unusedAgreement({
+					id: 70,
+					effective_from: '2026-08-01',
+					effective_to: '2026-09-30',
+				}),
+				unusedAgreement(),
+			],
+		});
+
+		const outcome = await runSalaryCommand(fakeDb(state), correctionInput, {
+			actorId: 9,
+			now: NOW,
+		});
+
+		expect(outcome.ok).toBe(true);
+		if (!outcome.ok) throw new Error(outcome.message);
+		expect(
+			state.canonical.find((row) => Number(row.id) === 70)?.effective_to
+		).toBe('2026-09-30');
+		expect(state.updates).toHaveLength(1);
+	});
+
 	it('rejects an agreement already used by payroll without writing anything', async () => {
 		const state = createState({ use: [salaryUseRow()] });
 
