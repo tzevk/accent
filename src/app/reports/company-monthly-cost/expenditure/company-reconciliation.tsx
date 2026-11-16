@@ -149,9 +149,9 @@ export function CompanyReconciliationPanel({
 						costs for {data.payroll.unpriced_count} employee(s) cannot be
 						calculated.{' '}
 						{data.payroll.missing_pricing_count > 0 &&
-							`${data.payroll.missing_pricing_count} have no Salary Profile covering this month. `}
-						Known costs and logged hours remain included. An unknown cost is
-						not zero actual salary.
+							`${data.payroll.missing_pricing_count} have a salary that cannot be established for this month (no agreement, an ambiguous history, or no usable agreed CTC). `}
+						Known costs and logged hours remain included. An unknown cost is not
+						zero actual salary.
 					</p>
 				)}
 

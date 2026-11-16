@@ -526,7 +526,7 @@ function buildExpenditureReconciliationSheet(
 		],
 		[
 			'Missing pricing (unknown, not zero)',
-			`${reconciliation.payroll.missing_pricing_count} employee(s) with no covering Salary Profile`,
+			`${reconciliation.payroll.missing_pricing_count} employee(s) with a salary that cannot be established for this month (no agreement, an ambiguous history, or no usable agreed CTC)`,
 		],
 		[
 			'Missing slips / allocations',
@@ -1151,7 +1151,7 @@ function buildExpenditureProjectDetailSheet(
 		renderValue(row.getCell(9), reportingCost, '#,##0.00');
 		renderValue(row.getCell(10), p.cost_to_date, '#,##0.00');
 		row.getCell(11).value =
-			`${p.missing_salary_profile_count > 0 ? 'Partial' : estimated ? 'Estimated' : p.evidence.state}; direct-cost evidence: ${p.evidence.state}${p.missing_salary_profile_count > 0 ? `; ${p.missing_salary_profile_count} missing Salary Profile(s)` : ''}`;
+			`${p.missing_salary_profile_count > 0 ? 'Partial' : estimated ? 'Estimated' : p.evidence.state}; direct-cost evidence: ${p.evidence.state}${p.missing_salary_profile_count > 0 ? `; ${p.missing_salary_profile_count} ${p.missing_salary_profile_count === 1 ? 'employee' : 'employees'} with a salary that cannot be established for this month (no agreement, an ambiguous history, or no usable agreed CTC)` : ''}`;
 		renderValue(row.getCell(12), p.record_count);
 		const budget = budgetByRow.get(budgetRowKey(p)) ?? null;
 		renderValue(row.getCell(13), budget?.budget?.amount ?? null, '#,##0.00');
