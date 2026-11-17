@@ -18,7 +18,7 @@ export INTEGRATION_DB_PORT=33369
 export INTEGRATION_DB_NAME=accent_integration_369
 export INTEGRATION_DB_USER=root
 export INTEGRATION_DB_PASSWORD=
-npm run test:integration:leads
+npm run test:integration
 ```
 
 The database name must contain `integration` and match `^[A-Za-z0-9_]+$`. The
@@ -168,7 +168,7 @@ app pool).
 ## Keep mode (manual browser follow-up)
 
 ```sh
-npm run test:integration:leads -- --keep
+npm run test:integration -- --keep
 ```
 
 or `LEADS_INTEGRATION_KEEP=1`. After a full pass the server stays up and the
@@ -184,7 +184,7 @@ production uses. The service creates no database, because the harness creates
 and drops its own. No secrets beyond the ephemeral service password, which
 lives only in the workflow. Run the command in your own shell against the
 local instance when working locally; the
-[testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification)
+[testing and verification rules](../../../CODING_STANDARDS.md#testing-and-verification)
 are canonical.
 
 ## Troubleshooting
