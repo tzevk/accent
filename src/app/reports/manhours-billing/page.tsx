@@ -22,6 +22,7 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatNumber, formatCurrency } from '@/lib/format';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
+import type { ReportSalaryEvidence, ReportSalarySummary } from './data-source';
 
 // ─── Client-safe API types ──────────────────────────────────────────
 
@@ -62,6 +63,10 @@ interface MonthlyBillingRow {
 	accent_amount: number;
 	pnl_after_deductions: number;
 	pnl_tds: number;
+	/** Where the money came from; `unavailable` is not a confirmed zero. */
+	pricing_source: 'project' | 'salary' | 'unavailable';
+	/** Period-effective salary evidence; null when the row has no Employee. */
+	salary: ReportSalaryEvidence | null;
 }
 
 interface MonthlyBillingData {
@@ -83,6 +88,8 @@ interface MonthlyBillingData {
 		total_accent_amount: number;
 		total_pnl_after_deductions: number;
 		total_pnl_tds: number;
+		/** Population behind the money: gaps mean a partial total, not zero. */
+		salary: ReportSalarySummary;
 	};
 }
 
@@ -98,6 +105,12 @@ interface AnnualEmployeeRow {
 	rate_client: number;
 	monthly_hours: Record<string, number>;
 	total_hours: number;
+	/** Salary-derived rate per priced FY month; a project rate never appears. */
+	monthly_rates: Record<string, number>;
+	/** Company cost per FY month; null = hours but no usable rate. */
+	monthly_company_cost: Record<string, number | null>;
+	/** Salary evidence per salary-priced FY month. */
+	salary_months: Record<string, ReportSalaryEvidence>;
 	company_cost: number;
 	accent_cost: number;
 	pnl: number;
@@ -121,6 +134,8 @@ interface AnnualBillingData {
 		total_company_cost: number;
 		total_accent_cost: number;
 		total_pnl: number;
+		/** Population behind company cost/P&L; gaps make them partial. */
+		salary: ReportSalarySummary;
 	};
 }
 
@@ -158,6 +173,180 @@ function monthLabel(month: string): string {
 
 function fmtHours(hours: number): string {
 	return String(Number(hours.toFixed(2)));
+}
+
+// ─── Salary availability disclosure ─────────────────────────────────
+
+const SALARY_GAP_LABELS: Record<
+	Exclude<ReportSalaryEvidence['availability'], 'available'>,
+	string
+> = {
+	missing: 'No Salary Profile covers this month',
+	ambiguous: 'Several Salary Profiles cover this month',
+	'ctc-missing': 'Salary Profile has no monthly CTC',
+	'ctc-invalid': 'Salary Profile CTC is invalid',
+};
+
+const SALARY_GAP_SHORT: Record<
+	Exclude<ReportSalaryEvidence['availability'], 'available'>,
+	string
+> = {
+	missing: 'no profile',
+	ambiguous: 'ambiguous profiles',
+	'ctc-missing': 'no CTC',
+	'ctc-invalid': 'invalid CTC',
+};
+
+type SalaryChipTone = 'unknown' | 'context' | 'legacy' | 'zero';
+
+interface SalaryChip {
+	label: string;
+	title?: string;
+	tone: SalaryChipTone;
+}
+
+const SALARY_CHIP_TONES: Record<SalaryChipTone, string> = {
+	unknown: 'bg-amber-50 text-amber-900 ring-amber-200',
+	context: 'bg-slate-50 text-slate-700 ring-slate-200',
+	legacy: 'bg-sky-50 text-sky-900 ring-sky-200',
+	zero: 'bg-emerald-50 text-emerald-900 ring-emerald-200',
+};
+
+/** The gap labels behind period-effective salary evidence. */
+function salaryGapLabel(evidence: ReportSalaryEvidence | null): string | null {
+	if (evidence === null || evidence.availability === 'available') return null;
+	return SALARY_GAP_LABELS[evidence.availability];
+}
+
+/** The competing agreements behind an ambiguity, for a tooltip. */
+function salaryConflictTitle(
+	evidence: ReportSalaryEvidence | null
+): string | undefined {
+	if (evidence === null || evidence.conflict_ids.length === 0) return undefined;
+	return `Profiles ${evidence.conflict_ids
+		.map((id) => `#${id}`)
+		.join(', ')} cover this month; no single agreement is chosen.`;
+}
+
+/** What one monthly row's money rests on, or its honest gap. */
+function monthlySalaryChip(row: MonthlyBillingRow): SalaryChip | null {
+	const evidence = row.salary;
+	const gap = salaryGapLabel(evidence);
+	const gapShort =
+		evidence !== null && evidence.availability !== 'available'
+			? SALARY_GAP_SHORT[evidence.availability]
+			: null;
+	if (row.pricing_source === 'unavailable') {
+		return {
+			label: `Cost unknown — ${gap ?? 'no recorded rate or Salary Profile'}`,
+			title:
+				salaryConflictTitle(evidence) ??
+				(gap
+					? `No confirmed price: ${gap}. Hours remain valid; money is excluded from totals.`
+					: 'Neither a configured project rate nor a covering Salary Profile prices this row.'),
+			tone: 'unknown',
+		};
+	}
+	if (row.pricing_source === 'project' && gap !== null && gapShort !== null) {
+		return {
+			label: `Recorded project rate · ${gapShort}`,
+			title: `Salary evidence: ${gap}. The recorded project rate still prices the row.`,
+			tone: 'context',
+		};
+	}
+	if (row.pricing_source === 'salary' && evidence) {
+		if (gap !== null && gapShort !== null) {
+			return {
+				label: `Stored rate · ${gapShort}`,
+				title: `Salary evidence: ${gap}. The row is priced from the agreement's stored rate.`,
+				tone: 'context',
+			};
+		}
+		if (evidence.legacy_fallback) {
+			return {
+				label: 'Legacy gross basis, not agreed CTC',
+				title:
+					'The amount comes from a legacy gross salary field, not the agreed monthly CTC.',
+				tone: 'legacy',
+			};
+		}
+		if (
+			evidence.ctc_source === 'employer_cost' &&
+			row.amount === 0 &&
+			row.employee_charges === 0
+		) {
+			return {
+				label: 'Confirmed zero',
+				title:
+					'The covering agreement states an explicit employer cost of zero.',
+				tone: 'zero',
+			};
+		}
+	}
+	return null;
+}
+
+/** Why one FY month's company cost is unknown, in the reader's words. */
+function annualMonthSalaryReason(
+	row: AnnualEmployeeRow,
+	monthKey: string
+): string {
+	const evidence = row.salary_months?.[monthKey];
+	if (!evidence) return 'no recorded rate or Salary Profile for the month';
+	if (evidence.availability === 'available') {
+		return evidence.legacy_fallback
+			? 'legacy gross salary basis, not agreed CTC'
+			: 'the covering agreement prices the month';
+	}
+	return SALARY_GAP_LABELS[evidence.availability];
+}
+
+/** The months of one FY row whose hours could not be priced. */
+function annualUnpricedMonths(
+	row: AnnualEmployeeRow,
+	monthKeys: readonly string[]
+): string[] {
+	return monthKeys.filter(
+		(monthKey) =>
+			(row.monthly_hours?.[monthKey] ?? 0) > 0 &&
+			row.monthly_company_cost?.[monthKey] === null
+	);
+}
+
+/** The months of one FY row whose money came from a legacy gross field. */
+function annualLegacyMonths(
+	row: AnnualEmployeeRow,
+	monthKeys: readonly string[]
+): string[] {
+	return monthKeys.filter(
+		(monthKey) => row.salary_months?.[monthKey]?.legacy_fallback === true
+	);
+}
+
+/** The months of one FY row priced from a stored rate despite a CTC gap. */
+function annualStoredRateMonths(
+	row: AnnualEmployeeRow,
+	monthKeys: readonly string[]
+): string[] {
+	return monthKeys.filter((monthKey) => {
+		const evidence = row.salary_months?.[monthKey];
+		return (
+			evidence !== undefined &&
+			evidence.availability !== 'available' &&
+			row.monthly_company_cost?.[monthKey] !== null
+		);
+	});
+}
+
+/** One line naming the salary population behind a total. */
+function salaryPopulationLabel(summary: ReportSalarySummary): string {
+	return [
+		`available: ${summary.available_count}`,
+		`missing: ${summary.missing_count}`,
+		`ambiguous: ${summary.ambiguous_count}`,
+		`no CTC: ${summary.ctc_missing_count}`,
+		`invalid CTC: ${summary.ctc_invalid_count}`,
+	].join(', ');
 }
 
 // ─── Print layout (A4 landscape letterhead) ─────────────────────────
@@ -364,6 +553,31 @@ export default function ManhoursBillingReportPage() {
 	const activeQuery = viewMode === 'monthly' ? monthlyQuery : annualQuery;
 	const monthlyData = monthlyQuery.data?.data ?? null;
 	const annualData = annualQuery.data?.data ?? null;
+	const monthlySalary = monthlyData?.totals.salary ?? null;
+	const monthlyProjectSalaryGaps =
+		monthlyData?.rows.filter(
+			(row) =>
+				row.pricing_source === 'project' &&
+				row.salary !== null &&
+				row.salary.availability !== 'available'
+		).length ?? 0;
+	const annualSalary = annualData?.totals.salary ?? null;
+	// FY month key → display label, read from the payload's own parallel arrays.
+	const annualMonthLabels: Record<string, string> = annualData
+		? Object.fromEntries(
+				annualData.month_keys.map((key, index) => [
+					key,
+					annualData.months[index] ?? key,
+				])
+			)
+		: {};
+	const annualUnpricedMonthCount = annualData
+		? annualData.rows.reduce(
+				(total, row) =>
+					total + annualUnpricedMonths(row, annualData.month_keys).length,
+				0
+			)
+		: 0;
 
 	const generatedAt = new Date().toLocaleString('en-IN', {
 		day: '2-digit',
@@ -707,6 +921,14 @@ export default function ManhoursBillingReportPage() {
 								<p className="mt-1 text-lg font-bold text-gray-800 tabular-nums">
 									{formatCurrency(monthlyData.totals.total_net_payable)}
 								</p>
+								{monthlySalary && !monthlySalary.complete && (
+									<span
+										data-testid="monthly-partial-kpi"
+										className="text-[10px] font-semibold uppercase text-amber-800"
+									>
+										Partial — {monthlySalary.unpriced_count} unpriced
+									</span>
+								)}
 								<span className="text-[10px] text-gray-400">
 									After TDS: {formatCurrency(monthlyData.totals.total_tds)}
 								</span>
@@ -734,6 +956,11 @@ export default function ManhoursBillingReportPage() {
 										monthlyData.totals.total_pnl_after_deductions
 									)}
 								</p>
+								{monthlySalary && !monthlySalary.complete && (
+									<span className="mr-1 text-[10px] font-semibold uppercase text-amber-800">
+										Partial
+									</span>
+								)}
 								<span className="text-[10px] text-gray-400">
 									P&amp;L before TDS:{' '}
 									{formatCurrency(monthlyData.totals.total_pnl_tds)}
@@ -787,6 +1014,14 @@ export default function ManhoursBillingReportPage() {
 							<p className="mt-1 text-lg font-bold text-gray-800 tabular-nums">
 								{formatCurrency(annualData.totals.total_company_cost)}
 							</p>
+							{annualUnpricedMonthCount > 0 && (
+								<span
+									data-testid="annual-partial-kpi"
+									className="text-[10px] font-semibold uppercase text-amber-800"
+								>
+									Partial — {annualUnpricedMonthCount} unpriced month(s)
+								</span>
+							)}
 							<span className="text-[10px] text-gray-400">
 								Resource payout cost
 							</span>
@@ -812,6 +1047,11 @@ export default function ManhoursBillingReportPage() {
 							>
 								{formatCurrency(annualData.totals.total_pnl)}
 							</p>
+							{annualUnpricedMonthCount > 0 && (
+								<span className="mr-1 text-[10px] font-semibold uppercase text-amber-800">
+									Partial
+								</span>
+							)}
 							<span className="text-[10px] text-gray-400">
 								{annualData.totals.total_accent_cost > 0
 									? `${((annualData.totals.total_pnl / annualData.totals.total_accent_cost) * 100).toFixed(1)}% margin`
@@ -1043,49 +1283,100 @@ export default function ManhoursBillingReportPage() {
 												</td>
 											</tr>
 										) : (
-											monthlyData.rows.map((row) => (
-												<tr
-													key={row.employee_id ?? row.sr_no}
-													style={{ height: '22px' }}
-												>
-													<td className="border border-black bg-yellow-100 px-1 py-1 text-center tabular-nums">
-														{row.sr_no}
-													</td>
-													<td className="border border-black bg-yellow-100 px-1 py-1 font-medium">
-														{row.employee_name}
-													</td>
-													<td className="border border-black bg-yellow-100 px-1 py-1">
-														{row.designation || '—'}
-													</td>
-													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums font-semibold">
-														{fmtHours(row.total_manhours)}
-													</td>
-													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-														{formatNumber(row.employee_charges)}
-													</td>
-													<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
-														{formatNumber(row.amount)}
-													</td>
-													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-														{formatNumber(row.tds)}
-													</td>
-													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-														{formatNumber(row.net_payable)}
-													</td>
-													<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
-														{formatNumber(row.accent_charges)}
-													</td>
-													<td className="border border-black bg-green-100 px-1 py-1 text-right font-semibold tabular-nums">
-														{formatNumber(row.accent_amount)}
-													</td>
-													<td className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold tabular-nums">
-														{formatNumber(row.pnl_after_deductions)}
-													</td>
-													<td className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold tabular-nums">
-														{formatNumber(row.pnl_tds)}
-													</td>
-												</tr>
-											))
+											monthlyData.rows.map((row) => {
+												const chip = monthlySalaryChip(row);
+												const moneyKnown = row.pricing_source !== 'unavailable';
+												return (
+													<tr
+														key={row.employee_id ?? row.sr_no}
+														data-pricing-source={row.pricing_source}
+														style={{ height: '22px' }}
+													>
+														<td className="border border-black bg-yellow-100 px-1 py-1 text-center tabular-nums">
+															{row.sr_no}
+														</td>
+														<td className="border border-black bg-yellow-100 px-1 py-1 font-medium">
+															<div>{row.employee_name}</div>
+															{chip && (
+																<div
+																	data-testid="manhours-salary-chip"
+																	data-tone={chip.tone}
+																	title={chip.title}
+																	className={`mt-0.5 inline-flex items-center rounded px-1 py-0.5 text-[9px] font-medium ring-1 ${SALARY_CHIP_TONES[chip.tone]}`}
+																>
+																	{chip.label}
+																</div>
+															)}
+														</td>
+														<td className="border border-black bg-yellow-100 px-1 py-1">
+															{row.designation || '—'}
+														</td>
+														<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums font-semibold">
+															{fmtHours(row.total_manhours)}
+														</td>
+														<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+															{moneyKnown ? (
+																formatNumber(row.employee_charges)
+															) : (
+																<span className="text-[9px] font-semibold uppercase text-gray-500">
+																	Unknown
+																</span>
+															)}
+														</td>
+														<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
+															{moneyKnown ? (
+																formatNumber(row.amount)
+															) : (
+																<span className="text-[9px] font-semibold uppercase text-gray-500">
+																	Unknown
+																</span>
+															)}
+														</td>
+														<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+															{moneyKnown ? (
+																formatNumber(row.tds)
+															) : (
+																<span className="text-[9px] font-semibold uppercase text-gray-500">
+																	Unknown
+																</span>
+															)}
+														</td>
+														<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+															{moneyKnown ? (
+																formatNumber(row.net_payable)
+															) : (
+																<span className="text-[9px] font-semibold uppercase text-gray-500">
+																	Unknown
+																</span>
+															)}
+														</td>
+														<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
+															{formatNumber(row.accent_charges)}
+														</td>
+														<td className="border border-black bg-green-100 px-1 py-1 text-right font-semibold tabular-nums">
+															{formatNumber(row.accent_amount)}
+														</td>
+														<td className="border border-black bg-orange-200 px-1 py-1 text-right font-semibold tabular-nums">
+															{moneyKnown ? (
+																formatNumber(row.pnl_after_deductions)
+															) : (
+																<span className="text-[9px] font-semibold uppercase text-gray-500">
+																	Unknown
+																</span>
+															)}
+														</td>
+														<td className="border border-black bg-yellow-300 px-1 py-1 text-right font-semibold tabular-nums">
+															{moneyKnown ? (
+																formatNumber(row.pnl_tds)
+															) : (
+																<span className="text-[9px] font-semibold uppercase text-gray-500">
+																	Unknown
+																</span>
+															)}
+														</td>
+													</tr>
+												);
+											})
 										)}
 										<tr style={{ height: '24px' }}>
 											<td
@@ -1093,6 +1384,14 @@ export default function ManhoursBillingReportPage() {
 												className="border border-black bg-yellow-100 px-2 py-1 text-right font-semibold"
 											>
 												Total
+												{monthlySalary && !monthlySalary.complete && (
+													<span
+														data-testid="manhours-salary-partial"
+														className="ml-1 rounded bg-amber-200 px-1 py-0.5 text-[9px] font-semibold uppercase text-amber-950"
+													>
+														partial · {monthlySalary.unpriced_count} unpriced
+													</span>
+												)}
 											</td>
 											<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums">
 												{fmtHours(monthlyData.totals.total_manhours)}
@@ -1122,6 +1421,50 @@ export default function ManhoursBillingReportPage() {
 										</tr>
 									</tbody>
 								</table>
+
+								{monthlySalary &&
+									(!monthlySalary.complete ||
+										monthlySalary.legacy_fallback_count > 0 ||
+										monthlyProjectSalaryGaps > 0 ||
+										monthlySalary.missing_count +
+											monthlySalary.ambiguous_count +
+											monthlySalary.ctc_missing_count +
+											monthlySalary.ctc_invalid_count >
+											0) && (
+										<div
+											data-testid="manhours-salary-disclosure"
+											className="mt-2 space-y-1 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[10.5px] leading-relaxed text-amber-900 print:border-black print:bg-transparent print:text-black"
+										>
+											{!monthlySalary.complete && (
+												<p>
+													<span className="font-semibold">
+														Employee cost and P&amp;L are partial.
+													</span>{' '}
+													{monthlySalary.unpriced_count} row(s) cannot be
+													priced; their money cells read Unknown, never zero.
+													Hours remain included.
+												</p>
+											)}
+											{monthlySalary.legacy_fallback_count > 0 && (
+												<p>
+													{monthlySalary.legacy_fallback_count} row(s) are
+													priced from a legacy gross salary field, not agreed
+													CTC.
+												</p>
+											)}
+											{monthlyProjectSalaryGaps > 0 && (
+												<p>
+													{monthlyProjectSalaryGaps} row(s) used a recorded
+													project rate; the salary gap beside them does not
+													change the recorded money.
+												</p>
+											)}
+											<p>
+												Salary evidence — {salaryPopulationLabel(monthlySalary)}
+												.
+											</p>
+										</div>
+									)}
 
 								<footer className="mhb-print-footer hidden print:flex">
 									<span>
@@ -1289,56 +1632,94 @@ export default function ManhoursBillingReportPage() {
 											</td>
 										</tr>
 									) : (
-										annualData.rows.map((row) => (
-											<tr key={row.id || row.sr_no} style={{ height: '22px' }}>
-												<td className="border border-black bg-yellow-100 px-1 py-1 text-center tabular-nums">
-													{row.sr_no}
-												</td>
-												<td className="border border-black bg-yellow-100 px-1.5 py-1 font-medium truncate">
-													{row.employee_name}
-												</td>
-												<td className="border border-black bg-yellow-100 px-1 py-1 text-center">
-													<span className="capitalize text-[9px] text-gray-700">
-														{row.salary_type || 'monthly'}
-													</span>
-												</td>
-												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.rate_employee)}
-												</td>
-												<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.rate_client)}
-												</td>
-												{annualData.month_keys.map((mKey) => {
-													const hrs = row.monthly_hours?.[mKey] || 0;
-													return (
-														<td
-															key={mKey}
-															className="border border-black bg-amber-50/50 px-0.5 py-1 text-right tabular-nums text-[9.5px]"
-														>
-															{hrs > 0 ? fmtHours(hrs) : '–'}
-														</td>
-													);
-												})}
-												<td className="border border-black bg-purple-100 px-1 py-1 text-right font-semibold tabular-nums text-purple-900">
-													{fmtHours(row.total_hours)}
-												</td>
-												<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
-													{formatNumber(row.company_cost)}
-												</td>
-												<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums text-blue-900">
-													{formatNumber(row.accent_cost)}
-												</td>
-												<td
-													className={`border border-black px-1 py-1 text-right font-semibold tabular-nums ${
-														row.pnl >= 0
-															? 'bg-yellow-300 text-green-950'
-															: 'bg-red-200 text-red-900'
-													}`}
+										annualData.rows.map((row) => {
+											const unpricedMonths = annualUnpricedMonths(
+												row,
+												annualData.month_keys
+											);
+											return (
+												<tr
+													key={row.id || row.sr_no}
+													style={{ height: '22px' }}
 												>
-													{formatNumber(row.pnl)}
-												</td>
-											</tr>
-										))
+													<td className="border border-black bg-yellow-100 px-1 py-1 text-center tabular-nums">
+														{row.sr_no}
+													</td>
+													<td className="border border-black bg-yellow-100 px-1.5 py-1 font-medium truncate">
+														{row.employee_name}
+													</td>
+													<td className="border border-black bg-yellow-100 px-1 py-1 text-center">
+														<span className="capitalize text-[9px] text-gray-700">
+															{row.salary_type || 'monthly'}
+														</span>
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+														{formatNumber(row.rate_employee)}
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right tabular-nums">
+														{formatNumber(row.rate_client)}
+													</td>
+													{annualData.month_keys.map((mKey) => {
+														const hrs = row.monthly_hours?.[mKey] || 0;
+														const unpriced = unpricedMonths.includes(mKey);
+														return (
+															<td
+																key={mKey}
+																title={
+																	unpriced
+																		? `Company cost unknown for ${annualMonthLabels[mKey] ?? mKey}: ${annualMonthSalaryReason(row, mKey)}`
+																		: undefined
+																}
+																className="border border-black bg-amber-50/50 px-0.5 py-1 text-right tabular-nums text-[9.5px]"
+															>
+																{hrs > 0 ? fmtHours(hrs) : '–'}
+																{unpriced && (
+																	<span
+																		data-testid="annual-unpriced-month"
+																		data-month={mKey}
+																		className="ml-0.5 font-bold text-red-700"
+																	>
+																		*
+																	</span>
+																)}
+															</td>
+														);
+													})}
+													<td className="border border-black bg-purple-100 px-1 py-1 text-right font-semibold tabular-nums text-purple-900">
+														{fmtHours(row.total_hours)}
+													</td>
+													<td className="border border-black bg-green-100 px-1 py-1 text-right tabular-nums">
+														{formatNumber(row.company_cost)}
+														{unpricedMonths.length > 0 && (
+															<span
+																data-testid="annual-partial-cost"
+																title={`Company cost and P&L include priced months only; ${unpricedMonths.length} month(s) unpriced.`}
+																className="ml-0.5 rounded bg-amber-200 px-0.5 text-[8.5px] font-bold uppercase text-amber-950"
+															>
+																partial
+															</span>
+														)}
+													</td>
+													<td className="border border-black bg-blue-100 px-1 py-1 text-right font-semibold tabular-nums text-blue-900">
+														{formatNumber(row.accent_cost)}
+													</td>
+													<td
+														title={
+															unpricedMonths.length > 0
+																? 'P&L is partial: unpriced months contribute no company cost.'
+																: undefined
+														}
+														className={`border border-black px-1 py-1 text-right font-semibold tabular-nums ${
+															row.pnl >= 0
+																? 'bg-yellow-300 text-green-950'
+																: 'bg-red-200 text-red-900'
+														}`}
+													>
+														{formatNumber(row.pnl)}
+													</td>
+												</tr>
+											);
+										})
 									)}
 									{/* Grand Totals Row */}
 									<tr style={{ height: '24px' }}>
@@ -1347,6 +1728,14 @@ export default function ManhoursBillingReportPage() {
 											className="border border-black bg-yellow-100 px-2 py-1 text-right font-semibold"
 										>
 											Grand Total
+											{annualUnpricedMonthCount > 0 && (
+												<span
+													data-testid="annual-salary-partial"
+													className="ml-1 rounded bg-amber-200 px-1 py-0.5 text-[9px] font-semibold uppercase text-amber-950"
+												>
+													partial · {annualUnpricedMonthCount} unpriced
+												</span>
+											)}
 										</td>
 										{annualData.month_keys.map((mKey) => {
 											const mTotal =
@@ -1381,6 +1770,83 @@ export default function ManhoursBillingReportPage() {
 									</tr>
 								</tbody>
 							</table>
+
+							{annualSalary &&
+								(annualUnpricedMonthCount > 0 ||
+									annualSalary.legacy_fallback_count > 0 ||
+									annualSalary.missing_count +
+										annualSalary.ambiguous_count +
+										annualSalary.ctc_missing_count +
+										annualSalary.ctc_invalid_count >
+										0 ||
+									annualData.rows.some(
+										(row) =>
+											annualStoredRateMonths(row, annualData.month_keys)
+												.length > 0
+									)) && (
+									<div
+										data-testid="annual-salary-disclosure"
+										className="mt-2 space-y-1 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[10.5px] leading-relaxed text-amber-900 print:border-black print:bg-transparent print:text-black"
+									>
+										{annualUnpricedMonthCount > 0 && (
+											<p>
+												<span className="font-semibold">
+													Company cost and P&amp;L are partial.
+												</span>{' '}
+												{annualUnpricedMonthCount} month(s) with hours cannot be
+												priced and contribute no money; their hours stay visible
+												and are marked *.
+											</p>
+										)}
+										<ul className="space-y-0.5">
+											{annualData.rows.map((row) => {
+												const unpriced = annualUnpricedMonths(
+													row,
+													annualData.month_keys
+												);
+												const legacy = annualLegacyMonths(
+													row,
+													annualData.month_keys
+												);
+												const stored = annualStoredRateMonths(
+													row,
+													annualData.month_keys
+												);
+												if (
+													unpriced.length === 0 &&
+													legacy.length === 0 &&
+													stored.length === 0
+												) {
+													return null;
+												}
+												return (
+													<li key={row.id || row.sr_no}>
+														<span className="font-medium">
+															{row.employee_name}:
+														</span>{' '}
+														{[
+															...unpriced.map(
+																(mKey) =>
+																	`${annualMonthLabels[mKey] ?? mKey} cost unknown (${annualMonthSalaryReason(row, mKey)})`
+															),
+															...legacy.map(
+																(mKey) =>
+																	`${annualMonthLabels[mKey] ?? mKey} legacy gross basis, not agreed CTC`
+															),
+															...stored.map(
+																(mKey) =>
+																	`${annualMonthLabels[mKey] ?? mKey} stored rate used (${annualMonthSalaryReason(row, mKey)})`
+															),
+														].join('; ')}
+													</li>
+												);
+											})}
+										</ul>
+										<p>
+											Salary evidence — {salaryPopulationLabel(annualSalary)}.
+										</p>
+									</div>
+								)}
 
 							<footer className="mhb-print-footer hidden print:flex">
 								<span>

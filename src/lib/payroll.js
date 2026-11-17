@@ -51,11 +51,13 @@ export const safeNum = (v) => {
  * one slip reports two amounts at once — and how the printed slip stops adding
  * up, because its rows move while its totals do not.
  *
- * The canonical sources are the repair, for a slip whose Basic column is
- * missing or zero: the Salary Profile first, the legacy Salary Structure last
- * (ADR-0001). Every candidate is compared as a NUMBER: a stored `"0.00"` is a
- * real zero and falls through to the next source, which string truthiness would
- * get wrong.
+ * The repair for a slip whose Basic column is missing or zero comes first from
+ * its recorded/confirmed salary context (`salary_context.figure_basic`, see
+ * @/lib/payroll-slip-salary); raw rows that already carry explicit canonical
+ * evidence may still supply the Salary Profile Basic, Profile Basic+DA, then
+ * the legacy Salary Structure (ADR-0001). Every candidate is compared as a
+ * NUMBER: a stored `"0.00"` is a real zero and falls through to the next
+ * source, which string truthiness would get wrong.
  *
  * `scheduledDA` is the month's DA Component Rate (`resolveScheduledDA`) and
  * stays authoritative for DA (ADR-0001, #248): a percentage-valued or absent
@@ -73,9 +75,20 @@ export function slipFigures(row, { scheduledDA = 0 } = {}) {
 	const storedBasic = safeNum(row.basic);
 	// Salary figures go through the money library, never float arithmetic
 	// (AGENTS.md): drift from a `+` here would reach every reader at once.
+	//
+	// The only profile-derived Basic fallback is the recorded/confirmed context
+	// attached by @/lib/payroll-slip-salary. A later/current profile is never
+	// read into a historical slip. The profile_*/structure_* keys stay explicit
+	// raw-row evidence inputs for existing callers; no assigned route joins a
+	// current profile into them (issue #441).
+	const context =
+		row.salary_context && typeof row.salary_context === 'object'
+			? row.salary_context
+			: null;
 	const canonicalBasicPlusDa = Math.max(
 		0,
-		safeNum(row.profile_basic) ||
+		safeNum(context?.figure_basic) ||
+			safeNum(row.profile_basic) ||
 			safeNum(row.profile_basic_plus_da) ||
 			safeNum(row.structure_basic_salary)
 	);

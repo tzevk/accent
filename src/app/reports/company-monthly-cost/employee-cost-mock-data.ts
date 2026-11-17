@@ -21,6 +21,11 @@
  *     same per-employee, per-project monthly cells the monthly builder sums,
  *     so the same declaration feeds both: April's FY column and a mock April
  *     month state the same hours and cost.
+ *  3. **Salary evidence follows the month's basis.** A finalized month's rows
+ *     carry frozen `recorded` evidence (live salary was never consulted); an
+ *     open month's rows carry `available` employer-cost terms. The employee,
+ *     project, and month aggregates count that same evidence, so the salary
+ *     population always agrees with the cost rows it discloses.
  *
  * Money math goes through `@/lib/money` (Decimal.js, ROUND_HALF_UP) — the
  * repo rule for billing figures — and the declarations are plain data above
@@ -36,6 +41,9 @@ import type {
 } from '@/lib/company-expenditure/types';
 import type {
 	CompanyCostMeta,
+	CostSalaryAvailability,
+	CostSalaryEvidence,
+	CostSalarySummary,
 	FYAllocationRow,
 	FYCompanyCostData,
 	MonthlyCompanyCostData,
@@ -220,6 +228,104 @@ function rateOf(cost: number, hours: number): number {
 	return hours > 0 ? toNumber(div(R(cost), hours).toDecimalPlaces(2)) : 0;
 }
 
+/**
+ * Fixture-scoped Salary Profile ids. The fixture reads no roster, so its
+ * synthetic agreement identity sits beside the fixture's slip (9000+) and
+ * allocation (7000+) ids rather than claiming a production profile id.
+ */
+const MOCK_SALARY_PROFILE_BASE = 5000;
+
+/**
+ * The salary evidence the month publishes for one declared employee, mirroring
+ * the shared interpretation: a finalized month's cost is frozen, so live
+ * salary is never consulted; an open month's estimate is priced from the
+ * declared employer-cost terms.
+ */
+function mockSalaryEvidence(
+	employee: MockEmployeeSpec,
+	finalized: boolean
+): CostSalaryEvidence {
+	if (finalized) {
+		return {
+			availability: 'recorded',
+			issue: null,
+			profile_id: null,
+			profile_source: null,
+			salary_type: null,
+			ctc_source: 'none',
+			conflict_ids: [],
+			legacy_fallback: false,
+		};
+	}
+	return {
+		availability: 'available',
+		issue: null,
+		profile_id: MOCK_SALARY_PROFILE_BASE + employee.id,
+		profile_source: 'employee_salary_profile',
+		salary_type: 'monthly',
+		ctc_source: 'employer_cost',
+		conflict_ids: [],
+		legacy_fallback: false,
+	};
+}
+
+/** Distinct employees per salary availability state, as the payload counts. */
+function mockSalaryAvailabilityCounts(
+	byEmployee: ReadonlyMap<number, CostSalaryAvailability>
+): Record<CostSalaryAvailability, number> {
+	const counts: Record<CostSalaryAvailability, number> = {
+		recorded: 0,
+		not_consulted: 0,
+		available: 0,
+		missing: 0,
+		ambiguous: 0,
+		ctc_missing: 0,
+		ctc_invalid: 0,
+		unavailable: 0,
+	};
+	for (const availability of byEmployee.values()) counts[availability] += 1;
+	return counts;
+}
+
+/**
+ * The month's salary population, mirrored from `salarySummaryOf`: one count per
+ * availability state across the employee rows, and whether any priced row has
+ * a salary gap, so `complete` is true exactly when every row resolved.
+ */
+function mockSalarySummary(
+	employeeRows: MonthlyCompanyCostData['employee_rows']
+): CostSalarySummary {
+	const counts = new Map<CostSalaryAvailability, number>();
+	let legacyFallbackCount = 0;
+	for (const row of employeeRows) {
+		counts.set(
+			row.salary.availability,
+			(counts.get(row.salary.availability) ?? 0) + 1
+		);
+		if (row.salary.legacy_fallback) legacyFallbackCount += 1;
+	}
+	const count = (availability: CostSalaryAvailability) =>
+		counts.get(availability) ?? 0;
+	return {
+		available_count: count('available'),
+		missing_count: count('missing'),
+		ambiguous_count: count('ambiguous'),
+		ctc_missing_count: count('ctc_missing'),
+		ctc_invalid_count: count('ctc_invalid'),
+		unavailable_count: count('unavailable'),
+		legacy_fallback_count: legacyFallbackCount,
+		recorded_count: count('recorded'),
+		not_consulted_count: count('not_consulted'),
+		complete:
+			count('missing') +
+				count('ambiguous') +
+				count('ctc_missing') +
+				count('ctc_invalid') +
+				count('unavailable') ===
+			0,
+	};
+}
+
 // ─── Builder ────────────────────────────────────────────────────────
 
 /**
@@ -319,6 +425,7 @@ export function mockCostData(
 				cost_status: spec.finalized ? 'recorded' : 'estimated',
 				cost_known: true,
 				missing_salary_profile: false,
+				salary: mockSalaryEvidence(employee, spec.finalized),
 				in_saved_roster: null,
 				worked_outside_finalized_run: false,
 				employment_issue: null,
@@ -367,6 +474,7 @@ export function mockCostData(
 			recorded_cost: recorded,
 			estimated_cost: estimated,
 			missing_salary_profile: false,
+			salary: first.salary,
 			in_saved_roster: null,
 			worked_outside_finalized_run: false,
 			employment_issue: null,
@@ -394,6 +502,10 @@ export function mockCostData(
 			a.project_name.localeCompare(b.project_name)
 	)) {
 		const first = group[0];
+		const salaryByEmployee = new Map<number, CostSalaryAvailability>();
+		for (const row of group) {
+			salaryByEmployee.set(row.employee_id, row.salary.availability);
+		}
 		projectRows.push({
 			sr_no: 0,
 			project_id: first.project_id,
@@ -411,6 +523,8 @@ export function mockCostData(
 			),
 			employee_count: new Set(group.map((row) => row.employee_id)).size,
 			missing_salary_profile_count: 0,
+			salary_availability_counts:
+				mockSalaryAvailabilityCounts(salaryByEmployee),
 			unknown_cost_count: 0,
 		});
 	}
@@ -452,6 +566,7 @@ export function mockCostData(
 			).size,
 		},
 		payroll: mockPayrollExpenditure(spec, inputs),
+		salary: mockSalarySummary(employeeRows),
 		coverage: mockCoverage(spec),
 	};
 }
@@ -684,8 +799,7 @@ export function mockFyCostData(
 					recorded_cost: 0,
 					estimated_cost: 0,
 					cost_known: true,
-					worked_outside_finalized_run:
-						row.worked_outside_finalized_run,
+					worked_outside_finalized_run: row.worked_outside_finalized_run,
 					in_saved_roster: row.in_saved_roster,
 					employment_issue: row.employment_issue,
 					hourly_rate: 0,
@@ -762,9 +876,9 @@ export function mockFyCostData(
 			const workedOutside = group.some(
 				(row) => row.worked_outside_finalized_run
 			);
-			const employmentIssue = group.find(
-				(row) => row.employment_issue !== null
-			)?.employment_issue ?? null;
+			const employmentIssue =
+				group.find((row) => row.employment_issue !== null)?.employment_issue ??
+				null;
 			return {
 				sr_no: 0,
 				employee_id: first.employee_id,
@@ -834,9 +948,7 @@ export function mockFyCostData(
 				total_cost: round2(group.reduce((sum, row) => sum + row.total_cost, 0)),
 				cost_known: group.every((row) => row.cost_known),
 				unknown_cost_count: new Set(
-					group
-						.filter((row) => !row.cost_known)
-						.map((row) => row.employee_id)
+					group.filter((row) => !row.cost_known).map((row) => row.employee_id)
 				).size,
 				employee_count: new Set(group.map((row) => row.employee_id)).size,
 			};

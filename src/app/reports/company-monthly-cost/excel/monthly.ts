@@ -14,6 +14,12 @@
 import ExcelJS from 'exceljs';
 import type { MonthlyCompanyCostData } from '../employee-cost-data-source';
 import {
+	costRowDisclosure,
+	monthlyTotalIsPartial,
+	projectSalaryNotes,
+	salaryWorkbookSummary,
+} from '../salary-display/salary-display';
+import {
 	TINT_YELLOW,
 	TINT_BLUE,
 	TINT_AMBER_LIGHT,
@@ -32,12 +38,41 @@ export function fileBaseForMonthlyExcel(data: MonthlyCompanyCostData): string {
 	return `Company_Cost_Monthly_${m}.xlsx`;
 }
 
+/**
+ * The payload's Project counts describe salary availability, not the CTC
+ * source. Each detail row still carries `legacy_fallback`, so the workbook
+ * states the legacy-basis employees it can prove instead of guessing.
+ */
+function legacyFallbackEmployeesByProject(
+	rows: MonthlyCompanyCostData['rows']
+): Map<string, number> {
+	const grouped = new Map<string, Set<number>>();
+	for (const row of rows) {
+		if (!row.salary.legacy_fallback) continue;
+		const key =
+			row.project_id !== null ? String(row.project_id) : row.project_code;
+		const employees = grouped.get(key) ?? new Set<number>();
+		employees.add(row.employee_id);
+		grouped.set(key, employees);
+	}
+	return new Map(
+		[...grouped.entries()].map(([key, employees]) => [key, employees.size])
+	);
+}
+
+/** The salary population line appended to every monthly sheet's subtitle. */
+function salarySubtitle(data: MonthlyCompanyCostData): string {
+	const summary = salaryWorkbookSummary(data.salary);
+	return summary ? ` · Salary basis — ${summary}` : '';
+}
+
 // ─── New monthly company workbook ──────────────────────────────────
 
 function buildMonthlyDetailedSheet(
 	wb: ExcelJS.Workbook,
 	data: MonthlyCompanyCostData
 ): void {
+	const partial = monthlyTotalIsPartial(data.payroll, data.salary);
 	const ws = wb.addWorksheet('Detailed', {
 		pageSetup: {
 			orientation: 'landscape',
@@ -76,7 +111,7 @@ function buildMonthlyDetailedSheet(
 
 	ws.mergeCells(2, 1, 2, 8);
 	const sub = ws.getCell(2, 1);
-	sub.value = `Total cost to company across all projects & employees · ${data.totals.employee_count} employees · ${data.totals.project_count} projects · Generated ${new Date().toLocaleDateString('en-IN')}`;
+	sub.value = `Total cost to company across all projects & employees · ${data.totals.employee_count} employees · ${data.totals.project_count} projects · Generated ${new Date().toLocaleDateString('en-IN')}${salarySubtitle(data)}`;
 	setFont(sub, { size: 10, color: 'FF6B7280' });
 	sub.alignment = { vertical: 'middle', horizontal: 'left' };
 
@@ -107,7 +142,9 @@ function buildMonthlyDetailedSheet(
 	let rowNum = 4;
 	for (const r of data.rows) {
 		const row = ws.getRow(rowNum);
-		row.height = r.missing_salary_profile ? 32 : 18;
+		const disclosure = costRowDisclosure(r);
+		const note = disclosure.unavailableReason ?? disclosure.basisNote;
+		row.height = note ? 32 : 18;
 		const vals: Array<{
 			val: string | number;
 			tint: string;
@@ -117,15 +154,7 @@ function buildMonthlyDetailedSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${r.employee_name} (${r.employee_code || r.employee_id})${
-					r.missing_salary_profile
-						? ' — Salary Profile missing (unpriced)'
-						: !r.cost_known
-							? r.worked_outside_finalized_run
-								? ' — Worked outside finalized payroll (unpriced)'
-								: ' — Cost unavailable in finalized run (unpriced)'
-							: ''
-				}`,
+				val: `${r.employee_name} (${r.employee_code || r.employee_id})${note ? ` — ${note}` : ''}`,
 				tint: TINT_EMP,
 				align: 'left',
 			},
@@ -164,7 +193,7 @@ function buildMonthlyDetailedSheet(
 			c.alignment = {
 				vertical: 'middle',
 				horizontal: v.align,
-				wrapText: r.missing_salary_profile,
+				wrapText: !!note,
 			};
 			if (v.numFmt) c.numFmt = v.numFmt;
 			box(c);
@@ -177,7 +206,7 @@ function buildMonthlyDetailedSheet(
 	totalRow.height = 20;
 	ws.mergeCells(rowNum, 1, rowNum, 5);
 	const lbl = totalRow.getCell(1);
-	lbl.value = `${data.payroll.unpriced_count > 0 ? 'Employee cost — partial' : 'Grand Total — Company Cost'} for ${data.month_label}`;
+	lbl.value = `${partial ? 'Employee cost — partial' : 'Grand Total — Company Cost'} for ${data.month_label}`;
 	setFont(lbl, { bold: true, size: 10 });
 	lbl.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 5; c++) box(totalRow.getCell(c));
@@ -210,6 +239,7 @@ function buildMonthlyByEmployeeSheet(
 	wb: ExcelJS.Workbook,
 	data: MonthlyCompanyCostData
 ): void {
+	const partial = monthlyTotalIsPartial(data.payroll, data.salary);
 	const ws = wb.addWorksheet('By Employee', {
 		pageSetup: {
 			orientation: 'landscape',
@@ -245,7 +275,7 @@ function buildMonthlyByEmployeeSheet(
 	ws.getRow(1).height = 20;
 	ws.mergeCells(2, 1, 2, 8);
 	const s = ws.getCell(2, 1);
-	s.value = `Aggregated per employee across all projects · ${data.totals.employee_count} employees`;
+	s.value = `Aggregated per employee across all projects · ${data.totals.employee_count} employees${salarySubtitle(data)}`;
 	setFont(s, { size: 9, color: 'FF6B7280' });
 	s.alignment = { vertical: 'middle', horizontal: 'left' };
 
@@ -283,7 +313,9 @@ function buildMonthlyByEmployeeSheet(
 	let rn = 4;
 	for (const r of data.employee_rows) {
 		const row = ws.getRow(rn);
-		row.height = r.missing_salary_profile ? 32 : 18;
+		const disclosure = costRowDisclosure(r);
+		const note = disclosure.unavailableReason ?? disclosure.basisNote;
+		row.height = note ? 32 : 18;
 		const vals: Array<{
 			val: string | number;
 			tint: string;
@@ -293,15 +325,7 @@ function buildMonthlyByEmployeeSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${r.employee_name} (${r.employee_code || r.employee_id})${
-					r.missing_salary_profile
-						? ' — Salary Profile missing (unpriced)'
-						: !r.cost_known
-							? r.worked_outside_finalized_run
-								? ' — Worked outside finalized payroll (unpriced)'
-								: ' — Cost unavailable in finalized run (unpriced)'
-							: ''
-				}`,
+				val: `${r.employee_name} (${r.employee_code || r.employee_id})${note ? ` — ${note}` : ''}`,
 				tint: TINT_YELLOW,
 				align: 'left',
 			},
@@ -336,7 +360,7 @@ function buildMonthlyByEmployeeSheet(
 			c.alignment = {
 				vertical: 'middle',
 				horizontal: v.align,
-				wrapText: r.missing_salary_profile,
+				wrapText: !!note,
 			};
 			if (v.numFmt) c.numFmt = v.numFmt;
 			box(c);
@@ -348,10 +372,7 @@ function buildMonthlyByEmployeeSheet(
 	tr.height = 20;
 	ws.mergeCells(rn, 1, rn, 5);
 	const l = tr.getCell(1);
-	l.value =
-		data.payroll.unpriced_count > 0
-			? 'Employee cost — partial'
-			: 'Grand Total';
+	l.value = partial ? 'Employee cost — partial' : 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
 	l.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 5; c++) box(tr.getCell(c));
@@ -383,6 +404,7 @@ function buildMonthlyByProjectSheet(
 	wb: ExcelJS.Workbook,
 	data: MonthlyCompanyCostData
 ): void {
+	const partial = monthlyTotalIsPartial(data.payroll, data.salary);
 	const ws = wb.addWorksheet('By Project', {
 		pageSetup: {
 			orientation: 'landscape',
@@ -416,7 +438,7 @@ function buildMonthlyByProjectSheet(
 	ws.getRow(1).height = 20;
 	ws.mergeCells(2, 1, 2, 6);
 	const s = ws.getCell(2, 1);
-	s.value = `Aggregated per project across all employees · ${data.totals.project_count} projects`;
+	s.value = `Aggregated per project across all employees · ${data.totals.project_count} projects${salarySubtitle(data)}`;
 	setFont(s, { size: 9, color: 'FF6B7280' });
 	s.alignment = { vertical: 'middle', horizontal: 'left' };
 
@@ -448,9 +470,20 @@ function buildMonthlyByProjectSheet(
 	}
 
 	let rn = 4;
+	const legacyByProject = legacyFallbackEmployeesByProject(data.rows);
 	for (const r of data.project_rows) {
 		const row = ws.getRow(rn);
-		row.height = r.missing_salary_profile_count > 0 ? 32 : 18;
+		const key = r.project_id !== null ? String(r.project_id) : r.project_code;
+		const notes = projectSalaryNotes(
+			r.salary_availability_counts,
+			legacyByProject.get(key) ?? 0
+		);
+		const unpriced = !r.cost_known
+			? ` — Unpriced: ${r.unknown_cost_count} employee(s) with unknown cost`
+			: '';
+		const salaryNote =
+			notes.length > 0 ? ` — Partial: ${notes.join(' · ')}` : '';
+		row.height = notes.length > 0 || !r.cost_known ? 32 : 18;
 		const vals: Array<{
 			val: string | number;
 			tint: string;
@@ -460,13 +493,7 @@ function buildMonthlyByProjectSheet(
 		}> = [
 			{ val: r.sr_no, tint: TINT_YELLOW, align: 'center' },
 			{
-				val: `${[r.project_code, r.project_name].filter(Boolean).join(' – ')}${
-					r.missing_salary_profile_count > 0
-						? ` — Partial: ${r.missing_salary_profile_count} missing Salary Profile(s)`
-						: !r.cost_known
-							? ` — Unpriced: ${r.unknown_cost_count} employee(s) with unknown cost`
-							: ''
-				}`,
+				val: `${[r.project_code, r.project_name].filter(Boolean).join(' – ')}${unpriced}${salaryNote}`,
 				tint: TINT_PROJ,
 				align: 'left',
 			},
@@ -494,7 +521,7 @@ function buildMonthlyByProjectSheet(
 			c.alignment = {
 				vertical: 'middle',
 				horizontal: v.align,
-				wrapText: r.missing_salary_profile_count > 0,
+				wrapText: notes.length > 0 || !r.cost_known,
 			};
 			if (v.numFmt) c.numFmt = v.numFmt;
 			box(c);
@@ -506,10 +533,7 @@ function buildMonthlyByProjectSheet(
 	tr.height = 20;
 	ws.mergeCells(rn, 1, rn, 3);
 	const l = tr.getCell(1);
-	l.value =
-		data.payroll.unpriced_count > 0
-			? 'Employee cost — partial'
-			: 'Grand Total';
+	l.value = partial ? 'Employee cost — partial' : 'Grand Total';
 	setFont(l, { bold: true, size: 10 });
 	l.alignment = { vertical: 'middle', horizontal: 'right' };
 	for (let c = 1; c <= 3; c++) box(tr.getCell(c));

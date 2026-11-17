@@ -27,10 +27,7 @@ interface Insert {
 	params: unknown[];
 }
 
-function fixtureDb(
-	tables: Tables,
-	inserts: Insert[] = []
-): SqlConnection {
+function fixtureDb(tables: Tables, inserts: Insert[] = []): SqlConnection {
 	return {
 		execute: async (
 			sql: string,
@@ -126,7 +123,10 @@ function allocation(
 	};
 }
 
-function allocationShare(employeeId: number, cost: number): Record<string, unknown> {
+function allocationShare(
+	employeeId: number,
+	cost: number
+): Record<string, unknown> {
 	return {
 		allocation_id: employeeId * 100,
 		project_id: null,
@@ -261,12 +261,7 @@ describe('finalized payroll roster in the reported month', () => {
 		const tables: Tables = {
 			employees: [employee(1), employee(4), employee(5), employee(6)],
 			legacy: [],
-			canonical: [
-				canonical(1),
-				canonical(4),
-				canonical(5),
-				canonical(6),
-			],
+			canonical: [canonical(1), canonical(4), canonical(5), canonical(6)],
 			runs: [{ id: 88, status: 'finalized', month: 10, year: 2026 }],
 			// No rosters row: the legacy run predates saved validated rosters.
 			slips: [slip(1, 25000), { id: 40, employee_id: 4, employer_cost: 18000 }],
@@ -346,6 +341,58 @@ describe('finalized payroll roster in the reported month', () => {
 		expect(row.estimated_amount).toBeGreaterThan(0);
 		expect(row.missing_pricing).toBe(false);
 		expect(row.employment_issue).toBeNull();
+	});
+
+	it('keeps recorded cost when today’s live salary is ambiguous', async () => {
+		const tables: Tables = {
+			employees: [employee(1)],
+			// Two agreements cover October today: ambiguous live salary must not
+			// reprice the finalized month or add a draft salary warning.
+			canonical: [
+				canonical(1),
+				{
+					...canonical(3, { effectiveFrom: `${MONTH}-01`, cost: 26000 }),
+					id: 3,
+					employee_id: 1,
+				},
+			],
+			runs: [{ id: 77, status: 'finalized', month: 10, year: 2026 }],
+			rosters: [snapshot([1])],
+			slips: [slip(1, 25000)],
+			allocations: [allocation(1)],
+			shares: [allocationShare(1, 25000)],
+			assignments: [],
+		};
+
+		const interpretation = await loadPayrollMonth(fixtureDb(tables), MONTH);
+
+		const [row] = interpretation.employees;
+		expect(row.status).toBe('recorded');
+		expect(row.recorded_amount).toBe(25000);
+		expect(row.estimated_amount).toBeNull();
+		expect(row.missing_pricing).toBe(false);
+		expect(row.salary).toEqual({
+			availability: 'recorded',
+			issue: null,
+			profile_id: null,
+			profile_source: null,
+			salary_type: null,
+			ctc_source: 'none',
+			conflict_ids: [],
+			legacy_fallback: false,
+		});
+		expect(interpretation.totals.recorded_total).toBe(25000);
+		expect(interpretation.totals.estimated_total).toBe(0);
+		expect(interpretation.salary).toMatchObject({
+			recorded_count: 1,
+			ambiguous_count: 0,
+			complete: true,
+		});
+		expect(
+			interpretation.coverage.some((notice) =>
+				notice.code.startsWith('payroll_salary_')
+			)
+		).toBe(false);
 	});
 
 	it('freezes the saved roster identity and contract stream, not live profile edits', async () => {

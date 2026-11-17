@@ -11,6 +11,7 @@
 import { R, add, sub, toNumber } from '@/lib/money';
 import { ptAdjustmentFor, slipFigures } from '@/lib/payroll';
 import { withTransaction } from '@/utils/database';
+import { SALARY_WRITE_ISOLATION } from '@/lib/salary-write-isolation';
 import {
 	loadFrozenPayrollRunRoster,
 	loadPayrollRunRoster,
@@ -18,6 +19,40 @@ import {
 
 /** Run statuses that lock the month against regenerating its Payroll Slips. */
 const LOCKED_STATUSES = ['finalized', 'paid'];
+
+/** Salary-readiness issue codes mirrored from `payroll-run-roster.ts`. */
+export const SALARY_ISSUE = Object.freeze({
+	MISSING_PROFILE: 'salary_profile_missing',
+	AMBIGUOUS_PROFILE: 'salary_profile_ambiguous',
+	MISSING_CTC: 'salary_ctc_missing',
+	INVALID_CTC: 'salary_ctc_invalid',
+});
+
+/**
+ * The member's salary readiness issue, kept separate from its employment-date
+ * `issue`. Older roster shapes without `salary_issue` are read as the ordinary
+ * missing-agreement gap, never as an employment-date problem.
+ */
+export function salaryIssueOf(member) {
+	if (member.salary_issue) return member.salary_issue;
+	return member.salary_profile ? null : SALARY_ISSUE.MISSING_PROFILE;
+}
+
+/** The roster's salary issue code as a sentence a route can return. */
+export function salaryIssueLabel(issue) {
+	switch (issue) {
+		case SALARY_ISSUE.MISSING_PROFILE:
+			return 'no Salary Profile covers the month';
+		case SALARY_ISSUE.AMBIGUOUS_PROFILE:
+			return 'overlapping Salary Profiles need review';
+		case SALARY_ISSUE.MISSING_CTC:
+			return 'the Salary Profile has no monthly CTC';
+		case SALARY_ISSUE.INVALID_CTC:
+			return 'the Salary Profile monthly CTC is invalid';
+		default:
+			return 'the Salary Profile cannot price the month';
+	}
+}
 
 /** Every run read returns these columns, so route responses share one shape. */
 const RUN_COLUMNS = `id, month, year, run_number, status, total_employees, total_gross,
@@ -154,20 +189,9 @@ export async function withPayrollRunWriteLock(month, fn) {
 		throw new Error(`Invalid month format. Use YYYY-MM-01`);
 	}
 
-	return withTransaction(async (db) => {
-		let run = await findPayrollRun(db, period, { forUpdate: true });
-		if (isRunLocked(run)) {
-			throw Object.assign(
-				new Error(
-					`The Payroll Run for ${period.month} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`
-				),
-				{ code: 'payroll_run_locked', status: 409 }
-			);
-		}
-
-		if (!run) {
-			await createDraftPayrollRun(db, period);
-			run = await findPayrollRun(db, period, { forUpdate: true });
+	return withTransaction(
+		async (db) => {
+			let run = await findPayrollRun(db, period, { forUpdate: true });
 			if (isRunLocked(run)) {
 				throw Object.assign(
 					new Error(
@@ -176,16 +200,30 @@ export async function withPayrollRunWriteLock(month, fn) {
 					{ code: 'payroll_run_locked', status: 409 }
 				);
 			}
-		}
 
-		if (!run) {
-			throw new Error(
-				`The Payroll Run for ${period.month} could not be created.`
-			);
-		}
+			if (!run) {
+				await createDraftPayrollRun(db, period);
+				run = await findPayrollRun(db, period, { forUpdate: true });
+				if (isRunLocked(run)) {
+					throw Object.assign(
+						new Error(
+							`The Payroll Run for ${period.month} is finalized — the month is locked, so Payroll Slips cannot be regenerated.`
+						),
+						{ code: 'payroll_run_locked', status: 409 }
+					);
+				}
+			}
 
-		return fn(db, run);
-	});
+			if (!run) {
+				throw new Error(
+					`The Payroll Run for ${period.month} could not be created.`
+				);
+			}
+
+			return fn(db, run);
+		},
+		{ isolation: SALARY_WRITE_ISOLATION }
+	);
 }
 
 /**
@@ -285,6 +323,12 @@ export async function summarizeMonthSlips(db, month) {
  *
  * `can_finalize` is a UI preflight only; Finalize independently validates the
  * same roster and names the people behind every non-zero gap.
+ *
+ * Salary gaps are counted apart from `employment_issue_count`: a missing
+ * agreement (`missing_profile_count`), competing covering agreements
+ * (`ambiguous_salary_count`) and an existing agreement with no usable CTC
+ * (`unpriced_salary_count`). Salary ambiguity is never reported as an
+ * employment-date problem.
  */
 export async function loadPayrollRunReadiness(db, period, run, slips) {
 	const slipEmployeeIds = new Set(
@@ -306,6 +350,8 @@ export async function loadPayrollRunReadiness(db, period, run, slips) {
 					(member) => !slipEmployeeIds.has(Number(member.employee_id))
 				).length,
 				missing_profile_count: 0,
+				ambiguous_salary_count: 0,
+				unpriced_salary_count: 0,
 				employment_issue_count: 0,
 				unexpected_slip_count: slips.filter(
 					(slip) => !memberIds.has(Number(slip.employee_id))
@@ -322,6 +368,8 @@ export async function loadPayrollRunReadiness(db, period, run, slips) {
 			slip_count: slipCount,
 			missing_slip_count: 0,
 			missing_profile_count: 0,
+			ambiguous_salary_count: 0,
+			unpriced_salary_count: 0,
 			employment_issue_count: 0,
 			unexpected_slip_count: 0,
 			excluded_count: 0,
@@ -332,11 +380,21 @@ export async function loadPayrollRunReadiness(db, period, run, slips) {
 	const roster = await loadPayrollRunRoster(db, period.month);
 	const members = roster.members;
 	const reviewCount = members.filter((member) => member.issue).length;
-	const profileGapCount = members.filter(
-		(member) => !member.issue && !member.salary_profile
+	const salaryReady = members.filter((member) => !member.issue);
+	const missingProfileCount = salaryReady.filter(
+		(member) => salaryIssueOf(member) === SALARY_ISSUE.MISSING_PROFILE
 	).length;
-	const eligible = members.filter(
-		(member) => !member.issue && member.salary_profile
+	const ambiguousSalaryCount = salaryReady.filter(
+		(member) => salaryIssueOf(member) === SALARY_ISSUE.AMBIGUOUS_PROFILE
+	).length;
+	const unpricedSalaryCount = salaryReady.filter((member) => {
+		const issue = salaryIssueOf(member);
+		return (
+			issue === SALARY_ISSUE.MISSING_CTC || issue === SALARY_ISSUE.INVALID_CTC
+		);
+	}).length;
+	const eligible = salaryReady.filter(
+		(member) => salaryIssueOf(member) === null
 	);
 	const memberIds = new Set(
 		members.map((member) => Number(member.employee_id))
@@ -353,7 +411,9 @@ export async function loadPayrollRunReadiness(db, period, run, slips) {
 		eligible_count: eligible.length,
 		slip_count: slipCount,
 		missing_slip_count: missingSlipCount,
-		missing_profile_count: profileGapCount,
+		missing_profile_count: missingProfileCount,
+		ambiguous_salary_count: ambiguousSalaryCount,
+		unpriced_salary_count: unpricedSalaryCount,
 		employment_issue_count: reviewCount,
 		unexpected_slip_count: unexpectedSlipCount,
 		excluded_count: roster.excluded.length,
@@ -362,7 +422,9 @@ export async function loadPayrollRunReadiness(db, period, run, slips) {
 			run.status === 'draft' &&
 			eligible.length > 0 &&
 			missingSlipCount === 0 &&
-			profileGapCount === 0 &&
+			missingProfileCount === 0 &&
+			ambiguousSalaryCount === 0 &&
+			unpricedSalaryCount === 0 &&
 			reviewCount === 0 &&
 			unexpectedSlipCount === 0,
 	};

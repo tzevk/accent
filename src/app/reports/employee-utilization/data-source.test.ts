@@ -22,6 +22,7 @@ import {
 	monthLabel,
 	trendMonths,
 	fetchUtilizationRangeData,
+	type TeamRowInput,
 } from '@/app/reports/employee-utilization/data-source';
 import type { SalaryProfile } from '@/app/reports/manhours-billing/data-source';
 import {
@@ -123,12 +124,36 @@ const rangeAssignments = [
 	},
 ];
 
-function mockRangeDb() {
+/**
+ * One `employee_salary_profile` row as the shared loader reads it: nullable
+ * CTC columns stay absent, never manufactured zeros.
+ */
+function salaryRow(
+	overrides: { id: number; employee_id: number } & Record<string, unknown>
+) {
+	return {
+		gross: null,
+		gross_salary: null,
+		employer_cost: 22000,
+		hourly_rate: 0,
+		daily_rate: 0,
+		std_hours_per_day: 8,
+		std_working_days: 26,
+		salary_type: 'monthly',
+		tds_percentage: 0,
+		effective_from: '2026-01-01',
+		effective_to: null,
+		cancelled_at: null,
+		...overrides,
+	};
+}
+
+function mockRangeDb(salaryRows: unknown[] = []) {
 	mockRangeQuery.mockImplementation((sql: string) => {
 		if (sql.includes('FROM employees'))
 			return Promise.resolve([rangeEmployees]);
 		if (sql.includes('FROM employee_salary_profile'))
-			return Promise.resolve([[]]);
+			return Promise.resolve([salaryRows]);
 		if (sql.includes('FROM holiday_master'))
 			return Promise.resolve([rangeHolidays]);
 		if (sql.includes('FROM employee_attendance')) return Promise.resolve([[]]);
@@ -146,6 +171,7 @@ const MAY = '2026-05';
 
 function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
 	return {
+		id: 1,
 		employee_id: 1,
 		gross: 0,
 		gross_salary: 20000,
@@ -158,6 +184,7 @@ function profile(overrides: Partial<SalaryProfile> = {}): SalaryProfile {
 		tds_percentage: 10,
 		effective_from: '2026-01-01',
 		effective_to: null,
+		cancelled_at: null,
 		...overrides,
 	};
 }
@@ -380,20 +407,29 @@ describe('utilizationPercent and bandForUtilization', () => {
 });
 
 describe('resolveMonthlyCost', () => {
-	it('prefers stored CTC over gross salary over gross (CTC-first)', () => {
-		// Deliberate divergence from the billing Gross-first order:
-		// bench prioritization needs true burn.
+	it('keeps an explicit canonical zero and discloses the legacy fallback', () => {
+		// Bench prioritization needs true burn: canonical CTC first, by presence.
 		expect(resolveMonthlyCost(profile())).toBe(22000);
 		expect(
 			resolveMonthlyCost(
 				profile({ employer_cost: 0, gross_salary: 15000, gross: 18000 })
 			)
+		).toBe(0);
+		expect(
+			resolveMonthlyCost(
+				profile({ employer_cost: null, gross_salary: 15000, gross: 18000 })
+			)
 		).toBe(15000);
 		expect(
 			resolveMonthlyCost(
-				profile({ employer_cost: 0, gross_salary: 0, gross: 18000 })
+				profile({ employer_cost: null, gross_salary: 0, gross: 18000 })
 			)
 		).toBe(18000);
+		expect(
+			resolveMonthlyCost(
+				profile({ employer_cost: null, gross_salary: null, gross: null })
+			)
+		).toBeNull();
 	});
 });
 
@@ -836,8 +872,16 @@ describe('buildTeamRow', () => {
 			attendance: [],
 			holidays: new Set(),
 			profiles: [
-				profile({ employer_cost: 22000, effective_to: '2026-09-30' }),
-				profile({ employer_cost: 26000, effective_from: '2026-10-01' }),
+				profile({
+					id: 1,
+					employer_cost: 22000,
+					effective_to: '2026-09-30',
+				}),
+				profile({
+					id: 2,
+					employer_cost: 26000,
+					effective_from: '2026-10-01',
+				}),
 			],
 		});
 		expect(row.monthly_cost).toBe(26000);
@@ -1882,6 +1926,168 @@ describe('fetchUtilizationRangeData', () => {
 		).toHaveLength(1);
 	});
 
+	it('keeps a shared salary gap cause instead of rewriting it to no-profile', async () => {
+		// One agreement covers both months and states no CTC at all.
+		mockRangeDb([salaryRow({ id: 51, employee_id: 11, employer_cost: null })]);
+
+		const range = await fetchUtilizationRangeData(
+			'2026-04-27',
+			'2026-05-03',
+			'2026-04-27',
+			'2026-05-03'
+		);
+		const rita = range!.rows.find((row) => row.employee_id === 11)!;
+		expect(rita.monthly_cost).toBeNull();
+		expect(rita.fractional_cost).toBeNull();
+		expect(rita.bench_cost).toBeNull();
+		// Both months share the cause, so the range reports it rather than
+		// claiming no profile covers the range.
+		expect(rita.cost_status).toBe('ctc-missing');
+		expect(rita.salary).toMatchObject({
+			availability: 'ctc-missing',
+			profile_id: 51,
+			ctc_source: 'none',
+			legacy_fallback: false,
+		});
+	});
+
+	it('names a range with several distinct salary gaps as mixed, not one month’s cause', async () => {
+		mockRangeDb([
+			// April: the covering agreement states no CTC → ctc-missing.
+			salaryRow({
+				id: 43,
+				employee_id: 11,
+				employer_cost: null,
+				effective_to: '2026-04-30',
+			}),
+			// May: two covering agreements → ambiguous.
+			salaryRow({ id: 41, employee_id: 11, effective_from: '2026-05-01' }),
+			salaryRow({ id: 42, employee_id: 11, effective_from: '2026-05-01' }),
+		]);
+
+		const range = await fetchUtilizationRangeData(
+			'2026-04-27',
+			'2026-05-03',
+			'2026-04-27',
+			'2026-05-03'
+		);
+		const rita = range!.rows.find((row) => row.employee_id === 11)!;
+		expect(rita.monthly_cost).toBeNull();
+		expect(rita.cost_status).toBe('mixed');
+		// The first unpriced month witnesses the gap; April's agreement is not
+		// presented as the range's, and May's ambiguity is not dropped.
+		expect(rita.salary).toMatchObject({
+			availability: 'ctc-missing',
+			profile_id: null,
+			conflict_ids: [41, 42],
+			legacy_fallback: false,
+		});
+		// Mixed rows stay out of priced money and count as incomplete.
+		expect(range!.totals.priced_count).toBe(0);
+		expect(range!.totals.unpriced_count).toBe(2);
+		expect(range!.totals.monthly_cost).toBeNull();
+		expect(range!.totals.salary.unpriced_count).toBe(2);
+		expect(range!.totals.salary.complete).toBe(false);
+		// No single cause bucket absorbs the mixed row: only Samir (no
+		// agreement either month) is counted as missing.
+		expect(range!.totals.salary.missing_count).toBe(1);
+		expect(range!.totals.salary.ambiguous_count).toBe(0);
+		expect(range!.totals.salary.ctc_missing_count).toBe(0);
+		expect(range!.totals.salary.ctc_invalid_count).toBe(0);
+	});
+
+	it('does not present one month’s agreement as an all-priced range’s', async () => {
+		mockRangeDb([
+			salaryRow({
+				id: 61,
+				employee_id: 11,
+				employer_cost: 30000,
+				effective_to: '2026-04-30',
+			}),
+			salaryRow({
+				id: 62,
+				employee_id: 11,
+				employer_cost: 40000,
+				effective_from: '2026-05-01',
+			}),
+		]);
+
+		const range = await fetchUtilizationRangeData(
+			'2026-04-27',
+			'2026-05-03',
+			'2026-04-27',
+			'2026-05-03'
+		);
+		const rita = range!.rows.find((row) => row.employee_id === 11)!;
+		expect(rita.cost_status).toBe('priced');
+		expect(rita.monthly_cost).not.toBeNull();
+		expect(rita.salary.availability).toBe('available');
+		// A hike split the range across two agreements, so no single profile is
+		// claimed for it.
+		expect(rita.salary.profile_id).toBeNull();
+		expect(rita.salary.ctc_source).toBe('employer_cost');
+		expect(rita.salary.legacy_fallback).toBe(false);
+	});
+
+	it('does not claim a legacy basis for a range whose cost is incomplete', async () => {
+		mockRangeDb([
+			// April is priced from a legacy gross field; May has no agreement.
+			salaryRow({
+				id: 71,
+				employee_id: 11,
+				employer_cost: null,
+				gross_salary: 20000,
+				effective_to: '2026-04-30',
+			}),
+		]);
+
+		const range = await fetchUtilizationRangeData(
+			'2026-04-27',
+			'2026-05-03',
+			'2026-04-27',
+			'2026-05-03'
+		);
+		const rita = range!.rows.find((row) => row.employee_id === 11)!;
+		expect(rita.cost_status).toBe('no-profile');
+		expect(rita.monthly_cost).toBeNull();
+		// No amount is shown for the range, so it claims no basis for one.
+		expect(rita.salary.legacy_fallback).toBe(false);
+		expect(range!.totals.salary.legacy_fallback_count).toBe(0);
+	});
+
+	it('keeps the legacy basis disclosure when the range cost is whole', async () => {
+		mockRangeDb([
+			salaryRow({
+				id: 72,
+				employee_id: 11,
+				employer_cost: null,
+				gross_salary: 20000,
+				effective_to: '2026-04-30',
+			}),
+			salaryRow({
+				id: 73,
+				employee_id: 11,
+				employer_cost: 30000,
+				effective_from: '2026-05-01',
+			}),
+		]);
+
+		const range = await fetchUtilizationRangeData(
+			'2026-04-27',
+			'2026-05-03',
+			'2026-04-27',
+			'2026-05-03'
+		);
+		const rita = range!.rows.find((row) => row.employee_id === 11)!;
+		expect(rita.cost_status).toBe('priced');
+		expect(rita.monthly_cost).not.toBeNull();
+		// Part of the summed amount came from a legacy field, and the mixed
+		// sources cannot claim a canonical zero.
+		expect(rita.salary.legacy_fallback).toBe(true);
+		expect(rita.salary.ctc_source).toBe('none');
+		expect(range!.totals.salary.legacy_fallback_count).toBe(1);
+	});
+
 	it('keeps the daily trend footing to the range totals', async () => {
 		const range = await fetchUtilizationRangeData(
 			'2026-04-27',
@@ -1913,5 +2119,162 @@ describe('fetchUtilizationRangeData', () => {
 		expect(trend.reduce((sum, point) => sum + point.capacity, 0)).toBe(
 			range!.totals.capacity_hours
 		);
+	});
+});
+
+describe('period-effective salary source', () => {
+	/** A profile with an explicit agreement identity (selection needs one). */
+	function datedProfile(
+		id: number,
+		overrides: Partial<SalaryProfile> = {}
+	): SalaryProfile {
+		return { ...profile(overrides), id } as SalaryProfile;
+	}
+
+	function teamRow(
+		profiles: SalaryProfile[],
+		overrides: Partial<TeamRowInput> = {}
+	) {
+		return buildTeamRow({
+			employee_id: 1,
+			employee_name: 'Asha Rao',
+			month: MAY,
+			daily_entries: [entries({ '2026-05-04': 8 })],
+			attendance: [],
+			holidays: new Set(),
+			profiles,
+			...overrides,
+		});
+	}
+
+	it('leaves a future-only agreement’s month unpriced', () => {
+		const row = teamRow([
+			datedProfile(9, {
+				employer_cost: 30000,
+				effective_from: '2026-10-01',
+			}),
+		]);
+		expect(row.monthly_cost).toBeNull();
+		expect(row.fractional_cost).toBeNull();
+		expect(row.bench_cost).toBeNull();
+		expect(row.cost_status).toBe('no-profile');
+		expect(row.salary.availability).toBe('missing');
+		expect(row.salary.profile_id).toBeNull();
+	});
+
+	it('keeps an explicit canonical zero as a confirmed zero', () => {
+		const row = teamRow([
+			datedProfile(3, {
+				employer_cost: 0,
+				gross_salary: 25000,
+				gross: 25000,
+			}),
+		]);
+		expect(row.monthly_cost).toBe(0);
+		expect(row.fractional_cost).toBe(0);
+		expect(row.bench_cost).toBe(0);
+		expect(row.cost_status).toBe('priced');
+		expect(row.salary).toMatchObject({
+			availability: 'available',
+			ctc_source: 'employer_cost',
+			legacy_fallback: false,
+			profile_id: 3,
+		});
+	});
+
+	it('flags ambiguous covering agreements without choosing one', () => {
+		const row = teamRow([
+			datedProfile(4, { effective_from: '2026-01-01' }),
+			datedProfile(5, { effective_from: '2026-01-01' }),
+		]);
+		expect(row.monthly_cost).toBeNull();
+		expect(row.bench_cost).toBeNull();
+		expect(row.cost_status).toBe('ambiguous');
+		expect(row.salary.availability).toBe('ambiguous');
+		expect(row.salary.conflict_ids).toEqual([4, 5]);
+	});
+
+	it('flags a present invalid CTC as unpriced, not a legacy substitute', () => {
+		const row = teamRow([
+			datedProfile(6, { employer_cost: -1, gross_salary: 25000 }),
+		]);
+		expect(row.monthly_cost).toBeNull();
+		expect(row.cost_status).toBe('ctc-invalid');
+		expect(row.salary).toMatchObject({
+			availability: 'ctc-invalid',
+			ctc_source: 'employer_cost',
+		});
+	});
+
+	it('prices a legacy gross fallback with disclosure', () => {
+		const row = teamRow([
+			datedProfile(10, {
+				employer_cost: null as unknown as number,
+				gross_salary: 20000,
+				gross: 0,
+			}),
+		]);
+		expect(row.monthly_cost).toBe(20000);
+		expect(row.cost_status).toBe('priced');
+		expect(row.salary).toMatchObject({
+			availability: 'available',
+			ctc_source: 'gross_salary',
+			legacy_fallback: true,
+		});
+	});
+
+	it('resolves a mid-month joiner at the joining date', () => {
+		const row = teamRow(
+			[
+				datedProfile(7, {
+					employer_cost: 18000,
+					effective_from: '2026-01-01',
+					effective_to: '2026-05-14',
+				}),
+				datedProfile(8, {
+					employer_cost: 26000,
+					effective_from: '2026-05-15',
+				}),
+			],
+			{ employment_start: '2026-05-15', employment_end: '2026-05-31' }
+		);
+		expect(row.salary.profile_id).toBe(8);
+		// 13 employed working days of 24: 26000 × 13 ÷ 24.
+		expect(row.monthly_cost).toBe(14083.33);
+	});
+
+	it('summarizes salary availability in the totals without hiding gaps', () => {
+		const priced = teamRow([datedProfile(1)]);
+		const missing = teamRow([]);
+		const ambiguous = teamRow([
+			datedProfile(4, { effective_from: '2026-01-01' }),
+			datedProfile(5, { effective_from: '2026-01-01' }),
+		]);
+		const totals = buildUtilizationTotals([priced, missing, ambiguous]);
+		expect(totals.priced_count).toBe(1);
+		expect(totals.unpriced_count).toBe(2);
+		expect(totals.salary).toEqual({
+			available_count: 1,
+			missing_count: 1,
+			ambiguous_count: 1,
+			ctc_missing_count: 0,
+			ctc_invalid_count: 0,
+			legacy_fallback_count: 0,
+			unpriced_count: 2,
+			complete: false,
+		});
+	});
+
+	it('keeps corrected hours live for an unclosed month', () => {
+		const eight = teamRow([datedProfile(1)], {
+			daily_entries: [entries({ '2026-05-04': 8 })],
+		});
+		const sixteen = teamRow([datedProfile(1)], {
+			daily_entries: [entries({ '2026-05-04': 8, '2026-05-05': 8 })],
+		});
+		expect(eight.monthly_cost).toBe(22000);
+		expect(sixteen.monthly_cost).toBe(22000);
+		expect(eight.fractional_cost).toBe(846.15);
+		expect(sixteen.fractional_cost).toBe(1692.31);
 	});
 });

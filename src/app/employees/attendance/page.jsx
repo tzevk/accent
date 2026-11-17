@@ -124,6 +124,18 @@ const getStatusInfo = (code) =>
 /** The only `?month=` shape the deep link accepts. */
 const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
+/** Pay components the OT-payout summary can actually price. */
+const SALARY_BASE_FIELDS = ['basic_plus_da', 'basic', 'da'];
+
+/** True only when the selected agreement carries a real pay base. */
+const hasSalaryBase = (profile) =>
+	Boolean(profile) &&
+	SALARY_BASE_FIELDS.some((field) => {
+		const value = profile[field];
+		if (value === null || value === undefined || value === '') return false;
+		return Number.isFinite(Number(value));
+	});
+
 function AttendancePageInner() {
 	const searchParams = useSearchParams();
 	// Deep link from the Attendance report's cell drill-down modal
@@ -159,7 +171,10 @@ function AttendancePageInner() {
 	// Punch evidence per day: { empId: { 'YYYY-MM-DD': { in_time, out_time, overtime_hours } } }
 	// from GET /api/attendance (derived from attendance_logs, ADR-0007).
 	const [punchDays, setPunchDays] = useState({});
-	const [salaryProfiles, setSalaryProfiles] = useState({}); // { empId: { basic, da, basic_plus_da, ... } }
+	// { empId: profile } for employees the viewed month resolves to a selected
+	// agreement. Unavailable/ambiguous employees are deliberately absent.
+	const [salaryProfiles, setSalaryProfiles] = useState({});
+	const salaryProfilesRequestRef = useRef(0);
 	const [holidays, setHolidays] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
@@ -294,12 +309,14 @@ function AttendancePageInner() {
 		}
 	}, [selectedYear]);
 
-	// Fetch salary profiles (full) for currently loaded employees to compute OT payout.
-	// Pay agreements are payroll data, so this asks only when the caller holds the
-	// payroll grant — otherwise the API refuses and the summary simply shows no
-	// OT-payout figures.
+	// Fetch the viewed month's full salary profiles for the loaded employees to
+	// compute OT payout. Pay agreements are payroll data, so this asks only when
+	// the caller holds the payroll grant — otherwise the summary simply shows no
+	// OT-payout figures. Profile fields live inside `entry.profile`; an
+	// unavailable/ambiguous entry has no profile and is never priced as zero.
 	const fetchSalaryProfiles = useCallback(
 		async (employeeList) => {
+			const requestId = ++salaryProfilesRequestRef.current;
 			try {
 				if (!canReadPayroll) {
 					setSalaryProfiles({});
@@ -315,21 +332,30 @@ function AttendancePageInner() {
 					return;
 				}
 
+				const monthStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 				const res = await fetch(
-					`/api/payroll/salary-profile/batch?ids=${ids.join(',')}&full=1`
+					`/api/payroll/salary-profile/batch?ids=${ids.join(',')}&month=${monthStr}&full=1`
 				);
 				const data = await res.json();
+				if (requestId !== salaryProfilesRequestRef.current) return;
 				if (data.success && data.data) {
-					setSalaryProfiles(data.data);
+					const profiles = {};
+					Object.entries(data.data).forEach(([employeeId, entry]) => {
+						if (entry?.state === 'selected' && entry.profile) {
+							profiles[employeeId] = entry.profile;
+						}
+					});
+					setSalaryProfiles(profiles);
 				} else {
 					setSalaryProfiles({});
 				}
 			} catch (err) {
+				if (requestId !== salaryProfilesRequestRef.current) return;
 				console.error('Error fetching salary profiles:', err);
 				setSalaryProfiles({});
 			}
 		},
-		[canReadPayroll]
+		[canReadPayroll, selectedMonth, selectedYear]
 	);
 
 	// Load data
@@ -394,6 +420,7 @@ function AttendancePageInner() {
 		if (employees.length > 0) {
 			fetchSalaryProfiles(employees);
 		} else {
+			salaryProfilesRequestRef.current += 1;
 			setSalaryProfiles({});
 		}
 	}, [employees, fetchSalaryProfiles]);
@@ -693,6 +720,9 @@ function AttendancePageInner() {
 		];
 		const rows = filteredEmployees.map((emp) => {
 			const summary = getEmployeeSummary(emp.id);
+			const payableOtAmount = hasSalaryBase(salaryProfiles[emp.id])
+				? summary.totalOTAmount.toFixed(2)
+				: '';
 			const dayStatuses = monthDates.map((d) => {
 				const dayData = attendanceData[emp.id]?.[d.dateStr];
 				return dayData?.status || '';
@@ -715,7 +745,7 @@ function AttendancePageInner() {
 				summary.payable.toFixed(1),
 				summary.totalHours.toFixed(1),
 				summary.totalOTHours.toFixed(1),
-				summary.totalOTAmount.toFixed(2),
+				payableOtAmount,
 			];
 		});
 

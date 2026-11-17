@@ -10,7 +10,12 @@
  */
 
 import ExcelJS from 'exceljs';
-import type { BillingData, AnnualBillingData } from './data-source';
+import type {
+	AnnualBillingData,
+	BillingData,
+	ReportSalaryEvidence,
+	ReportSalarySummary,
+} from './data-source';
 
 // Section tints sampled from the company template (Excel palette fills).
 const TINT_YELLOW = 'FFFFE598'; // Sr. No. | Employee Name | Designation
@@ -66,6 +71,206 @@ export function fileBaseForAnnualExcel(data: AnnualBillingData): string {
 	);
 	const fy = sanitizeName(data.fy_label || `FY_${data.fy_year}`);
 	return `Deputation_Summary_${c}_${p}_${fy}.xlsx`;
+}
+
+// ─── Salary availability disclosure ─────────────────────────────────
+
+const WORKBOOK_GAP_LABELS: Record<
+	Exclude<ReportSalaryEvidence['availability'], 'available'>,
+	string
+> = {
+	missing: 'no Salary Profile covers the month',
+	ambiguous: 'several Salary Profiles cover the month',
+	'ctc-missing': 'Salary Profile has no monthly CTC',
+	'ctc-invalid': 'Salary Profile CTC is invalid',
+};
+
+/** The salary basis of one amount, or why it could not be priced. */
+function workbookSalaryLabel(
+	evidence: ReportSalaryEvidence | null | undefined
+): string {
+	if (!evidence) return 'no recorded rate or Salary Profile for the month';
+	if (evidence.availability === 'available') {
+		return evidence.legacy_fallback
+			? 'legacy gross salary basis, not agreed CTC'
+			: 'agreed CTC';
+	}
+	return WORKBOOK_GAP_LABELS[evidence.availability];
+}
+
+/** The salary population behind a total, stated without hiding gaps. */
+function workbookSalaryCounts(summary: ReportSalarySummary): string {
+	return [
+		`available: ${summary.available_count}`,
+		`missing: ${summary.missing_count}`,
+		`ambiguous: ${summary.ambiguous_count}`,
+		`no CTC: ${summary.ctc_missing_count}`,
+		`invalid CTC: ${summary.ctc_invalid_count}`,
+	].join(', ');
+}
+
+/** The monthly workbook's notes: gaps, recorded project rates, legacy basis. */
+function monthlySalaryNotes(data: BillingData): string[] {
+	const notes: string[] = [];
+	const unpriced = data.rows.filter(
+		(row) => row.pricing_source === 'unavailable'
+	);
+	const projectGaps = data.rows.filter(
+		(row) =>
+			row.pricing_source === 'project' &&
+			row.salary !== null &&
+			row.salary.availability !== 'available'
+	);
+	const legacy = data.rows.filter(
+		(row) => row.salary?.legacy_fallback === true
+	);
+	const storedRate = data.rows.filter(
+		(row) =>
+			row.pricing_source === 'salary' &&
+			row.salary !== null &&
+			row.salary.availability !== 'available'
+	);
+	if (unpriced.length > 0) {
+		notes.push(
+			`Employee cost is partial: ${unpriced.length} row(s) cannot be priced. Unpriced money cells read Unknown, never zero; their hours remain included.`
+		);
+		for (const row of unpriced) {
+			notes.push(
+				`${row.employee_name}: cost unknown — ${workbookSalaryLabel(row.salary)}.`
+			);
+		}
+	}
+	if (legacy.length > 0) {
+		notes.push(
+			`${legacy.length} row(s) are priced from a legacy gross salary field, not agreed CTC: ${legacy
+				.map((row) => row.employee_name)
+				.join(', ')}.`
+		);
+	}
+	if (projectGaps.length > 0) {
+		notes.push(
+			`${projectGaps.length} row(s) used a recorded project rate; their salary evidence is missing or ambiguous and does not change the recorded money.`
+		);
+	}
+	if (storedRate.length > 0) {
+		notes.push(
+			`${storedRate.length} row(s) are priced from the agreement's stored rate, not a monthly CTC: ${storedRate
+				.map((row) => row.employee_name)
+				.join(', ')}.`
+		);
+	}
+	if (notes.length > 0) {
+		notes.push(
+			`Salary evidence — ${workbookSalaryCounts(data.totals.salary)}.`
+		);
+	}
+	return notes;
+}
+
+/** Every FY month with hours but no usable rate, across all rows. */
+function annualUnpricedMonthTotal(data: AnnualBillingData): number {
+	return data.rows.reduce(
+		(total, row) =>
+			total +
+			data.month_keys.filter(
+				(monthKey) =>
+					(row.monthly_hours?.[monthKey] ?? 0) > 0 &&
+					row.monthly_company_cost?.[monthKey] === null
+			).length,
+		0
+	);
+}
+
+/** The annual workbook's notes: per-month gaps, stored rates, legacy basis. */
+function annualSalaryNotes(data: AnnualBillingData): string[] {
+	const monthLabels: Record<string, string> = Object.fromEntries(
+		data.month_keys.map((key, index) => [key, data.months[index] ?? key])
+	);
+	const lines: string[] = [];
+	for (const row of data.rows) {
+		const unpriced = data.month_keys.filter(
+			(monthKey) =>
+				(row.monthly_hours?.[monthKey] ?? 0) > 0 &&
+				row.monthly_company_cost?.[monthKey] === null
+		);
+		const legacy = data.month_keys.filter(
+			(monthKey) => row.salary_months?.[monthKey]?.legacy_fallback === true
+		);
+		const stored = data.month_keys.filter((monthKey) => {
+			const evidence = row.salary_months?.[monthKey];
+			return (
+				evidence !== undefined &&
+				evidence.availability !== 'available' &&
+				row.monthly_company_cost?.[monthKey] !== null
+			);
+		});
+		const parts = [
+			...unpriced.map(
+				(monthKey) =>
+					`${monthLabels[monthKey] ?? monthKey} cost unknown (${workbookSalaryLabel(
+						row.salary_months?.[monthKey]
+					)})`
+			),
+			...legacy.map(
+				(monthKey) =>
+					`${monthLabels[monthKey] ?? monthKey} legacy gross basis, not agreed CTC`
+			),
+			...stored.map(
+				(monthKey) =>
+					`${monthLabels[monthKey] ?? monthKey} stored rate used (${workbookSalaryLabel(
+						row.salary_months?.[monthKey]
+					)})`
+			),
+		];
+		if (parts.length > 0) {
+			lines.push(`${row.employee_name}: ${parts.join('; ')}.`);
+		}
+	}
+	const notes = [...lines];
+	const unpricedMonthCount = annualUnpricedMonthTotal(data);
+	if (unpricedMonthCount > 0) {
+		notes.push(
+			`Company cost and P&L include priced months only; ${unpricedMonthCount} month(s) with hours are unpriced. Their hours remain included; * marks a row with an unpriced month.`
+		);
+	}
+	if (lines.length > 0) {
+		notes.push(
+			`Salary evidence — ${workbookSalaryCounts(data.totals.salary)}.`
+		);
+	}
+	return notes;
+}
+
+/** Append a labelled disclosure block beneath a sheet's totals. */
+function addSalaryNotes(
+	ws: ExcelJS.Worksheet,
+	startRow: number,
+	lastCol: number,
+	notes: readonly string[]
+): void {
+	if (notes.length === 0) return;
+	const labelRow = ws.getRow(startRow);
+	ws.mergeCells(startRow, 1, startRow, lastCol);
+	const labelCell = labelRow.getCell(1);
+	labelCell.value = 'Salary availability';
+	setFont(labelCell, { bold: true, size: 10 });
+	labelCell.alignment = { vertical: 'middle', horizontal: 'left' };
+	for (let c = 1; c <= lastCol; c++) box(labelRow.getCell(c));
+
+	notes.forEach((note, index) => {
+		const rowNum = startRow + index + 1;
+		ws.mergeCells(rowNum, 1, rowNum, lastCol);
+		const row = ws.getRow(rowNum);
+		const cell = row.getCell(1);
+		cell.value = note;
+		setFont(cell, { size: 9, color: 'FF57534E' });
+		cell.alignment = {
+			vertical: 'top',
+			horizontal: 'left',
+			wrapText: true,
+		};
+		for (let c = 1; c <= lastCol; c++) box(row.getCell(c));
+	});
 }
 
 // ─── 1. Monthly Billing Statement Template ──────────────────────────
@@ -211,6 +416,9 @@ export function buildWorkbook(data: BillingData): ExcelJS.Workbook {
 	for (const r of data.rows) {
 		const row = ws.getRow(currentRowNum);
 		row.height = 20;
+		// `unavailable` money is a placeholder, not a confirmed zero: write the
+		// honest unknown into every cell that depends on the missing price.
+		const moneyKnown = r.pricing_source !== 'unavailable';
 
 		const values: Array<{
 			val: number | string;
@@ -229,21 +437,26 @@ export function buildWorkbook(data: BillingData): ExcelJS.Workbook {
 				tint: TINT_BLUE,
 			},
 			{
-				val: r.employee_charges,
+				val: moneyKnown ? r.employee_charges : 'Unknown',
 				align: 'right',
 				numFmt: '#,##0.00',
 				tint: TINT_BLUE,
 			},
 			{
-				val: r.amount,
+				val: moneyKnown ? r.amount : 'Unknown',
 				align: 'right',
 				numFmt: '#,##0.00',
 				tint: TINT_BLUE,
 				bold: true,
 			},
-			{ val: r.tds, align: 'right', numFmt: '#,##0.00', tint: TINT_BLUE },
 			{
-				val: r.net_payable,
+				val: moneyKnown ? r.tds : 'Unknown',
+				align: 'right',
+				numFmt: '#,##0.00',
+				tint: TINT_BLUE,
+			},
+			{
+				val: moneyKnown ? r.net_payable : 'Unknown',
 				align: 'right',
 				numFmt: '#,##0.00',
 				tint: TINT_BLUE,
@@ -261,13 +474,13 @@ export function buildWorkbook(data: BillingData): ExcelJS.Workbook {
 				tint: TINT_GREEN,
 			},
 			{
-				val: r.pnl_after_deductions,
+				val: moneyKnown ? r.pnl_after_deductions : 'Unknown',
 				align: 'right',
 				numFmt: '#,##0.00',
 				tint: TINT_PINK,
 			},
 			{
-				val: r.pnl_tds,
+				val: moneyKnown ? r.pnl_tds : 'Unknown',
 				align: 'right',
 				numFmt: '#,##0.00',
 				tint: TINT_YELLOW_BRIGHT,
@@ -293,7 +506,9 @@ export function buildWorkbook(data: BillingData): ExcelJS.Workbook {
 
 	ws.mergeCells(currentRowNum, 1, currentRowNum, 3);
 	const cellTotalLabel = totalRow.getCell(1);
-	cellTotalLabel.value = 'Total';
+	cellTotalLabel.value = data.totals.salary.complete
+		? 'Total'
+		: `Total (partial — ${data.totals.salary.unpriced_count} unpriced)`;
 	setFont(cellTotalLabel, { bold: true, size: 10 });
 	setFill(cellTotalLabel, TINT_YELLOW);
 	cellTotalLabel.alignment = { vertical: 'middle', horizontal: 'right' };
@@ -357,6 +572,8 @@ export function buildWorkbook(data: BillingData): ExcelJS.Workbook {
 		if (tc.numFmt) cell.numFmt = tc.numFmt;
 		box(cell);
 	}
+
+	addSalaryNotes(ws, currentRowNum + 2, 12, monthlySalaryNotes(data));
 
 	return wb;
 }
@@ -503,6 +720,11 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 	for (const r of data.rows) {
 		const row = ws.getRow(currentRowNum);
 		row.height = 20;
+		const unpricedMonthCount = data.month_keys.filter(
+			(monthKey) =>
+				(r.monthly_hours?.[monthKey] ?? 0) > 0 &&
+				r.monthly_company_cost?.[monthKey] === null
+		).length;
 
 		const values: Array<{
 			val: number | string;
@@ -512,7 +734,11 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 			bold?: boolean;
 		}> = [
 			{ val: r.sr_no, align: 'center', tint: TINT_YELLOW },
-			{ val: r.employee_name, align: 'left', tint: TINT_YELLOW },
+			{
+				val: unpricedMonthCount > 0 ? `${r.employee_name} *` : r.employee_name,
+				align: 'left',
+				tint: TINT_YELLOW,
+			},
 			{ val: r.salary_type || 'monthly', align: 'center', tint: TINT_YELLOW },
 			{
 				val: r.rate_employee,
@@ -581,7 +807,11 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 
 	ws.mergeCells(currentRowNum, 1, currentRowNum, 5);
 	const cellTotalLabel = totalRow.getCell(1);
-	cellTotalLabel.value = 'Grand Total';
+	const unpricedMonthTotal = annualUnpricedMonthTotal(data);
+	cellTotalLabel.value =
+		unpricedMonthTotal === 0
+			? 'Grand Total'
+			: `Grand Total (partial — ${unpricedMonthTotal} unpriced month)`;
 	setFont(cellTotalLabel, { bold: true, size: 10 });
 	setFill(cellTotalLabel, TINT_YELLOW);
 	cellTotalLabel.alignment = { vertical: 'middle', horizontal: 'right' };
@@ -622,6 +852,8 @@ export function buildAnnualWorkbook(data: AnnualBillingData): ExcelJS.Workbook {
 		cell.numFmt = et.col === 18 ? '#,##0.##' : '#,##0.00';
 		box(cell);
 	}
+
+	addSalaryNotes(ws, currentRowNum + 2, 21, annualSalaryNotes(data));
 
 	return wb;
 }

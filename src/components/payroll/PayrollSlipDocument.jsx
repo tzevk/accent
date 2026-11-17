@@ -2,6 +2,18 @@ import { formatDateNumeric, formatMonth } from '@/lib/format';
 import { normalizedSlipFigures } from '@/lib/payroll';
 
 /**
+ * What the document says when the slip's salary history cannot establish a
+ * single agreement. The money below is still the slip's recorded snapshot, so
+ * the notice explains the limitation without offering a repair or a guess.
+ */
+const SALARY_CONTEXT_NOTICE = {
+	unavailable:
+		'The salary agreement for this month could not be confirmed. The amounts below are the recorded Payroll Slip figures and are shown unchanged.',
+	ambiguous:
+		'More than one salary agreement covers this month. The amounts below are the recorded Payroll Slip figures and are shown unchanged.',
+};
+
+/**
  * The printable Payroll Slip document — company banner, earnings/deductions
  * tables and net-pay footer for one month's slip.
  *
@@ -16,6 +28,7 @@ export default function PayrollSlipDocument({ slip }) {
 	// print the stored DECIMAL strings, so keep two decimals to hold the same
 	// characters on screen.
 	const { gross, deductions, net } = normalizedSlipFigures(slip);
+	const salaryNotice = SALARY_CONTEXT_NOTICE[slip.salary_context?.state] ?? '';
 
 	return (
 		<div
@@ -65,6 +78,20 @@ export default function PayrollSlipDocument({ slip }) {
 			>
 				PAYROLL SLIP FOR THE MONTH OF {formatMonth(slip.month).toUpperCase()}
 			</div>
+
+			{salaryNotice && (
+				<div
+					role="note"
+					className="px-3 py-1.5 text-[10px] font-medium leading-snug"
+					style={{
+						background: '#fffbeb',
+						color: '#92400e',
+						borderBottom: '1px solid #fcd34d',
+					}}
+				>
+					{salaryNotice}
+				</div>
+			)}
 
 			{/* Employee Info Table */}
 			<table className="w-full border-collapse text-[11px]">

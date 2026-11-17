@@ -7,12 +7,13 @@
  * summary below it. The columns mirror the screen — Sr., Employee (name/code),
  * Department, Partial window, Capacity, Logged, the two trailing-month
  * Utilization columns, Utilization, Flag ("No time logged" or the band, plus
- * the chronic marker), Monthly Cost, Utilized Cost, Bench Cost and the
- * no-profile Note. Money columns use a 2dp number format with the rupee
- * carried in the header; rows without a covering salary profile leave all
- * three money cells blank (never zero, never "—"). A cell with no reading at
- * all (a trailing month the employee was not employed in, an unset
- * department figure) stays truly blank too.
+ * the chronic marker), Monthly Cost, Utilized Cost, Bench Cost and the Note
+ * naming an unpriced row's gap ("No profile", or "Mixed salary causes" when a
+ * range's months were unpriceable for different reasons). Money columns use a
+ * 2dp number format with the rupee carried in the header; rows without a
+ * covering salary profile leave all three money cells blank (never zero,
+ * never "—"). A cell with no reading at all (a trailing month the employee
+ * was not employed in, an unset department figure) stays truly blank too.
  *
  * exceljs is in next.config.ts serverExternalPackages, so this module must
  * only be imported from server routes.
@@ -152,7 +153,7 @@ export function buildWorkbook(data: UtilizationData): ExcelJS.Workbook {
 		{ key: 'monthly', width: 16 },
 		{ key: 'utilized', width: 16 },
 		{ key: 'bench', width: 16 },
-		{ key: 'note', width: 13 },
+		{ key: 'note', width: 22 },
 	];
 	const lastColumn = ws.columns.length;
 
@@ -219,6 +220,14 @@ export function buildWorkbook(data: UtilizationData): ExcelJS.Workbook {
 		// The Flag reading the screen shows: the state/band text, and the
 		// chronic chip riding beside it.
 		const flagLabel = flagText(r);
+		// The Note names the gap the money cells cannot; a range with several
+		// distinct causes says so instead of naming one month's cause.
+		const costNote =
+			r.cost_status === 'no-profile'
+				? 'No profile'
+				: r.cost_status === 'mixed'
+					? 'Mixed salary causes'
+					: null;
 
 		const cells: Array<{
 			val: string | number | null;
@@ -292,7 +301,7 @@ export function buildWorkbook(data: UtilizationData): ExcelJS.Workbook {
 				bold: true,
 			},
 			{
-				val: r.cost_status === 'no-profile' ? 'No profile' : null,
+				val: costNote,
 				tint: TINT_EMP,
 				align: 'left',
 			},

@@ -1,4 +1,5 @@
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatNumber } from '@/lib/format';
+import { resolveSalaryCtc } from '@/lib/salary-ctc';
 
 const earnings = [
 	['basic', 'Basic'],
@@ -200,23 +201,53 @@ export default function MonthlySalaryPreview({
 	onOverrideReset = () => {},
 	onResetOverrides = () => {},
 }) {
+	const ctc = resolveSalaryCtc(profile);
+	const legacyCtcLabel =
+		ctc.status === 'resolved' && ctc.legacyFallback
+			? ctc.source === 'gross_salary'
+				? 'legacy gross salary'
+				: 'legacy gross'
+			: null;
+
 	if (!breakdown) {
 		return (
 			<div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
-				Enter a gross salary to preview the calculated breakdown.
+				No monthly CTC is stored. Enter a monthly CTC to preview the calculated
+				breakdown.
 			</div>
 		);
 	}
 
 	return (
 		<div className="space-y-4" aria-live="polite">
-			<div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-800">
-				<span>Derived from the effective payroll schedule</span>
-				{scheduleLoading && <span role="status">Loading schedule…</span>}
-				{scheduleError && (
-					<span className="text-red-700" role="status">
-						{scheduleError}
-					</span>
+			<div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-800">
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<span>Derived from the effective payroll schedule</span>
+					{scheduleLoading && <span role="status">Loading schedule…</span>}
+					{scheduleError && (
+						<span className="text-red-700" role="status">
+							{scheduleError}
+						</span>
+					)}
+				</div>
+				<p className="mt-1">
+					Estimated monthly breakdown — not a generated Payroll Slip.
+				</p>
+				<p className="mt-1">
+					Monthly CTC {formatCurrency(breakdown.ctc_used)} ÷ Basis Hours{' '}
+					{formatNumber(breakdown.basis_hours)} = Hourly Rate{' '}
+					{formatCurrency(breakdown.hourly_rate)}. Gross uses{' '}
+					{formatNumber(breakdown.logged_hours)} Logged Hours.
+				</p>
+				<p className="mt-1">
+					Assumes a full month of {formatNumber(breakdown.basis_hours)} payable
+					hours when no timesheet is recorded.
+				</p>
+				{legacyCtcLabel && (
+					<p className="mt-1 font-medium text-amber-800">
+						No stored CTC. This estimate uses the {legacyCtcLabel} field as the
+						CTC basis.
+					</p>
 				)}
 			</div>
 

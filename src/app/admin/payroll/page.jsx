@@ -28,13 +28,14 @@ import {
 	DocumentDuplicateIcon,
 	DocumentTextIcon,
 	ExclamationCircleIcon,
+	UsersIcon,
 } from '@heroicons/react/24/outline';
 
 /**
  * Payroll Run — the one dashboard for a month's Payroll Slips (issue #241).
  *
  * Replaces the former salary-sheet run page and the near-duplicate slips list:
- * a month picker, a Payroll | Contract Employee Type toggle that filters the
+ * a month picker, a Payroll | Contract pay-stream toggle that filters the
  * rows and scopes Generate and the Excel/PDF exports, and one row per employee
  * with payment status. Each row opens its Payroll Slip on the detail route,
  * which owns inspecting and printing a single slip.
@@ -105,7 +106,7 @@ export default function PayrollRunDashboard() {
 	const { user } = useSession();
 	const queryClient = useQueryClient();
 
-	// The month and the Employee Type are the reads' query keys, so the pickers
+	// The month and the Salary Type pay stream are the reads' query keys, so the pickers
 	// still drive what the page shows — only now the cache is the one place the
 	// table, the header badge and the DA column come from.
 	const runQuery = useQuery({
@@ -469,6 +470,14 @@ export default function PayrollRunDashboard() {
 						</div>
 
 						<div className="flex flex-wrap items-center gap-3">
+							<Link
+								href="/admin/payroll/salary-profiles"
+								className="inline-flex items-center px-4 py-2 bg-white border border-[#64126D] text-[#64126D] rounded-lg hover:bg-purple-50 transition-colors text-sm font-medium"
+							>
+								<UsersIcon className="w-4 h-4 mr-2" />
+								Salary Profiles
+							</Link>
+
 							<button
 								onClick={generateSlips}
 								disabled={generateMutation.isPending || isFinalized}
@@ -620,7 +629,7 @@ export default function PayrollRunDashboard() {
 						</div>
 
 						<fieldset className="flex items-center gap-2">
-							<legend className="sr-only">Employee Type</legend>
+							<legend className="sr-only">Pay stream</legend>
 							<div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-0.5">
 								{STREAMS.map((s) => (
 									<button

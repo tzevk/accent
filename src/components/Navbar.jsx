@@ -374,17 +374,17 @@ const adminMenuGroups = [
 				icon: DocumentTextIcon,
 			},
 			{
-				// Issue #360: the salary-profiles and contract lists merged into
-				// the employee hub; both entries deep-link the filtered list.
-				// Gated on payroll:read like the hub surfaces they open.
+				// Issue #434: the salary workspace owns the list and the
+				// per-employee editor; the hub no longer embeds a salary form.
+				// Salary Type selects the stream, so these are view filters.
 				name: 'Salary Profiles',
-				href: '/employees?type=Payroll',
+				href: '/admin/payroll/salary-profiles?stream=payroll',
 				icon: UserGroupIcon,
 				resource: 'payroll',
 			},
 			{
 				name: 'Contract Pay',
-				href: '/employees?type=Contract',
+				href: '/admin/payroll/salary-profiles?stream=contract',
 				icon: BriefcaseIcon,
 				resource: 'payroll',
 			},
@@ -534,9 +534,10 @@ export default function Navbar() {
 		} catch {}
 	}, []);
 
-	// Admin menu visibility: super admins, or anyone holding admin:read. The
-	// group definitions above are the single source of what the menu contains.
-	const showAdminMenu = useMemo(() => {
+	// Broad Admin controls: super admins, admin:read holders and project
+	// administrators. A payroll-only editor is admitted to the Payroll group
+	// alone (ticket #444 guards the workspace pages themselves).
+	const showBroadAdminControls = useMemo(() => {
 		if (userLoading || !user) return false; // Hide admin while loading
 		if (user.is_super_admin) return true;
 		// Project administrators maintain the shared lead policy, which lives
@@ -545,11 +546,23 @@ export default function Navbar() {
 		return can(RESOURCES.ADMIN, PERMISSIONS.READ) || can('admin', 'read');
 	}, [user, userLoading, can, RESOURCES, PERMISSIONS]);
 
+	// Admin menu visibility: the broad Admin controls above, or a payroll
+	// reader who needs the Payroll workspace.
+	const showAdminMenu = useMemo(
+		() =>
+			showBroadAdminControls ||
+			(!userLoading &&
+				Boolean(user) &&
+				can(RESOURCES.PAYROLL, PERMISSIONS.READ)),
+		[showBroadAdminControls, userLoading, user, can, RESOURCES, PERMISSIONS]
+	);
+
 	// Group items without a resource always show; an item naming one shows only
-	// for a holder, and a group left with no items is dropped from the menu.
+	// for a holder, and a group left with no items is dropped from the menu. A
+	// payroll-only session sees the Payroll group and nothing else.
 	const adminMenuGroupsToShow = useMemo(() => {
 		if (user?.is_super_admin) return adminMenuGroups;
-		return adminMenuGroups
+		const groups = adminMenuGroups
 			.map((group) => ({
 				...group,
 				items: group.items.filter(
@@ -557,7 +570,10 @@ export default function Navbar() {
 				),
 			}))
 			.filter((group) => group.items.length > 0);
-	}, [user, can, PERMISSIONS]);
+		return showBroadAdminControls
+			? groups
+			: groups.filter((group) => group.key === 'payroll');
+	}, [user, can, PERMISSIONS, showBroadAdminControls]);
 
 	// Filter reports menu items based on permissions
 	const reportsMenuItems = useMemo(() => {
@@ -569,8 +585,8 @@ export default function Navbar() {
 			const opensReportSurface =
 				can(item.resource, PERMISSIONS.READ) ||
 				hasReportFieldAccess(user, item.reportField);
-			const hasAdditionalGrants = (item.alsoRequires ?? []).every(
-				(resource) => can(resource, PERMISSIONS.READ)
+			const hasAdditionalGrants = (item.alsoRequires ?? []).every((resource) =>
+				can(resource, PERMISSIONS.READ)
 			);
 			return opensReportSurface && hasAdditionalGrants;
 		});
@@ -1057,7 +1073,7 @@ export default function Navbar() {
 									<ClipboardDocumentListIcon className="h-5 w-5" />
 									<span>Tasks</span>
 								</button>
-								{showAdminMenu && (
+								{showBroadAdminControls && (
 									<>
 										<Link
 											href="/masters/holidays"

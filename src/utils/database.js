@@ -281,9 +281,21 @@ export async function withDb(fn) {
 	}
 }
 
+const TRANSACTION_ISOLATIONS = new Set([
+	'READ UNCOMMITTED',
+	'READ COMMITTED',
+	'REPEATABLE READ',
+	'SERIALIZABLE',
+]);
+
 /**
  * Execute a callback inside a transaction.  The transaction is committed on
  * success and rolled back on error.  The connection is always released.
+ *
+ * `options.isolation` sets the isolation level for **this transaction only**
+ * (`SET TRANSACTION` applies to the next transaction, never to the pooled
+ * session). Salary writes must pass `SALARY_WRITE_ISOLATION`; see
+ * `src/lib/salary-write-isolation.ts` for why.
  *
  * Usage:
  *   await withTransaction(async (db) => {
@@ -292,11 +304,19 @@ export async function withDb(fn) {
  *   });
  *
  * @param {(db: import('mysql2/promise').PoolConnection) => Promise<T>} fn
+ * @param {{ isolation?: string }} [options]
  * @returns {Promise<T>}
  */
-export async function withTransaction(fn) {
+export async function withTransaction(fn, options = {}) {
+	const isolation = options.isolation;
+	if (isolation !== undefined && !TRANSACTION_ISOLATIONS.has(isolation)) {
+		throw new Error(`Unsupported transaction isolation "${isolation}"`);
+	}
 	const db = await dbConnect();
 	try {
+		if (isolation !== undefined) {
+			await db.query(`SET TRANSACTION ISOLATION LEVEL ${isolation}`);
+		}
 		await db.beginTransaction();
 		const result = await fn(db);
 		await db.commit();

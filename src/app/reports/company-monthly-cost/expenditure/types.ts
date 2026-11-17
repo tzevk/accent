@@ -37,6 +37,7 @@ import type {
 	EvidenceStateSummary,
 	ReconciliationGroup,
 } from '@/lib/company-expenditure/types';
+import type { PayrollSalaryEvidence } from '@/lib/company-expenditure/payroll';
 import type { BudgetSectionPayload } from './budget-section';
 import type { CashSectionPayload } from './cash-section';
 
@@ -157,6 +158,11 @@ export interface PayrollEmployeeRow extends Omit<
 	shares: PayrollShareRow[];
 	/** #308: the slip's latest reconstruction proposal, or null. */
 	reconstruction: PayrollReconstructionRow | null;
+	/**
+	 * Period-effective salary evidence behind this row (#453). Required in the
+	 * payload: a missing field is a contract violation, not a confirmed zero.
+	 */
+	salary: PayrollSalaryEvidence;
 }
 
 export type PayrollSummaryRow = PayrollExpenditure;

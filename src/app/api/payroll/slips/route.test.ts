@@ -87,25 +87,24 @@ describe('payroll slips API — single-slip read (issue #240)', () => {
 
 	it('resolves the month-scheduled DA when only a slip id is given', async () => {
 		grant('payroll:read');
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[
-					{
-						id: 42,
-						month: '2026-08-01',
-						employee_id: 7,
-						name: 'Asha Rao',
-						profile_basic: 60000,
-						basic: 50000,
-						da_used: 0,
-					},
-				],
-				undefined,
-			])
-			.mockResolvedValueOnce([
-				[{ value_type: 'fixed', value: 2500 }],
-				undefined,
-			]);
+		const slip = {
+			id: 42,
+			month: '2026-08-01',
+			employee_id: 7,
+			name: 'Asha Rao',
+			profile_basic: 60000,
+			basic: 50000,
+			da_used: 0,
+		};
+		mocks.mockExecute.mockImplementation(async (sql: string) => {
+			const text = String(sql);
+			if (text.includes('FROM payroll_slips ps')) return [[slip], undefined];
+			if (text.includes('FROM employee_salary_profile')) return [[], undefined];
+			if (text.includes('FROM salary_structures')) return [[], undefined];
+			if (text.includes('FROM payroll_schedules'))
+				return [[{ value_type: 'fixed', value: 2500 }], undefined];
+			return [[], undefined];
+		});
 
 		const res = await GET(
 			new Request('http://localhost/api/payroll/slips?id=42')
@@ -118,9 +117,10 @@ describe('payroll slips API — single-slip read (issue #240)', () => {
 		expect(body.data[0].da).toBe(2500);
 		expect(body.data[0].basic).toBe(47500);
 		expect(body.data[0].basic_plus_da_source).toBe(50000);
-		const daLookup = mocks.mockExecute.mock.calls[1];
-		expect(String(daLookup[0])).toContain('FROM payroll_schedules');
-		expect(daLookup[1]).toContain('2026-08-01');
+		const daLookup = mocks.mockExecute.mock.calls.find(([sql]) =>
+			String(sql).includes('FROM payroll_schedules')
+		);
+		expect(daLookup?.[1]).toContain('2026-08-01');
 	});
 
 	it('still lists a month when no id is given', async () => {
@@ -835,10 +835,13 @@ describe('payroll slips API — company-sheet projection (issue #428)', () => {
 		const [sql, params] = mocks.mockExecute.mock.calls[0];
 		expect(String(sql)).toContain('ps.employee_id = ?');
 		expect(String(sql)).toContain('ps.payment_status = ?');
-		expect(String(sql)).toContain("sp.salary_type = 'contract'");
 		expect(params).toEqual(expect.arrayContaining(['2026-02-01', '7', 'paid']));
 		const body = await res.json();
+		// The Payroll stream includes this legacy slip because its context cannot
+		// prove Contract; the filter is applied to the resolved context instead of
+		// a current-profile EXISTS subquery.
 		expect(body.data).toHaveLength(1);
+		expect(body.data[0].salary_context.state).toBe('unavailable');
 		expect(body.data[0].company_sheet.attendance.state).toBe('available');
 	});
 

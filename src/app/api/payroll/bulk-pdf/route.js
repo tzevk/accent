@@ -7,6 +7,10 @@ import {
 } from '@/utils/api-permissions';
 import { normalizeSlips, renderSlipsPdf } from '@/lib/slip-pdf';
 import { slipPdfFilename } from '@/lib/payroll';
+import {
+	readSlipSalaryContexts,
+	slipMatchesSalaryTypeFilter,
+} from '@/lib/payroll-slip-salary';
 
 /**
  * GET /api/payroll/bulk-pdf?month=YYYY-MM-01&salary_type=payroll&employee_id=123
@@ -49,14 +53,9 @@ export async function GET(request) {
              e.uan as uan_number,
              e.pf_no as pf_number,
              e.esi_no as esic_number,
-         e.pan as pan_number,
-         ss_inner.basic_salary as structure_basic_salary,
-         sp_inner.basic as profile_basic,
-         sp_inner.basic_plus_da as profile_basic_plus_da
+         e.pan as pan_number
       FROM payroll_slips ps
       JOIN employees e ON e.id = ps.employee_id
-      LEFT JOIN salary_structures ss_inner ON ss_inner.employee_id = e.id AND ss_inner.is_active = 1
-      LEFT JOIN employee_salary_profile sp_inner ON sp_inner.employee_id = e.id AND sp_inner.is_active = 1
       WHERE ps.month = ?
     `;
 		const params = [month];
@@ -67,15 +66,25 @@ export async function GET(request) {
 			params.push(employeeId);
 		}
 
-		if (salaryType === 'payroll') {
-			query += ` AND NOT EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
-		} else if (salaryType === 'contract') {
-			query += ` AND EXISTS (SELECT 1 FROM employee_salary_profile sp WHERE sp.employee_id = e.id AND sp.is_active = 1 AND sp.salary_type = 'contract')`;
-		}
-
+		// Salary Type comes from the slip's recorded/confirmed context below,
+		// never from an agreement that may have changed since the slip was made.
 		query += ` ORDER BY e.employee_id ASC`;
 
-		const [slips] = await db.execute(query, params);
+		const [rawSlips] = await db.execute(query, params);
+
+		// One context/document per fetched slip; two active historical agreements
+		// can no longer duplicate a page or move an earlier slip's stream.
+		const contexts = await readSlipSalaryContexts(db, rawSlips);
+		const streamFilter =
+			salaryType === 'payroll' || salaryType === 'contract' ? salaryType : null;
+		const slips = rawSlips
+			.map((slip, index) => ({
+				...slip,
+				salary_context: contexts[index],
+			}))
+			.filter((slip) =>
+				slipMatchesSalaryTypeFilter(slip.salary_context, streamFilter)
+			);
 
 		if (slips.length === 0) {
 			return NextResponse.json(

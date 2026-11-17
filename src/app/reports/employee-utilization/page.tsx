@@ -29,117 +29,22 @@ import { useSessionRBAC } from '@/utils/client-rbac';
 import { apiGet } from '@/lib/api-client';
 import { formatCurrency, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/cn';
-import type { RosterDisclosure } from '@/lib/payroll-roster';
 import { hasProjectActivitiesFieldPermission } from '@/utils/report-permissions';
 import { bandText, NO_TIME_LOGGED_LABEL, partialWindowLabel } from './labels';
+import type {
+	CostStatus,
+	DepartmentSummary,
+	TrendPoint,
+	UtilizationBand,
+	UtilizationData,
+	UtilizationMeta,
+	UtilizationRow,
+} from './data-source';
 
-// ─── Client-safe API types (mirror the server payload, no server import) ──
-
-type UtilizationBand = 'under' | 'healthy' | 'over';
-
-type CostStatus = 'priced' | 'no-profile';
-
-/** Missing timesheet evidence for the month — the Logged Hours are 0. */
-type UtilizationState = 'no_time_logged';
-
-/**
- * One trailing-month cell: the month, whether the employment window covered
- * it, and that month's utilization (`null` when the month had no capacity).
- * A cell whose month is not employed is blank, never an em dash.
- */
-interface TrailingMonth {
-	month: string;
-	employed: boolean;
-	utilization_percent: number | null;
-}
-
-/** One team-trend point: capacity-weighted utilization and priced Bench Cost. */
-interface TrendPoint {
-	month: string;
-	utilization_percent: number | null;
-	bench_cost: number | null;
-}
-
-interface UtilizationRow {
-	employee_id: number;
-	employee_code: string;
-	employee_name: string;
-	/** Raw `employees.department`; null = unset (rendered as "Unassigned"). */
-	department: string | null;
-	month: string;
-	capacity_hours: number;
-	logged_hours: number;
-	utilization_percent: number | null;
-	utilization_band: UtilizationBand | null;
-	/** Set when the month's Logged Hours are 0; never changes band or order. */
-	state: UtilizationState | null;
-	/** Resolved employment window; null = open bound. */
-	employment_start: string | null;
-	employment_end: string | null;
-	/** The window does not cover the whole month — a chip names the dates. */
-	is_partial_window: boolean;
-	/** The viewed month and the two before it, oldest first. */
-	trailing: TrailingMonth[];
-	/** Every employed month of the trailing window is under 80 (min two). */
-	chronic_under: boolean;
-	/** Null when no salary profile covers the month — blank, never zero. */
-	monthly_cost: number | null;
-	fractional_cost: number | null;
-	bench_cost: number | null;
-	cost_status: CostStatus;
-}
-
-interface UtilizationTotals {
-	employee_count: number;
-	priced_count: number;
-	unpriced_count: number;
-	/**
-	 * The viewed month's rows with zero Logged Hours — month-wide even when a
-	 * band filter narrows the other counts (the rollup's scope).
-	 */
-	no_logged_count: number;
-	capacity_hours: number;
-	logged_hours: number;
-	utilization_percent: number | null;
-	monthly_cost: number | null;
-	fractional_cost: number | null;
-	bench_cost: number | null;
-}
-
-interface UtilizationMeta {
-	months: string[];
-	latest_month: string | null;
-	current_month: string;
-	flags: { value: UtilizationBand; label: string }[];
-}
-
-/** One department's rollup over the viewed month's roster — the summary table. */
-interface DepartmentSummary {
-	/** Raw `employees.department`; null = the unset bucket ("Unassigned"). */
-	department: string | null;
-	headcount: number;
-	/** Σ logged ÷ Σ capacity × 100; null when the department credits no capacity. */
-	capacity_weighted_utilization: number | null;
-	logged_hours: number;
-	capacity_hours: number;
-	/** Sums the department's priced rows; null when none is priced. */
-	bench_cost: number | null;
-	no_logged_count: number;
-}
-
-interface UtilizationData {
-	month: string;
-	month_label: string;
-	flag: UtilizationBand | null;
-	rows: UtilizationRow[];
-	totals: UtilizationTotals;
-	/** The six months ending at the viewed month, oldest first. */
-	trend: TrendPoint[];
-	/** What the month's roster filter dropped; null when it dropped nobody. */
-	disclosure: RosterDisclosure | null;
-	/** The month's department rollup, computed before the band filter. */
-	departments: DepartmentSummary[];
-}
+// ─── API payload types ─────────────────────────────────────────────────
+// The page renders the producer's payload verbatim, so it reuses the
+// canonical exported types (type-only, erased before the client bundle)
+// instead of keeping a second DTO mirror that can drift from the server.
 
 /** One activity/discipline pair inside a bucket: the hours logged under it. */
 interface ProjectBreakdownActivity {
@@ -247,6 +152,44 @@ function monthLabel(month: string): string {
 	];
 	if (!y || !m || m < 1 || m > 12) return month;
 	return `${names[m - 1]} ${y}`;
+}
+
+/** Why a row has no confirmed monthly cost, in the reader's words. */
+const COST_STATUS_LABELS: Record<Exclude<CostStatus, 'priced'>, string> = {
+	'no-profile': 'No profile',
+	ambiguous: 'Ambiguous profiles',
+	'ctc-missing': 'No CTC',
+	'ctc-invalid': 'Invalid CTC',
+	mixed: 'Mixed salary causes',
+};
+
+const COST_STATUS_TITLES: Record<Exclude<CostStatus, 'priced'>, string> = {
+	'no-profile':
+		'No Salary Profile covers this month. Cost is unknown, not zero; hours stay visible.',
+	ambiguous:
+		'Several Salary Profiles cover this month and none is chosen. Cost is unknown, not zero.',
+	'ctc-missing':
+		'The covering Salary Profile has no monthly CTC. Cost is unknown, not zero.',
+	'ctc-invalid':
+		"The covering Salary Profile's CTC is invalid. Cost is unknown and is not repriced from a gross field.",
+	mixed:
+		'The months in this range have no usable salary for different reasons (no covering profile, ambiguous profiles, a missing CTC or an invalid CTC). Cost is unknown, not zero; a single month’s cause does not describe the range.',
+};
+
+/** The month's salary population, stated without hiding gaps. */
+function utilizationSalaryCounts(
+	summary: UtilizationData['totals']['salary'],
+	mixedCostCount: number
+): string {
+	return [
+		`missing: ${summary.missing_count}`,
+		`ambiguous: ${summary.ambiguous_count}`,
+		`no CTC: ${summary.ctc_missing_count}`,
+		`invalid CTC: ${summary.ctc_invalid_count}`,
+		// A range row with several distinct causes fits no single bucket; the
+		// totals leave it out of them, so it is stated on its own.
+		...(mixedCostCount > 0 ? [`mixed causes: ${mixedCostCount}`] : []),
+	].join(', ');
 }
 
 function bandBadge(band: UtilizationBand | null): string {
@@ -784,6 +727,12 @@ export default function EmployeeUtilizationPage() {
 	// bench cost descending) — the search filter preserves that order.
 	const rows = useMemo(() => data?.rows ?? [], [data]);
 	const totals = data?.totals ?? null;
+	// Rows whose months were unpriceable for more than one reason: no single
+	// cause bucket describes them, but they still count as unpriced.
+	const mixedCostCount = useMemo(
+		() => rows.filter((row) => row.cost_status === 'mixed').length,
+		[rows]
+	);
 	// The team trend: server-computed over each month's whole roster, so the
 	// chart ignores the band/search filters by design.
 	const trend = useMemo(() => data?.trend ?? [], [data]);
@@ -1069,14 +1018,46 @@ export default function EmployeeUtilizationPage() {
 						</span>
 					</div>
 
-					{totals && totals.unpriced_count > 0 && (
-						<p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-							{totals.unpriced_count} of {totals.employee_count}{' '}
-							{totals.unpriced_count === 1 ? 'employee has' : 'employees have'}{' '}
-							no salary profile covering {data?.month_label ?? month} — costs
-							show as — and are excluded from cost totals.
-						</p>
-					)}
+					{totals &&
+						(totals.salary.unpriced_count > 0 ||
+							totals.salary.legacy_fallback_count > 0) && (
+							<div
+								data-testid="salary-availability-notice"
+								className="space-y-1 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900"
+							>
+								{totals.salary.unpriced_count > 0 && (
+									<p>
+										{totals.salary.unpriced_count} of {totals.employee_count}{' '}
+										{totals.salary.unpriced_count === 1
+											? 'employee has'
+											: 'employees have'}{' '}
+										no usable salary agreement covering{' '}
+										{data?.month_label ?? month} — costs show as — and are
+										excluded from cost totals, so those totals are partial.
+										Hours stay visible.
+									</p>
+								)}
+								{(mixedCostCount > 0 ||
+									totals.salary.missing_count > 0 ||
+									totals.salary.ambiguous_count > 0 ||
+									totals.salary.ctc_missing_count > 0 ||
+									totals.salary.ctc_invalid_count > 0) && (
+									<p>
+										Salary evidence —{' '}
+										{utilizationSalaryCounts(totals.salary, mixedCostCount)}.
+									</p>
+								)}
+								{totals.salary.legacy_fallback_count > 0 && (
+									<p>
+										{totals.salary.legacy_fallback_count}{' '}
+										{totals.salary.legacy_fallback_count === 1
+											? 'row is'
+											: 'rows are'}{' '}
+										priced from a legacy gross salary field, not the agreed CTC.
+									</p>
+								)}
+							</div>
+						)}
 
 					{trend.length > 0 && <TeamTrendChart trend={trend} />}
 
@@ -1347,11 +1328,36 @@ export default function EmployeeUtilizationPage() {
 															className="px-4 py-2.5 text-right tabular-nums"
 														>
 															{formatCurrency(row.monthly_cost)}
-															{row.cost_status === 'no-profile' && (
-																<span className="ml-1.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200">
-																	No profile
+															{row.cost_status !== 'priced' && (
+																<span
+																	data-testid="cost-status-chip"
+																	data-status={row.cost_status}
+																	title={COST_STATUS_TITLES[row.cost_status]}
+																	className="ml-1.5 inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200"
+																>
+																	{COST_STATUS_LABELS[row.cost_status]}
 																</span>
 															)}
+															{row.salary.legacy_fallback && (
+																<span
+																	data-testid="legacy-cost-chip"
+																	title="The amount comes from a legacy gross salary field, not the agreed monthly CTC."
+																	className="ml-1.5 inline-flex items-center rounded-full bg-sky-50 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-sky-900 ring-1 ring-sky-200"
+																>
+																	Legacy gross basis
+																</span>
+															)}
+															{row.cost_status === 'priced' &&
+																row.salary.ctc_source === 'employer_cost' &&
+																row.monthly_cost === 0 && (
+																	<span
+																		data-testid="confirmed-zero-cost-chip"
+																		title="The covering agreement states an explicit employer cost of zero."
+																		className="ml-1.5 inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-emerald-900 ring-1 ring-emerald-200"
+																	>
+																		Confirmed zero
+																	</span>
+																)}
 														</td>
 														<td
 															data-testid="cell-bench-cost"
@@ -1419,12 +1425,29 @@ export default function EmployeeUtilizationPage() {
 													className="px-4 py-2.5 text-right tabular-nums"
 												>
 													{formatCurrency(totals.monthly_cost)}
+													{!totals.salary.complete && (
+														<span
+															data-testid="total-cost-partial"
+															title={`Priced rows only; ${totals.salary.unpriced_count} row(s) have no usable salary.`}
+															className="ml-1.5 inline-flex items-center rounded-full bg-amber-200 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase text-amber-950"
+														>
+															partial
+														</span>
+													)}
 												</td>
 												<td
 													data-testid="cell-total-bench-cost"
 													className="px-4 py-2.5 text-right tabular-nums"
 												>
 													{formatCurrency(totals.bench_cost)}
+													{!totals.salary.complete && (
+														<span
+															title={`Priced rows only; ${totals.salary.unpriced_count} row(s) have no usable salary.`}
+															className="ml-1.5 inline-flex items-center rounded-full bg-amber-200 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase text-amber-950"
+														>
+															partial
+														</span>
+													)}
 												</td>
 												<td className="px-4 py-2.5" />
 											</tr>

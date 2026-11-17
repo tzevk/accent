@@ -5,50 +5,57 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
+import {
+	SalaryProfileQueryError,
+	loadSalaryProfileDirectory,
+	parseSalaryDirectoryQuery,
+} from '@/lib/salary-profile-directory';
 
-// GET /api/payroll/employees-with-profiles - Get all active employees from employee master
+/**
+ * GET /api/payroll/employees-with-profiles
+ *
+ * Payroll-authorized minimal Employee projection for the Salary Profiles
+ * workspace. Supports an as-of date or payroll month, search, Payroll /
+ * Contract / Missing Profile filters and stable pagination.
+ *
+ * Query: date=YYYY-MM-DD | month=YYYY-MM, search, stream=payroll|contract|missing,
+ *        page, limit
+ * Salary data is payroll data: only payroll:read authorizes this route, with no
+ * employees:* fallback. Responds with the requested-period agreement state and
+ * never the newest agreement as a substitute for an uncovered period.
+ */
 export async function GET(request) {
+	const authResult = await ensurePermission(
+		request,
+		RESOURCES.PAYROLL,
+		PERMISSIONS.READ
+	);
+	if (authResult instanceof Response) return authResult;
+	if (!authResult.authorized) return authResult.response;
+
 	let db;
 	try {
-		const authResult = await ensurePermission(
-			request,
-			RESOURCES.PAYROLL,
-			PERMISSIONS.READ
-		);
-		if (authResult instanceof Response) return authResult;
-		if (!authResult.authorized) return authResult.response;
+		const { searchParams } = new URL(request.url);
+		const query = parseSalaryDirectoryQuery(searchParams);
 
 		db = await dbConnect();
-
-		// Get all active employees from employee master
-		const [employees] = await db.query(
-			`SELECT 
-        id,
-        employee_id,
-        first_name,
-        last_name,
-        CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) as full_name,
-        department,
-        status,
-        email,
-        phone
-       FROM employees
-       WHERE status = 'active' OR status IS NULL
-       ORDER BY first_name, last_name`
-		);
-
-		return NextResponse.json({
-			success: true,
-			data: employees || [],
-			total: employees?.length || 0,
-		});
+		const result = await loadSalaryProfileDirectory(db, query);
+		return NextResponse.json({ success: true, ...result });
 	} catch (error) {
-		console.error('Error fetching employees:', error);
+		if (error instanceof SalaryProfileQueryError) {
+			return NextResponse.json(
+				{ success: false, error: error.message },
+				{ status: 400 }
+			);
+		}
+		console.error('Error reading salary profile directory:', error);
 		return NextResponse.json(
 			{
 				success: false,
-				error: 'Failed to fetch employees: ' + error.message,
-				data: [],
+				error:
+					error instanceof Error
+						? error.message
+						: 'Failed to read salary profile directory',
 			},
 			{ status: 500 }
 		);

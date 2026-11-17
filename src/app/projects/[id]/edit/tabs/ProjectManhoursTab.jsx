@@ -7,6 +7,18 @@ import {
 } from '@heroicons/react/24/outline';
 import { add, sub, mul, toNumber } from '@/lib/money';
 
+/**
+ * A stored employee rate is known when it is present, including an explicit
+ * zero. Unlike `||`, this keeps a resolved zero distinct from missing pay.
+ */
+function hasKnownEmployeeRate(value) {
+	return (
+		value !== null &&
+		value !== undefined &&
+		!(typeof value === 'string' && value.trim() === '')
+	);
+}
+
 export default function ProjectManhoursTab({
 	projectManhours,
 	setProjectManhours,
@@ -122,6 +134,9 @@ export default function ProjectManhoursTab({
 		}));
 
 	const teamManhourPeople = [...teamEmployees, ...externalTeamMembers];
+	const unknownEmployeeRateCount = projectManhours.filter(
+		(emp) => !hasKnownEmployeeRate(emp.rate_employee)
+	).length;
 
 	// FY Apr–Mar ordering for the month columns
 	const fyMonths = [
@@ -291,9 +306,17 @@ export default function ProjectManhoursTab({
 							{projectManhours.map((empData, idx) => {
 								const monthlyHours = empData.monthly_hours || {};
 								const totalHrs = add(...Object.values(monthlyHours));
-								const employeeCost = mul(empData.rate_employee, totalHrs);
+								const employeeRateKnown = hasKnownEmployeeRate(
+									empData.rate_employee
+								);
+								const employeeCost = employeeRateKnown
+									? mul(empData.rate_employee, totalHrs)
+									: null;
 								const clientBilling = mul(empData.rate_client, totalHrs);
-								const pl = sub(clientBilling, employeeCost);
+								const pl = sub(
+									clientBilling,
+									employeeCost === null ? 0 : employeeCost
+								);
 
 								return (
 									<tr
@@ -354,7 +377,7 @@ export default function ProjectManhoursTab({
 																							? ''
 																							: selectedEmp.id,
 																					salary_type: salaryType,
-																					rate_employee: selectedEmp.rate || 0,
+																					rate_employee: selectedEmp.rate ?? '',
 																					rate_client: m.rate_client || '',
 																					monthly_hours: monthlyHoursData,
 																				}
@@ -394,7 +417,7 @@ export default function ProjectManhoursTab({
 										<td className="py-2 px-1 text-center bg-blue-50/30">
 											<input
 												type="number"
-												value={empData.rate_employee || ''}
+												value={empData.rate_employee ?? ''}
 												onChange={(e) =>
 													setProjectManhours((prev) =>
 														prev.map((m) =>
@@ -408,7 +431,7 @@ export default function ProjectManhoursTab({
 													)
 												}
 												className="w-full text-[10px] px-1 py-0.5 border border-gray-200 rounded text-center focus:ring-1 focus:ring-blue-400 disabled:bg-transparent disabled:border-transparent"
-												placeholder="0"
+												placeholder="—"
 												min="0"
 												step="0.01"
 												disabled={editingRowId !== empData.id}
@@ -478,7 +501,16 @@ export default function ProjectManhoursTab({
 											{totalHrs.toFixed(1)}
 										</td>
 										<td className="py-2 px-2 text-center font-semibold text-green-700 bg-green-50/50">
-											₹{inrFormat(employeeCost)}
+											{employeeRateKnown ? (
+												`₹${inrFormat(employeeCost)}`
+											) : (
+												<span
+													className="text-amber-700"
+													title="No usable salary rate for the project date; employee cost is unavailable, not zero."
+												>
+													—
+												</span>
+											)}
 										</td>
 										<td className="py-2 px-2 text-center font-semibold text-blue-700 bg-blue-50/50">
 											₹{inrFormat(clientBilling)}
@@ -560,6 +592,11 @@ export default function ProjectManhoursTab({
 								</td>
 								<td className="py-2 px-2 text-center text-green-800 bg-green-200/50">
 									₹{inrFormat(totals.employee)}
+									{unknownEmployeeRateCount > 0 && (
+										<span className="block text-[10px] font-normal text-amber-700">
+											Partial
+										</span>
+									)}
 								</td>
 								<td className="py-2 px-2 text-center text-blue-800 bg-blue-200/50">
 									₹{inrFormat(totals.client)}
@@ -582,6 +619,19 @@ export default function ProjectManhoursTab({
 						</tbody>
 					</table>
 				</div>
+
+				{unknownEmployeeRateCount > 0 && (
+					<p
+						role="status"
+						className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900"
+					>
+						<span className="font-semibold">Employee Cost is partial.</span>{' '}
+						{unknownEmployeeRateCount === 1
+							? '1 row has no usable salary rate; its cost is shown as unavailable (—), not zero. The total excludes it.'
+							: `${unknownEmployeeRateCount} rows have no usable salary rate; their costs are shown as unavailable (—), not zero. The total excludes them.`}{' '}
+						Hours and Company Billing are unchanged.
+					</p>
+				)}
 			</div>
 		</section>
 	);

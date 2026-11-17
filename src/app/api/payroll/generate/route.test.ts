@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { grantFor } from '../test-perms';
 import { PayrollGenerationError } from '@/utils/payroll-calculator';
+import { SALARY_WRITE_ISOLATION } from '@/lib/salary-write-isolation';
 
 const mocks = vi.hoisted(() => ({
 	mockDbConnect: vi.fn(),
@@ -79,7 +80,10 @@ const ELIGIBLE_MEMBER = {
 	issue: null,
 };
 
-const roster = (members: readonly unknown[] = [ELIGIBLE_MEMBER], excluded: readonly unknown[] = []) => ({
+const roster = (
+	members: readonly unknown[] = [ELIGIBLE_MEMBER],
+	excluded: readonly unknown[] = []
+) => ({
 	month: '2026-08-01',
 	members,
 	excluded,
@@ -145,6 +149,10 @@ describe('payroll generate API — roster eligibility and Payroll Run lock (issu
 		const res = await POST(jsonRequest({ month: '2026-08-01', all: true }));
 
 		expect(res.status).toBe(200);
+		expect(mocks.mockWithTransaction).toHaveBeenCalledWith(
+			expect.any(Function),
+			{ isolation: SALARY_WRITE_ISOLATION }
+		);
 		const body = await res.json();
 		expect(body.success).toBe(true);
 		expect(body.run).toMatchObject({ id: 7, status: 'draft' });
@@ -223,11 +231,16 @@ describe('payroll generate API — roster eligibility and Payroll Run lock (issu
 		const body = await res.json();
 		expect(body.data).toEqual({ id: 31, net_pay: 100 });
 		expect(mocks.mockWithTransaction).toHaveBeenCalledTimes(1);
+		// The write path's roster read (and its Employee locks) belongs to the
+		// generation seam; the route must not take an unlocked roster snapshot.
+		expect(mocks.mockLoadPayrollRunRoster).not.toHaveBeenCalled();
 		expect(mocks.mockGeneratePayrollSlip).toHaveBeenCalledWith(
 			7,
 			'2026-08-01',
 			expect.objectContaining({
 				include_bonus: true,
+				// Provenance for the durable use record names the locked run.
+				payrollRunId: 7,
 				db: expect.objectContaining({ execute: mocks.mockExecute }),
 			})
 		);
@@ -292,9 +305,17 @@ describe('payroll generate API — roster eligibility and Payroll Run lock (issu
 			issue: 'employment_dates_missing',
 		};
 		mocks.mockLoadPayrollRunRoster.mockResolvedValue(
-			roster([reviewMember], [
-				{ employee_id: 99, employee_code: 'EMP099', name: 'Other', reason: 'no_evidence' },
-			])
+			roster(
+				[reviewMember],
+				[
+					{
+						employee_id: 99,
+						employee_code: 'EMP099',
+						name: 'Other',
+						reason: 'no_evidence',
+					},
+				]
+			)
 		);
 		mocks.mockPayrollGenerationRefusal.mockReturnValue(
 			new PayrollGenerationError(

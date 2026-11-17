@@ -424,7 +424,7 @@ export function ProjectBreakdown({
 															? ' · includes salary estimate'
 															: ''}
 														{project.missing_salary_profile_count > 0
-															? ` · ${project.missing_salary_profile_count} missing Salary Profiles, unpriced`
+															? ` · ${project.missing_salary_profile_count} with a salary that cannot be established for this month (no agreement, an ambiguous history, or no usable agreed CTC), unpriced`
 															: ''}
 														.
 													</p>
