@@ -5,18 +5,18 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 
 ## Application guides
 
-| Task                                              | Guide                                                                                           |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Operate payroll and check employee entry points   | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
-| Work Leads, ownership, and the legacy review flow | [Lead operator guide](app/leads/operator-guide.md)                                              |
-| Run local MariaDB, leads integration, or browser smoke | [Local database operations](agents/local-database.md)                                      |
-| Set up and operate ticket email notifications     | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
-| Understand project view and edit screens          | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
-| Understand project manhours                       | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
-| Understand the Timesheet report                   | [Timesheet implementation](app/reports/timesheet-implementation.md)                             |
-| Understand Manhours Billing                       | [Manhours Billing implementation](app/reports/manhours-billing-implementation.md)               |
-| Understand Client Balance                         | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
-| Understand project expenditure accounting         | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
+| Task                                                   | Guide                                                                                           |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Operate payroll and check employee entry points        | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
+| Work Leads, ownership, and the legacy review flow      | [Lead operator guide](app/leads/operator-guide.md)                                              |
+| Run local MariaDB, leads integration, or browser smoke | [Local database operations](agents/local-database.md)                                           |
+| Set up and operate ticket email notifications          | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
+| Understand project view and edit screens               | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
+| Understand project manhours                            | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
+| Understand the Timesheet report                        | [Timesheet implementation](app/reports/timesheet-implementation.md)                             |
+| Understand Manhours Billing                            | [Manhours Billing implementation](app/reports/manhours-billing-implementation.md)               |
+| Understand Client Balance                              | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
+| Understand project expenditure accounting              | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
 
 ## Cash vouchers
 
@@ -52,6 +52,9 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 - [Ticket system](explanations/TICKET_SYSTEM.md)
 - [Super-admin setup](explanations/SUPER_ADMIN_SETUP.md)
 - [Live monitoring open-source research](explanations/LIVE_MONITORING_OPEN_SOURCE_RESEARCH.md)
+- [Development testing speed research and retrospective](explanations/DEVELOPMENT_TESTING_SPEED_RESEARCH.md)
+- [Next.js testing and CI case study](explanations/NEXTJS_TESTING_CASE_STUDY.md)
+- [Twenty-style testing architecture adoption](explanations/TWENTY_TESTING_ADOPTION.md)
 
 ## Decisions and terminology
 
@@ -67,7 +70,7 @@ Read the relevant record before changing its behavior.
 | Security             | [Session validation](adr/0011-session-validation-in-proxy-and-handlers.md), [rich-text trust boundary](adr/0012-rich-text-trust-boundary.md), [rate limits](adr/0013-rate-limit-identity-and-store.md), [public endpoint allowlist](adr/0014-unauthenticated-endpoint-allowlist.md)                                                                                                                                                                                                                                      |
 | Leads                | [Legacy Lead review and the canonical Proposal](adr/0031-legacy-lead-review-and-canonical-proposal.md), [the Lead activity log and the conversion handoff](adr/0032-lead-activity-log-and-conversion-handoff.md)                                                                                                                                                                                                                                                                                                         |
 | Projects             | [Membership, shared lead policy, and explicit project scopes](adr/0034-project-membership-lead-policy-and-explicit-scopes.md) — implemented in issue #410.                                                                                                                                                                                                                                                                                                                                                               |
-| Proposal pricing | [Reviewed cost assumptions and confidentiality](adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md) — agreed design boundaries; not implemented. |
+| Proposal pricing     | [Reviewed cost assumptions and confidentiality](adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md) — agreed design boundaries; not implemented.                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Audit records and change history
 

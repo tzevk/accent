@@ -4,13 +4,21 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { startE2EHarness, type E2EHarness } from './environment.ts';
+import {
+	E2EUsageError,
+	resolveE2EInvocation,
+	type E2EInvocation,
+} from './invocation.ts';
 
 function errorMessage(error: unknown): string {
-	return error instanceof Error ? (error.stack ?? error.message) : String(error);
+	return error instanceof Error
+		? (error.stack ?? error.message)
+		: String(error);
 }
 
 async function runPlaywright(
-	harness: E2EHarness
+	harness: E2EHarness,
+	playwrightArgs: readonly string[]
 ): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
 	const cli = path.join(process.cwd(), 'node_modules', 'playwright', 'cli.js');
 	if (!existsSync(cli)) {
@@ -18,16 +26,12 @@ async function runPlaywright(
 			`[e2e] Playwright CLI not found at ${cli}; run npm ci and npx playwright install chromium.`
 		);
 	}
-	const child = spawn(
-		process.execPath,
-		[cli, 'test', ...process.argv.slice(2)],
-		{
-			env: harness.playwrightEnv,
-			cwd: process.cwd(),
-			stdio: 'inherit',
-			shell: false,
-		}
-	);
+	const child = spawn(process.execPath, [cli, 'test', ...playwrightArgs], {
+		env: harness.playwrightEnv,
+		cwd: process.cwd(),
+		stdio: 'inherit',
+		shell: false,
+	});
 	const { promise, resolve, reject } = Promise.withResolvers<{
 		code: number | null;
 		signal: NodeJS.Signals | null;
@@ -53,6 +57,23 @@ async function runPlaywright(
 }
 
 async function main(): Promise<number> {
+	let invocation: E2EInvocation;
+	try {
+		invocation = resolveE2EInvocation(process.argv.slice(2), process.env);
+	} catch (error) {
+		if (error instanceof E2EUsageError) {
+			process.stderr.write(`${error.message}\n`);
+		} else {
+			process.stderr.write(`${errorMessage(error)}\n`);
+		}
+		return 1;
+	}
+	if (invocation.localRunReason !== null) {
+		process.stdout.write(
+			`[e2e] Local run reason: ${invocation.localRunReason}\n`
+		);
+	}
+
 	let harness: E2EHarness;
 	try {
 		harness = await startE2EHarness();
@@ -61,11 +82,13 @@ async function main(): Promise<number> {
 		return 1;
 	}
 
-	let testResult: { code: number | null; signal: NodeJS.Signals | null } | null =
-		null;
+	let testResult: {
+		code: number | null;
+		signal: NodeJS.Signals | null;
+	} | null = null;
 	let testError: unknown = null;
 	try {
-		testResult = await runPlaywright(harness);
+		testResult = await runPlaywright(harness, invocation.playwrightArgs);
 	} catch (error) {
 		testError = error;
 	}

@@ -66,30 +66,71 @@ This file owns coding, security, data, and testing requirements. Read only secti
 
 ## Testing and verification
 
-**Trigger: adding or changing tests, selecting checks, running a local integration harness, or changing build/test automation.**
+**Trigger: implementing, reviewing, or verifying code; changing tests, checks, CI, or build automation.**
 
-- Keep continuous integration (CI) in GitHub Actions for pull requests. Run repository verification and the focused end-to-end (E2E) journey there.
-- Use standard GitHub-hosted Ubuntu runners for this public repository. Local commands complement CI; they do not replace it.
-- Vercel previews and deployment builds complement CI and remain enabled.
-- Prefer the lowest layer that can hold the assertion: pure logic, then component rendering, then route contracts, then browser journeys. Pure logic tests have no DB, network, or `fetch`; write them before implementation after listing failure modes.
+### Test layers
+
+- `npm run test:unit` runs the existing Vitest logic, component, mocked route-contract, and harness suites. Pass a file or test-name filter for focused feedback. `npm test -- <test-file> --watch` remains the interactive loop.
+- `npm run test:integration` runs the existing authenticated HTTP scenarios against an owned disposable MariaDB database. Use the [leads integration guide](docs/app/leads/integration.md) for scenario selection and cleanup.
+- `npm run test:e2e` runs the critical browser journey in GitHub Actions. Local execution remains an explicitly authorized debugging exception.
+- These native layers adapt Twenty CRM's separation without Nx, Yarn, Jest migration, or a second application layout. Existing tests stay in place. Historical records may retain the former `test:run` and `test:integration:leads` names; they are not current commands.
+
+### Development loop
+
+- Choose the smallest check that exercises the changed behavior. Follow [verification ownership](#verification-ownership) before starting broad checks.
+- Match the Node version declared in `package.json` and CI. Check installed CLI help before using unfamiliar test flags.
+- While editing, run an explicit Vitest file or named test. Use `npm test -- <test-file> --watch` interactively, or `npm run test:unit -- <test-file>` for one-shot feedback. Run installed ESLint on changed source files rather than repeatedly linting the repository.
+- Use `npm test -- related <source-file> --run` or `npm test -- --changed origin/main --run` as selection aids. Confirm the Git reference exists and is current. Import graphs do not prove effects through HTTP, migrations, computed imports, or runtime configuration; select those integration checks explicitly.
+- Use `npm run check:route-auth` for fast feedback while changing API routes or authorization rules.
+- After a failure, inspect the first actionable error, trace, and owned server output. Classify the cause as application, fixture, or environment before choosing the next check. Rerun after a relevant fix or an evidence-backed transient failure, not as a blind retry.
+- Report the command, selected scope, result, and any verification gap. Stop checking when the assigned scope has sufficient evidence; another agent finishing is not a reason to repeat it.
+
+### Verification ownership
+
+- **Implementation workers:** run focused checks for their changes. Do not independently run `npm run verify`, production builds, or unrelated suites during iteration. Browser execution requires explicit runtime ownership.
+- **Reviewers:** review the diff against affected standards, coverage placement, observable assertions, and fixture isolation. Reuse existing evidence. Request the smallest missing check rather than launching the complete gate.
+- **Integration owner:** the main agent owns integration unless another agent is explicitly assigned. For code, test, or build/CI changes, run `npm run verify` against the final candidate before pushing. This is one shared gate, not one gate per worker or commit.
+- Successful gate evidence remains valid only while its checked inputs remain unchanged. Rerun affected focused checks after fixes, then complete the required gate against the final candidate. Do not repeat a successful unchanged gate for handoffs or status reports.
+- **Documentation-only changes:** check affected links, anchors, and formatting. Skip application builds, databases, and browser suites unless the task explicitly requires runtime proof.
+- **CI:** keep route authorization, lint, unit tests, production build, real-database leads integration, and the financial E2E journey enabled. Local selection complements these checks; it does not replace them. Keep Vercel previews and deployment builds enabled.
+- Keep CI job names stable when changing workflow structure. Required merge checks are repository settings, not a property of workflow YAML. Verify enforcement separately; report missing administrator access instead of claiming merges or deployments are gated.
+- CI uses native path selection, not an inferred Nx project graph. Only PRs changing known root documentation or `docs/` may skip runtime checks. Source, tests, scripts, CI, dependencies, migrations, mixed changes, empty results, or unavailable comparison data select all checks. Deletions and renames must retain the old runtime path when classifying scope.
+- Route authorization, lint, and unit checks give independent early feedback. Build, real-database integration, and browser jobs start only after those checks pass. The always-running CI `verify` job fails on failed, cancelled, missing, or unexpectedly skipped results; only an explicitly classified documentation-only PR may skip runtime checks.
+- Use standard GitHub-hosted Ubuntu runners for this public repository. Keep paid Actions usage at zero. If free execution is unavailable, block rather than select paid capacity. Workflow configuration alone does not prove a billing cap.
+- Local `npm run verify` runs route authorization, lint, `test:unit`, then `build:prod`; it excludes database and browser suites. CI runs those commands in separate jobs and uses `verify` as the aggregate status, not another execution of the local command. `build:prod` sets `NODE_ENV=production` because plain `npm run build` fails prerender with the repository's development environment. Keep its type and client-bundling checks; standalone `tsc --noEmit` is not a substitute. Passing staged filenames to `tsc` also ignores `tsconfig.json`.
+
+### Coverage and assertions
+
+- Prefer the lowest layer that can hold the assertion: pure logic, component rendering, route contracts, real-database integration, then browser journeys. Pure logic tests have no DB, network, or `fetch`; write them before implementation after listing failure modes.
 - Component tests render the real component with realistic payloads. Query by accessible role or label and assert observable behavior, such as accessible names, focus, and empty states. Do not fake route handlers or pin source text as proof.
-- Route tests cover API contracts, status codes, and authorization decisions. Existing route suites may mock the database where needed.
-- Use browser tests only for critical journeys: real sign-in, one representative CRUD flow, and one financial flow. A ticket that does not touch a critical journey does not need an E2E spec.
-- Before writing a browser test, state the behavior and why a browser is needed. Keep one behavior per test. Select by role, label, or `data-testid`, not styling-sensitive selectors. Namespace data per run (`E2E-<issue>-<run>-<worker>`), keep fixture records tracked by primary key, and clean them in `afterAll`. Assert both the API response and persisted database state using an independent client.
+- Route tests cover API contracts, status codes, and authorization decisions. Existing route suites may mock the database. Use real MariaDB integration for SQL behavior, constraints, migrations, transactions, and contention; mocked HTTP or database responses cannot prove those invariants.
+- Use browser tests only for critical journeys: real sign-in, one representative CRUD flow, and one financial flow. A ticket that does not touch a critical journey does not need an E2E spec. Run routine browser verification in GitHub Actions, including changes to those boundaries; local work uses focused lower-layer checks.
+- Before writing a browser test, state the behavior and why a browser is needed. Keep one behavior per test. Select by role, label, or `data-testid`, not styling-sensitive selectors. Namespace data per run (`E2E-<issue>-<run>-<worker>`), track fixture records by primary key, and clean owned records in teardown, including failure paths.
+- Assert visible UI state even when TanStack Query serves cached data. Await a response only when the action guarantees a request; arm that wait before the action. Test API contracts through explicit requests and independently read persisted database state when asserting persistence or financial integrity.
+- Keep cold-start readiness and interaction budgets separate. Diagnose missing events before increasing a timeout or retry count. Preserve first-failure evidence; do not disable authentication, rate limits, or financial assertions to obtain green results.
 - Move coverage to a lower layer when a browser spec exceeds 200 lines or a feature needs a second spec.
-- Do not serialize browser tests or disable parallelism to enforce ordering; combine dependent steps into one test. Do not use `page.waitForTimeout`; wait for a locator assertion or response.
+- Do not serialize browser tests or disable parallelism to enforce ordering; combine dependent steps into one test. Do not use `page.waitForTimeout`; wait for a locator assertion or a guaranteed response.
 - Never use hardcoded or shared test data. Do not commit route, page, or component tests that mock their own dependencies and only assert that the mock answered.
-- The maintained Playwright harness lives in `e2e/` with orchestration in `scripts/e2e/`. It has one Chromium project and one `npm run test:e2e` command. The command creates a unique disposable MariaDB database, runs migrations with the resolved port, seeds through fixture hooks, starts an owned loopback `next dev`, verifies the app actually reads that database, runs the browser spec, and cleans up. Use `npm run test:e2e`; do not run `npx playwright test` directly because it refuses to start without the owned runtime.
-- CI runs `npm run verify`, route authorization, leads integration, and `npm run test:e2e` as separate jobs. `npm run test:e2e` remains a separate local command; `npm run verify` intentionally does not run browser tests.
+
+### Owned browser runtime
+
+- GitHub Actions owns routine E2E verification. Use the `e2e-financial-smoke` job and its failure artifacts; do not run a local browser suite as a task-completion gate. A local browser run is an explicit user-authorized debugging exception, not the default after a failed check.
+- The maintained Playwright harness lives in `e2e/` with orchestration in `scripts/e2e/`. Use `npm run test:e2e`, not direct `npx playwright test`. The harness owns a unique disposable MariaDB database, migrations, fixture hooks, loopback `next dev`, database-target verification, and cleanup.
+- For authorized local debugging, keep one owned runtime open with `npm run test:e2e -- --local-run-reason "browser-only failure investigation" --ui`. A test failure stops that attempt, not the UI session. Inspect the failure, fix the cause, and rerun the selected test inside that session. Use per-test watch or manual reruns after app changes; automatic app-source invalidation is not guaranteed.
+- Restart only after migration, startup fixture-hook, or pinned environment changes, or an unusable owned server. Record the reason before restarting. Do not recreate the database and server merely because a browser assertion failed.
+- All local invocations, including UI mode, require `--local-run-reason "<reason>"`. The CLI rejects unacknowledged local runs before harness startup. Only GitHub Actions receives reason-free CI execution; `CI=true` alone does not enable it. Do not spoof `CI` or `GITHUB_ACTIONS` locally. A supplied reason does not replace user authorization or justify blind retries.
+- Keep interactive sessions on loopback. Before adopting or changing the UI lifecycle, verify two reruns and clean exit once. Do not repeat lifecycle verification for unrelated changes. Keep failure traces available with zero local retries; `on-first-retry` alone captures nothing in that configuration.
+- `--grep` and `--last-failed` select tests but a fresh harness invocation still pays setup costs. Playwright `--only-changed` follows collected test dependencies, not application dependencies reached only through HTTP. None replaces complete CI coverage.
+- Raise workers or add shards only after measuring browser execution separately from setup and proving data isolation. Do not shard a single dependent journey or reuse cross-session authentication against a newly created database.
+- Only the integration owner or an explicitly assigned browser worker may start an authorized local harness. Other delegated work must not start dev servers. Final browser evidence comes from CI for the assembled candidate; reuse that evidence while its checked inputs remain unchanged.
 - The runtime refuses non-loopback hosts, database names lacking `integration`, existing databases, operational branch names, MariaDB versions other than 10.11, an unowned app port, and an existing `.next/dev/lock` or `.next/lock`. It pins `DEV_DB_*`, `STAGING_DB_*`, `PROD_DB_*`, `DB_HOST`, and `DB_PORT` for every child process. It never edits `.env`, kills, or attaches to an unowned server.
 - Journey fixtures are owned by `e2e/fixtures/hooks.ts`, which exports `seed(context)` and may export `cleanup(context)`. The context exposes the runtime, an independent reader, and the namespaced fixture helper. Fixtures use ordinary application authentication; do not add a test-only bypass, commit credentials, seed a super-admin, or grant `employees:read` to make a projection work.
 - Playwright reports, traces, and screenshots go to ignored `e2e/artifacts/`. Capture them on failure and never log passwords, session tokens, or operational Employee data.
-- The old 41-spec suite was removed on 2026-10-10 and is archived at tag `e2e-v1`; it is not the new suite's source of truth. [The removal and restoration record](docs/explanations/E2E_HARNESS_REMOVAL.md) explains that history. This is a restored minimal smoke harness, not a return of the old full suite or the old sole-E2E policy.
-- Vitest suites live beside code under `src/**/*.test.*`. Harness contracts and safety helpers are tested under `scripts/e2e/**/*.test.ts`. Existing regression coverage includes money and payroll math, leave/date/week-off logic, statutory calculations, RBAC and authorization, sanitization, punch/time-present math, and report data aggregation. Extend coverage in kind; do not recreate deleted Attendance report page-decision suites from #288.
+- Before local integration or browser execution, read [local database operations](docs/agents/local-database.md) for target safety, shell configuration, Chromium setup, fixture hooks, and instance cleanup.
+
+### Existing suites and history
+
+- Vitest suites live beside code under `src/**/*.test.*`. Harness contracts and safety helpers are tested under `scripts/e2e/**/*.test.ts`; native CI scope helpers live under `scripts/testing/**/*.test.ts`. Existing regression coverage includes money and payroll math, leave/date/week-off logic, statutory calculations, RBAC and authorization, sanitization, punch/time-present math, and report data aggregation. Extend coverage in kind; do not recreate deleted Attendance report page-decision suites from #288.
 - Test local calendar boundaries in isolated processes with explicit `TZ`; developer machines and CI use different zones.
 - Payroll API tests mock `@/utils/database` and dynamically import routes; mock-hoisting order matters, and DB mocks return `[rows, fields]`. Shared helpers live in `src/app/api/payroll/{test-perms,audit-rows}.ts`.
-- Run `npm run verify` before pushing. It includes route authorization, lint, `build:prod`, and `test:run`, and also runs in CI. Subagents use this gate instead of standalone build, typecheck, or E2E commands.
-- Use `npm run check:route-auth` for fast feedback while changing API routes or authorization rules.
-- `npm run build:prod` is the only working `next build` workaround: plain `npm run build` fails prerender because `.env` sets `NODE_ENV=development`. `build:prod` uses Turbopack and checks types and client bundling; `tsc --noEmit` misses client/server import-shape failures.
-- Do not start a dev server for delegated work. Only the assigned harness ticket or the orchestrator runs `npm run test:e2e`; it starts and stops its own owned server. The orchestrator performs merges and the final browser verification.
-- Before local integration or browser execution, read [local database operations](docs/agents/local-database.md) for target safety, shell configuration, Chromium setup, fixture hooks, and instance cleanup.
+- The old 41-spec suite was removed on 2026-10-10 and is archived at tag `e2e-v1`; it is not the maintained suite's source of truth. [The removal and restoration record](docs/explanations/E2E_HARNESS_REMOVAL.md) explains that history. The restored minimal smoke harness does not restore the old sole-E2E policy.

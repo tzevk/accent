@@ -116,7 +116,7 @@ ORDER BY COALESCE(p.last_seen, '1970-01-01') DESC
 
 ### Phase 7 — Verification
 
-1. `npx tsc --noEmit` and `npm run test:run` (targeted files only).
+1. `npx tsc --noEmit` and `npm run test:unit` (targeted files only).
 2. Manual: dev server + two browser tabs as one user — tab A shows online; stop touching it, leave visible → flips to idle within ~30s (status_change batch) but never offline while open; close tab → offline after ~10 min. Open a second tab → stays online, single row.
 3. Confirm `admin/activity-logs` and `users/[id]/activity` still render (shape unchanged).
 4. Watch `user_presence` row count: one per active user, no growth per tab.
