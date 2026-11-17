@@ -54,6 +54,9 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 - [Ticket system](explanations/TICKET_SYSTEM.md)
 - [Super-admin setup](explanations/SUPER_ADMIN_SETUP.md)
 - [Live monitoring open-source research](explanations/LIVE_MONITORING_OPEN_SOURCE_RESEARCH.md)
+- [Development testing speed research and retrospective](explanations/DEVELOPMENT_TESTING_SPEED_RESEARCH.md)
+- [Next.js testing and CI case study](explanations/NEXTJS_TESTING_CASE_STUDY.md)
+- [Twenty-style testing architecture adoption](explanations/TWENTY_TESTING_ADOPTION.md)
 
 ## Decisions and terminology
 
@@ -70,7 +73,7 @@ Read the relevant record before changing its behavior.
 | Leads                      | [Legacy Lead review and the canonical Proposal](adr/0031-legacy-lead-review-and-canonical-proposal.md), [the Lead activity log and the conversion handoff](adr/0032-lead-activity-log-and-conversion-handoff.md)                                                                                                                                                                                                                                                                                                         |
 | Projects                   | [Membership, shared lead policy, and explicit project scopes](adr/0034-project-membership-lead-policy-and-explicit-scopes.md) — implemented in issue #410.                                                                                                                                                                                                                                                                                                                                                               |
 | Proposal pricing           | [Reviewed cost assumptions and confidentiality](adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md) — agreed design boundaries; not implemented.                                                                                                                                                                                                                                                                                                                                                                |
-| Salary agreement revisions | [Dated revisions and unused-entry corrections](adr/0036-effective-dated-salary-revisions.md) — implemented in #434; PR #454 open and unmerged for review, with no production migration or deployment.                                                                                                                                                                                                                                                                                                                    |
+| Salary agreement revisions | [Dated revisions and unused-entry corrections](adr/0036-effective-dated-salary-revisions.md) — implemented in #434.                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Audit records and change history
 

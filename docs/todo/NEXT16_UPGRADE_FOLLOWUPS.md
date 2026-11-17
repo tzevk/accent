@@ -50,7 +50,7 @@ Guidance:
 
 - **Not every warning deserves a code change.** A `useRef(Date.now())` initializer runs once per mount and is benign; for accepted patterns use `// eslint-disable-next-line react-hooks/purity -- <reason>` instead of contorting working code.
 - **Start with `set-state-in-effect`:** it's 57% of the volume AND the most likely to hide real bugs.
-- After each re-promotion: `npm run lint && npm run test:run && npm run build`, then manually smoke the touched screens (render behavior changed, not just syntax).
+- After each re-promotion: `npm run lint && npm run test:unit && npm run build:prod`, then manually smoke the touched screens (render behavior changed, not just syntax).
 - `Navbar.jsx` alone clears most of `static-components`; `useActivityTracker.js` + `use-searchable-select.ts` clear most of three rules combined — good first targets.
 
 ## Item 4 — Misc pre-existing warnings (17)

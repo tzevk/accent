@@ -12,6 +12,7 @@ export default defineConfig({
 			'src/**/*.test.{js,jsx,ts,tsx}',
 			'scripts/e2e/**/*.test.ts',
 			'scripts/payroll/salary-use-backfill.test.ts',
+			'scripts/testing/**/*.test.ts',
 		],
 	},
 	resolve: {
