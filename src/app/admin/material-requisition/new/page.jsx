@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import {
 	ClipboardDocumentListIcon,
 	PlusIcon,
@@ -121,7 +120,6 @@ export default function NewMaterialRequisitionPage() {
 	if (authLoading) {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-				<Sidebar />
 				<div className="flex-1 flex flex-col">
 					<Navbar />
 					<div className="flex-1 flex items-center justify-center">

@@ -22,7 +22,6 @@ import {
 } from '@heroicons/react/24/outline';
 import SearchableSelect from '@/components/ui/searchable-select';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/form-fields';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
@@ -1120,7 +1119,6 @@ export default function PettyCashExpensesPage() {
 	return (
 		<div className="h-screen bg-[var(--page-bg, #fafafa)] flex flex-col overflow-hidden">
 			<Navbar />
-			<Sidebar />
 			<div className="content-with-sidebar flex-1 min-h-0 flex flex-col sm:px-4 overflow-hidden">
 				<div className="max-w-full mx-auto w-full flex-1 min-h-0 flex flex-col space-y-5">
 					{/* ── Header ── */}

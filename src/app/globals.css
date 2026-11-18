@@ -1,5 +1,39 @@
 @import 'tailwindcss';
 
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-sidebar: var(--sidebar-background);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
 /* 3D floating blob animations for hero header */
 @keyframes blobFloat1 {
 	0%,
@@ -66,7 +100,7 @@
 	/* Sidebar/card background (keeps sign-in and sidebar in sync) */
 	--sidebar-bg: #4d025b;
 	/* Map Next font variables to Tailwind v4 tokens without using @theme */
-	--font-sans: var(--font-geist-sans);
+	--font-sans: var(--font-poppins);
 	--font-mono: var(--font-geist-mono);
 	/* Optional color aliases if referenced */
 	--color-background: var(--background);
@@ -82,13 +116,51 @@
 	--chart-rejected: #e11d48; /* proposals: rejected */
 }
 
+/* Shadcn primitives and semantic roles in the project's hex notation. */
+:root {
+	--purple-50: #faf5ff;
+	--purple-100: #f3e8ff;
+	--purple-200: #e9d5ff;
+	--purple-700: #64126d;
+	--purple-800: #52105a;
+	--neutral-500: #6b7280;
+	--red-600: #dc2626;
+
+	--card: #ffffff;
+	--card-foreground: #171717;
+	--popover: #ffffff;
+	--popover-foreground: #171717;
+	--primary: var(--purple-700);
+	--primary-foreground: #ffffff;
+	--secondary: var(--purple-50);
+	--secondary-foreground: var(--purple-700);
+	--muted: var(--purple-50);
+	--muted-foreground: var(--neutral-500);
+	--accent: var(--purple-100);
+	--accent-foreground: var(--purple-700);
+	--destructive: var(--red-600);
+	--destructive-foreground: #ffffff;
+	--border: var(--purple-200);
+	--input: var(--purple-200);
+	--ring: #86288f;
+	--sidebar-background: #ffffff;
+	--sidebar-foreground: var(--purple-700);
+	--sidebar-primary: var(--purple-700);
+	--sidebar-primary-foreground: #ffffff;
+	--sidebar-accent: var(--purple-100);
+	--sidebar-accent-foreground: var(--purple-700);
+	--sidebar-border: var(--purple-200);
+	--sidebar-ring: #86288f;
+	--radius: 0.5rem;
+}
+
 /* Light-only app: backgrounds are forced white below, so a dark-mode foreground
    here would render near-invisible text on white. */
 
 body {
 	background: var(--background);
 	color: var(--foreground);
-	font-family: 'Poppins', sans-serif;
+	font-family: var(--font-poppins), sans-serif;
 	color-scheme: light;
 	-webkit-font-smoothing: antialiased;
 }
@@ -135,28 +207,6 @@ body,
 }
 
 /* Avoid flicker outlines and ensure seamless layout */
-.content-with-sidebar,
-.group\/sidebar {
-	will-change: padding-left, width;
-	background-color: #fff;
-}
-
-.content-with-sidebar {
-	transition: padding-left 0.2s ease-out;
-}
-.group\/sidebar {
-	transition: width 0.2s ease-out;
-}
-
-/* Remove default focus rings causing line flashes during quick hover */
-.group\/sidebar:focus {
-	outline: none;
-	box-shadow: none;
-}
-.content-with-sidebar:focus {
-	outline: none;
-	box-shadow: none;
-}
 
 /* Skip link — the page's first focusable element (SkipToMainLink, mounted by
    the root layout before the sidebar and the navigation). It stays off-screen
@@ -186,21 +236,6 @@ body,
    scrolled under the header. */
 html {
 	scroll-padding-top: 64px;
-}
-
-/* Seam guard: overlay a 2px strip on the sidebar's right edge to mask transient gaps */
-.group\/sidebar {
-	position: fixed;
-}
-.group\/sidebar::after {
-	content: '';
-	position: absolute;
-	top: 0;
-	right: -1px; /* extend slightly into content */
-	width: 2px;
-	height: 100%;
-	background: #fff; /* match content background */
-	pointer-events: none;
 }
 
 /* ===== Desktop Responsive Utilities ===== */
@@ -535,29 +570,9 @@ textarea::placeholder {
 	box-shadow: 0 0 12px rgba(100, 18, 109, 0.35);
 }
 
-/* Sidebar hover expansion and layout padding without styled-jsx */
-@media (min-width: 640px) {
-	.content-with-sidebar {
-		padding-left: 64px;
-		padding-top: 64px;
-	}
-	.group\/sidebar:hover + .content-with-sidebar {
-		padding-left: 260px;
-	}
-	.group\/sidebar[data-pinned='true'] + .content-with-sidebar {
-		padding-left: 260px;
-	}
-}
-@media (min-width: 1280px) {
-	.content-with-sidebar {
-		padding-left: 64px;
-	}
-	.group\/sidebar:hover + .content-with-sidebar {
-		padding-left: 280px;
-	}
-	.group\/sidebar[data-pinned='true'] + .content-with-sidebar {
-		padding-left: 280px;
-	}
+/* The shadcn sidebar reserves its own gap; pages only need the navbar band. */
+.content-with-sidebar {
+	padding-top: 64px;
 }
 
 /* On smaller screens without sidebar, still offset for fixed navbar */
@@ -574,61 +589,18 @@ textarea::placeholder {
 	}
 }
 
-/* Utilities for showing label content only when sidebar is hovered */
-.group\/sidebar:hover .sidebar-open\:inline {
-	display: inline;
-}
-.group\/sidebar:hover .sidebar-open\:block {
-	display: block;
-}
-.group\/sidebar:hover .sidebar-open\:inline-flex {
-	display: inline-flex;
-}
-.group\/sidebar:hover .sidebar-open\:flex {
-	display: flex;
-}
-/* Also show labels when pinned */
-.group\/sidebar[data-pinned='true'] .sidebar-open\:inline {
-	display: inline;
-}
-.group\/sidebar[data-pinned='true'] .sidebar-open\:block {
-	display: block;
-}
-.group\/sidebar[data-pinned='true'] .sidebar-open\:inline-flex {
-	display: inline-flex;
-}
-.group\/sidebar[data-pinned='true'] .sidebar-open\:flex {
-	display: flex;
-}
-
-/* Todo panel positioning - sticks to sidebar */
+/* Todo panel positioning follows the shadcn sidebar state. */
 .todo-panel {
 	position: fixed;
-	top: 64px; /* navbar height */
+	top: 64px;
 	bottom: 0;
-	left: 64px; /* collapsed sidebar width */
+	left: 48px;
 	z-index: 30;
 	transition: left 0.2s ease-out;
 }
-
-/* When sidebar is hovered, move todo panel */
-.group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
-	left: 260px;
-}
-@media (min-width: 1280px) {
-	.group\/sidebar:hover ~ .content-with-sidebar .todo-panel {
-		left: 280px;
-	}
-}
-
-/* When sidebar is pinned, keep todo panel at expanded position */
-.group\/sidebar[data-pinned='true'] ~ .content-with-sidebar .todo-panel {
-	left: 260px;
-}
-@media (min-width: 1280px) {
-	.group\/sidebar[data-pinned='true'] ~ .content-with-sidebar .todo-panel {
-		left: 280px;
-	}
+.group\/sidebar-wrapper:has([data-slot='sidebar'][data-state='expanded'])
+	.todo-panel {
+	left: 256px;
 }
 
 /* High-contrast text for Employees screen: override washed-out grays */

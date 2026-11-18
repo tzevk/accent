@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import RichTextEditorBase from '@/components/RichTextEditor';
 import SearchableSelect from '@/components/ui/searchable-select';
 
@@ -515,7 +514,6 @@ export default function EditQuotationPage() {
 	if (authLoading || loading) {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-				<Sidebar />
 				<div className="flex-1 flex flex-col">
 					<Navbar />
 					<div className="flex-1 flex items-center justify-center">
@@ -534,7 +532,6 @@ export default function EditQuotationPage() {
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-			<Sidebar />
 			<div className="flex-1 flex flex-col">
 				<Navbar />
 

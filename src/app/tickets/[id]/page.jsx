@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import { apiGet, apiPost, apiPut } from '@/lib/api-client';
 import { formatDateTime } from '@/lib/format';
 import { TICKET_STATUSES } from '@/lib/tickets/constants';
@@ -183,7 +182,6 @@ export default function TicketDetailPage() {
 		return (
 			<div className="min-h-screen bg-gray-50">
 				<Navbar />
-				<Sidebar />
 				<div className="flex pt-16 sm:pl-16">
 					<div className="flex-1">
 						<div className="px-4 sm:px-6 lg:px-8 py-6 max-w-3xl mx-auto">
@@ -202,7 +200,6 @@ export default function TicketDetailPage() {
 		return (
 			<div className="min-h-screen bg-gray-50">
 				<Navbar />
-				<Sidebar />
 				<div className="flex pt-16 sm:pl-16">
 					<div className="flex-1">
 						<div className="px-4 sm:px-6 lg:px-8 py-6 max-w-3xl mx-auto">
@@ -238,7 +235,6 @@ export default function TicketDetailPage() {
 	return (
 		<div className="min-h-screen bg-gray-50">
 			<Navbar />
-			<Sidebar />
 
 			<div className="flex pt-16 sm:pl-16">
 				<div className="flex-1">

@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import { Button } from '@/components/ui/button';
 import {
 	Table,
@@ -59,11 +58,7 @@ export default function ProjectLeadPolicyPage() {
 	// edits, so a refetch or save needs no state-sync effect.
 	const sections = draft ?? loaded?.sections ?? null;
 
-	const saveMutation = useMutation<
-		LeadPolicyResponse,
-		Error,
-		SectionSettings
-	>({
+	const saveMutation = useMutation<LeadPolicyResponse, Error, SectionSettings>({
 		mutationFn: (values) =>
 			apiPut('/api/admin/project-lead-policy', {
 				sections: values,
@@ -77,10 +72,10 @@ export default function ProjectLeadPolicyPage() {
 
 	const dirty = Boolean(
 		draft &&
-			loaded &&
-			WORK_SECTION_IDS.some(
-				(section) => draft[section] !== loaded.sections[section]
-			)
+		loaded &&
+		WORK_SECTION_IDS.some(
+			(section) => draft[section] !== loaded.sections[section]
+		)
 	);
 
 	const setSection = (section: SectionId, value: LeadSectionSetting) => {
@@ -101,7 +96,6 @@ export default function ProjectLeadPolicyPage() {
 	return (
 		<div className="h-screen bg-[var(--page-bg, #fafafa)] flex flex-col overflow-hidden">
 			<Navbar />
-			<Sidebar />
 			<div className="content-with-sidebar flex-1 min-h-0 flex flex-col sm:px-4 overflow-hidden">
 				<div className="max-w-4xl mx-auto w-full flex-1 min-h-0 flex flex-col space-y-5 overflow-y-auto py-4">
 					<header className="flex flex-wrap items-end justify-between gap-3">
@@ -133,11 +127,7 @@ export default function ProjectLeadPolicyPage() {
 						</div>
 					</header>
 
-					<div
-						role="status"
-						aria-live="polite"
-						className="text-sm min-h-5"
-					>
+					<div role="status" aria-live="polite" className="text-sm min-h-5">
 						{policyQuery.isLoading && (
 							<span className="text-gray-500">Loading policy…</span>
 						)}
@@ -196,10 +186,7 @@ export default function ProjectLeadPolicyPage() {
 													className="h-9 rounded-md border border-gray-300 bg-white px-2 text-sm text-gray-900"
 												>
 													{SETTINGS.map((option) => (
-														<option
-															key={option.value}
-															value={option.value}
-														>
+														<option key={option.value} value={option.value}>
 															{option.label}
 														</option>
 													))}
@@ -212,9 +199,7 @@ export default function ProjectLeadPolicyPage() {
 						</Table>
 					</div>
 
-					<p className="text-xs text-gray-500">
-						Last saved: {updatedLabel}
-					</p>
+					<p className="text-xs text-gray-500">Last saved: {updatedLabel}</p>
 				</div>
 			</div>
 		</div>

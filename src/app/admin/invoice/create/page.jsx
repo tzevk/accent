@@ -11,7 +11,6 @@ import {
 import { R, add, pctOf, sub, toNumber } from '@/lib/money';
 import { formatCurrency } from '@/lib/format';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import {
 	DocumentCurrencyDollarIcon,
 	ArrowLeftIcon,
@@ -426,7 +425,6 @@ export default function CreateInvoicePage() {
 	if (authLoading) {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-				<Sidebar />
 				<div className="flex-1 flex flex-col">
 					<Navbar />
 					<div className="flex-1 flex items-center justify-center">
@@ -439,7 +437,6 @@ export default function CreateInvoicePage() {
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-			<Sidebar />
 			<div className="flex-1 flex flex-col">
 				<Navbar />
 

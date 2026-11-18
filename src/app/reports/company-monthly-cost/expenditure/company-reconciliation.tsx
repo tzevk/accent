@@ -35,7 +35,7 @@ export function CompanyReconciliationPanel({
 	const statedCurrency = data.company.currency ?? reportingCurrencyCode;
 
 	return (
-		<TooltipProvider delayDuration={300}>
+		<TooltipProvider delay={300}>
 			<div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
 				<div className="flex flex-wrap items-start justify-between gap-3">
 					<div>
