@@ -26,14 +26,16 @@ export function CostLabel({ term }: { term: keyof typeof COST_DEFINITIONS }) {
 		<span className="inline-flex max-w-full items-center gap-1">
 			<span>{definition.label}</span>
 			<Tooltip>
-				<TooltipTrigger asChild>
-					<button
-						type="button"
-						aria-label={`About ${definition.label.toLowerCase()}`}
-						className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
-					>
-						<InformationCircleIcon aria-hidden="true" className="h-4 w-4" />
-					</button>
+				<TooltipTrigger
+					render={
+						<button
+							type="button"
+							aria-label={`About ${definition.label.toLowerCase()}`}
+							className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
+						/>
+					}
+				>
+					<InformationCircleIcon aria-hidden="true" className="h-4 w-4" />
 				</TooltipTrigger>
 				<TooltipContent>{definition.description}</TooltipContent>
 			</Tooltip>

@@ -13,7 +13,6 @@ import {
 	ArrowRightOnRectangleIcon,
 	Bars3Icon,
 	XMarkIcon,
-	UserCircleIcon,
 	ChevronDownIcon,
 	ChevronRightIcon,
 	ShieldCheckIcon,
@@ -496,10 +495,6 @@ export default function Navbar() {
 		};
 	}, [user, userLoading]);
 
-	const displayName =
-		user?.full_name || user?.username || (userLoading ? '' : 'Account');
-	const displayEmail = user?.email || '';
-
 	// Filter navigation items based on user permissions
 	const navigation = useMemo(() => {
 		if (userLoading && !user) return []; // Hide nav while loading (prevents flash)
@@ -938,35 +933,6 @@ export default function Navbar() {
 							<div className="flex">
 								<NotificationsBell />
 							</div>
-							{/* User Profile Display */}
-							<div className="hidden xl:flex items-center space-x-3 shrink-0">
-								<div className="flex items-center space-x-2 px-3 py-2 rounded-xl text-white/90">
-									<UserCircleIcon className="h-6 w-6" />
-									<div className="flex flex-col min-w-[60px] max-w-[150px]">
-										{userLoading && !displayName ? (
-											<span className="h-4 w-20 bg-white/20 rounded animate-pulse" />
-										) : (
-											<span className="text-sm font-medium truncate">
-												{displayName}
-											</span>
-										)}
-										{displayEmail && (
-											<span className="text-xs text-white/60 truncate">
-												{displayEmail}
-											</span>
-										)}
-									</div>
-								</div>
-
-								{/* Sign Out Button */}
-								<button
-									onClick={handleSignOut}
-									className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200"
-								>
-									<ArrowRightOnRectangleIcon className="h-5 w-5" />
-								</button>
-							</div>
-
 							{/* Mobile menu button */}
 							<button
 								onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -1173,27 +1139,14 @@ export default function Navbar() {
 								</div>
 							)}
 
-							{/* Mobile Profile Section */}
-							<div className="pt-4 mt-4 border-t border-white/20">
-								<div className="flex items-center space-x-3 px-4 py-2 text-white/90">
-									<UserCircleIcon className="h-6 w-6" />
-									<div>
-										<p className="text-sm font-medium text-white">
-											{displayName}
-										</p>
-										{displayEmail && (
-											<p className="text-xs text-white/70">{displayEmail}</p>
-										)}
-									</div>
-								</div>
-								<button
-									onClick={handleSignOut}
-									className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-white/90 hover:bg-red-500/20 hover:text-white transition-all duration-200 mt-2"
-								>
-									<ArrowRightOnRectangleIcon className="h-5 w-5" />
-									<span>Sign Out</span>
-								</button>
-							</div>
+							{/* Identity lives in the shadcn sidebar footer; sign out stays reachable on mobile. */}
+							<button
+								onClick={handleSignOut}
+								className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-sm font-medium text-white/90 hover:bg-red-500/20 hover:text-white transition-all duration-200 mt-2"
+							>
+								<ArrowRightOnRectangleIcon className="h-5 w-5" />
+								<span>Sign Out</span>
+							</button>
 						</div>
 					</div>
 				)}

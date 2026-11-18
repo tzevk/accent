@@ -11,7 +11,6 @@ import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import toast from 'react-hot-toast';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import {
 	DocumentTextIcon,
 	MagnifyingGlassIcon,
@@ -383,7 +382,6 @@ export default function QuotationPage() {
 	if (authLoading) {
 		return (
 			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex">
-				<Sidebar />
 				<div className="flex-1 flex flex-col">
 					<Navbar />
 					<div className="flex-1 flex items-center justify-center">
@@ -396,7 +394,6 @@ export default function QuotationPage() {
 
 	return (
 		<div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex overflow-hidden">
-			<Sidebar />
 			<div className="flex-1 flex flex-col min-w-0">
 				<Navbar />
 

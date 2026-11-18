@@ -1,0 +1,431 @@
+{
+	"schemaVersion": 2,
+	"generatedAt": "2026-11-18T12:00:00Z",
+	"title": "Design System: Accent",
+	"extensions": {
+		"colorMeta": {
+			"brand-purple": {
+				"role": "primary",
+				"displayName": "Accent Purple",
+				"canonical": "#64126d",
+				"tonalRamp": [
+					"#2c0632",
+					"#3b0843",
+					"#52105a",
+					"#64126d",
+					"#86288f",
+					"#a855f7",
+					"#e9d5ff",
+					"#faf5ff"
+				]
+			},
+			"brand-purple-deep": {
+				"role": "primary",
+				"displayName": "Pressed Purple",
+				"canonical": "#52105a",
+				"tonalRamp": [
+					"#2c0632",
+					"#3b0843",
+					"#52105a",
+					"#64126d",
+					"#86288f",
+					"#a855f7",
+					"#e9d5ff",
+					"#faf5ff"
+				]
+			},
+			"brand-ring": {
+				"role": "primary",
+				"displayName": "Focus Purple",
+				"canonical": "#86288f",
+				"tonalRamp": [
+					"#3b0843",
+					"#52105a",
+					"#64126d",
+					"#86288f",
+					"#a855f7",
+					"#c084d6",
+					"#e9d5ff",
+					"#faf5ff"
+				]
+			},
+			"purple-50": {
+				"role": "secondary",
+				"displayName": "Wash Lilac",
+				"canonical": "#faf5ff",
+				"tonalRamp": [
+					"#52105a",
+					"#86288f",
+					"#a855f7",
+					"#c084d6",
+					"#e9d5ff",
+					"#f3e8ff",
+					"#faf5ff",
+					"#fdfaff"
+				]
+			},
+			"purple-100": {
+				"role": "secondary",
+				"displayName": "Selection Lavender",
+				"canonical": "#f3e8ff",
+				"tonalRamp": [
+					"#52105a",
+					"#86288f",
+					"#a855f7",
+					"#c084d6",
+					"#e9d5ff",
+					"#f3e8ff",
+					"#faf5ff",
+					"#fdfaff"
+				]
+			},
+			"purple-200": {
+				"role": "secondary",
+				"displayName": "Separator Lilac",
+				"canonical": "#e9d5ff",
+				"tonalRamp": [
+					"#52105a",
+					"#86288f",
+					"#a855f7",
+					"#c084d6",
+					"#e9d5ff",
+					"#f3e8ff",
+					"#faf5ff",
+					"#fdfaff"
+				]
+			},
+			"surface-white": {
+				"role": "neutral",
+				"displayName": "White Shell",
+				"canonical": "#ffffff",
+				"tonalRamp": [
+					"#171717",
+					"#404040",
+					"#6b7280",
+					"#9ca3af",
+					"#d1d5db",
+					"#e5e7eb",
+					"#f3f4f6",
+					"#ffffff"
+				]
+			},
+			"ink": {
+				"role": "neutral",
+				"displayName": "Ink",
+				"canonical": "#171717",
+				"tonalRamp": [
+					"#000000",
+					"#171717",
+					"#404040",
+					"#6b7280",
+					"#9ca3af",
+					"#d1d5db",
+					"#e5e7eb",
+					"#ffffff"
+				]
+			},
+			"muted": {
+				"role": "neutral",
+				"displayName": "Muted Gray",
+				"canonical": "#6b7280",
+				"tonalRamp": [
+					"#1f2937",
+					"#374151",
+					"#4b5563",
+					"#6b7280",
+					"#9ca3af",
+					"#d1d5db",
+					"#e5e7eb",
+					"#f9fafb"
+				]
+			},
+			"destructive": {
+				"role": "neutral",
+				"displayName": "Destructive Red",
+				"canonical": "#dc2626",
+				"tonalRamp": [
+					"#450a0a",
+					"#7f1d1d",
+					"#991b1b",
+					"#b91c1c",
+					"#dc2626",
+					"#ef4444",
+					"#fca5a5",
+					"#fee2e2"
+				]
+			},
+			"chart-logged": {
+				"role": "primary",
+				"displayName": "Logged Hours Purple",
+				"canonical": "#64126d",
+				"tonalRamp": [
+					"#2c0632",
+					"#3b0843",
+					"#52105a",
+					"#64126d",
+					"#86288f",
+					"#a855f7",
+					"#e9d5ff",
+					"#faf5ff"
+				]
+			},
+			"chart-capacity": {
+				"role": "neutral",
+				"displayName": "Capacity Slate",
+				"canonical": "#64748b",
+				"tonalRamp": [
+					"#0f172a",
+					"#1e293b",
+					"#334155",
+					"#475569",
+					"#64748b",
+					"#94a3b8",
+					"#cbd5e1",
+					"#f1f5f9"
+				]
+			},
+			"chart-pending": {
+				"role": "secondary",
+				"displayName": "Pending Amber",
+				"canonical": "#d97706",
+				"tonalRamp": [
+					"#451a03",
+					"#78350f",
+					"#92400e",
+					"#b45309",
+					"#d97706",
+					"#f59e0b",
+					"#fcd34d",
+					"#fef3c7"
+				]
+			},
+			"chart-approved": {
+				"role": "secondary",
+				"displayName": "Approved Emerald",
+				"canonical": "#059669",
+				"tonalRamp": [
+					"#022c22",
+					"#064e3b",
+					"#065f46",
+					"#047857",
+					"#059669",
+					"#10b981",
+					"#6ee7b7",
+					"#d1fae5"
+				]
+			},
+			"chart-draft": {
+				"role": "secondary",
+				"displayName": "Draft Blue",
+				"canonical": "#2563eb",
+				"tonalRamp": [
+					"#172554",
+					"#1e3a8a",
+					"#1d4ed8",
+					"#2563eb",
+					"#3b82f6",
+					"#93c5fd",
+					"#bfdbfe",
+					"#eff6ff"
+				]
+			},
+			"chart-rejected": {
+				"role": "secondary",
+				"displayName": "Rejected Rose",
+				"canonical": "#e11d48",
+				"tonalRamp": [
+					"#4c0519",
+					"#881337",
+					"#9f1239",
+					"#be123c",
+					"#e11d48",
+					"#f43f5e",
+					"#fda4af",
+					"#ffe4e6"
+				]
+			}
+		},
+		"typographyMeta": {
+			"body": {
+				"displayName": "Body",
+				"purpose": "Default body text; Poppins loaded via next/font/google in the root layout."
+			},
+			"nav-item": {
+				"displayName": "Nav Item",
+				"purpose": "Sidebar rows and legacy navbar links; Poppins 500, 14px."
+			},
+			"label": {
+				"displayName": "Label",
+				"purpose": "Group labels, badges, tooltips; Poppins 500, 12px."
+			},
+			"mono": {
+				"displayName": "Mono",
+				"purpose": "Geist Mono utility face mapped to --font-mono."
+			}
+		},
+		"shadows": [
+			{
+				"name": "navbar-rest",
+				"value": "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)",
+				"purpose": "Tailwind shadow-lg on the fixed top navbar at rest."
+			},
+			{
+				"name": "navbar-scrolled",
+				"value": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
+				"purpose": "Tailwind shadow-xl plus backdrop blur once the page scrolls."
+			},
+			{
+				"name": "dropdown",
+				"value": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
+				"purpose": "White rounded-xl navbar dropdown panels."
+			}
+		],
+		"motion": [
+			{
+				"name": "sidebar-width",
+				"value": "width 200ms ease-linear",
+				"purpose": "Expand/collapse transition of the sidebar gap and container."
+			},
+			{
+				"name": "chevron-rotate",
+				"value": "transform 200ms",
+				"purpose": "Masters group chevron flips 180 degrees when open."
+			},
+			{
+				"name": "navbar-fade",
+				"value": "300ms ease",
+				"purpose": "Navbar entrance and state transitions."
+			}
+		],
+		"breakpoints": [
+			{ "name": "sm", "value": "640px" },
+			{ "name": "md", "value": "768px" },
+			{ "name": "xl", "value": "1280px" },
+			{ "name": "2xl", "value": "1536px" }
+		]
+	},
+	"components": [
+		{
+			"name": "Sidebar Panel (expanded)",
+			"kind": "nav",
+			"refersTo": "sidebar",
+			"description": "The shipped 16rem white sidebar: trigger and wordmark, Pages group, Masters subgroup, and account footer.",
+			"html": "<aside class='ds-sidebar'><div class='ds-sidebar-header'><button class='ds-trigger' aria-label='Toggle Sidebar'><svg class='ds-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='2'/><path d='M9 3v18'/></svg></button><span class='ds-brand'>Accent</span></div><div class='ds-group-label'>Pages</div><nav class='ds-menu'><a class='ds-row' href='#'><svg class='ds-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='7' height='9' rx='1'/><rect x='14' y='3' width='7' height='5' rx='1'/><rect x='14' y='12' width='7' height='9' rx='1'/><rect x='3' y='16' width='7' height='5' rx='1'/></svg><span>Dashboard</span></a><a class='ds-row' href='#'><svg class='ds-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/></svg><span>Messages</span><span class='ds-badge'>3</span></a><button class='ds-row'><svg class='ds-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='18' rx='2'/><path d='m9 9 2 2 4-4'/><path d='M15 16H9'/></svg><span>Tasks</span></button><button class='ds-row ds-row-active' data-open='true'><svg class='ds-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='2' width='16' height='20' rx='2'/><path d='M9 2v20'/><path d='M13 6h4'/><path d='M13 10h4'/></svg><span>Masters</span><svg class='ds-icon ds-chevron' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m18 15-6-6-6 6'/></svg></button><div class='ds-sub'><a class='ds-subrow' href='#'><svg class='ds-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/></svg><span>Employees</span></a><a class='ds-subrow ds-subrow-active' href='#'><svg class='ds-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='18' rx='2'/><path d='M16 2v4M8 2v4M3 10h18'/></svg><span>Attendance</span></a></div></nav><div class='ds-footer'><span class='ds-avatar'>AB</span><span class='ds-account'><strong>Alex Brown</strong><small>alex@example.com</small></span></div></aside>",
+			"css": ".ds-sidebar{width:256px;display:flex;flex-direction:column;background:var(--sidebar-background,#ffffff);color:var(--sidebar-foreground,#64126d);border-right:1px solid var(--sidebar-border,#e9d5ff);padding:8px;font-family:Poppins,sans-serif;font-size:14px}.ds-sidebar-header{display:flex;align-items:center;gap:8px;padding:0 0 8px}.ds-brand{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-trigger{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:0 0 32px;border:0;border-radius:6px;background:transparent;color:var(--sidebar-foreground,#64126d);cursor:pointer}.ds-trigger:hover{background:var(--purple-50,#faf5ff)}.ds-trigger:focus-visible{outline:2px solid var(--sidebar-ring,#86288f);outline-offset:1px}.ds-group-label{display:flex;align-items:center;height:32px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:500;color:var(--sidebar-foreground,#64126d);opacity:.7}.ds-menu{display:flex;flex-direction:column;gap:0;list-style:none;margin:0;padding:0}.ds-row{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--sidebar-foreground,#64126d);font-family:inherit;font-size:14px;text-align:left;text-decoration:none;cursor:pointer;transition:background .15s,color .15s}.ds-row:hover,.ds-row[data-open='true']{background:var(--sidebar-accent,#f3e8ff);color:var(--sidebar-accent-foreground,#64126d)}.ds-row:focus-visible{outline:2px solid var(--sidebar-ring,#86288f);outline-offset:1px}.ds-row-active{background:var(--sidebar-accent,#f3e8ff);color:var(--sidebar-accent-foreground,#64126d);font-weight:500}.ds-icon{width:16px;height:16px;flex:0 0 16px}.ds-chevron{margin-left:auto}.ds-badge{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 4px;border-radius:6px;font-size:12px;font-weight:500;font-variant-numeric:tabular-nums}.ds-sub{display:flex;flex-direction:column;gap:4px;margin:4px 0 4px 14px;padding:2px 0 2px 10px;border-left:1px solid var(--sidebar-border,#e9d5ff)}.ds-subrow{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;margin-left:-1px;border-radius:6px;color:var(--sidebar-foreground,#64126d);font-size:14px;text-decoration:none}.ds-subrow:hover,.ds-subrow-active{background:var(--sidebar-accent,#f3e8ff);color:var(--sidebar-accent-foreground,#64126d)}.ds-footer{display:flex;align-items:center;gap:8px;margin-top:auto;padding:8px 0 0;border-top:1px solid var(--sidebar-border,#e9d5ff)}.ds-avatar{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:0 0 32px;border-radius:9999px;background:var(--sidebar-primary,#64126d);color:var(--sidebar-primary-foreground,#ffffff);font-size:12px;font-weight:600}.ds-account{display:flex;flex-direction:column;min-width:0}.ds-account strong{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-account small{font-size:11px;color:var(--muted-foreground,#6b7280);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+		},
+		{
+			"name": "Sidebar Menu Button — Rest",
+			"kind": "custom",
+			"refersTo": "sidebar-menu-button",
+			"description": "Default 32px sidebar row; hover and focus turn the lavender selection fill on.",
+			"html": "<a class='ds-row-rest' href='#'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/></svg><span>Messages</span></a>",
+			"css": ".ds-row-rest{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:8px;border-radius:6px;background:var(--sidebar-background,#ffffff);color:var(--sidebar-foreground,#64126d);font-family:Poppins,sans-serif;font-size:14px;font-weight:400;text-align:left;text-decoration:none;transition:background .15s,color .15s}.ds-row-rest svg{width:16px;height:16px;flex:0 0 16px}.ds-row-rest:hover,.ds-row-rest:active{background:var(--sidebar-accent,#f3e8ff);color:var(--sidebar-accent-foreground,#64126d)}.ds-row-rest:focus-visible{outline:2px solid var(--sidebar-ring,#86288f);outline-offset:0}"
+		},
+		{
+			"name": "Sidebar Menu Button — Active",
+			"kind": "custom",
+			"refersTo": "sidebar-menu-button-active",
+			"description": "Active route row: lavender fill, purple text, medium weight.",
+			"html": "<a class='ds-row-active' href='#' aria-current='page'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/></svg><span>Employees</span></a>",
+			"css": ".ds-row-active{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:8px;border-radius:6px;background:var(--sidebar-accent,#f3e8ff);color:var(--sidebar-accent-foreground,#64126d);font-family:Poppins,sans-serif;font-size:14px;font-weight:500;text-decoration:none}.ds-row-active svg{width:16px;height:16px;flex:0 0 16px}.ds-row-active:hover{background:var(--sidebar-accent,#f3e8ff)}.ds-row-active:focus-visible{outline:2px solid var(--sidebar-ring,#86288f);outline-offset:0}"
+		},
+		{
+			"name": "Sidebar Icon Rail (collapsed)",
+			"kind": "nav",
+			"refersTo": "sidebar",
+			"description": "The 3rem collapsed state: 32px icon rows and a dark right-side tooltip.",
+			"html": "<div class='ds-rail'><button class='ds-rail-btn' aria-label='Dashboard'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='7' height='9' rx='1'/><rect x='14' y='3' width='7' height='5' rx='1'/><rect x='14' y='12' width='7' height='9' rx='1'/><rect x='3' y='16' width='7' height='5' rx='1'/></svg><span class='ds-tip'>Dashboard</span></button><button class='ds-rail-btn ds-rail-active' aria-label='Masters'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='2' width='16' height='20' rx='2'/><path d='M9 2v20'/><path d='M13 6h4'/></svg><span class='ds-tip'>Masters</span></button></div>",
+			"css": ".ds-rail{width:48px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;background:var(--sidebar-background,#ffffff);border-right:1px solid var(--sidebar-border,#e9d5ff);font-family:Poppins,sans-serif}.ds-rail-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:8px;border:0;border-radius:6px;background:transparent;color:var(--sidebar-foreground,#64126d);cursor:pointer;transition:background .15s,color .15s}.ds-rail-btn svg{width:16px;height:16px}.ds-rail-btn:hover{background:var(--sidebar-accent,#f3e8ff);color:var(--sidebar-accent-foreground,#64126d)}.ds-rail-btn:focus-visible{outline:2px solid var(--sidebar-ring,#86288f);outline-offset:0}.ds-rail-active{background:var(--sidebar-accent,#f3e8ff);color:var(--sidebar-accent-foreground,#64126d)}.ds-tip{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);padding:6px 12px;border-radius:6px;background:var(--foreground,#171717);color:var(--background,#ffffff);font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s}.ds-rail-btn:hover .ds-tip,.ds-rail-btn:focus-visible .ds-tip{opacity:1}"
+		},
+		{
+			"name": "Primary Button",
+			"kind": "button",
+			"refersTo": "primary-button",
+			"description": "Solid brand-purple action button with a darker hover and purple focus ring.",
+			"html": "<button class='ds-btn-primary'>Save changes</button>",
+			"css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 16px;border:0;border-radius:6px;background:var(--purple-700,#64126d);color:#ffffff;font-family:Poppins,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s}.ds-btn-primary:hover{background:var(--purple-800,#52105a)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 2px #d8b4fe}.ds-btn-primary:disabled{background:#d8b4fe;cursor:not-allowed}"
+		},
+		{
+			"name": "Ghost Button",
+			"kind": "button",
+			"refersTo": "ghost-button",
+			"description": "Transparent purple-text action; used by the sidebar trigger and sign out.",
+			"html": "<button class='ds-btn-ghost'>Sign out</button>",
+			"css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--purple-700,#64126d);font-family:Poppins,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s}.ds-btn-ghost:hover{background:var(--purple-50,#faf5ff)}.ds-btn-ghost:focus-visible{outline:none;box-shadow:0 0 0 2px #d8b4fe}.ds-btn-ghost:disabled{opacity:.5;cursor:not-allowed}"
+		},
+		{
+			"name": "Sidebar Unread Badge",
+			"kind": "chip",
+			"refersTo": "sidebar-menu-button",
+			"description": "Tabular unread count appended to the Messages row.",
+			"html": "<span class='ds-badge-unread'>3</span>",
+			"css": ".ds-badge-unread{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 4px;border-radius:6px;background:transparent;color:var(--sidebar-foreground,#64126d);font-family:Poppins,sans-serif;font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;user-select:none}"
+		},
+		{
+			"name": "Legacy Top Navbar",
+			"kind": "nav",
+			"refersTo": "top-navbar",
+			"description": "The separate 64px gradient navbar that still ships above the shadcn sidebar, with outline icons.",
+			"html": "<nav class='ds-topbar'><span class='ds-logo'>ACCENT</span><div class='ds-links'><a class='ds-navlink ds-navlink-active' href='#'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/></svg>Dashboard</a><a class='ds-navlink' href='#'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/></svg>Leads</a></div><button class='ds-bell' aria-label='Notifications'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'/><path d='M13.7 21a2 2 0 0 1-3.4 0'/></svg></button></nav>",
+			"css": ".ds-topbar{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 16px;background:linear-gradient(135deg,#64126d 0%,#86288f 100%);color:#ffffff;font-family:Poppins,sans-serif;box-shadow:0 10px 15px -3px rgba(0,0,0,.1)}.ds-logo{display:inline-flex;align-items:center;justify-content:center;width:100px;height:40px;background:#ffffff;color:#64126d;border-radius:2px;font-size:12px;font-weight:600}.ds-links{display:flex;align-items:center;gap:8px}.ds-navlink{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:transparent;color:rgba(255,255,255,.9);font-size:14px;font-weight:500;text-decoration:none;transition:background .3s,color .3s}.ds-navlink svg{width:20px;height:20px}.ds-navlink:hover{background:rgba(255,255,255,.1);color:#ffffff}.ds-navlink-active{background:rgba(255,255,255,.2);color:#ffffff}.ds-navlink:focus-visible{outline:2px solid #ffffff;outline-offset:1px}.ds-bell{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:12px;background:transparent;color:rgba(255,255,255,.9);cursor:pointer}.ds-bell svg{width:20px;height:20px}.ds-bell:hover{background:rgba(255,255,255,.1);color:#ffffff}"
+		}
+	],
+	"narrative": {
+		"northStar": "The Persistent Navigation Spine",
+		"overview": "Accent's shipped interface is an internal work tool: dense, flat, and organized around one fixed navigation spine. The current shell is the shadcn sidebar at the left — a white 16rem panel that collapses to a 3rem icon rail without losing state — paired with a separate, still-shipping legacy top navbar that carries broad section links and the Accent logo. Neither layer replaces the other in the build; new screens inherit both.\n\nThe palette is white plus five purple steps: deep brand purple for text, icons, active fills and primary buttons; lavender for selection and separators; a lighter purple for focus. Surfaces sit flat, corners use an 0.5rem base radius, and the icon language is Lucide at a single 16px stroke size inside the sidebar (the older navbar uses outline Heroicons at 20px). Page content uses the same purple on cards and headers, but this document records only rules that are actually reused across the shell.",
+		"keyCharacteristics": [
+			"White sidebar shell with deep-purple text and icons; no dark mode (backgrounds are forced white).",
+			"Two widths only: 16rem expanded, 3rem collapsed icon rail (18rem mobile sheet).",
+			"Lavender selection fill with matching purple foreground; lilac 1px separators.",
+			"Flat surfaces; the only shell shadow is on the fixed top navbar.",
+			"Poppins body face loaded in the root layout; Geist Mono for code and metrics.",
+			"Lucide icons in the sidebar; outline Heroicons in the legacy navbar."
+		],
+		"rules": [
+			{
+				"name": "The Purple-on-White Rule",
+				"body": "Inside the shadcn sidebar, brand purple is text, icon, active fill and avatar — never the panel background. The white shell is what makes the lavender selection legible.",
+				"section": "colors"
+			},
+			{
+				"name": "The Lavender-Selection Rule",
+				"body": "Selection, hover and open states use --sidebar-accent (#f3e8ff) with --sidebar-accent-foreground (#64126d); separation uses --sidebar-border (#e9d5ff). No other fill marks an active row.",
+				"section": "colors"
+			},
+			{
+				"name": "The Single Body Face Rule",
+				"body": "Poppins is the body default; Geist Mono is reserved for code and metrics. Do not set a second body family in a screen stylesheet.",
+				"section": "typography"
+			},
+			{
+				"name": "The Persistent Spine Rule",
+				"body": "One panel, two widths — 16rem or 3rem — with state preserved across reloads. No hover-reveal rail or competing flyout in the sidebar; the only expandable group is Masters.",
+				"section": "layout"
+			},
+			{
+				"name": "The Flat-By-Default Rule",
+				"body": "Do not add shadows to sidebar rows, groups or the panel. If a surface needs separation from white, use --sidebar-border or the lavender selection fill.",
+				"section": "elevation"
+			},
+			{
+				"name": "The Eight-Pixel Base Rule",
+				"body": "New shell surfaces derive their corners from --radius; do not introduce a separate radius scale.",
+				"section": "shapes"
+			}
+		],
+		"dos": [
+			"Do keep the panel at 16rem expanded and 3rem collapsed (`--sidebar-width`, `--sidebar-width-icon`) and reserve 64px for the fixed navbar.",
+			"Do use `--sidebar-accent` (`#f3e8ff`) with `--sidebar-accent-foreground` (`#64126d`) for hover, open and active rows.",
+			"Do keep sidebar icons Lucide at `size-4` (16px), one stroke weight.",
+			"Do derive corners from the 0.5rem `--radius` base and keep sidebar surfaces flat.",
+			"Do keep navigation permission-filtered, preserve existing hrefs, and leave Reports in the top navbar."
+		],
+		"donts": [
+			"Don't add a Reports group to the sidebar; Reports belongs to the legacy top navbar in this build.",
+			"Don't introduce a hover-rail / flyout hybrid or a second expandable sidebar group; the spine holds one 16rem-or-3rem state.",
+			"Don't switch the shell to dark surfaces — the app is light-only and backgrounds are forced white.",
+			"Don't use Heroicons inside the shadcn sidebar; that outline set belongs to the legacy navbar.",
+			"Don't add shadows to sidebar rows or panels, or a second body font family to screen styles."
+		]
+	}
+}

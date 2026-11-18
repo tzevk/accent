@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import {
 	BanknotesIcon,
 	MagnifyingGlassIcon,

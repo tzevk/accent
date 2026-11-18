@@ -1,28 +1,82 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useSessionRBAC } from '@/utils/client-rbac';
 import {
-	ChevronDownIcon,
-	ChartBarSquareIcon,
-	ClockIcon,
-	MapPinIcon,
-	UserGroupIcon,
-	DocumentTextIcon,
-	BuildingOfficeIcon,
-	ShieldCheckIcon,
-	ChatBubbleLeftRightIcon,
-	TicketIcon,
-	BanknotesIcon,
-	CalendarDaysIcon,
-	// ChartBarSquareIcon + ScaleIcon (used by TEMP-HIDDEN report nav rows below)
-	ClipboardDocumentListIcon,
-	BuildingLibraryIcon,
-	TagIcon,
-	FingerPrintIcon,
-} from '@heroicons/react/24/outline';
+	Building2,
+	CalendarDays,
+	ChevronDown,
+	Fingerprint,
+	FileText,
+	Landmark,
+	LayoutDashboard,
+	ChevronsUpDown,
+	LibraryBig,
+	LogOut,
+	ListTodo,
+	MessageSquare,
+	ShieldCheck,
+	Tags,
+	Ticket,
+	Users,
+	Wallet,
+} from 'lucide-react';
+import {
+	Sidebar as SidebarPrimitive,
+	SidebarContent,
+	SidebarFooter,
+	SidebarGroup,
+	SidebarGroupContent,
+	SidebarHeader,
+	SidebarMenu,
+	SidebarMenuBadge,
+	SidebarMenuButton,
+	SidebarMenuItem,
+	SidebarMenuSub,
+	SidebarMenuSubButton,
+	SidebarMenuSubItem,
+	SidebarRail,
+	SidebarTrigger,
+} from '@/components/ui/sidebar';
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useSessionRBAC } from '@/utils/client-rbac';
+import { clearSessionCache } from '@/context/SessionContext';
+
+function NavButton({ icon: Icon, label, href, active, badge }) {
+	return (
+		<SidebarMenuItem>
+			<SidebarMenuButton
+				render={<Link href={href} />}
+				isActive={active}
+				tooltip={label}
+			>
+				<Icon />
+				<span>{label}</span>
+				{badge ? <SidebarMenuBadge>{badge}</SidebarMenuBadge> : null}
+			</SidebarMenuButton>
+		</SidebarMenuItem>
+	);
+}
+
+function MasterButton({ icon: Icon, label, href, active }) {
+	return (
+		<SidebarMenuSubItem>
+			<SidebarMenuSubButton
+				render={<Link href={href} title={label} />}
+				isActive={active}
+			>
+				<Icon />
+				<span>{label}</span>
+			</SidebarMenuSubButton>
+		</SidebarMenuSubItem>
+	);
+}
 
 export default function Sidebar() {
 	const pathname = usePathname();
@@ -33,23 +87,28 @@ export default function Sidebar() {
 		PERMISSIONS,
 		loading: rbacLoading,
 	} = useSessionRBAC();
+	const router = useRouter();
+	const displayName =
+		user?.full_name || user?.username || (rbacLoading ? '' : 'Account');
+	const displayEmail = user?.email || '';
 	const isSignin = pathname.startsWith('/signin');
 	const [mounted, setMounted] = useState(false);
-	const [pinned, setPinned] = useState(false);
 	const [unreadMessages, setUnreadMessages] = useState(0);
-	const [accountMasterExpanded, setAccountMasterExpanded] = useState(false);
-	const [employeeMasterExpanded, setEmployeeMasterExpanded] = useState(false);
-
-	// Auto-expand employee dropdown when on an employee route
-	useEffect(() => {
-		if (pathname.startsWith('/employees')) {
-			setEmployeeMasterExpanded(true);
-		}
-	}, [pathname]);
-
 	const [todoPanelOpen, setTodoPanelOpen] = useState(false);
 
-	// Sync todoPanelOpen from localStorage on mount
+	const isMasterRoute = ['/employees', '/masters', '/company', '/vendors'].some(
+		(prefix) => pathname.startsWith(prefix)
+	);
+	const [mastersOpen, setMastersOpen] = useState(isMasterRoute);
+
+	useEffect(() => {
+		if (isMasterRoute) setMastersOpen(true);
+	}, [isMasterRoute]);
+
+	useEffect(() => {
+		setMounted(true);
+	}, []);
+
 	useEffect(() => {
 		if (!mounted || isSignin) return;
 		try {
@@ -58,34 +117,39 @@ export default function Sidebar() {
 		} catch {}
 	}, [mounted, isSignin]);
 
-	// Listen for external toggle events (e.g. panel closed from dashboard)
 	useEffect(() => {
 		const handler = (e) => setTodoPanelOpen(e.detail?.open ?? false);
 		window.addEventListener('todoPanelChanged', handler);
 		return () => window.removeEventListener('todoPanelChanged', handler);
 	}, []);
 
-	// Determine if user is admin - but also respect the current route
-	// If we're on /user/dashboard, treat as non-admin regardless of context state
-	const isOnUserDashboard = pathname.startsWith('/user/dashboard');
-	const isOnAdminDashboard = pathname.startsWith('/admin/dashboard');
-	const isOnAdminRoute = pathname.startsWith('/admin/');
+	useEffect(() => {
+		if (!mounted || isSignin || !user) return;
 
-	// Only treat as admin if context says so AND we're NOT on user dashboard
-	// OR if we're already on an admin route (means auth passed)
+		const fetchUnreadCount = async () => {
+			try {
+				const res = await fetch('/api/messages/unread-count');
+				const data = await res.json();
+				if (data.success) {
+					setUnreadMessages(data.data.unread_count);
+				}
+			} catch (error) {
+				console.error('Failed to fetch unread messages:', error);
+			}
+		};
+
+		fetchUnreadCount();
+		const interval = setInterval(fetchUnreadCount, 60000);
+		return () => clearInterval(interval);
+	}, [mounted, isSignin, user]);
+
+	const isOnUserDashboard = pathname.startsWith('/user/dashboard');
+	const isOnAdminRoute = pathname.startsWith('/admin/');
 	const isAdmin =
 		!isOnUserDashboard &&
 		(isOnAdminRoute || user?.is_super_admin || user?.role?.code === 'admin');
 
-	// Permission checks for each module - also respect route-based override
-	// When on admin route, we know user is authorized so show items even while rbacLoading
-	// When on user dashboard, don't show admin-level items regardless of context state
 	const adminRouteOverride = isOnAdminRoute && !isOnUserDashboard;
-	const canViewDashboard =
-		adminRouteOverride ||
-		(!rbacLoading &&
-			!isOnUserDashboard &&
-			(user?.is_super_admin || can(RESOURCES.DASHBOARD, PERMISSIONS.READ)));
 	const canViewEmployees =
 		adminRouteOverride ||
 		(!rbacLoading &&
@@ -115,498 +179,252 @@ export default function Sidebar() {
 		(!rbacLoading &&
 			(user?.is_super_admin || can(RESOURCES.VENDORS, PERMISSIONS.READ)));
 
-	useEffect(() => {
-		setMounted(true);
-	}, []);
+	const masterLinks = [
+		canViewEmployees && {
+			icon: Users,
+			label: 'Employees',
+			href: '/employees',
+			active: pathname === '/employees',
+		},
+		canViewEmployees && {
+			icon: Fingerprint,
+			label: 'Attendance',
+			href: '/employees/attendance',
+			active: pathname === '/employees/attendance',
+		},
+		canViewEmployees && {
+			icon: CalendarDays,
+			label: 'Leave Requests',
+			href: '/employees/leaves',
+			active: pathname === '/employees/leaves',
+		},
+		canViewEmployees &&
+			canViewRolePermissions && {
+				icon: ShieldCheck,
+				label: 'Edit Role Permissions',
+				href: '/employees/role-permissions',
+				active: pathname === '/employees/role-permissions',
+			},
+		canViewUsers && {
+			icon: ShieldCheck,
+			label: 'User Master',
+			href: '/masters/users',
+			active: pathname.startsWith('/masters/users'),
+		},
+		canViewActivities && {
+			icon: FileText,
+			label: 'Activity Master',
+			href: '/masters/activities',
+			active: pathname.startsWith('/masters/activities'),
+		},
+		canViewActivities && {
+			icon: FileText,
+			label: 'Software Master',
+			href: '/masters/software',
+			active: pathname.startsWith('/masters/software'),
+		},
+		canViewDeliverables && {
+			icon: FileText,
+			label: 'Deliverables Master',
+			href: '/masters/deliverables',
+			active: pathname.startsWith('/masters/deliverables'),
+		},
+		canViewDeliverables && {
+			icon: FileText,
+			label: 'Deliverable Category Master',
+			href: '/masters/deliverable-categories',
+			active: pathname.startsWith('/masters/deliverable-categories'),
+		},
+		canViewCompanies && {
+			icon: Building2,
+			label: 'Company Master',
+			href: '/company',
+			active: pathname.startsWith('/company'),
+		},
+		canViewVendors && {
+			icon: Building2,
+			label: 'Vendor Master',
+			href: '/vendors',
+			active: pathname.startsWith('/vendors'),
+		},
+		canViewCompanies && {
+			icon: Landmark,
+			label: 'Bank Master',
+			href: '/masters/banks',
+			active: pathname.startsWith('/masters/banks'),
+		},
+		canViewCompanies && {
+			icon: FileText,
+			label: 'Description Master',
+			href: '/masters/descriptions',
+			active: pathname.startsWith('/masters/descriptions'),
+		},
+		canViewCompanies && {
+			icon: Tags,
+			label: 'Expense Category Master',
+			href: '/masters/categories',
+			active: pathname.startsWith('/masters/categories'),
+		},
+		isAdmin && {
+			icon: CalendarDays,
+			label: 'Holiday Master',
+			href: '/masters/holidays',
+			active: pathname.startsWith('/masters/holidays'),
+		},
+		isAdmin && {
+			icon: Wallet,
+			label: 'Account Head Master',
+			href: '/masters/accounts/account-heads',
+			active: pathname.startsWith('/masters/accounts'),
+		},
+	].filter(Boolean);
 
-	useEffect(() => {
-		if (!mounted || isSignin) return;
+	const toggleTodoPanel = () => {
+		const next = !todoPanelOpen;
+		setTodoPanelOpen(next);
 		try {
-			const saved = localStorage.getItem('sidebarPinned');
-			if (saved) setPinned(saved === 'true');
+			localStorage.setItem('todoPanelOpen', String(next));
 		} catch {}
-	}, [mounted, isSignin]);
+		window.dispatchEvent(
+			new CustomEvent('toggleTodoPanel', { detail: { open: next } })
+		);
+	};
 
-	useEffect(() => {
-		if (!mounted || isSignin) return;
+	const handleSignOut = async () => {
+		clearSessionCache();
 		try {
-			localStorage.setItem('sidebarPinned', String(pinned));
+			await fetch('/api/logout', { method: 'POST', credentials: 'include' });
 		} catch {}
-	}, [pinned, mounted, isSignin]);
-
-	// Fetch unread message count
-	useEffect(() => {
-		if (!mounted || isSignin || !user) return;
-
-		const fetchUnreadCount = async () => {
-			try {
-				const res = await fetch('/api/messages/unread-count');
-				const data = await res.json();
-				if (data.success) {
-					setUnreadMessages(data.data.unread_count);
-				}
-			} catch (error) {
-				console.error('Failed to fetch unread messages:', error);
-			}
-		};
-
-		fetchUnreadCount();
-		// Poll every 60 seconds
-		const interval = setInterval(fetchUnreadCount, 60000);
-		return () => clearInterval(interval);
-	}, [mounted, isSignin, user]);
-
-	const NavRow = ({
-		icon: Icon,
-		label,
-		href = '#',
-		active = false,
-		badge,
-		caret,
-	}) => (
-		<Link
-			href={href}
-			className={`group/nav-row flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
-				active
-					? 'bg-[#64126D] text-white shadow-sm'
-					: 'text-[#64126D] hover:bg-purple-50'
-			}`}
-			title={label}
-		>
-			<Icon
-				className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${active ? 'text-white' : 'text-[#64126D] group-hover/nav-row:text-[#64126D]'}`}
-			/>
-			<span
-				className={`ml-2.5 hidden sidebar-open:inline ${
-					active
-						? 'text-white'
-						: 'text-gray-900 group-hover/nav-row:text-[#64126D]'
-				} group-hover/nav-row:text-inherit transition-all duration-150 ease-out group-hover/nav-row:translate-x-0.5`}
-			>
-				{label}
-			</span>
-			{badge ? (
-				<span className="ml-auto hidden sidebar-open:inline-flex items-center text-[10px] font-semibold rounded-full px-1.5 py-0.5 bg-purple-100 text-[#64126D]">
-					{badge}
-				</span>
-			) : null}
-			{caret ? (
-				<ChevronDownIcon className="ml-auto hidden sidebar-open:inline h-4 w-4 text-[#64126D]" />
-			) : null}
-		</Link>
-	);
+		router.push('/signin');
+	};
 
 	if (isSignin || !mounted) return null;
 
 	return (
-		<aside
-			data-pinned={pinned}
-			className={`fixed top-16 bottom-0 left-0 z-40 border-r border-purple-200 bg-[var(--sidebar-bg)] ${pinned ? 'w-[260px] xl:w-[280px]' : 'w-[64px] hover:w-[260px] xl:hover:w-[280px]'} transition-[width] duration-200 ease-out overflow-hidden group/sidebar hidden sm:block`}
+		<SidebarPrimitive
+			collapsible="icon"
+			style={{ top: 64, height: 'calc(100svh - 4rem)' }}
 		>
-			<div className="h-full flex flex-col overflow-y-auto overflow-x-hidden">
-				{/* Pin/Unpin control - at the top */}
-				<div className="px-2.5 pt-2 pb-1.5">
-					<button
-						type="button"
-						onClick={() => setPinned((p) => !p)}
-						className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${'text-[#64126D] hover:bg-purple-50'}`}
-						title={pinned ? 'Unpin sidebar' : 'Pin sidebar'}
-					>
-						<MapPinIcon
-							className={`h-[18px] w-[18px] xl:h-5 xl:w-5 ${pinned ? 'text-[#64126D] fill-[#64126D]' : 'text-[#64126D]'}`}
-						/>
-						<span className="ml-2.5 hidden sidebar-open:inline text-gray-900">
-							{pinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
-						</span>
-					</button>
-				</div>
-
-				<div className="px-2.5 pb-2">
-					{/* PAGES header */}
-					<div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
-						<span>PAGES</span>
-					</div>
-					<div className="space-y-1 mt-1">
-						{/* Dashboard - route based on user role */}
-						<NavRow
-							icon={ClockIcon}
-							label="Dashboard"
-							href={isAdmin ? '/admin/dashboard' : '/user/dashboard'}
-							active={
-								pathname === '/dashboard' ||
-								pathname === '/admin/dashboard' ||
-								pathname === '/user/dashboard'
-							}
-						/>
-						{/* Messages - always visible with unread badge */}
-						<NavRow
-							icon={ChatBubbleLeftRightIcon}
-							label="Messages"
-							href="/messages"
-							active={pathname.startsWith('/messages')}
-							badge={unreadMessages > 0 ? unreadMessages : null}
-						/>
-						{/* Tasks - toggle todo panel */}
-						<button
-							onClick={() => {
-								const next = !todoPanelOpen;
-								setTodoPanelOpen(next);
-								try {
-									localStorage.setItem('todoPanelOpen', String(next));
-								} catch {}
-								window.dispatchEvent(
-									new CustomEvent('toggleTodoPanel', { detail: { open: next } })
-								);
-							}}
-							className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
-								todoPanelOpen
-									? 'bg-[#64126D] text-white shadow-sm'
-									: 'text-[#64126D] hover:bg-purple-50'
-							}`}
-							title="Tasks"
-						>
-							<ClipboardDocumentListIcon
-								className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${todoPanelOpen ? 'text-white' : 'text-[#64126D]'}`}
+			<SidebarHeader className="px-2 py-2">
+				<SidebarTrigger className="focus:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-sidebar-ring" />
+			</SidebarHeader>
+			<SidebarContent>
+				<SidebarGroup>
+					<SidebarGroupContent>
+						<SidebarMenu>
+							<NavButton
+								icon={LayoutDashboard}
+								label="Dashboard"
+								href={isAdmin ? '/admin/dashboard' : '/user/dashboard'}
+								active={
+									pathname === '/dashboard' ||
+									pathname === '/admin/dashboard' ||
+									pathname === '/user/dashboard'
+								}
 							/>
-							<span
-								className={`ml-2.5 hidden sidebar-open:inline ${
-									todoPanelOpen
-										? 'text-white'
-										: 'text-gray-900 group-hover/nav-row:text-[#64126D]'
-								} transition-all duration-150 ease-out group-hover/nav-row:translate-x-0.5`}
+							<NavButton
+								icon={MessageSquare}
+								label="Messages"
+								href="/messages"
+								active={pathname.startsWith('/messages')}
+								badge={unreadMessages > 0 ? unreadMessages : null}
+							/>
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									tooltip="Tasks"
+									isActive={todoPanelOpen}
+									onClick={toggleTodoPanel}
+								>
+									<ListTodo />
+									<span>Tasks</span>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<NavButton
+								icon={Ticket}
+								label="Support Tickets"
+								href="/tickets"
+								active={
+									pathname === '/tickets' || pathname.startsWith('/tickets/')
+								}
+							/>
+							<NavButton
+								icon={CalendarDays}
+								label="Timesheet"
+								href="/user/timesheet"
+								active={pathname.startsWith('/user/timesheet')}
+							/>
+							{isAdmin && (
+								<NavButton
+									icon={Ticket}
+									label="Manage Tickets"
+									href="/admin/tickets"
+									active={pathname === '/admin/tickets'}
+								/>
+							)}
+							{masterLinks.length > 0 && (
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										tooltip="Masters"
+										isActive={isMasterRoute}
+										data-open={mastersOpen}
+										onClick={() => setMastersOpen((open) => !open)}
+									>
+										<LibraryBig />
+										<span>Masters</span>
+										<ChevronDown
+											className={`ml-auto size-4 transition-transform ${mastersOpen ? 'rotate-180' : ''}`}
+										/>
+									</SidebarMenuButton>
+									{mastersOpen && (
+										<SidebarMenuSub>
+											{masterLinks.map((link) => (
+												<MasterButton key={link.href} {...link} />
+											))}
+										</SidebarMenuSub>
+									)}
+								</SidebarMenuItem>
+							)}
+						</SidebarMenu>
+					</SidebarGroupContent>
+				</SidebarGroup>
+			</SidebarContent>
+			<SidebarFooter className="border-t border-sidebar-border p-2">
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<DropdownMenu>
+							<DropdownMenuTrigger
+								render={<SidebarMenuButton />}
+								className="h-auto py-1.5 group-data-[collapsible=icon]:p-0!"
 							>
-								Tasks
-							</span>
-						</button>
-						{/* Support Tickets - always visible for reporting issues */}
-						<NavRow
-							icon={TicketIcon}
-							label="Support Tickets"
-							href="/tickets"
-							active={
-								pathname === '/tickets' || pathname.startsWith('/tickets/')
-							}
-						/>
-						{/* Timesheet - the signed-in employee's own read-only month */}
-						<NavRow
-							icon={CalendarDaysIcon}
-							label="Timesheet"
-							href="/user/timesheet"
-							active={pathname.startsWith('/user/timesheet')}
-						/>
-						{/* Ticket Management - admin only */}
-						{isAdmin && (
-							<NavRow
-								icon={TicketIcon}
-								label="Manage Tickets"
-								href="/admin/tickets"
-								active={pathname === '/admin/tickets'}
-							/>
-						)}
-					</div>
-				</div>
-
-				{(canViewEmployees ||
-					canViewUsers ||
-					canViewActivities ||
-					canViewCompanies ||
-					canViewVendors ||
-					isAdmin) && (
-					<div className="px-2.5 pt-3.5 pb-2">
-						{/* MASTERS header */}
-						<div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
-							<span>MASTERS</span>
-						</div>
-						<div className="space-y-1 mt-1">
-							{canViewEmployees && (
-								<>
-									<button
-										onClick={() =>
-											setEmployeeMasterExpanded(!employeeMasterExpanded)
-										}
-										className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
-											pathname.startsWith('/employees')
-												? 'bg-[#64126D] text-white shadow-sm'
-												: 'text-[#64126D] hover:bg-purple-50'
-										}`}
-										title="Employee Master"
-									>
-										<UserGroupIcon
-											className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`}
-										/>
-										<span
-											className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/employees') ? 'text-white' : 'text-gray-900'}`}
-										>
-											Employee Master
-										</span>
-										<ChevronDownIcon
-											className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${employeeMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/employees') ? 'text-white' : 'text-[#64126D]'}`}
-										/>
-									</button>
-									{employeeMasterExpanded && (
-										<div className="ml-6 space-y-1 mt-1">
-											<Link
-												href="/employees"
-												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-													pathname === '/employees'
-														? 'bg-purple-100 text-[#64126D]'
-														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-												}`}
-											>
-												<span className="hidden sidebar-open:inline">
-													Employees
-												</span>
-											</Link>
-											<Link
-												href="/employees/attendance"
-												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-													pathname === '/employees/attendance'
-														? 'bg-purple-100 text-[#64126D]'
-														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-												}`}
-											>
-												<span className="hidden sidebar-open:inline">
-													Attendance
-												</span>
-											</Link>
-											<Link
-												href="/employees/leaves"
-												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-													pathname === '/employees/leaves'
-														? 'bg-purple-100 text-[#64126D]'
-														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-												}`}
-											>
-												<span className="hidden sidebar-open:inline">
-													Leave Requests
-												</span>
-											</Link>
-											{canViewRolePermissions && (
-												<Link
-													href="/employees/role-permissions"
-													className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-														pathname === '/employees/role-permissions'
-															? 'bg-purple-100 text-[#64126D]'
-															: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-													}`}
-												>
-													<span className="hidden sidebar-open:inline">
-														Edit Role Permissions
-													</span>
-												</Link>
-											)}
-										</div>
+								<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
+									{displayName ? displayName.slice(0, 2).toUpperCase() : ''}
+								</div>
+								<div className="min-w-0 flex-1 text-left group-data-[collapsible=icon]:hidden">
+									<p className="truncate text-xs font-medium text-sidebar-foreground">
+										{displayName}
+									</p>
+									{displayEmail && (
+										<p className="truncate text-xs text-muted-foreground">
+											{displayEmail}
+										</p>
 									)}
-								</>
-							)}
-							{canViewUsers && (
-								<NavRow
-									icon={ShieldCheckIcon}
-									label="User Master"
-									href="/masters/users"
-									active={pathname.startsWith('/masters/users')}
-								/>
-							)}
-							{canViewActivities && (
-								<NavRow
-									icon={DocumentTextIcon}
-									label="Activity Master"
-									href="/masters/activities"
-									active={pathname.startsWith('/masters/activities')}
-								/>
-							)}
-							{canViewActivities && (
-								<NavRow
-									icon={DocumentTextIcon}
-									label="Software Master"
-									href="/masters/software"
-									active={pathname.startsWith('/masters/software')}
-								/>
-							)}
-							{canViewDeliverables && (
-								<NavRow
-									icon={DocumentTextIcon}
-									label="Deliverables Master"
-									href="/masters/deliverables"
-									active={pathname.startsWith('/masters/deliverables')}
-								/>
-							)}
-							{canViewDeliverables && (
-								<NavRow
-									icon={DocumentTextIcon}
-									label="Deliverable Category Master"
-									href="/masters/deliverable-categories"
-									active={pathname.startsWith(
-										'/masters/deliverable-categories'
-									)}
-								/>
-							)}
-							{canViewCompanies && (
-								<NavRow
-									icon={BuildingOfficeIcon}
-									label="Company Master"
-									href="/company"
-									active={pathname.startsWith('/company')}
-								/>
-							)}
-							{canViewVendors && (
-								<NavRow
-									icon={BuildingOfficeIcon}
-									label="Vendor Master"
-									href="/vendors"
-									active={pathname.startsWith('/vendors')}
-								/>
-							)}
-							{canViewCompanies && (
-								<NavRow
-									icon={BuildingLibraryIcon}
-									label="Bank Master"
-									href="/masters/banks"
-									active={pathname.startsWith('/masters/banks')}
-								/>
-							)}
-							{canViewCompanies && (
-								<NavRow
-									icon={DocumentTextIcon}
-									label="Description Master"
-									href="/masters/descriptions"
-									active={pathname.startsWith('/masters/descriptions')}
-								/>
-							)}
-							{canViewCompanies && (
-								<NavRow
-									icon={TagIcon}
-									label="Expense Category Master"
-									href="/masters/categories"
-									active={pathname.startsWith('/masters/categories')}
-								/>
-							)}
-							{isAdmin && (
-								<NavRow
-									icon={CalendarDaysIcon}
-									label="Holiday Master"
-									href="/masters/holidays"
-									active={pathname.startsWith('/masters/holidays')}
-								/>
-							)}
-							{isAdmin && (
-								<>
-									<button
-										onClick={() =>
-											setAccountMasterExpanded(!accountMasterExpanded)
-										}
-										className={`group/nav-row w-full flex items-center h-10 xl:h-11 rounded-lg px-2.5 xl:px-3 text-[13px] xl:text-[14px] font-medium transition-colors ${
-											pathname.startsWith('/masters/accounts')
-												? 'bg-[#64126D] text-white shadow-sm'
-												: 'text-[#64126D] hover:bg-purple-50'
-										}`}
-									>
-										<BanknotesIcon
-											className={`h-[18px] w-[18px] xl:h-5 xl:w-5 transition-colors ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`}
-										/>
-										<span
-											className={`ml-2.5 hidden sidebar-open:inline ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-gray-900'}`}
-										>
-											Account Master
-										</span>
-										<ChevronDownIcon
-											className={`ml-auto hidden sidebar-open:inline h-4 w-4 transition-transform ${accountMasterExpanded ? 'rotate-180' : ''} ${pathname.startsWith('/masters/accounts') ? 'text-white' : 'text-[#64126D]'}`}
-										/>
-									</button>
-									{accountMasterExpanded && (
-										<div className="ml-6 space-y-1 mt-1">
-											<Link
-												href="/masters/accounts/account-heads"
-												className={`group/nav-row flex items-center h-8 rounded-lg px-2.5 text-[12px] font-medium transition-colors ${
-													pathname === '/masters/accounts/account-heads'
-														? 'bg-purple-100 text-[#64126D]'
-														: 'text-gray-600 hover:bg-purple-50 hover:text-[#64126D]'
-												}`}
-											>
-												<span className="hidden sidebar-open:inline">
-													Account Head Master
-												</span>
-											</Link>
-										</div>
-									)}
-								</>
-							)}
-						</div>
-					</div>
-				)}
-
-				{/* Reports section - admin only */}
-				{isAdmin && (
-					<div className="px-2.5 pt-3.5 pb-2">
-						<div className="hidden sidebar-open:flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-purple-700/80">
-							<span>REPORTS</span>
-						</div>
-						<div className="space-y-1 mt-1">
-							{/* TEMP-HIDDEN (2026-08-03): 'Project Activities' + 'Client Balance' reports hidden from nav. Uncomment to restore: */}
-							{/* <NavRow
-								icon={ChartBarSquareIcon}
-								label="Project Activities"
-								href="/reports/project-activities"
-								active={pathname.startsWith('/reports/project-activities')}
-							/>
-							<NavRow
-								icon={ScaleIcon}
-								label="Client Balance"
-								href="/reports/client-balance"
-								active={pathname.startsWith('/reports/client-balance')}
-							/> */}
-							<NavRow
-								icon={DocumentTextIcon}
-								label="Outstanding Balances"
-								href="/reports/sales-register"
-								active={pathname.startsWith('/reports/sales-register')}
-							/>
-							<NavRow
-								icon={ClipboardDocumentListIcon}
-								label="Project Status"
-								href="/reports/project-status"
-								active={pathname.startsWith('/reports/project-status')}
-							/>
-							<NavRow
-								icon={CalendarDaysIcon}
-								label="Timesheet Report"
-								href="/reports/timesheet-report"
-								active={pathname.startsWith('/reports/timesheet-report')}
-							/>
-							<NavRow
-								icon={BanknotesIcon}
-								label="Manhours Billing"
-								href="/reports/manhours-billing"
-								active={pathname.startsWith('/reports/manhours-billing')}
-							/>
-							<NavRow
-								icon={BanknotesIcon}
-								label="Company Monthly Cost"
-								href="/reports/company-monthly-cost"
-								active={pathname.startsWith('/reports/company-monthly-cost')}
-							/>
-							<NavRow
-								icon={ChartBarSquareIcon}
-								label="Employee Utilization"
-								href="/reports/employee-utilization"
-								active={pathname.startsWith('/reports/employee-utilization')}
-							/>
-							<NavRow
-								icon={FingerPrintIcon}
-								label="Attendance Report"
-								href="/reports/attendance-report"
-								active={pathname.startsWith('/reports/attendance-report')}
-							/>
-							<NavRow
-								icon={ChartBarSquareIcon}
-								label="Lead Audit and Performance"
-								href="/reports/lead-audit"
-								active={pathname.startsWith('/reports/lead-audit')}
-							/>
-						</div>
-					</div>
-				)}
-			</div>
-		</aside>
+								</div>
+								<ChevronsUpDown className="ml-auto size-4 shrink-0 text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden" />
+							</DropdownMenuTrigger>
+							<DropdownMenuContent
+								side="top"
+								align="start"
+								className="w-(--anchor-width) min-w-56"
+							>
+								<DropdownMenuItem onClick={handleSignOut}>
+									<LogOut />
+									<span>Log out</span>
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</SidebarMenuItem>
+				</SidebarMenu>
+			</SidebarFooter>
+		</SidebarPrimitive>
 	);
 }

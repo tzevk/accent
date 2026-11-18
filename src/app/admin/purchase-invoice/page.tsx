@@ -30,7 +30,6 @@ import {
 import toast from 'react-hot-toast';
 
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import Pagination from '@/components/admin/Pagination';
 import {
 	Table,
@@ -592,7 +591,6 @@ function PurchaseInvoicePageInner() {
 	return (
 		<div className="h-screen bg-[var(--page-bg, #fafafa)] flex flex-col overflow-hidden">
 			<Navbar />
-			<Sidebar />
 			<div className="content-with-sidebar flex-1 min-h-0 flex flex-col pt-2 pb-4 px-2 sm:px-4 overflow-hidden">
 				<div className="max-w-full mx-auto w-full flex-1 min-h-0 flex flex-col space-y-5">
 					<header className="flex flex-wrap items-end justify-between gap-3">

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import Sidebar from '@/components/Sidebar';
 import {
   TicketIcon,
   ArrowLeftIcon,
@@ -133,7 +132,6 @@ export default function TicketDetailPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        <Sidebar />
         <div className="flex pt-16 sm:pl-16">
           <div className="flex-1">
             <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
@@ -152,7 +150,6 @@ export default function TicketDetailPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
         <Navbar />
-        <Sidebar />
         <div className="flex pt-16 sm:pl-16">
           <div className="flex-1">
             <div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 max-w-[1800px] mx-auto">
@@ -178,7 +175,6 @@ export default function TicketDetailPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Navbar />
-      <Sidebar />
       
       <div className="flex pt-16 sm:pl-16">
         <div className="flex-1">

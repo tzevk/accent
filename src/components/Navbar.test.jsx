@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.fn();
@@ -33,9 +35,24 @@ vi.mock('@/utils/client-rbac', () => ({
 }));
 
 import Navbar from '@/components/Navbar';
+vi.stubGlobal('matchMedia', () => ({
+	matches: false,
+	addEventListener() {},
+	removeEventListener() {},
+}));
+
+function renderNavbar() {
+	return render(
+		<TooltipProvider>
+			<SidebarProvider>
+				<Navbar />
+			</SidebarProvider>
+		</TooltipProvider>
+	);
+}
 
 async function openPayrollGroup() {
-	render(<Navbar />);
+	renderNavbar();
 	fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
 	fireEvent.mouseEnter(screen.getByRole('button', { name: 'Payroll' }));
 }
@@ -103,7 +120,7 @@ describe('Navbar payroll group', () => {
 		rbacMock.superAdmin = false;
 		rbacMock.payrollRead = true;
 		rbacMock.adminRead = false;
-		render(<Navbar />);
+		renderNavbar();
 
 		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
 		expect(screen.getByRole('button', { name: 'Payroll' })).toBeVisible();
@@ -125,7 +142,7 @@ describe('Navbar payroll group', () => {
 		rbacMock.superAdmin = false;
 		rbacMock.payrollRead = false;
 		rbacMock.adminRead = true;
-		render(<Navbar />);
+		renderNavbar();
 
 		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
 		expect(
@@ -153,7 +170,7 @@ describe('Navbar Projects entry', () => {
 	it('shows Projects to a user with a project relationship but no project permission', async () => {
 		fetchMock.mockResolvedValue(projectAccessResponse(true));
 
-		render(<Navbar />);
+		renderNavbar();
 
 		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
 		expect(fetchMock).toHaveBeenCalledWith(
@@ -165,7 +182,7 @@ describe('Navbar Projects entry', () => {
 	it('hides Projects from a user with no relationship and no project permission', async () => {
 		fetchMock.mockResolvedValue(projectAccessResponse(false));
 
-		render(<Navbar />);
+		renderNavbar();
 
 		await waitFor(() => {
 			expect(fetchMock).toHaveBeenCalled();
@@ -179,7 +196,7 @@ describe('Navbar Projects entry', () => {
 		rbacMock.projectsRead = true;
 		fetchMock.mockResolvedValue(projectAccessResponse(false));
 
-		render(<Navbar />);
+		renderNavbar();
 
 		await waitFor(() => {
 			expect(fetchMock).toHaveBeenCalled();
