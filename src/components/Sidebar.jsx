@@ -28,7 +28,6 @@ import {
 	SidebarFooter,
 	SidebarGroup,
 	SidebarGroupContent,
-	SidebarGroupLabel,
 	SidebarHeader,
 	SidebarMenu,
 	SidebarMenuBadge,
@@ -311,7 +310,6 @@ export default function Sidebar() {
 			</SidebarHeader>
 			<SidebarContent>
 				<SidebarGroup>
-					<SidebarGroupLabel>Pages</SidebarGroupLabel>
 					<SidebarGroupContent>
 						<SidebarMenu>
 							<NavButton
@@ -363,14 +361,7 @@ export default function Sidebar() {
 									active={pathname === '/admin/tickets'}
 								/>
 							)}
-						</SidebarMenu>
-					</SidebarGroupContent>
-				</SidebarGroup>
-
-				{masterLinks.length > 0 && (
-					<SidebarGroup>
-						<SidebarGroupContent>
-							<SidebarMenu>
+							{masterLinks.length > 0 && (
 								<SidebarMenuItem>
 									<SidebarMenuButton
 										tooltip="Masters"
@@ -392,10 +383,10 @@ export default function Sidebar() {
 										</SidebarMenuSub>
 									)}
 								</SidebarMenuItem>
-							</SidebarMenu>
-						</SidebarGroupContent>
-					</SidebarGroup>
-				)}
+							)}
+						</SidebarMenu>
+					</SidebarGroupContent>
+				</SidebarGroup>
 			</SidebarContent>
 			<SidebarFooter className="border-t border-sidebar-border p-2">
 				<SidebarMenu>
