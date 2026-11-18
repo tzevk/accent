@@ -6,6 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const fetchMock = vi.fn();
 const route = vi.hoisted(() => ({ pathname: '/employees' }));
 const session = vi.hoisted(() => ({ is_super_admin: 0 }));
+const rbac = vi.hoisted(() => ({
+	grants: {},
+	loading: false,
+	roleCode: undefined,
+}));
 
 vi.mock('next/navigation', () => ({
 	usePathname: () => route.pathname,
@@ -13,16 +18,23 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('@/utils/client-rbac', () => ({
 	useSessionRBAC: () => ({
-		loading: false,
+		loading: rbac.loading,
 		user: {
 			is_super_admin: session.is_super_admin,
+			role: rbac.roleCode ? { code: rbac.roleCode } : undefined,
 			email: 'reader@example.com',
 		},
-		can: () => true,
+		can: (resource, permission) =>
+			Boolean(rbac.grants[`${resource}:${permission}`]),
 		RESOURCES: {
+			DASHBOARD: 'dashboard',
 			EMPLOYEES: 'employees',
-			PAYROLL: 'payroll',
 			SETTINGS: 'settings',
+			USERS: 'users',
+			ACTIVITIES: 'activities',
+			DELIVERABLES: 'deliverables',
+			COMPANIES: 'companies',
+			VENDORS: 'vendors',
 		},
 		PERMISSIONS: { READ: 'read' },
 	}),
@@ -41,6 +53,11 @@ function renderSidebar() {
 	);
 }
 
+function openMasters() {
+	const toggle = screen.queryByRole('button', { name: 'Masters' });
+	if (toggle) fireEvent.click(toggle);
+}
+
 describe('Sidebar employee master children', () => {
 	beforeEach(() => {
 		route.pathname = '/employees';
@@ -50,6 +67,17 @@ describe('Sidebar employee master children', () => {
 			removeEventListener() {},
 		}));
 		session.is_super_admin = 0;
+		rbac.grants = {
+			'employees:read': true,
+			'settings:read': true,
+			'users:read': true,
+			'activities:read': true,
+			'deliverables:read': true,
+			'companies:read': true,
+			'vendors:read': true,
+		};
+		rbac.loading = false;
+		rbac.roleCode = undefined;
 		vi.stubGlobal('fetch', fetchMock);
 		fetchMock.mockResolvedValue({
 			ok: true,
@@ -122,5 +150,65 @@ describe('Sidebar employee master children', () => {
 			screen.getByRole('button', { name: /reader@example\.com/i })
 		);
 		expect(screen.getByRole('menuitem', { name: /log out/i })).toBeTruthy();
+	});
+
+	it('hides the Masters group when no read grants exist', () => {
+		route.pathname = '/user/dashboard';
+		rbac.grants = {};
+		renderSidebar();
+
+		expect(screen.queryByRole('button', { name: 'Masters' })).toBeNull();
+		expect(screen.queryByRole('link', { name: 'Employees' })).toBeNull();
+	});
+
+	it('shows only the granted master sections', () => {
+		route.pathname = '/user/dashboard';
+		rbac.grants = { 'companies:read': true };
+		renderSidebar();
+		openMasters();
+
+		expect(screen.getByRole('link', { name: 'Company Master' })).toBeTruthy();
+		expect(screen.getByRole('link', { name: 'Bank Master' })).toBeTruthy();
+		expect(screen.queryByRole('link', { name: 'Employees' })).toBeNull();
+		expect(screen.queryByRole('link', { name: 'Vendor Master' })).toBeNull();
+	});
+
+	it('lets a super admin see every master link without grants', () => {
+		route.pathname = '/user/dashboard';
+		session.is_super_admin = 1;
+		rbac.grants = {};
+		renderSidebar();
+		openMasters();
+
+		expect(screen.getByRole('link', { name: 'Employees' })).toBeTruthy();
+		expect(screen.getByRole('link', { name: 'User Master' })).toBeTruthy();
+		expect(screen.getByRole('link', { name: 'Vendor Master' })).toBeTruthy();
+	});
+
+	it('hides master links while RBAC is loading outside admin routes', () => {
+		route.pathname = '/user/dashboard';
+		rbac.loading = true;
+		renderSidebar();
+
+		expect(screen.queryByRole('button', { name: 'Masters' })).toBeNull();
+	});
+
+	it('keeps master links on admin routes while RBAC loads', () => {
+		route.pathname = '/admin/dashboard';
+		rbac.loading = true;
+		rbac.grants = {};
+		renderSidebar();
+		openMasters();
+
+		expect(screen.getByRole('link', { name: 'Employees' })).toBeTruthy();
+		expect(screen.getByRole('link', { name: 'User Master' })).toBeTruthy();
+	});
+
+	it('keeps admin-only rows off the user dashboard', () => {
+		route.pathname = '/user/dashboard';
+		session.is_super_admin = 1;
+		renderSidebar();
+
+		expect(screen.queryByRole('link', { name: 'Manage Tickets' })).toBeNull();
 	});
 });
