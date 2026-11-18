@@ -403,7 +403,7 @@ export default function Sidebar() {
 						<DropdownMenu>
 							<DropdownMenuTrigger
 								render={<SidebarMenuButton />}
-								className="h-auto py-1.5"
+								className="h-auto py-1.5 group-data-[collapsible=icon]:p-0!"
 							>
 								<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
 									{displayName ? displayName.slice(0, 2).toUpperCase() : ''}
