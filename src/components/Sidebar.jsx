@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import {
 	Building2,
 	CalendarDays,
@@ -46,7 +47,7 @@ import {
 	DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSessionRBAC } from '@/utils/client-rbac';
-import { clearSessionCache } from '@/context/SessionContext';
+import { logout } from '@/lib/logout';
 
 function NavButton({ icon: Icon, label, href, active, badge }) {
 	return (
@@ -87,7 +88,6 @@ export default function Sidebar() {
 		PERMISSIONS,
 		loading: rbacLoading,
 	} = useSessionRBAC();
-	const router = useRouter();
 	const displayName =
 		user?.full_name || user?.username || (rbacLoading ? '' : 'Account');
 	const displayEmail = user?.email || '';
@@ -291,11 +291,10 @@ export default function Sidebar() {
 	};
 
 	const handleSignOut = async () => {
-		clearSessionCache();
-		try {
-			await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-		} catch {}
-		router.push('/signin');
+		const outcome = await logout();
+		if (outcome.status === 'failed') {
+			toast.error(`Could not sign out: ${outcome.message}`);
+		}
 	};
 
 	if (isSignin || !mounted) return null;

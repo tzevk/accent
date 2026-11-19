@@ -17,14 +17,14 @@ Domain terms: [Project Team Member and Project Lead](../../../GLOSSARY.md). Deci
 
 ## Access sources
 
-| Source | Default authority |
-| --- | --- |
-| Project Team membership | Projects navigation, the member section set, and limited contributions on that project. |
-| Project Lead designation | The shared lead policy on that project. Several leads may serve one project. |
-| Explicit project permission | Its action, permitted sections or fields, and saved project scope. |
-| Explicit financial permission | Its financial document area, subject to access to the target project workspace. |
-| Explicit commercial field permission | The permitted project amounts, independently of financial document permissions. |
-| Super-admin | Existing permission bypass remains. Data integrity rules still apply. |
+| Source                               | Default authority                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------- |
+| Project Team membership              | Projects navigation, the member section set, and limited contributions on that project. |
+| Project Lead designation             | The shared lead policy on that project. Several leads may serve one project.            |
+| Explicit project permission          | Its action, permitted sections or fields, and saved project scope.                      |
+| Explicit financial permission        | Its financial document area, subject to access to the target project workspace.         |
+| Explicit commercial field permission | The permitted project amounts, independently of financial document permissions.         |
+| Super-admin                          | Existing permission bypass remains. Data integrity rules still apply.                   |
 
 Project Lead is a responsibility within one Project, not a system-wide role or Employee Designation.
 
@@ -42,11 +42,11 @@ Membership comes from Project Team, the team edited through `ProjectTeamTab`.
 
 Configure scope separately for each granted project action:
 
-| Scope | Projects covered |
-| --- | --- |
-| Led projects | Projects where the person is designated Project Lead. |
-| Assigned projects | Projects where the person belongs to Project Team, including led projects. |
-| All projects | Every project covered by the granted action, without requiring team membership. |
+| Scope             | Projects covered                                                                |
+| ----------------- | ------------------------------------------------------------------------------- |
+| Led projects      | Projects where the person is designated Project Lead.                           |
+| Assigned projects | Projects where the person belongs to Project Team, including led projects.      |
+| All projects      | Every project covered by the granted action, without requiring team membership. |
 
 Read, Update, Assign, Close, and Delete can have different scopes. Create has no existing-project scope.
 
@@ -62,27 +62,27 @@ Use one configurable policy for all Project Leads. Do not introduce per-user or 
 
 Each work section can be hidden, read-only, or editable through the shared policy. The approved starting policy makes every work section editable.
 
-| Tab | Ordinary member baseline | Project Lead starting policy |
-| --- | --- | --- |
-| Project Details | Hidden | Edit |
-| Scope | View | Edit |
-| Project Activity | Hidden | Edit |
-| Schedule | View | Edit |
-| Project Team | View | Manage all team roles |
-| Input Document | View | Edit |
-| Deliverables | View | Edit, including all sign-off fields |
-| Meeting | Hidden | Edit |
-| Progress Measurement | Hidden | Edit |
-| Project Manhours | Hidden | Edit |
-| Software | Hidden | Edit |
-| Query Log | View and existing limited contributions | Edit |
-| Assumption | View and existing limited contributions | Edit |
-| Lessons Learnt | View and existing limited contributions | Edit |
-| Discussion | View and existing limited contributions | Edit |
-| Upload Documents | View | Edit |
-| Quotation | No membership-derived access | No lead-derived access |
-| Purchase Order | No membership-derived access | No lead-derived access |
-| Invoice | No membership-derived access | No lead-derived access |
+| Tab                  | Ordinary member baseline                | Project Lead starting policy        |
+| -------------------- | --------------------------------------- | ----------------------------------- |
+| Project Details      | Hidden                                  | Edit                                |
+| Scope                | View                                    | Edit                                |
+| Project Activity     | Hidden                                  | Edit                                |
+| Schedule             | View                                    | Edit                                |
+| Project Team         | View                                    | Manage all team roles               |
+| Input Document       | View                                    | Edit                                |
+| Deliverables         | View                                    | Edit, including all sign-off fields |
+| Meeting              | Hidden                                  | Edit                                |
+| Progress Measurement | Hidden                                  | Edit                                |
+| Project Manhours     | Hidden                                  | Edit                                |
+| Software             | Hidden                                  | Edit                                |
+| Query Log            | View and existing limited contributions | Edit                                |
+| Assumption           | View and existing limited contributions | Edit                                |
+| Lessons Learnt       | View and existing limited contributions | Edit                                |
+| Discussion           | View and existing limited contributions | Edit                                |
+| Upload Documents     | View                                    | Edit                                |
+| Quotation            | No membership-derived access            | No lead-derived access              |
+| Purchase Order       | No membership-derived access            | No lead-derived access              |
+| Invoice              | No membership-derived access            | No lead-derived access              |
 
 Explicit permissions may add rights beyond this baseline. A tab's visibility must not grant a write action.
 
@@ -152,6 +152,7 @@ Financial permissions can add access for a member or lead. They do not establish
 ## Navigation, direct URLs, and API enforcement
 
 Projects navigation must reflect effective project access, including membership and scoped explicit grants.
+The Navbar checks access again when the session refreshes and hides Projects until the check grants access.
 
 A lead must not need the Projects Update workaround to open and manage led projects.
 
@@ -219,14 +220,14 @@ Executed the actual individual-project route handler through an in-memory Node V
 
 The harness used the real RBAC and project-access helpers. Authentication, database, schema metadata, and sanitization dependencies used isolated fixtures.
 
-| Scenario | Observed PUT result |
-| --- | --- |
-| Ordinary Team Member with no project grants changes project name | 200; captured update |
-| Activity-only assignee with no team membership or grants changes project name | 403; no update |
-| Unrelated user with Projects Update changes project name | 200; captured update |
-| Unrelated user with Projects Assign changes project name | 200; captured update |
-| Unrelated user with no grants changes project name | 403; no update |
-| Membership query throws for a user with no grants | 200; captured update |
+| Scenario                                                                      | Observed PUT result  |
+| ----------------------------------------------------------------------------- | -------------------- |
+| Ordinary Team Member with no project grants changes project name              | 200; captured update |
+| Activity-only assignee with no team membership or grants changes project name | 403; no update       |
+| Unrelated user with Projects Update changes project name                      | 200; captured update |
+| Unrelated user with Projects Assign changes project name                      | 200; captured update |
+| Unrelated user with no grants changes project name                            | 403; no update       |
+| Membership query throws for a user with no grants                             | 200; captured update |
 
 These are isolated handler observations, not live database or browser results. No real database writes occurred.
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
 	HomeIcon,
 	DocumentTextIcon,
@@ -440,44 +440,30 @@ export default function Navbar() {
 		PERMISSIONS,
 	} = useSessionRBAC();
 
-	// Projects visibility also comes from project relationships (team
-	// membership, lead designation, or scoped explicit grants). Ask the server
-	// once per session instead of re-deriving that policy in the client.
-	const [hasProjectAccess, setHasProjectAccess] = useState(false);
-	const projectAccessUserIdRef = useRef(null);
+	// Check again whenever the session refreshes. A previous session snapshot
+	// must not keep Projects visible after an administrator revokes access.
+	const [projectAccessUser, setProjectAccessUser] = useState(null);
 	useEffect(() => {
-		if (userLoading) return;
-		if (!user) {
-			projectAccessUserIdRef.current = null;
-			setHasProjectAccess(false);
-			return;
-		}
-		if (user.is_super_admin) {
-			setHasProjectAccess(true);
-			return;
-		}
-		if (projectAccessUserIdRef.current === user.id) return;
-		projectAccessUserIdRef.current = user.id;
+		if (userLoading || !user || user.is_super_admin) return;
 
-		let cancelled = false;
+		const controller = new AbortController();
+		const { signal } = controller;
 		const loadProjectAccess = async () => {
 			try {
 				const response = await fetch('/api/projects/access', {
 					cache: 'no-store',
+					signal,
 				});
-				if (!response.ok) throw new Error(`HTTP ${response.status}`);
-				const body = await response.json();
-				if (!cancelled) {
-					setHasProjectAccess(Boolean(body?.data?.hasAccess));
+				const body = response.ok ? await response.json() : null;
+				if (!signal.aborted) {
+					setProjectAccessUser(body?.data?.hasAccess === true ? user : null);
 				}
 			} catch {
-				if (!cancelled) setHasProjectAccess(false);
+				if (!signal.aborted) setProjectAccessUser(null);
 			}
 		};
-		loadProjectAccess();
-		return () => {
-			cancelled = true;
-		};
+		void loadProjectAccess();
+		return () => controller.abort();
 	}, [user, userLoading]);
 
 	// Filter navigation items based on user permissions
@@ -492,11 +478,11 @@ export default function Navbar() {
 				// super admin and any scoped action that actually covers a
 				// project. A global `projects:read` string says nothing about
 				// project scope, so it must not reveal the entry.
-				return hasProjectAccess;
+				return !userLoading && projectAccessUser === user;
 			}
 			return can(item.resource, PERMISSIONS.READ);
 		});
-	}, [user, userLoading, can, PERMISSIONS, hasProjectAccess]);
+	}, [user, userLoading, can, PERMISSIONS, projectAccessUser]);
 
 	// Mobile-only page list — mirrors the sidebar, which is hidden below 640px
 	const mobilePageItems = useMemo(() => {

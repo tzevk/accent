@@ -37,6 +37,7 @@ This file owns coding, security, data, and testing requirements. Read only secti
 - Route handlers still authorize each request with `getCurrentUser(request)`, `getServerAuth()`, or `ensurePermission()`. Proxy validation is not handler authorization.
 - Handler authorization caches users for 60 seconds. Call `invalidateUserCache(userId)` after changes that affect cached authorization.
 - Login creates a random 256-bit token, stores only its hash, and sets an HttpOnly, `SameSite=Lax` cookie with a 30-day expiry. Logout revokes its session; password change revokes all user sessions.
+- After logout succeeds, replace the browser document with `/signin` to discard the previous session's client state.
 - Public endpoints use the exact allowlist in ADR-0014 and the route-auth guard. Adding one requires updating both. Do not broaden public access with prefix matching; that applies only to static assets.
 - Rate limits use platform-set `x-vercel-forwarded-for`, never client-supplied `x-forwarded-for`, together with the validated session token hash. Auth and heavy categories use shared MySQL fixed windows; other categories remain in memory. Preserve limits and storage semantics in `src/proxy.ts`.
 - Every exported API route handler must authorize with `getCurrentUser`, `getServerAuth`, or `ensurePermission`, unless a reasoned public-by-design or delegating-forwarder exception is recorded. `npm run check:route-auth` enforces this.
@@ -50,6 +51,7 @@ This file owns coding, security, data, and testing requirements. Read only secti
 - Use shared `globalThis.__dbPool` from `src/utils/database.js`: `query()` for one query, `withDb(cb)` for multiple queries or transactions, or `dbConnect()` with `finally` to release a connection. Do not create route-local connections.
 - Do not run `CREATE`, `ALTER`, or `SHOW` in route handlers. Use Knex migrations or `hasColumn(db, table, col)` from `src/utils/schema-cache.js` (10-minute cache).
 - Keep production pool `connectionLimit` at 5, below MySQL `max_user_connections`.
+- Keep each MySQL pool's `maxIdle` below its connection limit. Otherwise mysql2 does not run its idle timer.
 - Knex selects `DEV_DB_*`, `STAGING_DB_*`, or `PROD_DB_*` by `NODE_ENV` and shares `DB_HOST`. `knexfile.js` reads `DB_PORT` for every branch. The Playwright harness still passes its resolved port directly to the programmatic migration client.
 - Operational tables generally use `isDelete TINYINT(1) DEFAULT 0`; exceptions are listed in `docs/explanations/DDL_AND_SOFT_DELETE_AUDIT.md`. Include `isDelete = 0` in every applicable `SELECT`, `JOIN`, and `UPDATE`.
 - Invoice, document, expense, and voucher numbers use a generated column based on `IF(isDelete=0, col, NULL) STORED` with a unique index. `outgoing_quotations` instead uses `UNIQUE(quotation_number, isDelete)`.

@@ -2,9 +2,10 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ComponentType, type SVGProps } from 'react';
 import { LogOut, Menu, Moon } from 'lucide-react';
+import toast from 'react-hot-toast';
 import {
 	BanknotesIcon,
 	CalendarDaysIcon,
@@ -14,7 +15,7 @@ import {
 	TicketIcon,
 } from '@heroicons/react/24/outline';
 import accentMark from '@/../public/accent-mark.png';
-import { clearSessionCache } from '@/context/SessionContext';
+import { logout } from '@/lib/logout';
 import { cn } from '@/lib/cn';
 import {
 	NavigationMenu,
@@ -135,7 +136,6 @@ export function Navigation2({
 	showBroadAdminControls,
 }: Navigation2Props) {
 	const pathname = usePathname() || '';
-	const router = useRouter();
 	const [mobileOpenPath, setMobileOpenPath] = useState<string | null>(null);
 	const mobileOpen = mobileOpenPath === pathname;
 	const [mobileTasksOpen, setMobileTasksOpen] = useState(false);
@@ -175,12 +175,10 @@ export function Navigation2({
 
 	const handleSignOut = async () => {
 		closeMobile();
-		// Clear session cache immediately to prevent stale data
-		clearSessionCache();
-		try {
-			await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-		} catch {}
-		router.push('/signin');
+		const outcome = await logout();
+		if (outcome.status === 'failed') {
+			toast.error(`Could not sign out: ${outcome.message}`);
+		}
 	};
 
 	return (

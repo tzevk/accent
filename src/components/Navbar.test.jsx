@@ -15,6 +15,8 @@ const rbacMock = vi.hoisted(() => ({
 	payrollRead: true,
 	adminRead: true,
 	projectsRead: false,
+	admin: { id: 1, is_super_admin: 1, email: 'admin@example.com' },
+	member: { id: 42, is_super_admin: 0, email: 'member@example.com' },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -26,10 +28,7 @@ vi.mock('@/components/NotificationsBell', () => ({ default: () => null }));
 vi.mock('@/utils/client-rbac', () => ({
 	useSessionRBAC: () => ({
 		loading: false,
-		user: {
-			is_super_admin: rbacMock.superAdmin ? 1 : 0,
-			email: 'admin@example.com',
-		},
+		user: rbacMock.superAdmin ? rbacMock.admin : rbacMock.member,
 		can: (resource, permission) =>
 			permission === 'read' &&
 			((resource === 'payroll' && rbacMock.payrollRead) ||
@@ -57,13 +56,13 @@ vi.stubGlobal(
 );
 
 function renderNavbar() {
-	return render(
-		<TooltipProvider>
-			<SidebarProvider>
-				<Navbar />
-			</SidebarProvider>
-		</TooltipProvider>
-	);
+	return render(<Navbar />, {
+		wrapper: ({ children }) => (
+			<TooltipProvider>
+				<SidebarProvider>{children}</SidebarProvider>
+			</TooltipProvider>
+		),
+	});
 }
 
 async function openAdminMenu() {
@@ -193,6 +192,22 @@ describe('Navbar Projects entry', () => {
 		expect(
 			screen.queryByRole('link', { name: 'Projects' })
 		).not.toBeInTheDocument();
+	});
+
+	it('hides Projects when a refreshed session no longer has project access', async () => {
+		fetchMock.mockResolvedValue(projectAccessResponse(true));
+		const view = renderNavbar();
+		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
+
+		fetchMock.mockResolvedValue(projectAccessResponse(false));
+		rbacMock.member = { ...rbacMock.member };
+		view.rerender(<Navbar />);
+
+		await waitFor(() => {
+			expect(
+				screen.queryByRole('link', { name: 'Projects' })
+			).not.toBeInTheDocument();
+		});
 	});
 
 	it('hides Projects from a scoped read grant that leads nothing', async () => {
