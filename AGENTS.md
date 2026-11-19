@@ -24,6 +24,7 @@ Ask only when blocked on a safe or correct choice. Otherwise proceed with a stat
 - **Change queries, migrations, schemas, pools, or database-backed behavior:** read [database and data invariants](CODING_STANDARDS.md#database-and-data-invariants).
 - **Change billing, salary, payroll, timesheets, or employee costs:** read [money and payroll](CODING_STANDARDS.md#money-and-payroll).
 - **Review code, choose checks, add tests, or change build/deployment automation:** read [testing and verification](CODING_STANDARDS.md#testing-and-verification).
+- **Review a diff or verify a change:** read [reliability checks](docs/agents/reliability-checks.md) and run only the rows whose trigger matches.
 - **Run local MariaDB, integration tests, or browser tests:** read [local database operations](docs/agents/local-database.md).
 - **Verify a browser journey or investigate an E2E failure:** follow [CI-owned browser verification](CODING_STANDARDS.md#owned-browser-runtime).
 - **Change domain terms or ADRs:** follow [the domain documentation workflow](docs/agents/domain.md).

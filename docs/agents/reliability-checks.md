@@ -1,0 +1,34 @@
+# Reliability checks
+
+**Read this before reviewing a diff or verifying a change.**
+
+This is a small, incident-backed checklist. Each row has a trigger that can be
+seen in a diff, a check to run, and the record that justifies it. Read the
+diff, run only the rows whose trigger matches, and expect three to ten rows.
+Do not run every row for every change.
+
+A new row needs evidence: the same miss in at least two pull requests, or one
+incident whose cause is visible in a diff. Review the list quarterly and remove
+rows that no longer match a real risk. A check that cannot fail on a realistic
+diff does not belong here.
+
+| Trigger in the diff                                                             | Check                                                                                                                                                                                                                                 | Evidence                                                                                                                                              |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An API route or handler is added or changed, or an authorization decision moves | Run `npm run check:route-auth`. Confirm the handler authenticates and authorizes before work. Confirm no new public endpoint bypasses the allowlist.                                                                                  | ADR-0011, ADR-0014                                                                                                                                    |
+| A rate-limit identity, store, or key changes                                    | Confirm the limiter keys on the authenticated identity or the documented public identity, and that the store is shared where the deployment needs it.                                                                                 | ADR-0013                                                                                                                                              |
+| A billing, salary, payroll, timesheet, or employee-cost calculation changes     | Use `src/lib/money.ts`; no native arithmetic or `parseFloat` for money. Run the focused payroll tests and the money properties. Confirm an explicit zero CTC stays zero and a legacy gross never replaces an invalid canonical value. | ADR-0010, [money and payroll](../../CODING_STANDARDS.md#money-and-payroll)                                                                            |
+| Payroll finalize, run locking, or the allocation snapshot changes               | Prove the lock and the frozen allocation are one write. Run the real-MariaDB integration path. Confirm no read reprices a historical slip from a current profile.                                                                     | ADR-0008, ADR-0016                                                                                                                                    |
+| Attendance, leave, weekly-off, holiday, or date-boundary logic changes          | Run the timezone-isolated tests. Run `weekly-off.property.test.ts` and `sandwich.property.test.ts`. Confirm the changed predicate is the single source of the rule.                                                                   | ADR-0004, ADR-0005                                                                                                                                    |
+| Punch-span, Time Present, or the Attendance report changes                      | Keep the two punch-span implementations distinct: the grid and Payable OT stay direction-gated, Time Present stays direction-agnostic. Run the `time-present` tests.                                                                  | ADR-0015                                                                                                                                              |
+| A Lead review, Proposal link, or canonical Proposal rule changes                | Run the `proposal-canonical-differential` integration scenario. Confirm the guard and the recompute share one transaction and that no Proposal is guessed, merged, or deleted.                                                        | ADR-0031                                                                                                                                              |
+| A query, migration, schema, pool, or transaction boundary changes               | Run the change against MariaDB 10.11, not MySQL. Prove the migration applies and rolls back. For SQL behavior, constraints, or contention, use real-database integration rather than a mock.                                          | [database and data invariants](../../CODING_STANDARDS.md#database-and-data-invariants)                                                                |
+| A rich-text, HTML, or sanitization boundary changes                             | Confirm untrusted HTML is sanitized before storage or render. Do not trust client-side sanitization alone.                                                                                                                            | ADR-0012                                                                                                                                              |
+| A test, harness, lint rule, test command, or CI workflow changes                | Add the `test-change` label only after a human reviews the diff. Confirm the change does not weaken an assertion, skip a suite, add a retry, or move gate logic into the pull request.                                                | [test integrity workflow](../../.github/workflows/test-integrity.yml), [testing and verification](../../CODING_STANDARDS.md#testing-and-verification) |
+
+## Changing the list
+
+- Add a row only with a pull request or incident link in the commit message.
+- Keep the trigger readable from a diff. "Authentication changed" is useful;
+  "the code looks risky" is not.
+- Prefer a command, a test name, or a named invariant over "review carefully".
+- Remove or rewrite a row when its check stops catching the miss.

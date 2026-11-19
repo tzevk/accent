@@ -19,6 +19,7 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 | Understand Manhours Billing                            | [Manhours Billing implementation](app/reports/manhours-billing-implementation.md)               |
 | Understand Client Balance                              | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
 | Understand project expenditure accounting              | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
+| Review a change against incident-backed checks         | [Reliability checks](agents/reliability-checks.md)                                              |
 
 ## Cash vouchers
 

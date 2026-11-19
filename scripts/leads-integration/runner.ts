@@ -94,6 +94,7 @@ import {
 	proposalLinkGuardScenario,
 	type LegacyReviewSeeds,
 } from './scenarios/legacy-review.ts';
+import { proposalCanonicalDifferentialScenario } from './scenarios/proposal-canonical-differential.ts';
 import {
 	activityCorrectionScenario,
 	deniedCorrectionScenario,
@@ -2472,6 +2473,11 @@ export async function runLeadsIntegration(
 		await runScenario('lead-audit-audit', reportAuditScenario, context);
 		await runScenario('lead-audit-print', leadAuditPrintScenario, context);
 		await runScenario('lead-audit-export', leadAuditExportScenario, context);
+		await runScenario(
+			'proposal-canonical-differential',
+			proposalCanonicalDifferentialScenario,
+			context
+		);
 		log(IBAND);
 		if (passedScenarios === 0) {
 			fail(`no scenario matched ${JSON.stringify(selectedScenario)}`);

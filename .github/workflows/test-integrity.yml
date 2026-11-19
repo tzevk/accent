@@ -1,0 +1,102 @@
+name: Test integrity
+
+# A change must not be able to weaken the checks that judge it. This gate
+# reads only PR metadata and file contents through the GitHub API; it never
+# checks out or executes pull-request code, so `pull_request_target` is safe
+# here. The workflow definition itself comes from the base branch, so a PR
+# cannot edit this gate in the same run.
+#
+# Protected verification files need the `test-change` label. A human adds the
+# label after reviewing the test or harness diff. Set the repository variable
+# TEST_INTEGRITY_OBSERVE=true to log instead of block during rollout.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: test-integrity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-integrity:
+    name: test-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Detect changes to verification code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OBSERVE: ${{ vars.TEST_INTEGRITY_OBSERVE }}
+        run: |
+          set -euo pipefail
+
+          protected_re='^(\.github/workflows/|src/.*\.(test|spec)\.(js|jsx|ts|tsx)$|scripts/.*\.test\.ts$|scripts/check-route-auth\.mjs$|scripts/testing/|scripts/e2e/|scripts/leads-integration/|e2e/|eslint\.config\.mjs$|vitest\..*|playwright\.config\.ts$)'
+
+          mapfile -t changed < <(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+              --jq '.[].filename'
+          )
+
+          protected=()
+          for file in "${changed[@]}"; do
+            if [[ "$file" =~ $protected_re ]]; then
+              protected+=("$file")
+            fi
+          done
+
+          read_scripts() {
+            gh api "repos/$1/contents/package.json?ref=$2" \
+              --jq '.content' | tr -d '\n' | base64 -d | jq -S '.scripts'
+          }
+
+          if ! base_scripts="$(read_scripts "$BASE_REPO" "$BASE_SHA" 2>/dev/null)"; then
+            protected+=("package.json (scripts: base unreadable)")
+          elif ! head_scripts="$(read_scripts "$HEAD_REPO" "$HEAD_SHA" 2>/dev/null)"; then
+            protected+=("package.json (scripts: head unreadable)")
+          elif [[ "$base_scripts" != "$head_scripts" ]]; then
+            protected+=("package.json (scripts)")
+          fi
+
+          if (( ${#protected[@]} == 0 )); then
+            echo "No protected verification files changed."
+            exit 0
+          fi
+
+          {
+            echo "### Test integrity"
+            echo
+            echo "This pull request changes files that decide whether the change itself passes:"
+            echo
+            printf -- "- \`%s\`\n" "${protected[@]}"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${OBSERVE:-false}" == "true" ]]; then
+            echo "::warning::Observe mode: this change would need the 'test-change' label."
+            exit 0
+          fi
+
+          has_label=false
+          if jq -r '.pull_request.labels[]?.name' "$GITHUB_EVENT_PATH" |
+            grep -Fxq 'test-change'; then
+            has_label=true
+          fi
+
+          if [[ "$has_label" == "true" ]]; then
+            echo "::notice::Protected verification files changed and the 'test-change' label is present."
+            exit 0
+          fi
+
+          echo "::error::Protected verification files changed. Add the 'test-change' label after a human reviews the test or harness diff."
+          exit 1

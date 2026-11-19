@@ -29,7 +29,7 @@ variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
 Expect the first run to build the full schema from the baseline migration, then
-start the server and run eighty-four scenarios. On MariaDB 10.11 the whole run
+start the server and run eighty-five scenarios. On MariaDB 10.11 the whole run
 takes a few minutes.
 
 For an isolated report scenario, set
@@ -61,7 +61,7 @@ Run without this variable for the complete regression gate.
    loopback transport address, so the per-client auth budget does not collapse
    eleven real password logins into one bucket, and keeps the real session
    cookies.
-10. Runs eighty-four scenarios.
+10. Runs eighty-five scenarios.
 
 ## Cleanup contract
 
@@ -160,6 +160,7 @@ a full pass, for manual browser follow-up.
 | 82  | import-row-needs-the-decision-evidence           | A CSV row that asks for Qualified or Nurture carries the same evidence, or it is a row error and no Lead is saved                                                                                                                          |
 | 83  | soft-deleted-lead-keeps-its-proposal-state       | Editing or deleting a Proposal of a soft-deleted Lead leaves that Lead's state and its pointers alone                                                                                                                                      |
 | 84  | lead-audit-intake                                | The Lead Audit intake slice: default period, presets, separate system-entry and Enquiry Date counts, boundaries, missing dates, exact source labels, filters, permissions, deterministic register pagination, and imports counted at entry |
+| 85  | proposal-canonical-differential                  | After a Proposal delete, the stored canonical Proposal and conflict flag match an independent rule over the live linked rows: a live choice survives, one remaining live link becomes canonical, and several keep no choice                |
 
 Every scenario asserts both the HTTP response and the persisted row through
 the independent reader (`mysql2` connection owned by the harness, never the

@@ -68,6 +68,8 @@ This file owns coding, security, data, and testing requirements. Read only secti
 
 **Trigger: implementing, reviewing, or verifying code; changing tests, checks, CI, or build automation.**
 
+Before reviewing a diff or choosing checks, read [reliability checks](docs/agents/reliability-checks.md) and run only the rows whose trigger matches.
+
 ### Test layers
 
 - `npm run test:unit` runs the existing Vitest logic, component, mocked route-contract, and harness suites. Pass a file or test-name filter for focused feedback. `npm test -- <test-file> --watch` remains the interactive loop.
@@ -83,16 +85,18 @@ This file owns coding, security, data, and testing requirements. Read only secti
 - Use `npm test -- related <source-file> --run` or `npm test -- --changed origin/main --run` as selection aids. Confirm the Git reference exists and is current. Import graphs do not prove effects through HTTP, migrations, computed imports, or runtime configuration; select those integration checks explicitly.
 - Use `npm run check:route-auth` for fast feedback while changing API routes or authorization rules.
 - After a failure, inspect the first actionable error, trace, and owned server output. Classify the cause as application, fixture, or environment before choosing the next check. Rerun after a relevant fix or an evidence-backed transient failure, not as a blind retry.
+- If the same check fails after three fix-and-rerun rounds, stop and report the command, the first actionable error, and what changed on each attempt. Do not start a fourth blind attempt; a human decides the next step.
 - Report the command, selected scope, result, and any verification gap. Stop checking when the assigned scope has sufficient evidence; another agent finishing is not a reason to repeat it.
+- Stamp the final commit with how it was verified: `Verified: npm run verify`, `Verified: npm run test:unit -- <file>`, or `Verified: none`. Use `none` when no runtime check ran, including documentation-only changes. The stamp is evidence; it does not replace the reported command and result.
 
 ### Verification ownership
 
 - **Implementation workers:** run focused checks for their changes. Do not independently run `npm run verify`, production builds, or unrelated suites during iteration. Browser execution requires explicit runtime ownership.
-- **Reviewers:** review the diff against affected standards, coverage placement, observable assertions, and fixture isolation. Reuse existing evidence. Request the smallest missing check rather than launching the complete gate.
+- **Reviewers:** review the diff against affected standards, coverage placement, observable assertions, and fixture isolation. Reuse existing evidence. Request the smallest missing check rather than launching the complete gate. Treat test, harness, lint, and CI diffs as part of the change: compare them with the base. A protected verification file needs the `test-change` label after human review.
 - **Integration owner:** the main agent owns integration unless another agent is explicitly assigned. For code, test, or build/CI changes, run `npm run verify` against the final candidate before pushing. This is one shared gate, not one gate per worker or commit.
 - Successful gate evidence remains valid only while its checked inputs remain unchanged. Rerun affected focused checks after fixes, then complete the required gate against the final candidate. Do not repeat a successful unchanged gate for handoffs or status reports.
 - **Documentation-only changes:** check affected links, anchors, and formatting. Skip application builds, databases, and browser suites unless the task explicitly requires runtime proof.
-- **CI:** keep route authorization, lint, unit tests, production build, real-database leads integration, and the financial E2E journey enabled. Local selection complements these checks; it does not replace them. Keep Vercel previews and deployment builds enabled.
+- **CI:** keep route authorization, lint, unit tests, production build, real-database leads integration, and the financial E2E journey enabled. Local selection complements these checks; it does not replace them. Keep Vercel previews and deployment builds enabled. Keep the `test-integrity` job enabled: it requires the `test-change` label when a pull request changes verification code, tests, or gate scripts.
 - Keep CI job names stable when changing workflow structure. Required merge checks are repository settings, not a property of workflow YAML. Verify enforcement separately; report missing administrator access instead of claiming merges or deployments are gated.
 - CI uses native path selection, not an inferred Nx project graph. Only PRs changing known root documentation or `docs/` may skip runtime checks. Source, tests, scripts, CI, dependencies, migrations, mixed changes, empty results, or unavailable comparison data select all checks. Deletions and renames must retain the old runtime path when classifying scope.
 - Route authorization, lint, and unit checks give independent early feedback. Build, real-database integration, and browser jobs start only after those checks pass. The always-running CI `verify` job fails on failed, cancelled, missing, or unexpectedly skipped results; only an explicitly classified documentation-only PR may skip runtime checks.
