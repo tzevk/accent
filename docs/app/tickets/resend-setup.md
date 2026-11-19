@@ -554,6 +554,7 @@ recipient and let `pending` rows retry.
 
 ## Related documents
 
+- [Delivery webhooks and audit trail](delivery-audit-webhooks.md) — planned; confirms arrival, not just acceptance
 - [Ticket system](../../explanations/TICKET_SYSTEM.md)
 - [RBAC permissions](../../explanations/RBAC_PERMISSIONS_SYSTEM.md)
 - [Unauthenticated endpoint allowlist (ADR-0014)](../../adr/0014-unauthenticated-endpoint-allowlist.md)

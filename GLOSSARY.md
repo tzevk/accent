@@ -88,6 +88,22 @@ _Avoid_: Active employees, Payroll staff (when meaning this roster), Headcount
 The pay-agreement category: monthly, hourly, daily, contract, lumpsum, or custom. Contract selects the Contract pay stream; every other supported category selects the Payroll stream. The Employee's Salary Profile determines this category, not their Employee Type. An eligible Employee without a covering Salary Profile remains a payroll-completeness issue and prevents finalization. An unsupported stored value remains readable; changing it requires deliberately choosing a supported type, never a silent conversion.
 _Avoid_: Employee Type, Employment status, Pay type
 
+**Pay Basis**:
+The agreed method for earning pay, such as monthly salary or pay per payable hour. It is independent of Employment Term and Client Deployment.
+_Avoid_: Employee Type, Contract (when meaning a pay formula)
+
+**Payable Hours**:
+Hours that earn pay under the person's agreement after the required review. They may differ from Logged Hours and customer-billable hours.
+_Avoid_: Logged Hours (when meaning hours approved for pay), Billable hours
+
+**Employment Term**:
+Whether employment is ongoing or limited to an agreed period. A fixed term does not determine the Pay Basis.
+_Avoid_: Salary Type, Pay Basis
+
+**Client Deployment**:
+An Employee's assignment to work for a client under a manpower arrangement. It does not by itself change the employer or Pay Basis.
+_Avoid_: Contract (when meaning deployment), Salary Type
+
 **Salary Profile**:
 The Employee's dated pay agreement for a period — explicit monthly CTC, Salary Type, standard daily hours, supported earnings/deduction/applicability settings, leave entitlement and loan/advance instructions. The input to payroll. Canonical table is `employee_salary_profile`; a legacy Salary Structure is a read-only fallback only when no canonical agreement covers the period. Stored `gross`, `gross_salary` and `contract_amount` are legacy references, not the agreed CTC.
 _Avoid_: Salary Structure, Compensation, Package, Gross

@@ -5,21 +5,23 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 
 ## Application guides
 
-| Task                                                   | Guide                                                                                           |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| Operate payroll and check employee entry points        | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
-| Create, correct or revise a Salary Profile             | [Salary Profiles workspace](app/payroll/operator-guide.md#salary-profiles-workspace)            |
-| Migrate salary agreements and cut over payroll         | [Salary Profiles migration and rollout](app/payroll/salary-profiles-rollout.md)                 |
-| Work Leads, ownership, and the legacy review flow      | [Lead operator guide](app/leads/operator-guide.md)                                              |
-| Run local MariaDB, leads integration, or browser smoke | [Local database operations](agents/local-database.md)                                           |
-| Set up and operate ticket email notifications          | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
-| Understand project view and edit screens               | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
-| Understand project manhours                            | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
-| Understand the Timesheet report                        | [Timesheet implementation](app/reports/timesheet-implementation.md)                             |
-| Understand Manhours Billing                            | [Manhours Billing implementation](app/reports/manhours-billing-implementation.md)               |
-| Understand Client Balance                              | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
-| Understand project expenditure accounting              | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
+| Task                                                         | Guide                                                                                           |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Operate payroll and check employee entry points              | [Payroll operator guide](app/payroll/operator-guide.md)                                         |
+| Create, correct or revise a Salary Profile                   | [Salary Profiles workspace](app/payroll/operator-guide.md#salary-profiles-workspace)            |
+| Migrate salary agreements and cut over payroll               | [Salary Profiles migration and rollout](app/payroll/salary-profiles-rollout.md)                 |
+| Work Leads, ownership, and the legacy review flow            | [Lead operator guide](app/leads/operator-guide.md)                                              |
+| Run local MariaDB, leads integration, or browser smoke       | [Local database operations](agents/local-database.md)                                           |
 | Review a change against incident-backed checks         | [Reliability checks](agents/reliability-checks.md)                                              |
+| Set up and operate ticket email notifications                | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
+| Confirm ticket email delivery and keep an audit trail        | [Delivery webhooks and audit trail](app/tickets/delivery-audit-webhooks.md)                     |
+| Understand project view and edit screens                     | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
+| Compare project platforms with Accent's engineering workflow | [Project platform comparison](app/projects/project-platform-comparison.md)                      |
+| Understand project manhours                                  | [Project Manhours tab](app/projects/tabs/ProjectManhoursTab.md)                                 |
+| Understand the Timesheet report                              | [Timesheet implementation](app/reports/timesheet-implementation.md)                             |
+| Understand Manhours Billing                                  | [Manhours Billing implementation](app/reports/manhours-billing-implementation.md)               |
+| Understand Client Balance                                    | [Client Balance implementation](app/reports/client-balance-implementation.md)                   |
+| Understand project expenditure accounting                    | [Project expenditure accounting (research note)](app/reports/project-expenditure-accounting.md) |
 
 ## Cash vouchers
 
@@ -104,6 +106,7 @@ Use the [issue tracker workflow](agents/issue-tracker.md) to check current task 
 - [Monthly company and project expenditure specification](app/reports/project-expenditure-spec.md) — [implementation issue #304](https://github.com/tzevk/accent/issues/304)
 - [Salary Profiles workspace design](app/payroll/salary-profiles-design.md) — implemented in #434; PR #454 open for review.
 - [Salary Profiles implementation specification](app/payroll/salary-profiles-spec.md) — [issue #434](https://github.com/tzevk/accent/issues/434), implemented on `integration/434-salary-profiles`; PR #454 open for review.
+- [Salary system recovery plan](app/payroll/salary-system-recovery-plan.md) — proposed mixed-pay model, verified recovery findings, and standalone HR/payroll evaluation.
 - [Lead Audit and Performance report design](app/reports/lead-audit-design.md) — approved design; implemented in issue #398.
 - [Lead Audit and Performance report specification](app/reports/lead-audit-spec.md) — implemented in issue #398 (PR #407).
 - [Project permissions design](app/projects/permissions-design.md) — implemented in issue #410.
