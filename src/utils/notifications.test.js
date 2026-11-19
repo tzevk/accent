@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { filterApprovers } from '@/utils/notifications';
+import { formatDate } from '@/lib/format';
+import {
+	filterApprovers,
+	formatLeaveNotificationBody,
+} from '@/utils/notifications';
 
 describe('filterApprovers', () => {
 	const candidate = (overrides = {}) => ({
@@ -50,5 +54,49 @@ describe('filterApprovers', () => {
 
 	it('returns empty for no approvers', () => {
 		expect(filterApprovers([candidate({ id: 9 })], 99)).toEqual([]);
+	});
+});
+
+describe('formatLeaveNotificationBody', () => {
+	it('uses a singular day and the shared date format', () => {
+		const body = formatLeaveNotificationBody({
+			applicantName: 'Rahul Sharma',
+			applicantId: 42,
+			leaveTypeName: 'Sick Leave',
+			durationDays: 1,
+			startDate: '2026-09-04',
+		});
+
+		expect(body).toBe(
+			`Rahul Sharma requested 1 day of Sick Leave starting ${formatDate('2026-09-04')}`
+		);
+		expect(body).not.toContain('day(s)');
+		expect(body).not.toContain('2026-09-04');
+	});
+
+	it('pluralizes a multi-day request', () => {
+		const body = formatLeaveNotificationBody({
+			applicantName: 'Rahul Sharma',
+			applicantId: 42,
+			leaveTypeName: 'Casual Leave',
+			durationDays: 3,
+			startDate: '2026-09-07',
+		});
+
+		expect(body).toContain('requested 3 days of Casual Leave starting');
+	});
+
+	it('falls back to the user id when the name is missing', () => {
+		const body = formatLeaveNotificationBody({
+			applicantName: null,
+			applicantId: 42,
+			leaveTypeName: 'Sick Leave',
+			durationDays: 1,
+			startDate: '2026-09-04',
+		});
+
+		expect(body.startsWith('User #42 requested 1 day of Sick Leave')).toBe(
+			true
+		);
 	});
 });

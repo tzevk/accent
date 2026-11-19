@@ -6,6 +6,7 @@
  * per-user feed is read through /api/notifications.
  */
 import { dbConnect } from '@/utils/database';
+import { formatDate } from '@/lib/format';
 import { mergePermissions } from '@/utils/rbac';
 
 // mysql2 delivers JSON columns already parsed (object/array) or as strings.
@@ -46,6 +47,23 @@ export function filterApprovers(rows, applicantId) {
 }
 
 /**
+ * Build the approver-facing line for a leave request. Kept pure so the
+ * plural and the shared date format stay stable across producers.
+ */
+export function formatLeaveNotificationBody({
+	applicantId,
+	applicantName,
+	leaveTypeName,
+	durationDays,
+	startDate,
+}) {
+	const count = Number(durationDays);
+	const days = Number.isFinite(count) ? count : durationDays;
+	const dayLabel = `${days} day${Number(days) === 1 ? '' : 's'}`;
+	return `${applicantName ?? `User #${applicantId}`} requested ${dayLabel} of ${leaveTypeName} starting ${formatDate(startDate)}`;
+}
+
+/**
  * Notify every active user who can approve leaves that a leave application
  * awaits review. Swallows its own errors so a notification failure never
  * breaks the originating request.
@@ -75,7 +93,13 @@ export async function notifyLeaveApprovers({
 		const recipientIds = filterApprovers(rows, applicantId);
 		if (recipientIds.length === 0) return;
 
-		const body = `${applicantName ?? `User #${applicantId}`} requested ${durationDays} day(s) of ${leaveTypeName} starting ${startDate}`;
+		const body = formatLeaveNotificationBody({
+			applicantId,
+			applicantName,
+			leaveTypeName,
+			durationDays,
+			startDate,
+		});
 		const values = recipientIds.flatMap((userId) => [
 			userId,
 			'leave_request',

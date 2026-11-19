@@ -303,9 +303,10 @@ export default function Sidebar() {
 	return (
 		<SidebarPrimitive
 			collapsible="icon"
+			className="border-sidebar-border"
 			style={{ top: 64, height: 'calc(100svh - 4rem)' }}
 		>
-			<SidebarHeader className="px-2 py-2">
+			<SidebarHeader className="px-1.5 py-2">
 				<SidebarTrigger className="focus:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-sidebar-ring" />
 			</SidebarHeader>
 			<SidebarContent>

@@ -895,7 +895,7 @@ export default function ProjectActivityAssignments({
 	const hasAnyData = projectOrder.length > 0;
 
 	return (
-		<div className="bg-white rounded-xl shadow-lg border-2 border-purple-200 mb-6 ring-1 ring-purple-100">
+		<div className="min-w-0 rounded-xl border-2 border-purple-200 bg-white shadow-lg ring-1 ring-purple-100">
 			{/* Header */}
 			<div className="px-3 py-2 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2">
@@ -954,7 +954,7 @@ export default function ProjectActivityAssignments({
 							className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 						/>
 					</div>
-					<div className="relative flex-1 min-w-[180px] max-w-xs">
+					<div className="relative min-w-0 grow basis-48">
 						<MagnifyingGlassIcon className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
 						<input
 							type="text"
@@ -1012,8 +1012,13 @@ export default function ProjectActivityAssignments({
 					</p>
 				</div>
 			) : (
-				<div className="overflow-x-auto">
-					<table className="w-full min-w-[900px] text-sm border-collapse table-fixed">
+				<div
+					className="overflow-x-auto rounded-b-xl"
+					role="region"
+					aria-label="Project activity table"
+					tabIndex={0}
+				>
+					<table className="w-full min-w-[1200px] table-fixed border-collapse text-sm">
 						<colgroup>
 							<col className="w-[10%]" />
 							<col className="w-[8%]" />
@@ -1022,10 +1027,10 @@ export default function ProjectActivityAssignments({
 							<col className="w-[5%]" />
 							<col className="w-[6%]" />
 							<col className="w-[6%]" />
+							<col className="w-[13%]" />
 							<col className="w-[9%]" />
-							<col className="w-[9%]" />
-							<col className="w-[16%]" />
-							<col className="w-[6%]" />
+							<col className="w-[11%]" />
+							<col className="w-[7%]" />
 						</colgroup>
 						<thead className="bg-[#64126D]/10">
 							<tr className="divide-x divide-[#64126D]/40">
@@ -1248,7 +1253,7 @@ export default function ProjectActivityAssignments({
 													(s) => s.id === addForm.sub_activity_id
 												)?.default_manhours || '–'
 											}
-											className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
+											className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
 										/>
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
@@ -1264,7 +1269,7 @@ export default function ProjectActivityAssignments({
 												}))
 											}
 											placeholder="Hrs"
-											className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 										/>
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
@@ -1280,7 +1285,7 @@ export default function ProjectActivityAssignments({
 												}))
 											}
 											placeholder="Qty"
-											className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 										/>
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
@@ -1293,7 +1298,7 @@ export default function ProjectActivityAssignments({
 													due_date: e.target.value,
 												}))
 											}
-											className="px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+											className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 										/>
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
@@ -1431,7 +1436,7 @@ export default function ProjectActivityAssignments({
 															manhours: e.target.value,
 														}))
 													}
-													className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+													className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 												/>
 											) : (
 												<span className="text-[#4A1254]">
@@ -1453,7 +1458,7 @@ export default function ProjectActivityAssignments({
 															quantity: e.target.value,
 														}))
 													}
-													className="w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+													className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 												/>
 											) : (
 												<span className="text-[#4A1254]">
@@ -1473,7 +1478,7 @@ export default function ProjectActivityAssignments({
 															due_date: e.target.value,
 														}))
 													}
-													className="px-1 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+													className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 												/>
 											) : (
 												<span className="text-[#4A1254]">

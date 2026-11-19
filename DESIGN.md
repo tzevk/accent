@@ -85,9 +85,28 @@ components:
     padding: '0 12px'
     height: '32px'
   top-navbar:
-    backgroundColor: 'linear-gradient(135deg, #64126d 0%, #86288f 100%)'
-    textColor: '{colors.surface-white}'
+    backgroundColor: '{colors.surface-white}'
+    textColor: '{colors.ink}'
+    borderColor: '{colors.purple-200}'
     height: '64px'
+  top-navbar-link:
+    backgroundColor: 'transparent'
+    textColor: '{colors.ink}'
+    typography: '{typography.nav-item}'
+    rounded: '{rounded.xl}'
+    padding: '6px 12px'
+  top-navbar-link-active:
+    backgroundColor: '{colors.purple-100}'
+    textColor: '{colors.brand-purple}'
+    typography: '{typography.nav-item}'
+    fontWeight: 600
+    rounded: '{rounded.xl}'
+    padding: '6px 12px'
+  top-navbar-dropdown:
+    backgroundColor: '{colors.surface-white}'
+    textColor: '{colors.ink}'
+    rounded: '{rounded.xl}'
+    shadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'
 ---
 
 # Design System: Accent
@@ -96,18 +115,18 @@ components:
 
 **Creative North Star: "The Persistent Navigation Spine."**
 
-Accent's shipped interface is an internal work tool: dense, flat, and organized around one fixed navigation spine. The current shell is the shadcn sidebar at the left — a white 16rem panel that collapses to a 3rem icon rail without losing state — paired with a separate, still-shipping legacy top navbar that carries broad section links and the Accent logo. Neither layer replaces the other in the build; new screens inherit both.
+Accent's shipped interface is an internal work tool: dense, flat, and organized around one fixed navigation spine. The current shell is the shadcn sidebar at the left — a white 16rem panel that collapses to a 3rem icon rail without losing state — paired with a separate top navigation bar that carries the Accent mark, the module links, and the permitted Reports and Admin menus. Neither layer replaces the other in the build; new screens inherit both.
 
-The palette is white plus five purple steps: deep brand purple for text, icons, active fills and primary buttons; lavender for selection and separators; a lighter purple for focus. Surfaces sit flat, corners use an 0.5rem base radius, and the icon language is Lucide at a single 16px stroke size inside the sidebar (the older navbar uses outline Heroicons at 20px). Page content uses the same purple on cards and headers, but this document records only rules that are actually reused across the shell.
+The palette is white plus five purple steps: deep brand purple for text, icons, active fills and primary buttons; lavender for selection and separators; a lighter purple for focus. Surfaces sit flat, corners use an 0.5rem base radius, and the icon language is Lucide at a single 16px stroke size inside the sidebar (the top bar uses Lucide for its chrome and outline Heroicons for menu item icons). Page content uses the same purple on cards and headers, but this document records only rules that are actually reused across the shell.
 
 **Key Characteristics:**
 
 - White sidebar shell with deep-purple text and icons; no dark mode (backgrounds are forced white).
 - Two widths only: 16rem expanded, 3rem collapsed icon rail (18rem mobile sheet).
 - Lavender selection fill with matching purple foreground; lilac 1px separators.
-- Flat surfaces; the only shell shadow is on the fixed top navbar.
+- Flat surfaces; the top bar is flat, and only its dropdown cards carry a shadow.
 - Poppins body face loaded in the root layout; Geist Mono for code and metrics.
-- Lucide icons in the sidebar; outline Heroicons in the legacy navbar.
+- Lucide icons in the sidebar and the top bar's chrome; outline Heroicons for top-bar menu items.
 
 ## Colors
 
@@ -115,9 +134,9 @@ The palette is a small purple ramp on white. Brand purple is the workhorse; the 
 
 ### Primary
 
-- **Accent Purple** (`#64126d` / `--purple-700`): Shadcn `--primary`, `--sidebar-foreground`, `--sidebar-primary` and `--sidebar-accent-foreground`; nav icons, nav labels, the footer avatar fill, primary buttons and the logged-hours chart series. It is the first stop of the top navbar gradient.
+- **Accent Purple** (`#64126d` / `--purple-700`): Shadcn `--primary`, `--sidebar-foreground`, `--sidebar-primary` and `--sidebar-accent-foreground`; nav icons, nav labels, the footer avatar fill, primary buttons and the logged-hours chart series.
 - **Pressed Purple** (`#52105a` / `--purple-800`): Hover state of the solid primary button only.
-- **Focus Purple** (`#86288f` / `--ring`, `--sidebar-ring`): Focus ring on sidebar rows and controls; second stop of the top navbar gradient.
+- **Focus Purple** (`#86288f` / `--ring`, `--sidebar-ring`): Focus ring on sidebar rows, top-bar links, and controls.
 
 ### Secondary
 
@@ -148,11 +167,11 @@ Chart series tokens, defined alongside the semantic colors: logged `#64126d`, ca
 
 ### Hierarchy
 
-- **Body** (400, 15px at ≥1280 per the legacy responsive rule; 16px otherwise): Page copy and form text.
-- **Nav item** (500, 14px / `text-sm`): Sidebar menu rows and the legacy navbar links (`xl:text-base` at extra-large widths).
+- **Body** (400, 15px at ≥1280 per the responsive rule; 16px otherwise): Page copy and form text.
+- **Nav item** (500, 14px / `text-sm`): Sidebar menu rows and top-bar links.
 - **Label** (500, 12px / `text-xs`): Sidebar group labels (`text-sidebar-foreground/70`), account name, badges, tooltips.
 - **Fine print** (400, 12px / `text-xs`): Account email in the sidebar footer.
-- **Nav heading** (600, 12px, uppercase, wide tracking): Section headings in the legacy navbar's mobile menu only.
+- **Nav heading** (600, 12px, uppercase, wide tracking): Section headings in the top bar's Reports/Admin panels and mobile sheet.
 
 **The Single Body Face Rule.** Poppins is the body default; Geist Mono is reserved for code and metrics. Do not set a second body family in a screen stylesheet.
 
@@ -160,21 +179,28 @@ Chart series tokens, defined alongside the semantic colors: logged `#64126d`, ca
 
 The desktop shell reserves a 64px band at the top for the fixed navbar (`h-16`, `scroll-padding-top: 64px`). The shadcn sidebar begins at `top: 64px` and runs to `calc(100svh - 4rem)`, so the two layers never overlap. Its expanded width is 16rem (256px); collapsed width is 3rem (48px); the mobile sheet is 18rem (288px). The panel state is persisted in a 7-day `sidebar_state` cookie, toggleable with the header trigger, the rail, or Cmd/Ctrl+B.
 
+At `md` and above, the Accent mark and sidebar toggle share the collapsed rail's centerline. The navbar stays full width, and both shell dividers use the same lilac.
+The navbar lifts the mark artwork by 4px to offset the asset's transparent top padding. The link and navigation controls stay in place.
+
 Vertical rhythm is 8px-based: header and footer `p-2`, menu padding `p-2`, 32px menu rows (`h-8`), 28px submenu rows (`h-7`), 32px group labels (`h-8`). The Masters submenu indents with `mx-3.5` and a left border, and hides entirely in icon mode. The footer is separated by a 1px `border-t`. Open content offsets by 64px for the navbar, and the task panel sits at `left: 256px` while the sidebar is expanded.
 
-Responsive behavior is structural: below `md` the desktop panel is hidden and navigation arrives as a slide-in sheet; the legacy navbar keeps the logo and bell, replacing desktop links with a hamburger. Between `md` and `xl` the sidebar is present while navbar section links stay collapsed into the mobile menu.
+Responsive behavior is structural: below `md` the desktop panel is hidden and navigation arrives as a slide-in sheet; the top bar keeps the Accent mark, the dark-mode placeholder, the notification bell and the menu trigger. Between `md` and `lg` the sidebar is present while top-bar section links stay collapsed into the sheet.
+
+The Proposals and Projects lists follow the Leads page gutters and panel height. Filters wrap, and counters respond to the space left by the sidebar. Horizontal scrolling belongs to the results tables and project calendar, not the page.
+
+The user dashboard uses the same page gutters. Its attendance tiles adapt to the content width, and the activity editor keeps its columns inside a keyboard-scrollable table.
 
 **The Persistent Spine Rule.** One panel, two widths — 16rem or 3rem — with state preserved across reloads. No hover-reveal rail or competing flyout in the sidebar; the only expandable group is Masters.
 
 ## Elevation & Depth
 
-The sidebar is flat at rest and in every state: selection is tonal, not lifted. Depth in the shell belongs to the legacy top navbar (`shadow-lg`, becoming `shadow-xl backdrop-blur-lg` when scrolled) and to floating dropdowns and page cards (`rounded-xl`, `shadow-xl`, 1px `border-gray-100`). Collapsed-rail tooltips are dark on `--foreground` with a 6px corner, not elevated cards.
+The sidebar is flat at rest and in every state: selection is tonal, not lifted. The top bar is flat too. Depth in the shell belongs to its floating dropdown cards and to page cards (`rounded-xl`, `shadow-xl`, 1px lilac ring). Collapsed-rail tooltips are dark on `--foreground` with a 6px corner, not elevated cards.
 
 **The Flat-By-Default Rule.** Do not add shadows to sidebar rows, groups or the panel. If a surface needs separation from white, use `--sidebar-border` or the lavender selection fill.
 
 ## Shapes
 
-The radius base is 0.5rem (8px, `--radius`), with derived steps of 4px (`sm`), 6px (`md`), 8px (`lg`) and 12px (`xl`). Menu rows, submenu rows, group labels, badges, tooltips and buttons use the 6px `rounded-md` step; the account avatar is a 32px circle; the fixed navbar's dropdown panels and page cards use 12px. Lines are single pixels in lilac; the collapsed rail shows a 2px hover bar at its edge.
+The radius base is 0.5rem (8px, `--radius`), with derived steps of 4px (`sm`), 6px (`md`), 8px (`lg`) and 12px (`xl`). Menu rows, submenu rows, group labels, badges, tooltips and buttons use the 6px `rounded-md` step; the account avatar is a 32px circle; the top bar's links, its dropdown panels, and page cards use 12px. Lines are single pixels in lilac; the collapsed rail shows a 2px hover bar at its edge.
 
 **The Eight-Pixel Base Rule.** New shell surfaces derive their corners from `--radius`; do not introduce a separate radius scale.
 
@@ -208,7 +234,14 @@ The radius base is 0.5rem (8px, `--radius`), with derived steps of 4px (`sm`), 6
 ### Navigation
 
 - **Sidebar (shadcn, current):** `collapsible="icon"`, left, fixed below the navbar. Pages group holds Dashboard, Messages, Tasks (toggles the task panel), Support Tickets, Timesheet and admin-only Manage Tickets. Masters is a collapsed-by-default group of permission-filtered record lists; it opens automatically on master routes. Reports is not a sidebar group. Icons are Lucide at one 16px stroke size.
-- **Top navbar (legacy, still shipping):** fixed, `z-50`, 64px tall, 135° gradient from `#64126d` to `#86288f` (translucent stops when scrolled), white logo tile, white / white-90 links with rgba-white active and hover washes, a 20px outline-Heroicons icon set, and a hamburger + bell below `xl`. Active and hover rows use `rounded-xl`; dropdown panels are white with a shadow.
+- **Top bar (shadcn navigation menu):** fixed, `z-50`, 64px tall, white with a 1px lilac bottom border. The Accent mark links to `/dashboard`; Dashboard, Leads, Proposals and Projects are plain links. Reports and Admin are hover/click menus rendered in a 12px white card: Reports is a one-column list of permitted report links; Admin is a three-column grouping of every permitted admin group. Links are 14px Poppins; active and open states use the lavender fill and brand purple. The right side holds an inert dark-mode control and the notification bell. Below `lg` the module links collapse into a right-side sheet with the same items, with Reports and Admin as accordions. The mark is `public/accent-mark.png`, cropped from the existing `public/accent-logo.png`; its white background was cleared to alpha.
+
+### Top bar rows
+
+- **Rest:** transparent, ink text at 75% opacity, 14px medium, 12px radius, `px-3 py-1.5`; hover fills lavender with brand-purple text.
+- **Active / open:** lavender fill, brand-purple text, semibold; the open trigger rotates its chevron. The current sub-item adds the same lavender fill.
+- **Dropdown card:** white, 12px radius, 1px lilac ring, `shadow-xl`, 8px below the 64px bar; Reports is 380px wide, Admin 860px with a 3-column grid and internal scroll on short viewports.
+- **Mobile sheet:** right-side, up to 340px on phones and 380px from `sm`, white, with the Accent mark, the module links, the Reports and Admin accordions, the permitted Pages list, then Sign Out pinned by a top border.
 
 ### Tooltips
 
@@ -222,12 +255,15 @@ The radius base is 0.5rem (8px, `--radius`), with derived steps of 4px (`sm`), 6
 - **Do** use `--sidebar-accent` (`#f3e8ff`) with `--sidebar-accent-foreground` (`#64126d`) for hover, open and active rows.
 - **Do** keep sidebar icons Lucide at `size-4` (16px), one stroke weight.
 - **Do** derive corners from the 0.5rem `--radius` base and keep sidebar surfaces flat.
-- **Do** keep navigation permission-filtered, preserve existing hrefs, and leave Reports in the top navbar.
+- **Do** keep navigation permission-filtered, preserve existing hrefs, and leave Reports in the top bar.
+- **Do** keep the top bar flat white with a lilac border; top-level links and dropdown cards use the 12px radius, and only the dropdown cards and mobile sheet carry a shadow.
+- **Do** keep the dark-mode control present but inert until the app ships a dark palette.
 
 ### Don't:
 
-- **Don't** add a Reports group to the sidebar; Reports belongs to the legacy top navbar in this build.
+- **Don't** add a Reports group to the sidebar; Reports belongs to the top bar in this build.
 - **Don't** introduce a hover-rail / flyout hybrid or a second expandable sidebar group; the spine holds one 16rem-or-3rem state.
 - **Don't** switch the shell to dark surfaces — the app is light-only and backgrounds are forced white.
-- **Don't** use Heroicons inside the shadcn sidebar; that outline set belongs to the legacy navbar.
+- **Don't** use Heroicons inside the shadcn sidebar; the top bar owns that outline set for its menu items.
+- **Don't** restore the purple gradient band or a scrolled shadow on the top bar.
 - **Don't** add shadows to sidebar rows or panels, or a second body font family to screen styles.

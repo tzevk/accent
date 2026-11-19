@@ -132,6 +132,8 @@ Validation: `employee_id` must be a positive integer, `month` must match `^\d{4}
 
 Two `SearchableSelect` dropdowns: **Employee** (name + employee code, searchable) and **Month/Year**, plus Refresh and Export Excel buttons. Defaults applied once when meta arrives (first employee, `latest_month`).
 
+The report uses the same page gutters and panel height as Projects. Filters wrap inside the panel. The workbook grid keeps its fixed column layout; only the grid scrolls horizontally.
+
 ### Sheet
 
 An Arial `text-[10px]` bordered grid (`border-black`, `min-w-[1950px]`):
