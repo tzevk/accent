@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import { useSessionRBAC } from '@/utils/client-rbac';
-import { clearSessionCache } from '@/context/SessionContext';
+import { logout } from '@/lib/logout';
 
 export default function ProfilePage() {
 	const { loading, user } = useSessionRBAC();
@@ -65,11 +65,11 @@ export default function ProfilePage() {
 	};
 
 	const handleLogout = async () => {
-		clearSessionCache();
-		try {
-			await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-		} catch {}
-		window.location.href = '/signin';
+		setError('');
+		const outcome = await logout();
+		if (outcome.status === 'failed') {
+			setError(`Could not sign out: ${outcome.message}`);
+		}
 	};
 
 	if (loading)

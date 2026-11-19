@@ -16,6 +16,10 @@ import mysql from 'mysql2/promise';
 // cover this pool *plus* the app pool for every instance (ADR-0011).
 const CONNECTION_LIMIT = Number(process.env.PROXY_DB_CONNECTION_LIMIT || 2);
 
+// mysql2 only starts its idle reaper when maxIdle is below connectionLimit.
+// Preserve the two-idle-connection cap for larger configured pools.
+const MAX_IDLE = Math.max(0, Math.min(2, CONNECTION_LIMIT - 1));
+
 /** One result row; callers narrow the fields they read. */
 export type ProxyRow = Record<string, unknown>;
 
@@ -81,7 +85,7 @@ function getPool(): mysql.Pool {
 			queueLimit: 50,
 			connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT || 10000),
 			dateStrings: true,
-			maxIdle: 2,
+			maxIdle: MAX_IDLE,
 			idleTimeout: 30000,
 			enableKeepAlive: true,
 			keepAliveInitialDelay: 10000,

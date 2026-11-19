@@ -204,7 +204,7 @@ export default function Proposals() {
 
 	if (!rbacLoading && !canViewProposals) {
 		return (
-			<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+			<div className="min-h-[calc(100dvh-4rem)] bg-gradient-to-br from-gray-50 to-gray-100">
 				<Navbar />
 				<div className="px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-8 pt-6 max-w-[1800px] mx-auto">
 					<div className="flex items-center justify-center h-[calc(100vh-120px)]">
@@ -224,11 +224,11 @@ export default function Proposals() {
 	}
 
 	return (
-		<div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+		<div className="flex h-[calc(100dvh-4rem)] flex-col bg-gray-50">
 			<Navbar />
 
 			{/* Fixed header section */}
-			<div className="flex-shrink-0 pt-6 px-6 lg:px-8 xl:px-12 2xl:px-16 pb-4 max-w-[1920px] mx-auto w-full">
+			<div className="mx-auto w-full max-w-[1920px] shrink-0 px-4 pt-6 pb-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
 				<div className="mb-6">
 					<h1 className="text-3xl xl:text-4xl font-bold text-black mb-2">
 						Proposals Management
@@ -239,8 +239,8 @@ export default function Proposals() {
 				</div>
 
 				{/* Tab Navigation - Fixed */}
-				<div className="flex border-b border-gray-200 bg-white rounded-t-lg px-6 pt-4">
-					<button className="px-6 py-3 text-sm font-medium border-b-2 border-black text-black bg-gray-50 rounded-t-md transition-colors">
+				<div className="flex rounded-t-lg border-b border-gray-200 bg-white px-4 pt-4 sm:px-6">
+					<button className="rounded-t-md border-b-2 border-black bg-gray-50 px-4 py-3 text-sm font-medium text-black transition-colors sm:px-6">
 						<DocumentTextIcon className="h-5 w-5 inline mr-2" />
 						All Proposals ({proposals.length})
 					</button>
@@ -248,12 +248,12 @@ export default function Proposals() {
 			</div>
 
 			{/* Scrollable content area */}
-			<div className="flex-1 overflow-y-auto">
-				<div className="bg-white rounded-t-lg shadow-sm min-h-full max-w-[1920px] mx-auto">
+			<div className="mx-auto min-h-0 w-full max-w-[1920px] flex-1 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+				<div className="@container/proposals h-full overflow-y-auto rounded-b-lg bg-white">
 					{/* Search and Filters */}
-					<div className="px-6 pt-6 pb-4 border-b border-gray-200">
-						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
-							<div className="flex-1 max-w-lg">
+					<div className="border-b border-gray-200 p-4">
+						<div className="flex flex-wrap items-center gap-3">
+							<div className="min-w-0 grow basis-64">
 								<div className="relative">
 									<MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
 									<input
@@ -266,8 +266,8 @@ export default function Proposals() {
 								</div>
 							</div>
 
-							<div className="flex items-center space-x-3">
-								<div className="flex items-center space-x-2">
+							<div className="flex max-w-full flex-wrap items-center gap-3">
+								<div className="flex items-center gap-2">
 									<FunnelIcon className="h-5 w-5 text-gray-400" />
 									<select
 										value={statusFilter}
@@ -304,9 +304,9 @@ export default function Proposals() {
 					</div>
 
 					{/* Stats Cards */}
-					<div className="px-6 py-6">
-						<div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-							<div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+					<div className="space-y-6 p-4">
+						<div className="grid grid-cols-1 gap-4 @sm/proposals:grid-cols-2 @4xl/proposals:grid-cols-4">
+							<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
 								<div className="flex items-center">
 									<div className="p-2 bg-blue-100 rounded-lg">
 										<DocumentTextIcon className="h-6 w-6 text-blue-600" />
@@ -322,7 +322,7 @@ export default function Proposals() {
 								</div>
 							</div>
 
-							<div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+							<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
 								<div className="flex items-center">
 									<div className="p-2 bg-yellow-100 rounded-lg">
 										<DocumentTextIcon className="h-6 w-6 text-yellow-600" />
@@ -336,7 +336,7 @@ export default function Proposals() {
 								</div>
 							</div>
 
-							<div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+							<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
 								<div className="flex items-center">
 									<div className="p-2 bg-green-100 rounded-lg">
 										<DocumentTextIcon className="h-6 w-6 text-green-600" />
@@ -352,7 +352,7 @@ export default function Proposals() {
 								</div>
 							</div>
 
-							<div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+							<div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
 								<div className="flex items-center">
 									<div className="p-2 bg-red-100 rounded-lg">
 										<DocumentTextIcon className="h-6 w-6 text-red-600" />
@@ -371,7 +371,12 @@ export default function Proposals() {
 
 						{/* Table */}
 						<div className="bg-white shadow-sm border border-gray-200 rounded-lg overflow-hidden">
-							<div className="overflow-x-auto">
+							<div
+								className="overflow-x-auto"
+								role="region"
+								aria-label="Proposal results"
+								tabIndex={0}
+							>
 								<table className="min-w-full divide-y divide-gray-200">
 									<thead className="bg-gray-50">
 										<tr>
@@ -395,7 +400,7 @@ export default function Proposals() {
 									<tbody className="bg-white divide-y divide-gray-200">
 										{loading ? (
 											<tr>
-												<td colSpan="6" className="px-6 py-4 text-center">
+												<td colSpan="5" className="px-6 py-4 text-center">
 													<div className="flex items-center justify-center">
 														<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#64126D]"></div>
 														<span className="ml-2 text-gray-500">
@@ -406,7 +411,7 @@ export default function Proposals() {
 											</tr>
 										) : filteredProposals.length === 0 ? (
 											<tr>
-												<td colSpan="6" className="px-6 py-12 text-center">
+												<td colSpan="5" className="px-6 py-12 text-center">
 													<DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
 													<h3 className="mt-2 text-sm font-medium text-gray-900">
 														No proposals
@@ -420,14 +425,14 @@ export default function Proposals() {
 										) : (
 											filteredProposals.map((proposal) => (
 												<tr key={proposal.id} className="hover:bg-gray-50">
-													<td className="px-6 py-4 whitespace-nowrap">
+													<td className="px-6 py-4 wrap-anywhere">
 														<div className="flex items-center">
 															<div className="flex-shrink-0 h-10 w-10">
 																<div className="h-10 w-10 rounded-lg bg-[#64126D] flex items-center justify-center">
 																	<DocumentTextIcon className="h-6 w-6 text-white" />
 																</div>
 															</div>
-															<div className="ml-4">
+															<div className="ms-4 min-w-0">
 																<div className="text-sm font-medium text-gray-900">
 																	{proposal.proposal_id ||
 																		proposal.proposal_number ||
@@ -441,7 +446,7 @@ export default function Proposals() {
 															</div>
 														</div>
 													</td>
-													<td className="px-6 py-4 whitespace-nowrap">
+													<td className="px-6 py-4 wrap-anywhere">
 														<div className="text-sm text-gray-900">
 															{proposal.client_name || proposal.client || '—'}
 														</div>
@@ -523,7 +528,7 @@ export default function Proposals() {
 
 						{/* Pagination */}
 						{filteredProposals.length > 0 && (
-							<div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 mt-6 rounded-lg shadow-sm">
+							<div className="flex items-center justify-between rounded-lg border-t border-gray-200 bg-white px-4 py-3 shadow-sm sm:px-6">
 								<div className="flex-1 flex justify-between sm:hidden">
 									<button className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
 										Previous

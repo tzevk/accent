@@ -494,25 +494,22 @@ function ProjectsInner() {
 	};
 
 	return (
-		<div className="relative h-screen flex flex-col overflow-hidden bg-gray-50">
+		<div className="relative flex h-[calc(100dvh-4rem)] flex-col bg-gray-50">
 			<Navbar />
-			<div className="flex-1 overflow-hidden">
-				<div className="h-full overflow-y-auto">
-					<div className="px-6 lg:px-8 xl:px-12 2xl:px-16 pt-6 pb-8 max-w-[1920px] mx-auto w-full">
-						{/* Header */}
-						<div className="mb-8">
-							<div className="flex items-start justify-between gap-4">
-								<div>
-									<h1 className="text-3xl xl:text-4xl font-bold text-gray-900 mb-2">
-										Projects
-									</h1>
-									<p className="text-sm xl:text-base text-gray-600">
-										Manage and track your client projects
-									</p>
-								</div>
-							</div>
-							{/* Quick Stats */}
-							<div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 xl:gap-6">
+			<div className="mx-auto w-full max-w-[1920px] shrink-0 px-4 pt-6 pb-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+				<h1 className="mb-2 text-3xl font-bold text-gray-900 xl:text-4xl">
+					Projects
+				</h1>
+				<p className="text-gray-600 xl:text-lg">
+					Manage and track your client projects
+				</p>
+			</div>
+			<div className="mx-auto min-h-0 w-full max-w-[1920px] flex-1 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+				<div className="@container/projects h-full overflow-y-auto rounded-lg bg-white">
+					<div className="space-y-6 p-4">
+						{/* Quick Stats */}
+						<div>
+							<div className="grid grid-cols-1 gap-4 @sm/projects:grid-cols-2 @4xl/projects:grid-cols-4">
 								<div
 									className="bg-white border border-purple-200 rounded-lg p-5 cursor-pointer hover:border-purple-400 transition-colors"
 									onClick={() => {
@@ -583,7 +580,7 @@ function ProjectsInner() {
 											<p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
 												Total Budget
 											</p>
-											<p className="text-2xl font-bold text-gray-900">
+											<p className="text-2xl font-bold text-gray-900 wrap-anywhere">
 												{formatCurrency(stats.budgetTotal)}
 											</p>
 										</div>
@@ -596,7 +593,7 @@ function ProjectsInner() {
 						</div>
 
 						{/* Tabs */}
-						<div className="mb-6">
+						<div>
 							<div
 								role="tablist"
 								aria-label="Projects views"
@@ -690,9 +687,9 @@ function ProjectsInner() {
 							{activeTab === 'list' && (
 								<div className="space-y-6">
 									{/* Action Bar */}
-									<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-blur delay-200">
-										<div className="flex-1 flex items-center gap-3">
-											<div className="relative w-full max-w-md">
+									<div className="rounded-lg border border-gray-200 p-4">
+										<div className="flex flex-wrap items-center gap-3">
+											<div className="relative min-w-0 grow basis-64">
 												<input
 													value={query}
 													onChange={(e) => setQuery(e.target.value)}
@@ -744,8 +741,8 @@ function ProjectsInner() {
 									</div>
 
 									{showFilters && (
-										<div className="mt-4 bg-white border border-gray-200 rounded-lg p-6">
-											<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+										<div className="rounded-lg border border-gray-200 bg-white p-4">
+											<div className="grid grid-cols-1 gap-4 @xl/projects:grid-cols-3">
 												<div>
 													<label className="block text-sm font-medium text-gray-700 mb-2">
 														Status
@@ -858,7 +855,12 @@ function ProjectsInner() {
 												</h3>
 											</div>
 										) : (
-											<div className="overflow-x-auto">
+											<div
+												className="overflow-x-auto"
+												role="region"
+												aria-label="Project results"
+												tabIndex={0}
+											>
 												<table className="min-w-full divide-y divide-gray-200">
 													<thead className="bg-gray-50">
 														<tr>
@@ -1037,10 +1039,10 @@ function ProjectsInner() {
 																			</span>
 																		)}
 																	</td>
-																	<td className="px-4 py-3">
+																	<td className="px-4 py-3 wrap-anywhere">
 																		<div>
 																			<div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-																				<span className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold bg-purple-100 text-purple-700">
+																				<span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-xs font-bold text-purple-700">
 																					{(project.name || '?')
 																						.slice(0, 1)
 																						.toUpperCase()}
@@ -1060,7 +1062,7 @@ function ProjectsInner() {
 																			</div>
 																		</div>
 																	</td>
-																	<td className="px-4 py-3">
+																	<td className="px-4 py-3 wrap-anywhere">
 																		<div className="text-sm font-medium text-gray-900">
 																			{project.client_name ||
 																				project.company_name ||
@@ -1190,7 +1192,8 @@ function ProjectsInner() {
 																					<EyeIcon className="h-4 w-4" />
 																				</button>
 																			)}
-																			{(project.rights?.editableSections?.length || 0) > 0 && (
+																			{(project.rights?.editableSections
+																				?.length || 0) > 0 && (
 																				<button
 																					onClick={() =>
 																						router.push(
@@ -1205,9 +1208,7 @@ function ProjectsInner() {
 																			)}
 																			{canRowPerform(project, 'delete') && (
 																				<button
-																					onClick={() =>
-																						handleDelete(project)
-																					}
+																					onClick={() => handleDelete(project)}
 																					className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
 																					title="Delete Project"
 																				>
@@ -1271,8 +1272,13 @@ function ProjectsInner() {
 										</div>
 									</div>
 
-									<div className="glass-panel rounded-lg overflow-hidden">
-										<div className="grid grid-cols-7 gap-px bg-gray-200">
+									<div
+										className="glass-panel overflow-x-auto rounded-lg"
+										role="region"
+										aria-label="Project calendar"
+										tabIndex={0}
+									>
+										<div className="grid min-w-[42rem] grid-cols-7 gap-px bg-gray-200">
 											{weekDays.map((day) => (
 												<div
 													key={`heading-${format(day, 'yyyy-MM-dd')}`}
@@ -1296,7 +1302,7 @@ function ProjectsInner() {
 															muted ? 'bg-gray-50 text-gray-400' : 'text-black'
 														} ${isSelected ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-white' : ''}`}
 													>
-														<div className="flex items-start justify-between">
+														<div className="flex flex-wrap items-start justify-between gap-1">
 															<div
 																className={`text-sm font-semibold ${muted ? 'text-gray-400' : 'text-black'}`}
 															>
@@ -1336,7 +1342,7 @@ function ProjectsInner() {
 																	>
 																		{project.client_name}
 																	</p>
-																	<div className="mt-1 flex items-center justify-between">
+																	<div className="mt-1 flex flex-wrap items-center justify-between gap-1 wrap-anywhere">
 																		<span
 																			className={`text-[10px] font-medium ${getPriorityColor(project.priority)}`}
 																		>
@@ -1365,9 +1371,9 @@ function ProjectsInner() {
 							{activeTab === 'planning' && (
 								<div className="space-y-4">
 									<div className="glass-panel rounded-lg p-6 hover:shadow-md transition-shadow">
-										<div className="flex items-start justify-between mb-4">
-											<div className="flex items-center gap-3">
-												<div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+										<div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+											<div className="flex min-w-0 items-center gap-3">
+												<div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-50">
 													<CalendarIcon className="h-5 w-5 text-blue-600" />
 												</div>
 												<div>
@@ -1383,13 +1389,13 @@ function ProjectsInner() {
 												2 items
 											</span>
 										</div>
-										<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-											<div className="flex items-center gap-3">
+										<div className="flex flex-col items-start gap-4">
+											<div className="flex w-full max-w-md items-center gap-3">
 												<label className="text-xs text-gray-500">Project</label>
 												<select
 													value={docProjectId ?? ''}
 													onChange={(e) => setDocProjectId(e.target.value)}
-													className="px-3 py-1 text-sm border border-gray-200 rounded-md"
+													className="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-1 text-sm"
 												>
 													{projects.map((p) => (
 														<option
@@ -1404,7 +1410,7 @@ function ProjectsInner() {
 												</select>
 											</div>
 
-											<div>
+											<div className="w-full">
 												{docsLoading ? (
 													<div className="text-sm text-gray-500">
 														Loading documents…
@@ -1414,7 +1420,7 @@ function ProjectsInner() {
 														{projectDocs.map((d) => (
 															<li
 																key={d.id}
-																className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-md px-3 py-2"
+																className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 wrap-anywhere"
 															>
 																<div>
 																	<div className="text-sm font-medium text-gray-900">
@@ -1456,7 +1462,7 @@ function ProjectsInner() {
 												)}
 											</div>
 
-											<div className="md:ml-4">
+											<div>
 												<button
 													onClick={() =>
 														router.push(`/projects/${docProjectId}`)
@@ -1476,9 +1482,9 @@ function ProjectsInner() {
 							{activeTab === 'documentation' && (
 								<div className="space-y-4">
 									<div className="glass-panel rounded-lg p-6 hover:shadow-md transition-shadow">
-										<div className="flex items-start justify-between mb-4">
-											<div className="flex items-center gap-3">
-												<div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+										<div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+											<div className="flex min-w-0 items-center gap-3">
+												<div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-purple-50">
 													<FolderIcon className="h-5 w-5 text-purple-600" />
 												</div>
 												<div>
@@ -1506,9 +1512,9 @@ function ProjectsInner() {
 							{activeTab === 'meetings' && (
 								<div className="space-y-4">
 									<div className="glass-panel rounded-lg p-6 hover:shadow-md transition-shadow">
-										<div className="flex items-start justify-between mb-4">
-											<div className="flex items-center gap-3">
-												<div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+										<div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+											<div className="flex min-w-0 items-center gap-3">
+												<div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-green-50">
 													<CalendarIcon className="h-5 w-5 text-green-600" />
 												</div>
 												<div>
@@ -1548,7 +1554,7 @@ function ProjectsInner() {
 												Interactive
 											</span>
 										</div>
-										<div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
+										<div className="grid grid-cols-1 gap-4 @3xl/projects:grid-cols-3 @7xl/projects:grid-cols-6">
 											{BOARD_COLUMNS.map((col) => (
 												<div
 													key={col.id}

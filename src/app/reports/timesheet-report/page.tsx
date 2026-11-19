@@ -179,7 +179,7 @@ function TimesheetReportPageInner() {
 
 	if (authLoading) {
 		return (
-			<div className="min-h-screen bg-white">
+			<div className="min-h-[calc(100dvh-4rem)] bg-gray-50">
 				<Navbar />
 				<div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-500">
 					Loading…
@@ -190,7 +190,7 @@ function TimesheetReportPageInner() {
 
 	if (!hasAccess) {
 		return (
-			<div className="min-h-screen bg-white">
+			<div className="min-h-[calc(100dvh-4rem)] bg-gray-50 px-4">
 				<Navbar />
 				<div className="flex min-h-[50vh] items-center justify-center">
 					<div className="text-center">
@@ -206,20 +206,22 @@ function TimesheetReportPageInner() {
 	}
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="flex h-[calc(100dvh-4rem)] flex-col bg-gray-50 print:block print:h-auto print:bg-white">
 			<Navbar />
-			<main className="px-1 pb-8 pt-1 sm:px-2">
-				{/* Compact controls stay outside the paper, like the workbook controls are outside the sheet. */}
-				<div className="mx-auto mb-1 flex max-w-[1550px] flex-wrap items-center justify-between gap-2 print:hidden">
-					<div className="flex flex-wrap items-center gap-2 text-[11px]">
-						<span className="font-bold text-gray-700">Monthly Time Sheet</span>
+			<div className="mx-auto w-full max-w-[1920px] shrink-0 px-4 pt-6 pb-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 print:hidden">
+				<h1 className="text-3xl font-bold text-gray-900 xl:text-4xl">
+					Monthly Time Sheet
+				</h1>
+			</div>
+			<div className="mx-auto min-h-0 w-full max-w-[1920px] flex-1 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 print:max-w-none print:px-0">
+				<div className="@container/report h-full overflow-y-auto rounded-lg bg-white print:h-auto print:overflow-visible">
+					<div className="flex flex-wrap items-center gap-3 border-b border-gray-200 p-4 print:hidden">
 						<SearchableSelect
 							options={employeeOptions}
 							value={employeeId}
 							onChange={(val) => setEmployeeId(String(val))}
 							placeholder="Select an employee"
-							className="min-w-[210px]"
-							buttonClassName="h-7 rounded-none border-gray-400 text-[11px]"
+							className="min-w-0 grow basis-52"
 							aria-label="Employee"
 						/>
 						<SearchableSelect
@@ -227,59 +229,64 @@ function TimesheetReportPageInner() {
 							value={month}
 							onChange={(val) => setMonth(String(val))}
 							placeholder="Select a month"
-							className="min-w-[130px]"
-							buttonClassName="h-7 rounded-none border-gray-400 text-[11px]"
+							className="min-w-0 grow basis-40"
 							aria-label="Month"
 						/>
+						<div className="flex flex-wrap items-center gap-2">
+							<button
+								type="button"
+								onClick={() => dataQuery.refetch()}
+								disabled={isLoading}
+								className="inline-flex min-h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+							>
+								<ArrowPathIcon className="size-4" />
+								Refresh
+							</button>
+							<button
+								type="button"
+								onClick={handleExport}
+								disabled={!data || exporting}
+								className="inline-flex min-h-9 items-center gap-2 rounded-md bg-[#64126D] px-3 py-1.5 text-sm text-white hover:bg-[#52105a] disabled:opacity-50"
+							>
+								<DocumentArrowDownIcon className="size-4" />
+								{exporting ? 'Exporting…' : 'Export Excel'}
+							</button>
+						</div>
 					</div>
-					<div className="flex items-center gap-1">
-						<button
-							type="button"
-							onClick={() => dataQuery.refetch()}
-							disabled={isLoading}
-							className="inline-flex h-7 items-center gap-1 border border-gray-400 bg-white px-2 text-[11px] text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-						>
-							<ArrowPathIcon className="h-3 w-3" />
-							Refresh
-						</button>
-						<button
-							type="button"
-							onClick={handleExport}
-							disabled={!data || exporting}
-							className="inline-flex h-7 items-center gap-1 border border-[#64126D] bg-[#64126D] px-2 text-[11px] text-white hover:bg-[#7F2487] disabled:opacity-50"
-						>
-							<DocumentArrowDownIcon className="h-3 w-3" />
-							{exporting ? 'Exporting…' : 'Export Excel'}
-						</button>
+					<div className="p-4 @lg/report:p-6 print:p-0">
+						{error ? (
+							<div className="rounded-lg border border-red-300 bg-red-50 p-4 text-center text-sm text-red-700 wrap-anywhere">
+								<p className="font-semibold">Couldn&apos;t load the report</p>
+								<p className="mt-1">{error}</p>
+								<button
+									type="button"
+									onClick={() => dataQuery.refetch()}
+									className="mt-3 border border-red-600 bg-red-600 px-3 py-1 text-xs text-white"
+								>
+									Retry
+								</button>
+							</div>
+						) : isLoading ? (
+							<div className="flex min-h-[300px] items-center justify-center p-4 text-center text-sm text-gray-500">
+								Loading timesheet…
+							</div>
+						) : !data ? (
+							<div className="flex min-h-[300px] items-center justify-center rounded-lg border border-gray-200 p-4 text-center text-sm text-gray-500">
+								Select an employee and month to view their timesheet.
+							</div>
+						) : (
+							<div
+								className="overflow-x-auto print:overflow-visible"
+								role="region"
+								aria-label="Monthly timesheet grid"
+								tabIndex={0}
+							>
+								<TimesheetGrid data={data} employee={selectedEmployee} />
+							</div>
+						)}
 					</div>
 				</div>
-
-				{error ? (
-					<div className="mx-auto max-w-[1550px] border border-red-300 bg-red-50 p-4 text-center text-sm text-red-700">
-						<p className="font-semibold">Couldn&apos;t load the report</p>
-						<p className="mt-1">{error}</p>
-						<button
-							type="button"
-							onClick={() => dataQuery.refetch()}
-							className="mt-3 border border-red-600 bg-red-600 px-3 py-1 text-xs text-white"
-						>
-							Retry
-						</button>
-					</div>
-				) : isLoading ? (
-					<div className="mx-auto flex min-h-[300px] max-w-[1550px] items-center justify-center text-sm text-gray-500">
-						Loading timesheet…
-					</div>
-				) : !data ? (
-					<div className="mx-auto flex min-h-[300px] max-w-[1550px] items-center justify-center border border-gray-300 text-sm text-gray-500">
-						Select an employee and month to view their timesheet.
-					</div>
-				) : (
-					<div className="mx-auto max-w-[1550px] overflow-x-auto">
-						<TimesheetGrid data={data} employee={selectedEmployee} />
-					</div>
-				)}
-			</main>
+			</div>
 		</div>
 	);
 }

@@ -98,7 +98,8 @@ export async function dbConnect() {
 					queueLimit: 200, // Queue requests during high load instead of throwing
 					connectTimeout,
 					dateStrings: true,
-					maxIdle: 2, // Only keep 2 idle connections — release the rest quickly
+					// mysql2 enables idle cleanup only below the connection limit.
+					maxIdle: Math.max(0, Math.min(2, connectionLimit - 1)),
 					idleTimeout: 30000, // 30s idle before teardown (was 120s)
 					enableKeepAlive: true,
 					keepAliveInitialDelay: 10000,

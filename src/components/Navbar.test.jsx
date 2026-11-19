@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+	within,
+} from '@testing-library/react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,6 +15,8 @@ const rbacMock = vi.hoisted(() => ({
 	payrollRead: true,
 	adminRead: true,
 	projectsRead: false,
+	admin: { id: 1, is_super_admin: 1, email: 'admin@example.com' },
+	member: { id: 42, is_super_admin: 0, email: 'member@example.com' },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -20,10 +28,7 @@ vi.mock('@/components/NotificationsBell', () => ({ default: () => null }));
 vi.mock('@/utils/client-rbac', () => ({
 	useSessionRBAC: () => ({
 		loading: false,
-		user: {
-			is_super_admin: rbacMock.superAdmin ? 1 : 0,
-			email: 'admin@example.com',
-		},
+		user: rbacMock.superAdmin ? rbacMock.admin : rbacMock.member,
 		can: (resource, permission) =>
 			permission === 'read' &&
 			((resource === 'payroll' && rbacMock.payrollRead) ||
@@ -35,29 +40,38 @@ vi.mock('@/utils/client-rbac', () => ({
 }));
 
 import Navbar from '@/components/Navbar';
+
 vi.stubGlobal('matchMedia', () => ({
 	matches: false,
 	addEventListener() {},
 	removeEventListener() {},
 }));
+vi.stubGlobal(
+	'ResizeObserver',
+	class {
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	}
+);
 
 function renderNavbar() {
-	return render(
-		<TooltipProvider>
-			<SidebarProvider>
-				<Navbar />
-			</SidebarProvider>
-		</TooltipProvider>
-	);
+	return render(<Navbar />, {
+		wrapper: ({ children }) => (
+			<TooltipProvider>
+				<SidebarProvider>{children}</SidebarProvider>
+			</TooltipProvider>
+		),
+	});
 }
 
-async function openPayrollGroup() {
+async function openAdminMenu() {
 	renderNavbar();
-	fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
-	fireEvent.mouseEnter(screen.getByRole('button', { name: 'Payroll' }));
+	fireEvent.click(screen.getByRole('button', { name: 'Admin' }));
+	return screen.findByRole('link', { name: 'Payroll Run' });
 }
 
-describe('Navbar payroll group', () => {
+describe('Navbar admin menu', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		rbacMock.superAdmin = true;
@@ -72,7 +86,7 @@ describe('Navbar payroll group', () => {
 	});
 
 	it('opens Salary Profiles and Contract Pay in the shared salary workspace', async () => {
-		await openPayrollGroup();
+		await openAdminMenu();
 
 		expect(
 			screen.getByRole('link', { name: 'Salary Profiles' })
@@ -84,7 +98,7 @@ describe('Navbar payroll group', () => {
 	});
 
 	it('keeps the payroll run entries beside the workspace links', async () => {
-		await openPayrollGroup();
+		await openAdminMenu();
 
 		expect(screen.getByRole('link', { name: 'Payroll Run' })).toHaveAttribute(
 			'href',
@@ -96,7 +110,7 @@ describe('Navbar payroll group', () => {
 	it('hides the salary workspace entries from a session without payroll:read', async () => {
 		rbacMock.superAdmin = false;
 		rbacMock.payrollRead = false;
-		await openPayrollGroup();
+		await openAdminMenu();
 
 		expect(
 			screen.queryByRole('link', { name: 'Salary Profiles' })
@@ -110,7 +124,7 @@ describe('Navbar payroll group', () => {
 
 	it('shows the salary workspace entries to a payroll:read holder who is not a super admin', async () => {
 		rbacMock.superAdmin = false;
-		await openPayrollGroup();
+		await openAdminMenu();
 
 		expect(screen.getByRole('link', { name: 'Salary Profiles' })).toBeVisible();
 		expect(screen.getByRole('link', { name: 'Contract Pay' })).toBeVisible();
@@ -120,35 +134,23 @@ describe('Navbar payroll group', () => {
 		rbacMock.superAdmin = false;
 		rbacMock.payrollRead = true;
 		rbacMock.adminRead = false;
-		renderNavbar();
+		await openAdminMenu();
 
-		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
-		expect(screen.getByRole('button', { name: 'Payroll' })).toBeVisible();
-		expect(
-			screen.queryByRole('button', { name: 'Cash & Expenses' })
-		).not.toBeInTheDocument();
-		expect(
-			screen.queryByRole('button', { name: 'Monitoring' })
-		).not.toBeInTheDocument();
-
-		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Payroll' }));
 		expect(
 			screen.getByRole('link', { name: 'Salary Profiles' })
 		).toHaveAttribute('href', '/admin/payroll/salary-profiles?stream=payroll');
-		expect(screen.getByRole('link', { name: 'Payroll Run' })).toBeVisible();
+		expect(screen.queryByText('Cash & Expenses')).not.toBeInTheDocument();
+		expect(screen.queryByText('Monitoring')).not.toBeInTheDocument();
 	});
 
 	it('keeps the other Admin groups for an admin:read holder', async () => {
 		rbacMock.superAdmin = false;
 		rbacMock.payrollRead = false;
 		rbacMock.adminRead = true;
-		renderNavbar();
+		await openAdminMenu();
 
-		fireEvent.mouseEnter(screen.getByRole('button', { name: 'Admin' }));
-		expect(
-			screen.getByRole('button', { name: 'Cash & Expenses' })
-		).toBeVisible();
-		expect(screen.getByRole('button', { name: 'Monitoring' })).toBeVisible();
+		expect(screen.getByText('Cash & Expenses')).toBeVisible();
+		expect(screen.getByText('Monitoring')).toBeVisible();
 	});
 });
 
@@ -192,6 +194,22 @@ describe('Navbar Projects entry', () => {
 		).not.toBeInTheDocument();
 	});
 
+	it('hides Projects when a refreshed session no longer has project access', async () => {
+		fetchMock.mockResolvedValue(projectAccessResponse(true));
+		const view = renderNavbar();
+		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
+
+		fetchMock.mockResolvedValue(projectAccessResponse(false));
+		rbacMock.member = { ...rbacMock.member };
+		view.rerender(<Navbar />);
+
+		await waitFor(() => {
+			expect(
+				screen.queryByRole('link', { name: 'Projects' })
+			).not.toBeInTheDocument();
+		});
+	});
+
 	it('hides Projects from a scoped read grant that leads nothing', async () => {
 		rbacMock.projectsRead = true;
 		fetchMock.mockResolvedValue(projectAccessResponse(false));
@@ -204,5 +222,71 @@ describe('Navbar Projects entry', () => {
 		expect(
 			screen.queryByRole('link', { name: 'Projects' })
 		).not.toBeInTheDocument();
+	});
+});
+
+describe('Navbar actions', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		rbacMock.superAdmin = true;
+		rbacMock.payrollRead = true;
+		rbacMock.adminRead = true;
+		vi.stubGlobal('fetch', fetchMock);
+		fetchMock.mockResolvedValue({
+			ok: true,
+			json: async () => ({ success: false, data: {} }),
+		});
+	});
+
+	it('removes the Get started call to action', () => {
+		renderNavbar();
+
+		expect(
+			screen.queryByRole('button', { name: /get started/i })
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole('link', { name: /get started/i })
+		).not.toBeInTheDocument();
+	});
+
+	it('keeps an inert dark mode control', () => {
+		renderNavbar();
+
+		const darkModeControls = screen.getAllByRole('button', {
+			name: /dark mode/i,
+		});
+		expect(darkModeControls.length).toBeGreaterThan(0);
+		for (const control of darkModeControls) {
+			expect(control).toBeDisabled();
+			expect(control).toHaveAttribute('title', 'Dark mode — coming soon');
+		}
+	});
+
+	it('lists the report sub-items under Reports', async () => {
+		renderNavbar();
+		fireEvent.click(screen.getByRole('button', { name: 'Reports' }));
+
+		expect(
+			await screen.findByRole('link', { name: 'Employee Report' })
+		).toHaveAttribute('href', '/reports/employee-report');
+	});
+
+	it('opens the mobile navigation sheet with the primary links', async () => {
+		renderNavbar();
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Open navigation menu' })
+		);
+
+		const sheet = await screen.findByRole('dialog', {
+			name: 'Primary navigation',
+		});
+		expect(sheet).toBeVisible();
+		expect(
+			within(sheet).getByRole('link', { name: 'Dashboard' })
+		).toBeVisible();
+		expect(screen.queryByText(/get started/i)).not.toBeInTheDocument();
+		expect(
+			within(sheet).getByRole('button', { name: 'Sign Out' })
+		).toBeVisible();
 	});
 });

@@ -11,6 +11,21 @@ import { RESOURCES, PERMISSIONS } from '@/utils/rbac';
 const POLL_MS = 60000;
 
 /**
+ * Older notification rows stored `1 day(s) … starting 2026-09-04`. Normalize
+ * them at read time so the panel never shows a raw template.
+ */
+function normalizeLeaveBody(body) {
+	if (!body) return body;
+	const match = body.match(
+		/^(.+?) requested ([\d.]+) day\(s\) of (.+?) starting (\d{4}-\d{2}-\d{2})$/
+	);
+	if (!match) return body;
+	const [, name, rawDays, leaveType, startDate] = match;
+	const count = Number(rawDays);
+	return `${name} requested ${count} day${count === 1 ? '' : 's'} of ${leaveType} starting ${formatDate(startDate)}`;
+}
+
+/**
  * Header bell for leave management.
  * Badge shows pending leave count (live from leave_applications) — the
  * actionable queue — falling back to unread notification count.
@@ -69,8 +84,16 @@ export default function NotificationsBell() {
 	if (!isApprover) return null;
 
 	const displayCount = pendingCount > 0 ? pendingCount : unread;
+	const countLabel =
+		pendingCount > 0
+			? `${pendingCount} pending`
+			: unread > 0
+				? `${unread} unread`
+				: '';
 	const hasPending = pendingCount > 0;
 	const hasItems = items.length > 0;
+	const panelEdge =
+		'fixed left-4 right-4 top-[4.5rem] z-50 overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-border anim-drop sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-6 sm:w-96';
 
 	return (
 		<div ref={ref} className="relative">
@@ -78,16 +101,15 @@ export default function NotificationsBell() {
 				type="button"
 				onClick={() => setOpen((v) => !v)}
 				aria-label={
-					displayCount > 0
-						? `Notifications, ${displayCount} pending`
-						: 'Notifications'
+					countLabel ? `Notifications, ${countLabel}` : 'Notifications'
 				}
-				className="relative p-2 rounded-xl text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200"
+				aria-expanded={open}
+				className="relative rounded-xl p-2 text-primary transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 			>
 				<BellIcon className="h-5 w-5" />
 				{displayCount > 0 && (
 					<span
-						className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"
+						className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-xs font-bold flex items-center justify-center"
 						aria-hidden="true"
 					>
 						{displayCount > 99 ? '99+' : displayCount}
@@ -96,9 +118,9 @@ export default function NotificationsBell() {
 			</button>
 
 			{open && (
-				<div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden z-50">
-					<div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-						<span className="text-sm font-semibold text-gray-900">
+				<div className={panelEdge}>
+					<div className="px-4 py-3 border-b border-border flex items-center justify-between">
+						<span className="text-sm font-semibold text-foreground">
 							Notifications
 						</span>
 						{hasPending ? (
@@ -106,18 +128,18 @@ export default function NotificationsBell() {
 								{pendingCount} pending
 							</span>
 						) : (
-							<span className="text-xs text-gray-500">
+							<span className="text-xs text-muted-foreground">
 								{items.length} total
 							</span>
 						)}
 					</div>
 
-					<div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
+					<div className="max-h-96 overflow-y-auto divide-y divide-border">
 						{/* Pending leave requests — the actionable queue */}
 						{hasPending ? (
 							<div>
 								<div className="px-4 pt-3 pb-1">
-									<p className="text-[11px] font-semibold tracking-wider uppercase text-amber-700">
+									<p className="text-xs font-semibold tracking-wider uppercase text-amber-700">
 										Requires approval
 									</p>
 								</div>
@@ -129,7 +151,7 @@ export default function NotificationsBell() {
 											setOpen(false);
 											router.push('/employees/leaves');
 										}}
-										className="w-full text-left px-4 py-3 hover:bg-amber-50/70 transition-colors border-l-2 border-transparent hover:border-amber-400"
+										className="w-full text-left px-4 py-3 hover:bg-amber-50/70 transition-colors"
 									>
 										<p className="text-sm font-medium text-gray-900 truncate">
 											{p.applicant_name} — {p.leave_type_name}
@@ -146,7 +168,7 @@ export default function NotificationsBell() {
 												{p.reason}
 											</p>
 										)}
-										<p className="text-[11px] text-gray-400 mt-1">
+										<p className="text-xs text-muted-foreground mt-1">
 											{formatDateTime(p.created_at)}
 										</p>
 									</button>
@@ -166,7 +188,7 @@ export default function NotificationsBell() {
 							</div>
 						) : (
 							<div className="px-4 py-3">
-								<p className="text-xs text-center text-gray-400">
+								<p className="text-xs text-center text-muted-foreground">
 									No pending leave requests
 								</p>
 							</div>
@@ -176,38 +198,44 @@ export default function NotificationsBell() {
 						{hasItems && (
 							<div>
 								<div className="px-4 pt-3 pb-1">
-									<p className="text-[11px] font-semibold tracking-wider uppercase text-gray-500">
+									<p className="text-xs font-semibold tracking-wider uppercase text-gray-500">
 										Recent
 									</p>
 								</div>
-								{items.slice(0, 8).map((n) => (
-									<button
-										key={n.id}
-										type="button"
-										onClick={() => {
-											setOpen(false);
-											router.push(n.link || '/employees/leaves');
-										}}
-										className="w-full text-left px-4 py-3 hover:bg-purple-50 transition-colors"
-									>
-										<p className="text-sm font-medium text-gray-900">
-											{n.title}
-										</p>
-										{n.body && (
-											<p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
-												{n.body}
+								{items.slice(0, 8).map((n) => {
+									const body =
+										n.type === 'leave_request'
+											? normalizeLeaveBody(n.body)
+											: n.body;
+									return (
+										<button
+											key={n.id}
+											type="button"
+											onClick={() => {
+												setOpen(false);
+												router.push(n.link || '/employees/leaves');
+											}}
+											className="w-full text-left px-4 py-3 hover:bg-purple-50 transition-colors"
+										>
+											<p className="text-sm font-medium text-gray-900">
+												{n.title}
 											</p>
-										)}
-										<p className="text-[11px] text-gray-400 mt-1">
-											{formatDateTime(n.created_at)}
-										</p>
-									</button>
-								))}
+											{body && (
+												<p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+													{body}
+												</p>
+											)}
+											<p className="text-xs text-muted-foreground mt-1">
+												{formatDateTime(n.created_at)}
+											</p>
+										</button>
+									);
+								})}
 							</div>
 						)}
 					</div>
 
-					<div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex justify-end">
+					<div className="px-4 py-2 bg-muted/60 border-t border-border flex justify-end">
 						<button
 							type="button"
 							onClick={() => {

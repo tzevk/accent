@@ -640,9 +640,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	// ── Loading state ──
 	if (loading) {
 		return (
-			<div className="h-screen bg-gray-50 flex flex-col">
+			<div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-gray-50">
 				<Navbar />
-				<div className="flex flex-1 pt-16">
+				<div className="flex flex-1">
 					<div className="flex-1 flex items-center justify-center">
 						<div className="flex flex-col items-center gap-3">
 							<div className="animate-spin rounded-full h-10 w-10 border-4 border-purple-200 border-t-purple-600" />
@@ -658,7 +658,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	// ── Render ──
 	// ══════════════════════════════════════
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+		<div className="min-h-[calc(100dvh-4rem)] bg-gradient-to-br from-gray-50 to-gray-100">
 			<Navbar />
 
 			{/* One-time toast when a recent leave request was approved/rejected */}
@@ -831,7 +831,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 				</WarningDialog>
 			)}
 
-			<div className="flex pt-2 sm:pl-0">
+			<div className="flex">
 				{/* Todo List Panel — lazy loaded, only when opened */}
 				{todoPanelOpen && (
 					<div className="todo-panel">
@@ -848,8 +848,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					tabIndex={-1}
 					className={`flex-1 min-w-0 transition-[margin] duration-200 ${todoPanelOpen ? 'sm:ml-72' : 'ml-0'}`}
 				>
-					<div className="px-2 sm:px-3 lg:px-4 py-2">
-						<div className="bg-white/60 backdrop-blur-sm rounded-xl border border-gray-200/60 shadow-sm p-2 sm:p-3 xl:p-4 space-y-3 xl:space-y-4">
+					<div className="mx-auto w-full max-w-[1920px] px-4 pt-6 pb-8 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+						<div className="@container/dashboard space-y-4 rounded-xl border border-gray-200/60 bg-white/60 p-2 shadow-sm backdrop-blur-sm sm:p-3 xl:p-4">
 							{/* ── Hero Header ── */}
 							<div
 								className="relative overflow-hidden rounded-lg bg-gradient-to-br from-[#64126D] via-[#7a1785] to-[#9333ea] px-4 py-3 xl:px-6 xl:py-4 shadow-md"
@@ -961,7 +961,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										Nothing recorded yet today.
 									</p>
 								)}
-								<div className="grid grid-cols-2 gap-2.5 xl:gap-3 sm:grid-cols-3 lg:grid-cols-6">
+								<div className="grid grid-cols-2 gap-2.5 @lg/dashboard:grid-cols-3 @5xl/dashboard:grid-cols-6 xl:gap-3">
 									{/* Log In — first app entry of the day */}
 									<div className="group relative rounded-xl border border-green-200 bg-gradient-to-br from-green-50 via-white to-emerald-50 p-3 hover:shadow-lg hover:border-green-400 hover:-translate-y-0.5 transition-all duration-300 overflow-hidden">
 										<div className="absolute top-0 right-0 w-20 h-20 bg-green-200/30 rounded-full -translate-x-4 -translate-y-4 blur-lg group-hover:scale-125 transition-transform duration-500" />

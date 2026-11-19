@@ -338,31 +338,33 @@ function credentials(identity: {
 export async function openSalaryProfilesThroughPayrollMenu(
 	page: Page
 ): Promise<void> {
-	await expect(
-		page.getByRole('button', { name: 'Admin', exact: true })
-	).toBeVisible();
-	// The Admin control opens on mouseenter and toggles on click; a click after
-	// the hover would close it again. A pointer user opens it by hovering.
-	await page.getByRole('button', { name: 'Admin', exact: true }).hover();
-	// Scope to the flyout: the persistent admin sidebar legitimately lists every
-	// master and report, so a page-wide count would prove nothing about the menu.
-	const flyout = page.locator('.admin-dropdown');
-	await expect(
-		flyout.getByRole('button', { name: 'Payroll', exact: true })
-	).toBeVisible();
-	await expect(
-		flyout.getByRole('button', { name: 'Cash & Expenses', exact: true })
-	).toHaveCount(0);
-	await expect(
-		flyout.getByRole('link', { name: 'User Master', exact: true })
-	).toHaveCount(0);
-	// The group list works the same way: hover flies out the item column.
-	await flyout.getByRole('button', { name: 'Payroll', exact: true }).hover();
-	const salaryProfiles = flyout.getByRole('link', {
+	const primaryNav = page.getByRole('navigation', {
+		name: 'Primary',
+		exact: true,
+	});
+	const adminMenu = primaryNav.getByRole('button', {
+		name: 'Admin',
+		exact: true,
+	});
+	await adminMenu.hover();
+	await expect(adminMenu).toHaveAttribute('aria-expanded', 'true');
+	await expect(adminMenu).toHaveAttribute('aria-controls', /\S+/);
+	const popupId = await adminMenu.getAttribute('aria-controls');
+	// The popup renders outside the primary navigation. Follow the trigger's
+	// accessibility relationship so these checks exclude the sidebar.
+	const popup = page.locator(`id=${popupId}`);
+	await expect(popup.getByText('Payroll', { exact: true })).toBeVisible();
+	const salaryProfiles = popup.getByRole('link', {
 		name: 'Salary Profiles',
 		exact: true,
 	});
 	await expect(salaryProfiles).toBeVisible();
+	await expect(popup.getByText('Cash & Expenses', { exact: true })).toHaveCount(
+		0
+	);
+	await expect(
+		popup.getByRole('link', { name: 'User Master', exact: true })
+	).toHaveCount(0);
 	await salaryProfiles.click();
 	await expect(
 		page.getByRole('heading', { name: 'Salary Profiles', exact: true })
