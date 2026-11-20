@@ -71,6 +71,8 @@ Accepts `daily_entries` from the request body, normalizes each entry's `date`/`q
 
 **UI:** `src/components/ProjectActivityAssignments.jsx` (PUT at lines 203/412, DELETE at line 448), rendered by `src/app/dashboard/user-dashboard.jsx` (~line 1253).
 
+On the user dashboard, **Date Completed** accepts today or an earlier date when adding or editing an activity. The date limit uses the browser’s local calendar day.
+
 ### 5. Project save sync
 
 **File:** `src/app/api/projects/[id]/route.js` (~lines 1131-1315)

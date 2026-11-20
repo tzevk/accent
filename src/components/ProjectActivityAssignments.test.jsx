@@ -117,6 +117,23 @@ const OLD_ASSIGNMENT = {
 	due_date: '2000-01-01',
 };
 
+// Fixed local midday keeps "today" the same in every timezone for the
+// Date Completed regression coverage below. Only Date is faked, so timers
+// (user-event delays, waitFor) keep running normally.
+const FIXED_NOW = new Date(2026, 2, 15, 12, 0, 0);
+const FIXED_TODAY = '2026-03-15';
+const FIXED_TOMORROW = '2026-03-16';
+const FIXED_PRIOR_DAY = '2026-03-14';
+
+// The module-level fixtures derive their due dates at import time, so this
+// assignment sits inside the fixed month's filter range explicitly.
+const FIXED_ASSIGNMENT = {
+	...ASSIGNMENTS[0],
+	activity_id: 'act-fixed',
+	activity_name: 'Fixed Date Activity',
+	due_date: '2026-03-10',
+};
+
 const buildFetch = ({
 	assignments = ASSIGNMENTS,
 	empty = EMPTY_PROJECTS,
@@ -168,6 +185,12 @@ const buildFetch = ({
 	return mock;
 };
 
+/** PATCH/PUT calls only — the writes the date guard must prevent. */
+const writeCalls = () =>
+	globalThis.fetch.mock.calls.filter(([, options]) =>
+		['PATCH', 'PUT'].includes((options?.method || '').toUpperCase())
+	);
+
 describe('ProjectActivityAssignments', () => {
 	let alertSpy;
 
@@ -178,6 +201,7 @@ describe('ProjectActivityAssignments', () => {
 
 	afterEach(() => {
 		alertSpy.mockRestore();
+		vi.useRealTimers();
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
 	});
@@ -652,6 +676,109 @@ describe('ProjectActivityAssignments', () => {
 				)
 			).toBe(true);
 		});
+	});
+
+	it('keeps the inline add row open when Date Completed is beyond the local input max', async () => {
+		vi.useFakeTimers({ toFake: ['Date'], now: FIXED_NOW });
+		const user = userEvent.setup();
+		render(
+			<ProjectActivityAssignments
+				userId={42}
+				preloadedData={{
+					assignments: [FIXED_ASSIGNMENT],
+					emptyProjects: [],
+				}}
+			/>
+		);
+
+		await user.click(screen.getByTitle('Add a new activity'));
+		await user.selectOptions(
+			screen.getByTitle('Select a project you are assigned to'),
+			'1'
+		);
+		await user.selectOptions(screen.getAllByRole('combobox')[2], 'd1');
+		await user.selectOptions(screen.getAllByRole('combobox')[3], 'a1');
+
+		const dateInput = screen.getByLabelText('Date Completed');
+		expect(dateInput).toHaveAttribute('max', FIXED_TODAY);
+		expect(dateInput).toHaveValue(FIXED_TODAY);
+
+		fireEvent.change(dateInput, { target: { value: FIXED_TOMORROW } });
+		expect(dateInput).toHaveValue(FIXED_TOMORROW);
+		expect(dateInput.validity.rangeOverflow).toBe(true);
+		expect(dateInput.checkValidity()).toBe(false);
+
+		const addRow = dateInput.closest('tr');
+		await user.click(within(addRow).getByTitle('Save'));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(writeCalls()).toHaveLength(0);
+		expect(dateInput).toBeInTheDocument();
+		expect(dateInput).toHaveValue(FIXED_TOMORROW);
+
+		fireEvent.change(dateInput, { target: { value: FIXED_TODAY } });
+		expect(dateInput.checkValidity()).toBe(true);
+
+		await user.click(within(addRow).getByTitle('Save'));
+		await waitFor(() => expect(writeCalls()).toHaveLength(1));
+
+		const [[calledUrl, calledOptions]] = writeCalls();
+		expect(calledUrl).toBe('/api/users/42/activity-assignments');
+		expect((calledOptions.method || '').toUpperCase()).toBe('PATCH');
+		expect(JSON.parse(calledOptions.body).due_date).toBe(FIXED_TODAY);
+	});
+
+	it('keeps the inline edit row open when Date Completed is beyond the local input max', async () => {
+		vi.useFakeTimers({ toFake: ['Date'], now: FIXED_NOW });
+		const user = userEvent.setup();
+		render(
+			<ProjectActivityAssignments
+				userId={42}
+				preloadedData={{
+					assignments: [FIXED_ASSIGNMENT],
+					emptyProjects: [],
+				}}
+			/>
+		);
+
+		// The add row and the edit row can be open at once; each date field is
+		// named and capped on its own.
+		await user.click(screen.getByTitle('Add a new activity'));
+		const editRow = screen
+			.getByText(FIXED_ASSIGNMENT.activity_name)
+			.closest('tr');
+		await user.click(within(editRow).getByTitle('Edit'));
+
+		const dateInputs = screen.getAllByLabelText('Date Completed');
+		expect(dateInputs).toHaveLength(2);
+		for (const input of dateInputs) {
+			expect(input).toHaveAttribute('max', FIXED_TODAY);
+		}
+
+		const dateInput = within(editRow).getByLabelText('Date Completed');
+		expect(dateInput).toHaveValue(FIXED_ASSIGNMENT.due_date);
+
+		fireEvent.change(dateInput, { target: { value: FIXED_TOMORROW } });
+		expect(dateInput.validity.rangeOverflow).toBe(true);
+		expect(dateInput.checkValidity()).toBe(false);
+
+		await user.click(within(editRow).getByTitle('Save'));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(writeCalls()).toHaveLength(0);
+		expect(dateInput).toBeInTheDocument();
+		expect(dateInput).toHaveValue(FIXED_TOMORROW);
+
+		fireEvent.change(dateInput, { target: { value: FIXED_PRIOR_DAY } });
+		expect(dateInput.checkValidity()).toBe(true);
+
+		await user.click(within(editRow).getByTitle('Save'));
+		await waitFor(() => expect(writeCalls()).toHaveLength(1));
+
+		const [[calledUrl, calledOptions]] = writeCalls();
+		expect(calledUrl).toBe('/api/users/42/activity-assignments');
+		expect((calledOptions.method || '').toUpperCase()).toBe('PUT');
+		expect(JSON.parse(calledOptions.body).due_date).toBe(FIXED_PRIOR_DAY);
 	});
 
 	it('alerts with the server membership message when the PATCH is refused', async () => {
