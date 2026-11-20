@@ -22,7 +22,13 @@ import {
 	ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+// Browser-local YYYY-MM-DD. `toISOString` is UTC, which reports tomorrow for
+// evening users west of UTC and yesterday for early users east of it.
+const localDateStr = (date = new Date()) =>
+	`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+		date.getDate()
+	).padStart(2, '0')}`;
+const todayStr = () => localDateStr();
 const monthStartStr = () => `${todayStr().slice(0, 7)}-01`;
 
 const STATUS_BADGE_CLASSES = {
@@ -374,6 +380,10 @@ export default function ProjectActivityAssignments({
 	const [remarkStatus, setRemarkStatus] = useState({});
 	const [remarkErrors, setRemarkErrors] = useState({});
 	const remarkTimersRef = useRef({});
+	// Separate refs: the add row and the edit row can be open at once, and one
+	// editor must never report the other's date constraint.
+	const addDateRef = useRef(null);
+	const editDateRef = useRef(null);
 	const [saving, setSaving] = useState(false);
 	const [disciplineOptions, setDisciplineOptions] = useState([]);
 
@@ -576,6 +586,10 @@ export default function ProjectActivityAssignments({
 	);
 
 	const submitAdd = async () => {
+		// Saves are click handlers, not native form submissions, so the date
+		// field's max constraint is reported explicitly here.
+		if (addDateRef.current && !addDateRef.current.reportValidity()) return;
+
 		const discipline = disciplineOptions.find(
 			(d) => d.id === addForm.discipline_id
 		);
@@ -652,6 +666,8 @@ export default function ProjectActivityAssignments({
 	};
 
 	const submitEdit = async (projectId, activityId) => {
+		if (editDateRef.current && !editDateRef.current.reportValidity()) return;
+
 		setSavingEdit(true);
 		try {
 			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
@@ -1290,7 +1306,10 @@ export default function ProjectActivityAssignments({
 									</td>
 									<td className="py-1 px-2 text-center align-middle">
 										<input
+											ref={addDateRef}
 											type="date"
+											aria-label="Date Completed"
+											max={todayStr()}
 											value={addForm.due_date}
 											onChange={(e) =>
 												setAddForm((p) => ({
@@ -1470,7 +1489,10 @@ export default function ProjectActivityAssignments({
 										<td className="py-1 px-2 text-center align-middle">
 											{isEditing ? (
 												<input
+													ref={editDateRef}
 													type="date"
+													aria-label="Date Completed"
+													max={todayStr()}
 													value={editForm.due_date}
 													onChange={(e) =>
 														setEditForm((p) => ({
