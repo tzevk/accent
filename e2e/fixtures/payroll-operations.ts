@@ -384,6 +384,7 @@ export async function seedPayrollRunFixture(
 			employee.employeeId,
 			{ paymentStatus: 'pending', paymentDate: null }
 		);
+		owned.slipId = slip.id;
 
 		return {
 			...makeRunFixture(
@@ -452,6 +453,7 @@ export async function seedEmployeePayslipFixture(
 			employee.employeeId,
 			{ paymentStatus: 'paid', paymentDate }
 		);
+		owned.slipId = slip.id;
 
 		return {
 			...makeRunFixture(
@@ -802,12 +804,16 @@ async function seedEmployee(
 	const position = 'Payroll Operations Analyst';
 	const department = 'Finance';
 
+	// A non-stream Employee Type keeps this Employee out of another month's
+	// roster: Payroll/Contract would make this Employee a missing-profile
+	// candidate in a parallel fixture's month, even though the Salary Profile
+	// below covers only this fixture's month.
 	const [employeeResult] = await connection.execute<ResultSetHeader>(
 		`INSERT INTO employees (
         employee_id, first_name, last_name, email, position, department,
         hire_date, joining_date, exit_date, status, employee_type, grade,
         designation, company_name, isDelete
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'active', 'Payroll', 'E2E', ?, 
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'active', 'Permanent', 'E2E', ?, 
                 'Accent Techno Solutions Pvt Ltd', 0)`,
 		[
 			employeeCode,

@@ -96,12 +96,24 @@ test("A sends B a direct message and sees B's reply after reloading the conversa
 		await page
 			.getByRole('button', { name: 'Compose new message', exact: true })
 			.click();
-		await page
-			.getByLabel('Search for recipients', { exact: true })
-			.fill(pair.recipient.username);
-		await page
+		// App boundary: focusing the recipient field seeds it with a leading
+		// space. Typing on top would filter for " <username>" and match nobody,
+		// so clear the seeded text first, as a user selecting all would.
+		const recipientSearch = page.getByLabel('Search for recipients', {
+			exact: true,
+		});
+		await recipientSearch.click();
+		await recipientSearch.selectText();
+		await recipientSearch.pressSequentially(pair.recipient.username);
+		await expect(recipientSearch).toHaveValue(pair.recipient.username);
+
+		const availableRecipients = page.getByRole('listbox', {
+			name: 'Available recipients',
+		});
+		await expect(availableRecipients).toBeVisible();
+		await availableRecipients
 			.getByRole('option', {
-				name: new RegExp(escapeRegExp(pair.recipient.username)),
+				name: new RegExp(escapeRegExp(pair.recipient.username), 'i'),
 			})
 			.click();
 		await expect(

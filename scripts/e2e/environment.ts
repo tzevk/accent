@@ -95,10 +95,7 @@ async function dropDatabase(target: ResolvedSafety): Promise<void> {
 	assertIdentifier(target.name);
 	const connection = await connectServer(target);
 	try {
-		await connection.execute(
-			`DROP DATABASE IF EXISTS \`${target.name}\``,
-			[]
-		);
+		await connection.execute(`DROP DATABASE IF EXISTS \`${target.name}\``, []);
 	} finally {
 		await connection.end();
 	}
@@ -248,10 +245,7 @@ async function waitForHealth(
 	fail(`server at ${baseUrl} never became healthy: ${lastError}`);
 }
 
-function appChildEnv(
-	target: ResolvedSafety,
-	port: number
-): NodeJS.ProcessEnv {
+function appChildEnv(target: ResolvedSafety, port: number): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = { ...process.env };
 	// Inherited URLs and CA paths must not redirect the pool regardless of the
 	// pinned branch variables. `next dev` loads .env without overriding these.
@@ -282,9 +276,19 @@ function startAppServer(
 	if (!existsSync(nextBin)) {
 		fail(`Next CLI not found at ${nextBin}; run npm ci first.`);
 	}
+	// The default dev bundler intermittently serves 404s for existing API routes.
+	// Keep this harness on Webpack; the production build has its own CI check.
 	const child = spawn(
 		process.execPath,
-		[nextBin, 'dev', '--port', String(port), '--hostname', '127.0.0.1'],
+		[
+			nextBin,
+			'dev',
+			'--webpack',
+			'--port',
+			String(port),
+			'--hostname',
+			'127.0.0.1',
+		],
 		{
 			env: appChildEnv(target, port),
 			cwd: projectRoot,
