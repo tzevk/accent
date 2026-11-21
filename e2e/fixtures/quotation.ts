@@ -69,7 +69,7 @@ export interface StoredQuotationRow extends RowDataPacket {
 	quotation_number: string;
 	client_name: string;
 	client_address: string | null;
-	scope_items: string | null;
+	scope_items: unknown;
 	gross_amount: string | number;
 	gst_percentage: string | number;
 	gst_amount: string | number;

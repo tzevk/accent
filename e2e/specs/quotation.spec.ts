@@ -339,9 +339,12 @@ test('standalone quotation saves and reopens with the authored client, scope and
 	expect(Number(stored.net_amount)).toBe(quote.netAmount);
 	expect(Number(stored.total)).toBe(quote.netAmount);
 
-	const scopeItems = JSON.parse(stored.scope_items ?? '[]') as Array<
-		Record<string, unknown>
-	>;
+	const storedScopeItems =
+		typeof stored.scope_items === 'string'
+			? (JSON.parse(stored.scope_items) as unknown)
+			: stored.scope_items;
+	expect(Array.isArray(storedScopeItems)).toBe(true);
+	const scopeItems = storedScopeItems as Array<Record<string, unknown>>;
 	expect(scopeItems).toHaveLength(1);
 	expect(scopeItems[0]).toMatchObject({
 		sr_no: 1,
