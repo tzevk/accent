@@ -31,6 +31,7 @@ import type {
 	ResultSetHeader,
 	RowDataPacket,
 } from 'mysql2/promise';
+import { beginSalaryWriteTransaction } from '@/lib/salary-write-isolation';
 import { fitIdentifier } from '../../scripts/e2e/contracts.ts';
 import { createJourneyUser, type JourneyUser } from './journey-user.ts';
 
@@ -1032,7 +1033,9 @@ async function cleanupPayrollRows(
 	connection: Connection,
 	owned: PayrollOwnedRows
 ): Promise<void> {
-	await connection.beginTransaction();
+	// A missing roster under REPEATABLE READ can lock the gap needed by a
+	// concurrent finalizer while cleanup waits on that finalizer's profile lock.
+	await beginSalaryWriteTransaction(connection);
 	try {
 		if (owned.runId !== null) {
 			await connection.execute(

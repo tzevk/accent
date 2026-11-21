@@ -210,6 +210,18 @@ export const FULL_SUITE_GROUPS: readonly E2EGroupDefinition[] = [
 			{ file: 'e2e/specs/payroll-rates.spec.ts', plannedLogins: 2 },
 		],
 	},
+	// Browser-free, but isolated: finalization locks the global Employee/profile
+	// population and saves a roster snapshot, so it must not share a database
+	// with the payroll browser fixtures whose teardown would contend.
+	{
+		name: 'payroll-finalize-contention',
+		specs: [
+			{
+				file: 'e2e/specs/payroll-finalize-contention.spec.ts',
+				plannedLogins: 0,
+			},
+		],
+	},
 	{
 		name: 'project-workspace',
 		specs: [{ file: 'e2e/specs/project-workspace.spec.ts', plannedLogins: 4 }],

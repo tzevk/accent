@@ -57,6 +57,8 @@ The CI artifact contains a separate HTML report and failure traces for each grou
 
 [Salary contention](specs/salary-contention.spec.ts) runs in the same harness but checks real database transactions without a browser.
 
+The [payroll cleanup regression](specs/payroll-finalize-contention.spec.ts) overlaps finalization with teardown for a different month. Teardown uses `READ COMMITTED` so deleting a missing roster does not lock the index gap needed for the new snapshot.
+
 ## Boundaries
 
 - Do not add browser scenarios for each tax rate, date combination, permission flag, or write race. Those belong to unit, HTTP contract, or MariaDB transaction tests.
