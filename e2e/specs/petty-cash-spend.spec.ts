@@ -220,10 +220,15 @@ test('petty-cash operator records a supported spend while funding stays outside 
 		expect(fundingEvents).toEqual([]);
 
 		const fundingLinks = await readCostLinks(db, fundingCostUid);
-		expect(fundingLinks.map((link) => link.role).sort()).toEqual([
-			'funding',
-			'mirror',
-		]);
+		expect(
+			fundingLinks.map((link) => `${link.role}:${link.sourceTable}`).sort()
+		).toEqual(['funding:cash_vouchers', 'mirror:petty_cash_expenses']);
+		expect(fundingLinks.find((link) => link.role === 'funding')?.sourceId).toBe(
+			String(fixture.voucherId)
+		);
+		expect(fundingLinks.find((link) => link.role === 'mirror')?.sourceId).toBe(
+			funding.id
+		);
 		expect(fundingLinks.some((link) => link.role === 'cost')).toBe(false);
 	} finally {
 		await fixture.dispose();
