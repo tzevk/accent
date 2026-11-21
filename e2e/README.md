@@ -67,3 +67,4 @@ The CI artifact contains a separate HTML report and failure traces for each grou
 - The Project editor renders an Add Day control only for a tab missing from its tab registry. The browser can verify saved timesheet data, but it cannot enter hours through that hidden path.
 - Completing the last pending personal task removes the control that shows completed tasks. The current journey verifies its removal from pending and its saved completion; it does not claim completed-list coverage.
 - Project creation can reopen the saved record from the Projects list. Its automatic redirect reads `id`, but the write returns `project_id`.
+- Client Balance shows invoice numbers as text. The invoice-document journey follows the link from Outstanding Balances instead.
