@@ -114,7 +114,15 @@ test('creating a project saves the authored name and client and reopens them', a
 		await expect(
 			page.getByRole('heading', { name: 'Project Overview', exact: true })
 		).toBeVisible();
-		const header = page.getByRole('banner');
+		// The root layout wraps every route in `<main>`, so the project header
+		// is not exposed as a banner landmark. Scope to the header that owns
+		// the page heading instead.
+		const header = page.locator('header').filter({
+			has: page.getByRole('heading', {
+				name: 'Project Overview',
+				exact: true,
+			}),
+		});
 		await expect(
 			header.getByText(fixture.projectName, { exact: true })
 		).toBeVisible();
@@ -128,14 +136,10 @@ test('creating a project saves the authored name and client and reopens them', a
 			page.getByRole('heading', { name: 'Project Overview', exact: true })
 		).toBeVisible();
 		await expect(
-			page.getByRole('banner').getByText(fixture.projectName, {
-				exact: true,
-			})
+			header.getByText(fixture.projectName, { exact: true })
 		).toBeVisible();
 		await expect(
-			page.getByRole('banner').getByText(fixture.companyName, {
-				exact: true,
-			})
+			header.getByText(fixture.companyName, { exact: true })
 		).toBeVisible();
 	} finally {
 		await fixture.dispose();
@@ -192,17 +196,26 @@ test('a project lead saves a work field that reopens after reload', async ({
 				new URL(response.url()).pathname ===
 					`/api/projects/${fixture.projectId}`
 		);
-		const savedDialog = page.waitForEvent('dialog');
+		// The success alert is a native modal and freezes the page until it is
+		// answered. Answer it as soon as it opens, before reading the response
+		// body, which would otherwise wait on the blocked renderer until the
+		// test timeout.
+		const savedDialog = page.waitForEvent('dialog').then(async (dialog) => {
+			const message = dialog.message();
+			await dialog.accept();
+			return message;
+		});
 		await page
 			.getByRole('button', { name: 'Update Project', exact: true })
 			.click();
 
-		const [response, dialog] = await Promise.all([saveResponse, savedDialog]);
+		const [response, dialogMessage] = await Promise.all([
+			saveResponse,
+			savedDialog,
+		]);
 		expect(response.status()).toBe(200);
 		const body = await response.json();
 		expect(body.success).toBe(true);
-		const dialogMessage = dialog.message();
-		await dialog.accept();
 		expect(dialogMessage).toBe('Project updated successfully!');
 
 		// Fresh read through the real page, then through the database.
@@ -211,9 +224,12 @@ test('a project lead saves a work field that reopens after reload', async ({
 			page.getByRole('heading', { name: 'Edit Project', exact: true })
 		).toBeVisible();
 		await expect(page.getByLabel(/Project Name/)).toHaveValue(updatedName);
-		await expect(
-			page.getByRole('banner').getByText(updatedName, { exact: true })
-		).toBeVisible();
+		// Same landmark constraint as above: scope to the header that owns the
+		// page heading rather than the absent banner role.
+		const header = page.locator('header').filter({
+			has: page.getByRole('heading', { name: 'Edit Project', exact: true }),
+		});
+		await expect(header.getByText(updatedName, { exact: true })).toBeVisible();
 
 		const stored = await readProjectById(db, fixture.projectId);
 		expect(stored).not.toBeNull();

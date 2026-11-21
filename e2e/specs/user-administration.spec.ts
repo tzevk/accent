@@ -35,10 +35,10 @@ const PASSWORD_RESET_PERMISSIONS = ['users:read', 'users:update'] as const;
 // Starting state: one namespaced role-less target with exactly employees:read
 // as its direct permission.
 // Action: sign in, open the target from User Management, add Create for
-// Employees in its permission editor and save, then leave the editor, reopen
-// the target from the list and reload.
+// Employee Master in its permission editor and save, then leave the editor,
+// reopen the target from the list and reload.
 // Proof: the saved notification appears; the database holds exactly
-// employees:read + employees:create and the nested Employees module with
+// employees:read + employees:create and the nested Employee Master module with
 // read/create; the reopened editor after reload shows both controls pressed
 // and the module enabled.
 test('an administrator edits one permission and reopens the saved grant', async ({
@@ -105,20 +105,26 @@ test('an administrator edits one permission and reopens the saved grant', async 
 		).toBeVisible();
 
 		await expect(
-			page.getByRole('checkbox', { name: 'Disable Employees', exact: true })
+			page.getByRole('checkbox', {
+				name: 'Disable Employee Master',
+				exact: true,
+			})
 		).toBeChecked();
 		const configureEmployees = page.getByRole('button', {
-			name: 'Configure Employees',
+			name: 'Configure Employee Master',
 			exact: true,
 		});
 		await expect(configureEmployees).toBeEnabled();
 		await configureEmployees.click();
 
 		await expect(
-			page.getByRole('button', { name: 'read for Employees', exact: true })
+			page.getByRole('button', {
+				name: 'read for Employee Master',
+				exact: true,
+			})
 		).toHaveAttribute('aria-pressed', 'true');
 		const createForEmployees = page.getByRole('button', {
-			name: 'create for Employees',
+			name: 'create for Employee Master',
 			exact: true,
 		});
 		await expect(createForEmployees).toHaveAttribute('aria-pressed', 'false');
@@ -186,16 +192,25 @@ test('an administrator edits one permission and reopens the saved grant', async 
 			page.getByRole('heading', { name: 'User Permissions', exact: true })
 		).toBeVisible();
 		await expect(
-			page.getByRole('checkbox', { name: 'Disable Employees', exact: true })
+			page.getByRole('checkbox', {
+				name: 'Disable Employee Master',
+				exact: true,
+			})
 		).toBeChecked();
 		await page
-			.getByRole('button', { name: 'Configure Employees', exact: true })
+			.getByRole('button', { name: 'Configure Employee Master', exact: true })
 			.click();
 		await expect(
-			page.getByRole('button', { name: 'read for Employees', exact: true })
+			page.getByRole('button', {
+				name: 'read for Employee Master',
+				exact: true,
+			})
 		).toHaveAttribute('aria-pressed', 'true');
 		await expect(
-			page.getByRole('button', { name: 'create for Employees', exact: true })
+			page.getByRole('button', {
+				name: 'create for Employee Master',
+				exact: true,
+			})
 		).toHaveAttribute('aria-pressed', 'true');
 
 		const afterReopen = await readUserAccountState(db, target.userId);

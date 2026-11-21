@@ -90,7 +90,12 @@ test('converting a proposal creates a correctly linked project that reopens', as
 			page.getByRole('heading', { name: 'Edit Project', exact: true })
 		).toBeVisible();
 
-		const header = page.getByRole('banner');
+		// The root layout wraps every route in `<main>`, so the project header
+		// is not exposed as a banner landmark. Scope to the header that owns
+		// the page heading instead.
+		const header = page.locator('header').filter({
+			has: page.getByRole('heading', { name: 'Edit Project', exact: true }),
+		});
 		await expect(
 			header.getByText(fixture.proposalTitle, { exact: true })
 		).toBeVisible();
@@ -104,14 +109,10 @@ test('converting a proposal creates a correctly linked project that reopens', as
 			page.getByRole('heading', { name: 'Edit Project', exact: true })
 		).toBeVisible();
 		await expect(
-			page.getByRole('banner').getByText(fixture.proposalTitle, {
-				exact: true,
-			})
+			header.getByText(fixture.proposalTitle, { exact: true })
 		).toBeVisible();
 		await expect(
-			page.getByRole('banner').getByText(fixture.clientName, {
-				exact: true,
-			})
+			header.getByText(fixture.clientName, { exact: true })
 		).toBeVisible();
 
 		// Independent linkage evidence in both directions.

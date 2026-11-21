@@ -82,7 +82,7 @@ test('saves a new email on My Profile and keeps it after reopening', async ({
 // Actor: a signed-in employee with no permission grants, linked to an owned Employee record.
 // Starting state: 3 current-month app-entry days (today at midnight), 6 of 20 leave days used, and 3 'P' attendance days.
 // Action: sign in, read the Today's Attendance card, then press Timesheet.
-// Proof: Present 3/<days in month>, Leaves 6.0/20.0 with 14 remaining, Log In 12:00 AM; the linked employee's Timesheet shows the same seeded 3 days as 24:00:00.
+// Proof: Present 3/<days in month>, Leaves 6.0/20.0 with 14 remaining, Log In 12:00 AM; the linked employee's Timesheet header shows their code and its caption their name and month, with the same seeded 3 days as 24:00:00.
 test('shows the linked employee’s seeded attendance and opens their Timesheet', async ({
 	page,
 	db,
@@ -128,12 +128,19 @@ test('shows the linked employee’s seeded attendance and opens their Timesheet'
 			fixture.monthLabel
 		);
 
+		// The grid renders Employee Code in the header block above the <table>;
+		// the table itself only carries the employee's name and month in its
+		// caption. Both are evidence that this is the linked employee's sheet.
+		await expect(
+			page.getByText(fixture.employeeCode, { exact: true })
+		).toBeVisible();
 		const timesheet = page.getByRole('table', {
 			name: /Monthly time sheet for/,
 		});
 		await expect(timesheet).toBeVisible();
-		await expect(timesheet).toContainText(fixture.employeeCode);
-		await expect(timesheet).toContainText(fixture.employeeName);
+		const caption = timesheet.getByRole('caption');
+		await expect(caption).toContainText(fixture.employeeName);
+		await expect(caption).toContainText(fixture.monthLabel);
 		await expect(timesheet).toContainText('24:00:00');
 	} finally {
 		await fixture.dispose();

@@ -129,7 +129,10 @@ test('an administrator creates an employee account and lands in its permission e
 		).toBeVisible();
 		await expect(page.getByText('0 enabled', { exact: true })).toBeVisible();
 		await expect(
-			page.getByRole('checkbox', { name: 'Enable Employees', exact: true })
+			page.getByRole('checkbox', {
+				name: 'Enable Employee Master',
+				exact: true,
+			})
 		).not.toBeChecked();
 
 		const stored = await readUserAccountState(db, createdUserId);
@@ -271,9 +274,9 @@ test('an administrator disables an account and it can no longer sign in', async 
 				.click();
 			expect((await deniedResponse).status()).toBe(401);
 
-			await expect(targetPage.getByRole('alert')).toHaveText(
-				'Invalid credentials'
-			);
+			await expect(
+				targetPage.getByRole('alert').filter({ hasText: 'Invalid credentials' })
+			).toHaveText('Invalid credentials');
 			await expect(targetPage).toHaveURL(/\/signin$/);
 			expect((await readUserAccountState(db, target.userId))?.sessions).toBe(0);
 

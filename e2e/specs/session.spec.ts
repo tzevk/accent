@@ -193,7 +193,9 @@ test('refuses a known account with the wrong password', async ({
 		await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 		expect((await loginResponse).status()).toBe(401);
 
-		await expect(page.getByRole('alert')).toHaveText('Invalid credentials');
+		await expect(
+			page.getByRole('alert').filter({ hasText: 'Invalid credentials' })
+		).toHaveText('Invalid credentials');
 		await expect(page).toHaveURL(/\/signin$/);
 		await expectSignInForm(page);
 		expect(await countSessions(db, journey.userId)).toBe(0);

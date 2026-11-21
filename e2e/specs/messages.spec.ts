@@ -5,8 +5,12 @@ import { signInThroughUi } from '../support/auth.ts';
 import { createCollaborationPair } from '../fixtures/collaboration.ts';
 
 // The owned Next dev server compiles `/messages` and the messages API on the
-// first visit. Assertions still wait for their observable result; this only
-// bounds that compilation and the two real sign-in flows.
+// first visit. Assertions still wait for their observable result. The overall
+// budget only covers compilation and the two real sign-in flows; every
+// individual action is bounded below so the first unresolved step reports its
+// own locator or network error instead of consuming the whole test.
+const OPERATION_TIMEOUT_MS = 30_000;
+const RESPONSE_TIMEOUT_MS = 60_000;
 test.setTimeout(300_000);
 
 interface StoredMessageRow extends RowDataPacket {
@@ -30,10 +34,12 @@ function escapeRegExp(value: string): string {
  * Starting state: No message or direct conversation exists between the pair;
  * the only rows are the two identities.
  *
- * Action: A composes a message to B through the `/messages` recipient picker,
- * subject and body fields, then sends it. B opens the unread conversation,
- * reads A's exact body, writes a reply, and sends it. A reloads `/messages`,
- * reopens the conversation, and reads the thread.
+ * Action: A collapses the real desktop sidebar through its own control (the
+ * expanded app sidebar overlays the messages folder pane and intercepts its
+ * compose button), then composes a message to B through the `/messages`
+ * recipient picker, subject and body fields, and sends it. B opens the unread
+ * conversation, reads A's exact body, writes a reply, and sends it. A reloads
+ * `/messages`, reopens the conversation, and reads the thread.
  *
  * Proof: After the reload A's thread shows B's exact reply as a message body
  * from B and A's original body as a message from A; an independent database
@@ -45,17 +51,21 @@ test("A sends B a direct message and sees B's reply after reloading the conversa
 	browser,
 	db,
 	namespace,
+	runtime,
 }) => {
 	const pair = await createCollaborationPair(db, namespace);
 	let recipientContext: BrowserContext | null = null;
 	try {
+		page.setDefaultTimeout(OPERATION_TIMEOUT_MS);
 		page.setDefaultNavigationTimeout(60_000);
 		page.setViewportSize({ width: 1440, height: 900 });
 
 		recipientContext = await browser.newContext({
+			baseURL: runtime.baseUrl,
 			viewport: { width: 1440, height: 900 },
 		});
 		const recipientPage = await recipientContext.newPage();
+		recipientPage.setDefaultTimeout(OPERATION_TIMEOUT_MS);
 		recipientPage.setDefaultNavigationTimeout(60_000);
 
 		await signInThroughUi(page, {
@@ -68,6 +78,21 @@ test("A sends B a direct message and sees B's reply after reloading the conversa
 			page.getByRole('main', { name: 'Messages', exact: true })
 		).toBeVisible();
 
+		// App boundary: the messages page still offsets itself for the old
+		// pinned-sidebar selector, so at 1440px the expanded desktop sidebar
+		// covers the folder pane and intercepts the compose button. Collapse
+		// the real desktop sidebar through its own control; the mobile sheet
+		// is not mounted at this viewport.
+		const desktopSidebar = page.locator(
+			'[data-slot="sidebar"][data-side="left"]'
+		);
+		const sidebarToggle = desktopSidebar
+			.locator('[data-slot="sidebar-header"]')
+			.getByRole('button', { name: 'Toggle Sidebar', exact: true });
+		await expect(sidebarToggle).toBeVisible();
+		await sidebarToggle.click();
+		await expect(desktopSidebar).toHaveAttribute('data-state', 'collapsed');
+
 		await page
 			.getByRole('button', { name: 'Compose new message', exact: true })
 			.click();
@@ -79,32 +104,32 @@ test("A sends B a direct message and sees B's reply after reloading the conversa
 				name: new RegExp(escapeRegExp(pair.recipient.username)),
 			})
 			.click();
-		await expect(page.getByLabel('Selected recipients')).toContainText(
-			pair.recipient.username
-		);
+		await expect(
+			page.getByLabel('Selected recipients', { exact: true })
+		).toContainText(pair.recipient.username);
 
 		await page.getByLabel('Subject', { exact: true }).fill(pair.subject);
 		await page
 			.getByLabel('Message body', { exact: true })
 			.fill(pair.senderBody);
 
-		const sendResponse = page.waitForResponse(
-			(response) =>
-				response.request().method() === 'POST' &&
-				new URL(response.url()).pathname === '/api/messages',
-			{ timeout: 60_000 }
-		);
-		await page
-			.getByRole('button', { name: 'Send message', exact: true })
-			.click();
-		expect((await sendResponse).ok()).toBe(true);
+		const [sendResponse] = await Promise.all([
+			page.waitForResponse(
+				(response) =>
+					response.request().method() === 'POST' &&
+					new URL(response.url()).pathname === '/api/messages',
+				{ timeout: RESPONSE_TIMEOUT_MS }
+			),
+			page.getByRole('button', { name: 'Send message', exact: true }).click(),
+		]);
+		expect(sendResponse.ok()).toBe(true);
 
 		await signInThroughUi(recipientPage, {
 			username: pair.recipient.username,
 			password: pair.recipient.password,
 		});
 		await recipientPage.goto('/messages');
-		const recipientConversation = recipientPage.getByRole('button', {
+		const recipientConversation = recipientPage.getByRole('option', {
 			name: new RegExp(escapeRegExp(pair.subject)),
 		});
 		await expect(recipientConversation).toBeVisible();
@@ -119,22 +144,24 @@ test("A sends B a direct message and sees B's reply after reloading the conversa
 		await recipientPage
 			.getByRole('textbox', { name: /Reply message body/ })
 			.fill(pair.replyBody);
-		const replyResponse = recipientPage.waitForResponse(
-			(response) =>
-				response.request().method() === 'POST' &&
-				new URL(response.url()).pathname === '/api/messages',
-			{ timeout: 60_000 }
-		);
-		await recipientPage
-			.getByRole('button', { name: 'Send reply', exact: true })
-			.click();
-		expect((await replyResponse).ok()).toBe(true);
+		const [replyResponse] = await Promise.all([
+			recipientPage.waitForResponse(
+				(response) =>
+					response.request().method() === 'POST' &&
+					new URL(response.url()).pathname === '/api/messages',
+				{ timeout: RESPONSE_TIMEOUT_MS }
+			),
+			recipientPage
+				.getByRole('button', { name: 'Send reply', exact: true })
+				.click(),
+		]);
+		expect(replyResponse.ok()).toBe(true);
 		await expect(
 			recipientPage.getByRole('article', { name: 'Message body from you' })
 		).toContainText(pair.replyBody);
 
 		await page.reload();
-		const senderConversation = page.getByRole('button', {
+		const senderConversation = page.getByRole('option', {
 			name: new RegExp(escapeRegExp(pair.subject)),
 		});
 		await expect(senderConversation).toBeVisible();
@@ -198,9 +225,20 @@ test("A sends B a direct message and sees B's reply after reloading the conversa
 			},
 		]);
 	} finally {
+		// The disposable database is thrown away with the group, so cleanup is
+		// best-effort. A teardown error must never replace the failure that
+		// actually stopped the journey (or make a passing journey look broken).
 		if (recipientContext !== null) {
-			await recipientContext.close();
+			try {
+				await recipientContext.close();
+			} catch (error) {
+				console.error('[messages] recipient context cleanup failed:', error);
+			}
 		}
-		await pair.dispose();
+		try {
+			await pair.dispose();
+		} catch (error) {
+			console.error('[messages] collaboration pair cleanup failed:', error);
+		}
 	}
 });

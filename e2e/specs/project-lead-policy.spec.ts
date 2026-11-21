@@ -75,8 +75,16 @@ test('an all-projects administrator hides a Project Lead section and the lead lo
 		await expect(
 			leadPage.getByRole('heading', { name: 'Project Overview', exact: true })
 		).toBeVisible();
+		// The title renders both as the header chip and inside the Project
+		// Details body, so scope to the header that owns the page heading.
+		const leadHeader = leadPage.locator('header').filter({
+			has: leadPage.getByRole('heading', {
+				name: 'Project Overview',
+				exact: true,
+			}),
+		});
 		await expect(
-			leadPage.getByText(fixture.projectTitle, { exact: true })
+			leadHeader.getByText(fixture.projectTitle, { exact: true })
 		).toBeVisible();
 		await expect(
 			leadPage.getByRole('tab', { name: 'Project Details', exact: true })

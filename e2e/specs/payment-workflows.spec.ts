@@ -118,6 +118,9 @@ test('a receipt against the seeded invoice reduces the client balance', async ({
 		user = actor;
 
 		page.setDefaultNavigationTimeout(60_000);
+		// Keep a stuck locator below the test budget so the fixture cleanup
+		// still runs on the open reader and the original failure is reported.
+		page.setDefaultTimeout(60_000);
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await signInThroughUi(page, actor);
 
@@ -191,9 +194,8 @@ test('a receipt against the seeded invoice reduces the client balance', async ({
 		).toHaveValue(SEEDED_INVOICE_AMOUNTS.gross.toFixed(2));
 
 		await dialog.getByLabel('Receipt Date', { exact: true }).fill(RECEIPT_DATE);
-		await dialog
-			.getByLabel('Amount', { exact: true })
-			.fill(String(RECEIPT_AMOUNT));
+		// The required marker is part of the label's accessible name.
+		await dialog.getByLabel(/^Amount\s*\*?$/).fill(String(RECEIPT_AMOUNT));
 		await expect(dialog.getByLabel('Net Amount', { exact: true })).toHaveValue(
 			String(RECEIPT_AMOUNT)
 		);
@@ -330,6 +332,9 @@ test('a payment issue saves the selected payee and shows date and net on reload'
 		user = actor;
 
 		page.setDefaultNavigationTimeout(60_000);
+		// Keep a stuck locator below the test budget so the fixture cleanup
+		// still runs on the open reader and the original failure is reported.
+		page.setDefaultTimeout(60_000);
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await signInThroughUi(page, actor);
 
@@ -374,8 +379,9 @@ test('a payment issue saves the selected payee and shows date and net on reload'
 			})
 		).toContainText(company.companyName);
 
+		// The required marker is part of the label's accessible name.
 		await dialog
-			.getByLabel('Amount (Invoice Amount)', { exact: true })
+			.getByLabel(/^Amount \(Invoice Amount\)\s*\*?$/)
 			.fill(String(PAYMENT_ISSUE_AMOUNT));
 		await dialog
 			.getByLabel('Deduction', { exact: true })

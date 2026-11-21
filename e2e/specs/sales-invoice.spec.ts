@@ -285,9 +285,14 @@ test('a fixed-tax client invoice saves and reopens from the sale invoice registe
 		await expect(
 			page.getByRole('heading', { name: 'Edit Invoice', exact: true })
 		).toBeVisible({ timeout: 60_000 });
-		await expect(page.locator('input[name="invoice_number"]')).toHaveValue(
-			invoiceNumber
-		);
+		// Edit shows the allocated number as immutable text in the Invoice No.
+		// row; only the create form exposes input[name="invoice_number"].
+		await expect(
+			page
+				.getByText('Invoice No.', { exact: true })
+				.locator('..')
+				.getByText(invoiceNumber, { exact: true })
+		).toBeVisible();
 		await expect(page.locator('input[name="client_name"]')).toHaveValue(
 			company.companyName
 		);
@@ -426,9 +431,14 @@ test('the client balance register invoice link opens the seeded invoice document
 		await expect(
 			page.getByRole('heading', { name: 'Edit Invoice', exact: true })
 		).toBeVisible({ timeout: 60_000 });
-		await expect(page.locator('input[name="invoice_number"]')).toHaveValue(
-			invoiceNumber
-		);
+		// Edit shows the allocated number as immutable text in the Invoice No.
+		// row; only the create form exposes input[name="invoice_number"].
+		await expect(
+			page
+				.getByText('Invoice No.', { exact: true })
+				.locator('..')
+				.getByText(invoiceNumber, { exact: true })
+		).toBeVisible();
 		await expect(page.locator('input[name="client_name"]')).toHaveValue(
 			company.companyName
 		);

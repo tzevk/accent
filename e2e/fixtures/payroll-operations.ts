@@ -807,7 +807,7 @@ async function seedEmployee(
         employee_id, first_name, last_name, email, position, department,
         hire_date, joining_date, exit_date, status, employee_type, grade,
         designation, company_name, isDelete
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'active', 'E2E', 'E2E', ?, 
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'active', 'Payroll', 'E2E', ?, 
                 'Accent Techno Solutions Pvt Ltd', 0)`,
 		[
 			employeeCode,
@@ -1036,7 +1036,7 @@ async function cleanupPayrollRows(
 		}
 		if (owned.slipId !== null) {
 			await connection.execute(
-				`DELETE FROM payroll_employee_allocation_events
+				`DELETE FROM payroll_allocation_events
           WHERE source_table = 'payroll_slips' AND source_id = ?`,
 				[owned.slipId]
 			);
