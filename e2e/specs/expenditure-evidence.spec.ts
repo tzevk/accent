@@ -108,13 +108,14 @@ test('recording an outward settlement raises cash paid without changing recogniz
 
 		await expect(page.getByTestId('cash-paid-amount')).toHaveText('₹0.00');
 		await page.getByTestId('cash-section-toggle').click();
-		await expect(page.getByTestId('cash-target-row')).toHaveCount(1);
-		await expect(page.getByTestId('cash-target-row')).toContainText(
-			fixture.expenseNumber
-		);
-		await expect(page.getByTestId('cash-target-row')).toContainText(
-			'Unsettled'
-		);
+		// The section lists recorded liabilities from every month, so a
+		// concurrently running group fixture can legitimately add another
+		// target. Scope every target assertion to this authored cost.
+		const targetRow = page
+			.getByTestId('cash-target-row')
+			.filter({ hasText: fixture.expenseNumber });
+		await expect(targetRow).toHaveCount(1);
+		await expect(targetRow).toContainText('Unsettled');
 
 		await page.getByTestId('cash-record-open').click();
 		await page
@@ -134,8 +135,8 @@ test('recording an outward settlement raises cash paid without changing recogniz
 			{ timeout: 60_000 }
 		);
 		await expect(page.getByTestId('cash-record-open')).toBeVisible();
-		await expect(page.getByTestId('cash-target-row')).toContainText('Partial');
-		await expect(page.getByTestId('cash-target-row')).toContainText(
+		await expect(targetRow).toContainText('Partial');
+		await expect(targetRow).toContainText(
 			`${SETTLEMENT_PAID_DISPLAY} of ${SETTLEMENT_COST_DISPLAY}`
 		);
 		await expect(page.getByTestId('cash-movement-row')).toContainText(
@@ -196,7 +197,7 @@ test('recording an outward settlement raises cash paid without changing recogniz
 		await expect(page.getByTestId('cash-movement-row')).toContainText(
 			reference
 		);
-		await expect(page.getByTestId('cash-target-row')).toContainText(
+		await expect(targetRow).toContainText(
 			`${SETTLEMENT_PAID_DISPLAY} of ${SETTLEMENT_COST_DISPLAY}`
 		);
 	} finally {

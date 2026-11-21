@@ -163,7 +163,7 @@ test('client order records and reopens with the authored counterparty, value and
 
 		await page.goto('/admin/orders');
 		await expect(
-			page.getByRole('heading', { name: 'Orders', exact: true })
+			page.getByRole('heading', { name: 'Orders', exact: true, level: 1 })
 		).toBeVisible({ timeout: 60_000 });
 
 		await page.getByTestId('order-direction').selectOption('client');
@@ -344,7 +344,7 @@ test('supplier order records as an approved commitment with its stated value sti
 
 		await page.goto('/admin/orders');
 		await expect(
-			page.getByRole('heading', { name: 'Orders', exact: true })
+			page.getByRole('heading', { name: 'Orders', exact: true, level: 1 })
 		).toBeVisible({ timeout: 60_000 });
 
 		await page.getByTestId('order-direction').selectOption('supplier');
@@ -568,7 +568,7 @@ test('recording a recognized slice consumes the supplier commitment and lowers i
 
 		await page.goto('/admin/orders');
 		await expect(
-			page.getByRole('heading', { name: 'Orders', exact: true })
+			page.getByRole('heading', { name: 'Orders', exact: true, level: 1 })
 		).toBeVisible({ timeout: 60_000 });
 
 		const row = page
@@ -668,7 +668,7 @@ test('recording a recognized slice consumes the supplier commitment and lowers i
 		// come from the stored consumption, not TanStack Query's cache.
 		await page.reload();
 		await expect(
-			page.getByRole('heading', { name: 'Orders', exact: true })
+			page.getByRole('heading', { name: 'Orders', exact: true, level: 1 })
 		).toBeVisible({ timeout: 60_000 });
 		const reloadedRow = page
 			.locator('[data-testid="order-row"]')
