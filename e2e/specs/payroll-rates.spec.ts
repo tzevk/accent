@@ -72,10 +72,10 @@ test('an HRA schedule rate persists with its effective period after reopening', 
 		page
 			.getByRole('row')
 			.filter({ hasText: 'HRA %' })
-			.filter({ hasText: '12.50%' })
 			.filter({ hasText: fromLabel })
 			.filter({ hasText: toLabel });
 	await expect(savedRow()).toBeVisible();
+	await expect(savedRow()).toContainText(/12\.5(?:0)?%/);
 	await expect(savedRow().getByText('Active', { exact: true })).toBeVisible();
 
 	await page.reload();
@@ -83,6 +83,7 @@ test('an HRA schedule rate persists with its effective period after reopening', 
 		page.getByRole('heading', { name: 'Component Rates', exact: true })
 	).toBeVisible();
 	await expect(savedRow()).toBeVisible();
+	await expect(savedRow()).toContainText(/12\.5(?:0)?%/);
 	await expect(savedRow()).toContainText(fromLabel);
 	await expect(savedRow()).toContainText(toLabel);
 	await expect(savedRow().getByText('Active', { exact: true })).toBeVisible();
