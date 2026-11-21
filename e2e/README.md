@@ -25,8 +25,6 @@ GitHub Actions owns routine browser verification. `npm run test:e2e` covers the 
 
 For a full run, register each spec exactly once in [`groups.ts`](../scripts/e2e/groups.ts). A group uses a fresh disposable database and app server. Count the signed-out requests to the auth endpoint across its tests. Four planned attempts leave room for a retry of each test and the harness's startup login. Keep the real rate limiter enabled.
 
-The test server uses Webpack because the default development bundler intermittently returned 404 for existing routes in CI. CI verifies the production build separately.
-
 The CI artifact contains a separate HTML report and failure traces for each group under `e2e/artifacts/groups/`. A focused local run keeps the existing `npm run test:e2e:report` path.
 
 ## Maintained outcomes
