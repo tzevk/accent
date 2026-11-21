@@ -20,13 +20,14 @@ Ask only when blocked on a safe or correct choice. Otherwise proceed with a stat
 
 - **Implement, fix, refactor, or delegate code:** read [new files and implementation](CODING_STANDARDS.md#new-files-and-implementation) and the [development loop](CODING_STANDARDS.md#development-loop).
 - **Format values, style UI, fetch client data, or build forms:** read [formatting and presentation](CODING_STANDARDS.md#formatting-and-presentation) and [client data and forms](CODING_STANDARDS.md#client-data-and-forms).
-- **Change authentication, security, API routes, authorization, rate limits, or uploads:** read [authentication and security](CODING_STANDARDS.md#authentication-and-security).
+- **Change API handlers, authorization, or the route-auth ESLint rule:** follow [authentication and security](CODING_STANDARDS.md#authentication-and-security).
+- **Change sessions, rate limits, or uploads:** read [authentication and security](CODING_STANDARDS.md#authentication-and-security).
 - **Change queries, migrations, schemas, pools, or database-backed behavior:** read [database and data invariants](CODING_STANDARDS.md#database-and-data-invariants).
 - **Change billing, salary, payroll, timesheets, or employee costs:** read [money and payroll](CODING_STANDARDS.md#money-and-payroll).
 - **Review code, choose checks, add tests, or change build/deployment automation:** read [testing and verification](CODING_STANDARDS.md#testing-and-verification).
 - **Review a diff or verify a change:** read [reliability checks](docs/agents/reliability-checks.md) and run only the rows whose trigger matches.
 - **Run local MariaDB, integration tests, or browser tests:** read [local database operations](docs/agents/local-database.md).
-- **Verify a browser journey or investigate an E2E failure:** follow [CI-owned browser verification](CODING_STANDARDS.md#owned-browser-runtime).
+- **Verify a browser journey or change the CI `e2e` job:** follow [CI-owned browser verification](CODING_STANDARDS.md#owned-browser-runtime).
 - **Change domain terms or ADRs:** follow [the domain documentation workflow](docs/agents/domain.md).
 - **Work on GitHub issues:** follow [the issue tracker workflow](docs/agents/issue-tracker.md).
 - **Triage labels:** follow [the triage-label workflow](docs/agents/triage-labels.md).

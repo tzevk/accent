@@ -8,7 +8,7 @@ Help Accent price fixed-price work from completed Projects, not just the assumpt
 
 ## Prerequisite
 
-The [Bid Desk pricing design](../adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md) is not implemented. This feature needs a reviewed Proposal cost baseline linked to the resulting Project. Preserve the exact issued revision, including scope, hours, costs, currency assumptions, and price. Never reconstruct a baseline from current rates or invent a historical approval.
+The [Bid Desk pricing design](../../adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md) is not implemented. This feature needs a reviewed Proposal cost baseline linked to the resulting Project. Preserve the exact issued revision, including scope, hours, costs, currency assumptions, and price. Never reconstruct a baseline from current rates or invent a historical approval.
 
 ## Proposed workflow
 
@@ -32,6 +32,6 @@ Track effort and cost variance on comparable completed Projects. Record cases wh
 
 ## References
 
-- [Reviewed Proposal pricing assumptions](../adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md)
-- [Project Employee Cost](../adr/0016-project-employee-cost-from-recorded-payroll.md)
-- [Financial close](../adr/0024-closed-financial-month-freezes-figures.md)
+- [Reviewed Proposal pricing assumptions](../../adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md)
+- [Project Employee Cost](../../adr/0016-project-employee-cost-from-recorded-payroll.md)
+- [Financial close](../../adr/0024-closed-financial-month-freezes-figures.md)

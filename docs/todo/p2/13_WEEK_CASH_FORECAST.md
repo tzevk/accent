@@ -30,6 +30,6 @@ Before rollout, confirm bank balance sources, cash buffer, included accounts and
 
 ## References
 
-- [Company Monthly Cost research](../explanations/COMPANY_MONTHLY_COST_ERP_RESEARCH.md)
-- [Incurred cost and supplier commitments](../adr/0017-project-incurred-cost-and-commitments-are-separate.md)
-- [Outward cash movements](../adr/0023-outward-cash-paid-as-dated-movement.md)
+- [Company Monthly Cost research](../../explanations/COMPANY_MONTHLY_COST_ERP_RESEARCH.md)
+- [Incurred cost and supplier commitments](../../adr/0017-project-incurred-cost-and-commitments-are-separate.md)
+- [Outward cash movements](../../adr/0023-outward-cash-paid-as-dated-movement.md)

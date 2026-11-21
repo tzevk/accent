@@ -1,6 +1,6 @@
 # Security Remediation Plan — Accent CRM
 
-> Index: [docs/README.md](../README.md).
+> Index: [docs/README.md](../../README.md).
 
 > **Remediation status (2026-09-28, branch `security/remediation-254`): all seven workstreams implemented and verified.**
 >

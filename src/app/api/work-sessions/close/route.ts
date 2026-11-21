@@ -34,7 +34,7 @@ function parseReportedClose(body: unknown): Date | null {
 }
 
 export async function POST(request: Request) {
-	// Auth marker for `npm run check:route-auth` (route-guard sweep): the
+	// Auth marker for the ESLint route-authorization rule (`npm run lint`): the
 	// handler authorizes through the session before it touches the database.
 	const currentUser = await getCurrentUser(request);
 	if (!currentUser) {

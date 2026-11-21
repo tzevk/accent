@@ -30,6 +30,6 @@ Before rollout, confirm who validates cost, what warrants escalation, and who ca
 
 ## References
 
-- [Approved Project budgets](../adr/0019-approved-cost-budgets.md)
-- [Project Employee Cost](../adr/0016-project-employee-cost-from-recorded-payroll.md)
-- [Incurred cost and supplier commitments](../adr/0017-project-incurred-cost-and-commitments-are-separate.md)
+- [Approved Project budgets](../../adr/0019-approved-cost-budgets.md)
+- [Project Employee Cost](../../adr/0016-project-employee-cost-from-recorded-payroll.md)
+- [Incurred cost and supplier commitments](../../adr/0017-project-incurred-cost-and-commitments-are-separate.md)

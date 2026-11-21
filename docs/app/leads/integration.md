@@ -179,14 +179,7 @@ with Ctrl+C, then drop the database manually. The port stays 31369 unless
 
 ## CI
 
-`checks.yml` runs the same command automatically in GitHub Actions on
-`ubuntu-latest` with Node 24, against a MariaDB 10.11 service — the engine
-production uses. The service creates no database, because the harness creates
-and drops its own. No secrets beyond the ephemeral service password, which
-lives only in the workflow. Run the command in your own shell against the
-local instance when working locally; the
-[testing and verification rules](../../../CODING_STANDARDS.md#testing-and-verification)
-are canonical.
+Run the command in your own shell against the local instance when working locally. In CI the same command is the first step of the `e2e` job, which has no separate route-auth job and needs only the scope, lint, and unit jobs first. The job runs on `ubuntu-latest` with Node 24 against a MariaDB 10.11 service — the engine production uses. The service creates no database, because each step creates and drops its own. The Leads step keeps its fixed port 31369 and database name `accent_integration_369`; the browser step that follows starts its own server on an automatically selected loopback port and its own run-suffixed disposable database. Nothing is shared between the two lifecycles except the MariaDB service. The Leads step is allowed to fail so the browser suite still runs; the final job step then fails the job. No secrets beyond the ephemeral service password, which lives only in the workflow. The [testing and verification rules](../../../CODING_STANDARDS.md#testing-and-verification) are canonical.
 
 ## Troubleshooting
 
@@ -198,6 +191,7 @@ are canonical.
   database automatically; fix the cause and rerun with a fresh name.
 - `server ... never became healthy`: another process may hold 31369; set
   `LEADS_INTEGRATION_PORT` to a free port.
+- On Windows, the harness starts Next.js with Webpack. Turbopack returned intermittent HTML `404` responses for existing Lead routes. Ubuntu CI keeps the default bundler. The harness still checks the same HTTP responses and database state.
 - `ticket-369 lead migration ... missing from migrations/`: the harness pins
   `migrations/20261019120000_lead_owner_stable_reference.ts` explicitly. If the
   backend replaces it, update `LEAD_MIGRATION_FILE` in
@@ -210,6 +204,8 @@ are canonical.
   (or pick a fresh `INTEGRATION_DB_NAME`); the harness never reuses one.
 
 ## Verification record — 2026-10-20
+
+This is a historical local record from that date, not a CI result and not a claim about the current tree. Command names are the ones in use then: `test:integration:leads` was later renamed `test:integration`, and `check:route-auth` was later replaced by the `accent/require-route-auth` ESLint rule. The record stands only for the revision it verified.
 
 - Local environment: Windows, MariaDB 10.11.15 (matching production), Node 26.2.0. The CI job targets Node 24; CI execution is not claimed here.
 - `npm run test:integration:leads`: all eighty-three scenarios pass against the real application and an independent database reader on MariaDB 10.11.

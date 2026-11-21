@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          protected_re='^(\.github/workflows/|src/.*\.(test|spec)\.(js|jsx|ts|tsx)$|scripts/.*\.test\.ts$|scripts/check-route-auth\.mjs$|scripts/testing/|scripts/e2e/|scripts/leads-integration/|e2e/|eslint\.config\.mjs$|vitest\..*|playwright\.config\.ts$)'
+          protected_re='^(\.github/workflows/|src/.*\.(test|spec)\.(js|jsx|ts|tsx)$|scripts/.*\.test\.ts$|scripts/route-auth-allowlist\.json$|scripts/testing/|scripts/e2e/|scripts/leads-integration/|e2e/|eslint\.config\.mjs$|vitest\..*|playwright\.config\.ts$)'
 
           mapfile -t changed < <(
             gh api --paginate \

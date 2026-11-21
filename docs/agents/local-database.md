@@ -26,7 +26,7 @@ See the [leads integration guide](../app/leads/integration.md) for execution det
 
 ## Playwright financial-smoke harness
 
-GitHub Actions owns routine E2E verification through the `e2e-financial-smoke` job. Local browser execution is only for explicit user-authorized debugging. Every local invocation requires `--local-run-reason`; otherwise the CLI refuses before database or server startup. CI keeps its one-shot command. Do not run `npx playwright test` directly or point the harness at a shared server.
+GitHub Actions owns routine E2E verification through the `e2e` job. The job runs the Leads authenticated HTTP integration (`npm run test:integration`, fixed port 31369, database `accent_integration_369`) and then the full Playwright suite (`npm run test:e2e`, automatic loopback port, run-suffixed disposable database). Each step owns its own database, app process, and cleanup against the job's single MariaDB 10.11 service. The browser step runs even when Leads fails, and a final step fails the job. Local browser execution is only for explicit user-authorized debugging. Every local invocation requires `--local-run-reason`; otherwise the CLI refuses before database or server startup. CI keeps its one-shot commands. Do not run `npx playwright test` directly or point the harness at a shared server.
 
 GitHub Actions runs this harness on `ubuntu-latest` with Node 24 against a MariaDB 10.11 service. Use its failure artifacts before considering local reproduction. The commands below are for authorized local debugging only. The [testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification) are canonical.
 

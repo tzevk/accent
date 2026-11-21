@@ -4,7 +4,7 @@
 
 Each finding includes concrete file:line references, severity, and a recommended fix. Findings already tracked in other docs (inline DDL, soft-delete gaps, responsive issues) are cross-referenced, not duplicated.
 
-> **Snapshot:** findings and statuses below reflect the tree at 2026-07-23; later security work is tracked in `docs/SECURITY_AUDIT.md` and `docs/todo/SECURITY_REMEDIATION_PLAN.md` — re-verify before treating a finding as open or resolved. Index: [docs/README.md](../README.md).
+> **Snapshot:** findings and statuses below reflect the tree at 2026-07-23; later security work is tracked in the [security audit](../../SECURITY_AUDIT.md) and [security remediation plan](SECURITY_REMEDIATION_PLAN.md) — re-verify before treating a finding as open or resolved. Index: [docs/README.md](../../README.md).
 
 ---
 

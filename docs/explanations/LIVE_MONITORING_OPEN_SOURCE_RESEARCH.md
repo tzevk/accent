@@ -6,7 +6,7 @@ CRM presence (recommended), work review, or device monitoring.
 Prior work, not repeated here: `user_presence` one-row-per-user store,
 SQL-computed recency (`TIMESTAMPDIFF`), route-aware `current_page`, widened
 online window, and admin-gated `GET /api/user-status` are recorded in
-[Live monitoring presence](../todo/LIVE_MONITORING_PRESENCE.md).
+[Live monitoring presence](../todo/archive/LIVE_MONITORING_PRESENCE.md).
 
 ## TL;DR
 

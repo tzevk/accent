@@ -12,7 +12,7 @@ Audit findings and plans describe a recorded state, not proof of current behavio
 | Migrate salary agreements and cut over payroll               | [Salary Profiles migration and rollout](app/payroll/salary-profiles-rollout.md)                 |
 | Work Leads, ownership, and the legacy review flow            | [Lead operator guide](app/leads/operator-guide.md)                                              |
 | Run local MariaDB, leads integration, or browser smoke       | [Local database operations](agents/local-database.md)                                           |
-| Review a change against incident-backed checks         | [Reliability checks](agents/reliability-checks.md)                                              |
+| Review a change against incident-backed checks               | [Reliability checks](agents/reliability-checks.md)                                              |
 | Set up and operate ticket email notifications                | [Resend ticket email setup](app/tickets/resend-setup.md)                                        |
 | Confirm ticket email delivery and keep an audit trail        | [Delivery webhooks and audit trail](app/tickets/delivery-audit-webhooks.md)                     |
 | Understand project view and edit screens                     | [Project view/edit conformity](app/projects/view-edit-conformity.md)                            |
@@ -84,7 +84,10 @@ These records preserve findings at the time of review. Check their dates and sta
 Verify a finding against current code before treating it as open or resolved.
 
 - [Security audit](SECURITY_AUDIT.md)
-- [Poor-practices audit](todo/POOR_PRACTICES_AUDIT.md)
+- [Poor-practices audit](todo/archive/POOR_PRACTICES_AUDIT.md)
+- [Security remediation plan](todo/archive/SECURITY_REMEDIATION_PLAN.md)
+- [Live monitoring presence](todo/archive/LIVE_MONITORING_PRESENCE.md)
+- [Resource page decoupling](todo/archive/RESOURCE_PAGE_DECOUPLING.md)
 - [DDL and soft-delete audit](explanations/DDL_AND_SOFT_DELETE_AUDIT.md)
 - [Responsive audit](explanations/RESPONSIVE_AUDIT.md)
 - [Changes summary](explanations/CHANGES_SUMMARY.md)
@@ -95,13 +98,9 @@ Verify a finding against current code before treating it as open or resolved.
 These documents record proposals and follow-up work. A listed item does not prove implementation.
 Use the [issue tracker workflow](agents/issue-tracker.md) to check current task status.
 
-- [Security remediation plan](todo/SECURITY_REMEDIATION_PLAN.md)
-- [Engineering challenges](todo/ENGINEERING_CHALLENGES.md)
-- [App health roadmap](todo/APP_HEALTH_ROADMAP.md)
-- [Attendance next steps](todo/ATTENDANCE_NEXT_STEPS.md)
-- [Next.js 16 upgrade follow-ups](todo/NEXT16_UPGRADE_FOLLOWUPS.md)
-- [Live monitoring presence](todo/LIVE_MONITORING_PRESENCE.md)
-- [Resource page decoupling](todo/RESOURCE_PAGE_DECOUPLING.md)
+- **P0 — Highest priority:** [Route authorization lint and browser regression coverage](todo/p0/CI_ROUTE_AUTH_AND_E2E.md).
+- **P1 — High priority:** [App health roadmap](todo/p1/APP_HEALTH_ROADMAP.md), [Engineering challenges](todo/p1/ENGINEERING_CHALLENGES.md), [Project Margin & Scope Radar](todo/p1/PROJECT_MARGIN_AND_SCOPE_RADAR.md), and [Bid-to-Actual Profit Memory](todo/p1/BID_TO_ACTUAL_PROFIT_MEMORY.md).
+- **P2 — Planned follow-ups:** [13-Week Cash Forecast](todo/p2/13_WEEK_CASH_FORECAST.md), [Sales Escalation Queue](todo/p2/SALES_ESCALATION_QUEUE.md), [Attendance next steps](todo/p2/ATTENDANCE_NEXT_STEPS.md), and [Next.js 16 upgrade follow-ups](todo/p2/NEXT16_UPGRADE_FOLLOWUPS.md).
 - [Monthly company and project expenditure design](app/reports/project-expenditure-design.md)
 - [Monthly company and project expenditure specification](app/reports/project-expenditure-spec.md) — [implementation issue #304](https://github.com/tzevk/accent/issues/304)
 - [Salary Profiles workspace design](app/payroll/salary-profiles-design.md) — implemented in #434; PR #454 open for review.

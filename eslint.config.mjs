@@ -1,5 +1,14 @@
+import { readFileSync } from 'node:fs';
 import coreWebVitals from 'eslint-config-next/core-web-vitals';
 import typescript from 'eslint-config-next/typescript';
+import requireRouteAuth from './scripts/testing/require-route-auth.ts';
+
+const routeAuthAllowlist = JSON.parse(
+	readFileSync(
+		new URL('./scripts/route-auth-allowlist.json', import.meta.url),
+		'utf8'
+	)
+);
 
 // Default ignores (use the `ignores` property instead of .eslintignore)
 const ignores = [
@@ -43,6 +52,25 @@ const eslintConfig = [
 			'react-hooks/preserve-manual-memoization': 'warn',
 			'react-hooks/incompatible-library': 'warn',
 			'react-hooks/immutability': 'warn',
+		},
+	},
+	{
+		// Every exported Next.js API handler must call an authorization guard or
+		// be named by HTTP method in the reasoned allowlist. The rule inspects
+		// parsed syntax, so comments and unused nested code cannot satisfy it.
+		files: ['src/app/api/**/route.js', 'src/app/api/**/route.ts'],
+		plugins: {
+			accent: {
+				rules: {
+					'require-route-auth': requireRouteAuth,
+				},
+			},
+		},
+		rules: {
+			'accent/require-route-auth': [
+				'error',
+				{ allowlist: routeAuthAllowlist },
+			],
 		},
 	},
 	{

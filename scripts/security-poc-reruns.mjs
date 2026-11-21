@@ -86,7 +86,10 @@ const evidence = {
 	flow: 'security-poc-reruns',
 	generatedAt: new Date().toISOString(),
 	baseUrl: BASE_URL,
-	staticCheck: run('node', ['scripts/check-route-auth.mjs']),
+	staticCheck: run(process.execPath, [
+		path.join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js'),
+		'src/app/api',
+	]),
 	c1: null,
 	c2: null,
 	h1: null,

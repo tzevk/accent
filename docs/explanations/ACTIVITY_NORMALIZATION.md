@@ -75,7 +75,7 @@ The stored column values can drift from the `daily_entries` ground truth because
 
 **Scaling concern:** The employee report loads **every row** with no date filter, parses **every JSON blob**, and builds per-user arrays in memory. At 10× scale (5,000 rows × 100 entries) that's ~50 MB parsed per request.
 
-**Fix:** Normalize into a `user_activity_daily_entries` table (see [`../todo/POOR_PRACTICES_AUDIT.md`](../todo/POOR_PRACTICES_AUDIT.md) §3.7 for schema). This enables date-range queries (`WHERE date BETWEEN`), per-row UPSERT instead of full-array read-modify-write, and SQL aggregation (`SUM(hours) GROUP BY date`).
+**Fix:** Normalize into a `user_activity_daily_entries` table (see the [poor-practices audit](../todo/archive/POOR_PRACTICES_AUDIT.md) §3.7 for schema). This enables date-range queries (`WHERE date BETWEEN`), per-row UPSERT instead of full-array read-modify-write, and SQL aggregation (`SUM(hours) GROUP BY date`).
 
 **Effort:** ~1 sprint (5+ frontend components assume `daily_entries` arrives as an inline array). Track as tech debt; tackle when reports get slow or a date-filtered query becomes necessary.
 

@@ -1826,7 +1826,16 @@ function startAppServer(resolved: ResolvedSafety, port: number): ChildProcess {
 	);
 	const child = spawn(
 		process.execPath,
-		[nextBin, 'dev', '--port', String(port), '--hostname', '127.0.0.1'],
+		[
+			nextBin,
+			'dev',
+			// On Windows, Turbopack intermittently returns HTML 404s for API routes.
+			...(process.platform === 'win32' ? ['--webpack'] : []),
+			'--port',
+			String(port),
+			'--hostname',
+			'127.0.0.1',
+		],
 		{
 			env: { ...process.env, ...resolved.serverEnv, PORT: String(port) },
 			cwd: process.cwd(),

@@ -1,7 +1,7 @@
 # Next.js 16 Upgrade — Type & Lint Debt Follow-ups
 
 > Generated 2026-08-24 after the Next.js **15.5.18 → 16.3.2** upgrade (`middleware.ts` → `proxy.ts`, Turbopack default, native ESLint flat configs).
-> Complements `APP_HEALTH_ROADMAP.md` and `POOR_PRACTICES_AUDIT.md` — covers only the debt deliberately deferred during the upgrade to keep that diff reviewable. Nothing below blocks shipping; all gates were green at hand-off. These are open follow-ups, not implemented work; dated resolutions are noted inline. Index: [docs/README.md](../README.md).
+> Complements the [app health roadmap](../p1/APP_HEALTH_ROADMAP.md) and [poor-practices audit](../archive/POOR_PRACTICES_AUDIT.md) — covers only the debt deliberately deferred during the upgrade to keep that diff reviewable. Nothing below blocks shipping; all gates were green at hand-off. These are open follow-ups, not implemented work; dated resolutions are noted inline. Index: [docs/README.md](../../README.md).
 
 ## Upgrade state at hand-off
 

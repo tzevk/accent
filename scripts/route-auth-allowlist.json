@@ -1,22 +1,22 @@
 [
 	{
 		"path": "src/app/api/health/route.js",
-		"methods": ["*"],
+		"methods": ["GET"],
 		"reason": "Public liveness probe by design (ADR-0014); payload is limited to { status: 'ok' }."
 	},
 	{
 		"path": "src/app/api/login/route.js",
-		"methods": ["*"],
+		"methods": ["POST"],
 		"reason": "Public entry point by design (ADR-0014): validates credentials and mints the session cookie."
 	},
 	{
 		"path": "src/app/api/logout/route.js",
-		"methods": ["*"],
+		"methods": ["POST"],
 		"reason": "Public by design (ADR-0014): revokes the caller's session token; idempotent when unauthenticated."
 	},
 	{
 		"path": "src/app/api/session/route.js",
-		"methods": ["*"],
+		"methods": ["GET"],
 		"reason": "Public by design (ADR-0014): resolves the session cookie for the client and returns 401 when absent."
 	},
 	{
@@ -31,7 +31,7 @@
 	},
 	{
 		"path": "src/app/api/documents/route.js",
-		"methods": ["*"],
+		"methods": ["GET", "POST", "PUT", "DELETE"],
 		"reason": "Thin forwarder: every handler delegates to src/app/api/document-master/route.js, which guards each handler with ensurePermission."
 	},
 	{

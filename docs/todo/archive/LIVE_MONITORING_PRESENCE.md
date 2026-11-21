@@ -1,6 +1,6 @@
 # Live-Monitoring Presence Rework — DONE
 
-**Status:** ✅ Complete (2026-08-10). Presence now lives in `user_presence` (one row per user, upserted by the activity tracker), and status derives from `last_seen` + client-reported `is_idle` — never from aggregating `user_activity_logs`. All 4 consumers of `/api/user-status` unchanged. Full suite green (438 tests). Index: [docs/README.md](../README.md).
+**Status:** ✅ Complete (2026-08-10). Presence now lives in `user_presence` (one row per user, upserted by the activity tracker), and status derives from `last_seen` + client-reported `is_idle` — never from aggregating `user_activity_logs`. All 4 consumers of `/api/user-status` unchanged. Full suite green (438 tests). Index: [docs/README.md](../../README.md).
 
 ### Follow-up fixes (2026-08-11, reported as "live status not working")
 

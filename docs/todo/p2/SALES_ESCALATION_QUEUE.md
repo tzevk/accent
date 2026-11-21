@@ -30,6 +30,6 @@ Before rollout, agree on value and timing thresholds, which decisions warrant di
 
 ## References
 
-- [Lead activities and Proposal handoff](../adr/0032-lead-activity-log-and-conversion-handoff.md)
-- [Lead operator guide](../app/leads/operator-guide.md)
-- [Lead conversion research](../explanations/LEAD_CONVERSION_CRM_RESEARCH.md)
+- [Lead activities and Proposal handoff](../../adr/0032-lead-activity-log-and-conversion-handoff.md)
+- [Lead operator guide](../../app/leads/operator-guide.md)
+- [Lead conversion research](../../explanations/LEAD_CONVERSION_CRM_RESEARCH.md)

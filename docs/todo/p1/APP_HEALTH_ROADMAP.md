@@ -2,7 +2,7 @@
 
 > Generated 2026-08-19 from codebase audit of `src/app/projects`, `migrations/`, `src/utils/*`, `src/app/api/*`.
 >
-> Complements `POOR_PRACTICES_AUDIT.md` — does not duplicate fixed items there. Each item has `file:line`, impact, and concrete fix. Items not marked ✅/`FIXED` are proposals; dated fixes are noted inline. Index: [docs/README.md](../README.md).
+> Complements [`POOR_PRACTICES_AUDIT.md`](../archive/POOR_PRACTICES_AUDIT.md) — does not duplicate fixed items there. Each item has `file:line`, impact, and concrete fix. Items not marked ✅/`FIXED` are proposals; dated fixes are noted inline. Index: [docs/README.md](../../README.md).
 
 ## What was fixed in this pass
 
@@ -42,7 +42,7 @@ Verification: `npm run lint` on touched files clean, `npx tsc --noEmit` pre-exis
 
 ### P0.4 Rate limiter + userCache won't scale ✅ logout gap FIXED 2026-08-25 · remainder SUPERSEDED 2026-09-28 (ADR-0013)
 
-> **2026-09-28: the deferred remainder is superseded.** Spoofable `x-forwarded-for` + per-instance counters are closed by ADR-0013 and workstream F of `docs/todo/SECURITY_REMEDIATION_PLAN.md`: DB-backed fixed-window buckets for `auth`/`heavy`, platform-verified IP, `USER_CACHE_TTL` 5 min → 60 s (stale-on-error retained). The logout fix and its regression tests stand; the referenced `p0.4-rate-limit-and-usercache.md` was never written and is not needed.
+> **2026-09-28: the deferred remainder is superseded.** Spoofable `x-forwarded-for` + per-instance counters are closed by ADR-0013 and workstream F of the [security remediation plan](../archive/SECURITY_REMEDIATION_PLAN.md): DB-backed fixed-window buckets for `auth`/`heavy`, platform-verified IP, `USER_CACHE_TTL` 5 min → 60 s (stale-on-error retained). The logout fix and its regression tests stand; the referenced `p0.4-rate-limit-and-usercache.md` was never written and is not needed.
 
 - **Where:** `proxy.ts:38` `rateLimitStore Map`, `src/utils/api-permissions.js:21` `userCache Map + pendingUserFetches`, `src/app/api/logout/route.js` (the actual bug).
 - **Reassessment:** not a scaling issue for this app — every session-revocation path already called `invalidateUserCache()` except `POST /api/logout`, so a replayed cookie stayed authenticated for up to 5 min (`USER_CACHE_TTL`) after logout.

@@ -137,8 +137,8 @@ and [testing standards](../../CODING_STANDARDS.md#testing-and-verification).
 ```mermaid
 flowchart TD
   changes[Classify changed paths] --> scope{Runtime checks needed?}
-  scope -->|Yes| fast[Parallel route authorization, lint, unit tests]
-  fast -->|All pass| runtime[Parallel production build, MariaDB integration, browser smoke]
+  scope -->|Yes| fast[Parallel lint including route authorization, unit tests]
+  fast -->|All pass| runtime[Parallel production build, consolidated Leads and browser e2e]
   fast -->|Failure or skipped prerequisite| verify[Always-running verify aggregate]
   runtime --> verify
   scope -->|Known documentation-only PR| verify
@@ -152,7 +152,12 @@ For PR selection, CI executes the classifier from the base revision, not the cha
 A missing base classifier or uncertain base metadata selects all runtime checks.
 This prevents a classifier regression from skipping its own tests.
 
-The existing `route-auth`, `verify`, `leads-integration`, and `e2e-financial-smoke` job names remain.
+The current jobs are `changes`, `lint`, `unit-tests`, `build`, `e2e`, and the always-running `verify` aggregate.
+`lint` includes the `accent/require-route-auth` rule, so route authorization has no separate job.
+The rule proves an approved guard call exists in each exported method's reachable path, not that the handler returns the deny branch or checks the right permission; API tests keep proving `401` and `403` behavior.
+The `e2e` job runs the Leads authenticated HTTP integration and the Playwright suite on one runner with one MariaDB 10.11 service;
+each harness still creates its own disposable database, starts and owns its Next process, and reports through its own step.
+A Leads failure does not block the browser step; a final step restores job failure so neither result is masked.
 Additional jobs expose lint, unit, build, and change-selection results separately.
 The aggregate requires successful change selection and every expected result.
 It accepts intentional runtime skips only for a confirmed documentation-only PR.
@@ -167,9 +172,10 @@ no paid capacity, remote test-result cache, or new cloud service is configured.
 - **Native targets:** command names describe Accent's layers; Twenty's fast target is named `test`, not `test:unit`.
 - **CI gating:** Twenty's expensive jobs are path-filtered, not uniformly test-gated.
   Accent additionally requires cheap checks before starting builds, databases, and browsers.
-- **Integration:** the existing owned MariaDB HTTP harness remains intact.
+- **Integration:** the existing owned MariaDB HTTP harness remains intact and now shares one `e2e` job and database service with the browser suite.
   Its migrations finish before the app starts, so no asynchronous reset handshake is needed.
   Existing scenarios, ordinary authentication, fixture cleanup, and independent database assertions are preserved.
+  The two harnesses still provision separate databases and Next processes; sharing the runner does not merge their fixtures or lifecycle.
 - **Browser scope:** Twenty restricts PR E2E by labels. Accent retains its one financial journey on every runtime-changing PR.
   The journey still proves real sign-in; replacing that assertion with shared authentication is not equivalent coverage.
 - **Selection:** native path filtering replaces the monorepo affected graph.
@@ -190,7 +196,7 @@ the CI workflows linked above, affected/cache actions, integration setup, and ap
 - `npm run test:unit` with the CI default/JUnit reporters passed **2,133 tests in 177 files**.
   Vitest reported 76.94 seconds and wrote the ignored JUnit artifact.
 - Targeted ESLint and TypeScript checks passed for the native scope helpers and their regression tests.
-- Workflow YAML, all eight job identifiers, aggregate dependencies, standard runners, and canonical npm callers were checked.
+- Workflow YAML, the then-current eight job identifiers, aggregate dependencies, standard runners, and canonical npm callers were checked.
 - Fourteen executable scope/gate scenarios passed using a disposable Git repository.
   They covered documentation skips, source changes, renames, deletions, uncertain metadata, output failures, and browser-failure propagation.
   The fixture was removed.
@@ -199,7 +205,7 @@ the CI workflows linked above, affected/cache actions, integration setup, and ap
 ## 10. Isolated mainline push verification
 
 - The push candidate is based on `origin/main`, excluding the unrelated unmerged payroll branch and its staged work.
-- `npm run verify` passed under Node **24.22.3**: route authorization, lint, **2,102 tests in 175 files**, and production build/typechecking.
+- `npm run verify` passed under Node **24.22.3**: route authorization (then a separate `check:route-auth` step, since folded into ESLint), lint, **2,102 tests in 175 files**, and production build/typechecking.
   The authorization check covered 477 handlers across 267 route files. ESLint reported warnings but no errors.
 - Counts differ from the authoring checkout because its unrelated payroll changes are not part of this candidate.
 - Six executable workflow-step scenarios passed using the base-revision classifier:
@@ -207,3 +213,4 @@ the CI workflows linked above, affected/cache actions, integration setup, and ap
   Temporary Git fixtures and extracted helpers were removed.
 - No local E2E, real-database integration, or production migration was run for the push.
 - At commit time, the new workflow had not yet executed in GitHub Actions.
+- The consolidated `e2e` job and the lint-enforced route authorization were documented from workflow and configuration changes; this record makes no claim that the merged layout has run in CI.

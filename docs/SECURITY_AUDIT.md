@@ -4,7 +4,7 @@
 
 > Generated 2026-08-06. Three parallel read-only security reviews (authentication/authorization, injection/code execution, data handling/uploads/dependencies) plus manual verification of every Critical/High finding against source.
 >
-> Coverage: ~180 API route files under `src/app/api/`, `middleware.ts`, `src/utils/api-permissions.js`, `src/utils/permissions.js`, `src/utils/password.ts`, upload/serving paths, `next.config.ts`, `package.json`/`package-lock.json`, `.env`, `scripts/`. Prior findings in `docs/todo/POOR_PRACTICES_AUDIT.md` (plaintext passwords, missing auth on download routes, wrong permission resources, in-memory rate-limiter §1.6, error-message leakage §2.2) were cross-referenced and are **not** re-reported.
+> Coverage: ~180 API route files under `src/app/api/`, `middleware.ts`, `src/utils/api-permissions.js`, `src/utils/permissions.js`, `src/utils/password.ts`, upload/serving paths, `next.config.ts`, `package.json`/`package-lock.json`, `.env`, `scripts/`. Prior findings in the [poor-practices audit](todo/archive/POOR_PRACTICES_AUDIT.md) (plaintext passwords, missing auth on download routes, wrong permission resources, in-memory rate-limiter §1.6, error-message leakage §2.2) were cross-referenced and are **not** re-reported.
 >
 > Cross-slice duplicates (session cookie forgery, document-upload, X-Forwarded-For rate-limit bypass) were merged into single findings.
 >
@@ -16,7 +16,7 @@
 
 ---
 
-> **Remediation status (2026-09-28):** every open/partial finding re-verified against HEAD `ff7440a`, cross-referenced with the piolium deep audit (`piolium/final-audit-report.md`, 2026-09-02, commit `f00d6ad`; C1 → SEC-26, C2 already fixed in code, H1 → SEC-08). Corrections are consolidated in [Status corrections](#status-corrections-2026-09-28-re-verification); four new findings SEC-26…SEC-29 are recorded below; the remediation plan is `docs/todo/SECURITY_REMEDIATION_PLAN.md` (ADRs 0011–0014).
+> **Remediation status (2026-09-28):** every open/partial finding re-verified against HEAD `ff7440a`, cross-referenced with the piolium deep audit (`piolium/final-audit-report.md`, 2026-09-02, commit `f00d6ad`; C1 → SEC-26, C2 already fixed in code, H1 → SEC-08). Corrections are consolidated in [Status corrections](#status-corrections-2026-09-28-re-verification); four new findings SEC-26…SEC-29 are recorded below; see the [security remediation plan](todo/archive/SECURITY_REMEDIATION_PLAN.md) (ADRs 0011–0014).
 
 ---
 
@@ -72,7 +72,7 @@ Second-order risks: stored XSS in messaging and HTML download endpoints (no HTML
 
 ### Status corrections (2026-09-28 re-verification)
 
-> **Remediation outcome (branch `security/remediation-254`):** the workstreams that closed these rows are implemented and verified — see the status block at the top of `docs/todo/SECURITY_REMEDIATION_PLAN.md` and the artifacts under `e2e/artifacts/security-*.json`. Three further findings surfaced while implementing them (SEC-30 the proxy was never compiled, SEC-31 project creation 500'd, SEC-32 activity-log pool deadlock) and are recorded below.
+> **Remediation outcome (branch `security/remediation-254`):** the workstreams that closed these rows are implemented and verified — see the status block in the [security remediation plan](todo/archive/SECURITY_REMEDIATION_PLAN.md) and the artifacts under `e2e/artifacts/security-*.json`. Three further findings surfaced while implementing them (SEC-30 the proxy was never compiled, SEC-31 project creation 500'd, SEC-32 activity-log pool deadlock) and are recorded below.
 
 Verified read-only against HEAD `ff7440a`. The table above predates this pass; this section is authoritative where they differ. SEC-01…SEC-07, SEC-10, SEC-12, SEC-14, SEC-19 keep their recorded Fixed/Resolved status. The `Verified status` column records the pre-implementation re-verification at `ff7440a`; a `Plan workstream X` note identifies the remediation workstream that addressed the finding. Residual owner/ops tasks (credential rotation, MySQL firewall/TLS, production rich-text scrub) remain as listed in the plan's workstream G and risk register.
 
@@ -251,7 +251,7 @@ Verified read-only against HEAD `ff7440a`. The table above predates this pass; t
 
 **Location:** `middleware.ts:47-58` (`getClientIP` reads client-supplied `x-forwarded-for` first), `:105-110` (rate-limit key = `${ip}:${userId}` where `userId` comes from the client cookie), `:41-45` (auth category: 10 req/15 min).
 
-**Description:** For `/api/login` (no `user_id` cookie yet) the identity is purely the spoofable IP — rotating `X-Forwarded-For` per request mints a fresh 10-attempts/15-min budget every time → unlimited password guessing. Authenticated attackers rotate the `user_id` cookie to dodge per-user API limits. (The in-memory store limitation under serverless is separately documented in POOR_PRACTICES_AUDIT.md §1.6.)
+**Description:** For `/api/login` (no `user_id` cookie yet) the identity is purely the spoofable IP — rotating `X-Forwarded-For` per request mints a fresh `auth:10/15min` budget. Authenticated attackers rotate the `user_id` cookie to dodge per-user API limits. (The in-memory store limitation under serverless is separately documented in the [poor-practices audit](todo/archive/POOR_PRACTICES_AUDIT.md) §1.6.)
 
 **Fix:** Derive the client IP only from a trusted platform-provided value (Vercel/nginx-injected header after `X-Forwarded-For` is stripped); key on verified IP + server-side session user id; use a shared store.
 
@@ -453,7 +453,7 @@ Verified read-only against HEAD `ff7440a`. The table above predates this pass; t
 
 **Description:** the Edge presence check (`proxy.ts:247`, satisfied by any `session` cookie value) is the only gate — the handlers never call `getCurrentUser`/`ensurePermission`. piolium proved anonymous GET/POST/DELETE on the three master tables and forged-cookie access on `active-users` (C2, since fixed). `created_by` is taken from the request body on `masters/categories`.
 
-**Fix:** `docs/todo/SECURITY_REMEDIATION_PLAN.md` workstream A (guard mapping A2, dead-route deletion A3, CI guard A6).
+**Fix:** [Security remediation plan](todo/archive/SECURITY_REMEDIATION_PLAN.md) workstream A (guard mapping A2, dead-route deletion A3, CI guard A6).
 
 ### SEC-27 — RBAC vocabulary defects grant/deny the wrong callers
 
@@ -533,7 +533,7 @@ Same-class exposure remains in the other SEC-28 generators; measured on the invo
 
 ## Remediation order
 
-> **2026-09-28: superseded.** The live plan is `docs/todo/SECURITY_REMEDIATION_PLAN.md` (workstreams A–G with acceptance and E2E proof); the list below is kept as history.
+> **2026-09-28: superseded.** See the [security remediation plan](todo/archive/SECURITY_REMEDIATION_PLAN.md) (workstreams A–G with acceptance and E2E proof); the list below is kept as history.
 
 1. ~~**SEC-01 + SEC-03 + SEC-14 (session model)**~~ — **DONE 2026-08-11.** Opaque server-side session tokens; `session_permissions` cookie fast path dropped; password change/reset revoke all sessions; SEC-12's `Secure` flag fixed with the same cookie rewrite; admin page gating moved server-side. SEC-05's `|| authenticated` clause and SEC-11's cookie identity were also removed as part of this work (findings remain open for their remaining scope).
 2. **SEC-02 + SEC-06 + SEC-10 (upload/storage model)** — ~~SEC-02 done 2026-08-13~~ (uploads rasterized to PNG, non-raster rejected, `/uploads/*` served with nosniff + attachment). ~~SEC-06 and SEC-10 done 2026-08-17~~ (documents moved to `private/documents/`, RBAC + IDOR entity verification, pure UUID filenames, authenticated `/api/document-upload/download` route).

@@ -301,7 +301,7 @@ export async function resolveProjectAccess(
 /**
  * Same contract as `resolveProjectAccess`, named for handlers where the
  * intent is "this route requires project access". Both names are recognised
- * by `scripts/check-route-auth.mjs`.
+ * by the ESLint route-authorization rule run by `npm run lint`.
  */
 export async function requireProjectAccess(
 	request: Request,

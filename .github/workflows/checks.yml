@@ -55,23 +55,6 @@ jobs:
             echo '[ci-scope] Base classifier unavailable; running every runtime check.'
           fi
 
-  route-auth:
-    needs: changes
-    # success() covers the scope job too, so a failed scope decision keeps
-    # every runtime job off instead of running them unguarded.
-    if: success() && needs.changes.outputs.runtime == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - name: Every API handler authorizes (ADR-0011)
-        run: npm run check:route-auth
-
   lint:
     needs: changes
     if: success() && needs.changes.outputs.runtime == 'true'
@@ -111,8 +94,8 @@ jobs:
           if-no-files-found: ignore
 
   build:
-    # success() requires the scope job and all three cheap checks to pass.
-    needs: [changes, route-auth, lint, unit-tests]
+    # success() requires the scope job and both cheap checks to pass.
+    needs: [changes, lint, unit-tests]
     if: success() && needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -126,14 +109,18 @@ jobs:
       - name: Next.js production build
         run: npm run build:prod
 
-  leads-integration:
-    # Real MariaDB runs only for runtime changes after every cheap check passed.
-    needs: [changes, route-auth, lint, unit-tests]
+  e2e:
+    # Both suites share one install and one MariaDB 10.11 service, but each
+    # harness creates and drops its own disposable database and owns the Next
+    # process it starts. Leads seeds migration history; the browser harness
+    # migrates cleanly from scratch.
+    needs: [changes, lint, unit-tests]
     if: success() && needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The retired Leads and Playwright jobs allowed 30 minutes each.
+    timeout-minutes: 60
     services:
-      # Production runs MariaDB 10.11, so the integration run uses the same
+      # Production runs MariaDB 10.11, so both integration runs use the same
       # engine. MySQL accepts and rejects different SQL.
       mariadb:
         image: mariadb:10.11
@@ -153,7 +140,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Leads authenticated HTTP integration (issue #368)
+      - name: 'Leads authenticated HTTP integration (issue #368)'
+        id: leads
+        # Keep the job green so browser setup and the Playwright suite still
+        # run after a Leads failure. The final step restores the failure, so
+        # neither suite can mask the other.
+        continue-on-error: true
         env:
           INTEGRATION_DB_HOST: 127.0.0.1
           INTEGRATION_DB_PORT: 3306
@@ -162,34 +154,15 @@ jobs:
           INTEGRATION_DB_PASSWORD: integration-root-pass
           LEADS_INTEGRATION_PORT: 31369
         run: npm run test:integration
-
-  e2e-financial-smoke:
-    needs: [changes, route-auth, lint, unit-tests]
-    if: success() && needs.changes.outputs.runtime == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services:
-      mariadb:
-        image: mariadb:10.11
-        env:
-          MARIADB_ROOT_PASSWORD: integration-root-pass
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -pintegration-root-pass"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
       - name: Install Chromium with system dependencies
+        # success() is true here when checkout, install, and Leads did not abort
+        # the job; a tolerated Leads failure still lets the browser suite run.
+        if: success()
         run: npx playwright install --with-deps chromium
-      - name: Disposable-database payroll review smoke (issue #426)
+      - name: 'Full Playwright suite (issue #426)'
+        # Runs only after the shared setup and Chromium install succeeded, even
+        # when Leads failed, so browser results stay independent of Leads.
+        if: success()
         env:
           INTEGRATION_DB_HOST: 127.0.0.1
           INTEGRATION_DB_PORT: 3306
@@ -206,6 +179,11 @@ jobs:
           path: e2e/artifacts
           retention-days: 7
           if-no-files-found: ignore
+      - name: Fail when the Leads integration failed
+        if: always() && steps.leads.outcome == 'failure'
+        run: |
+          echo '::error::Leads authenticated HTTP integration failed.'
+          exit 1
 
   verify:
     # Stable aggregate job id for repository required-check settings.
@@ -214,16 +192,7 @@ jobs:
     # every job that scope requires succeeded; a documentation-only change may
     # only skip the runtime jobs.
     if: always()
-    needs:
-      [
-        changes,
-        route-auth,
-        lint,
-        unit-tests,
-        build,
-        leads-integration,
-        e2e-financial-smoke,
-      ]
+    needs: [changes, lint, unit-tests, build, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -232,12 +201,10 @@ jobs:
       NEEDS_JSON: ${{ toJSON(needs) }}
       EXPECTED_JOBS: |
         changes
-        route-auth
         lint
         unit-tests
         build
-        leads-integration
-        e2e-financial-smoke
+        e2e
     steps:
       - name: Aggregate required check results
         run: |
