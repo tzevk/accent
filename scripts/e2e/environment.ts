@@ -95,10 +95,7 @@ async function dropDatabase(target: ResolvedSafety): Promise<void> {
 	assertIdentifier(target.name);
 	const connection = await connectServer(target);
 	try {
-		await connection.execute(
-			`DROP DATABASE IF EXISTS \`${target.name}\``,
-			[]
-		);
+		await connection.execute(`DROP DATABASE IF EXISTS \`${target.name}\``, []);
 	} finally {
 		await connection.end();
 	}
@@ -248,10 +245,7 @@ async function waitForHealth(
 	fail(`server at ${baseUrl} never became healthy: ${lastError}`);
 }
 
-function appChildEnv(
-	target: ResolvedSafety,
-	port: number
-): NodeJS.ProcessEnv {
+function appChildEnv(target: ResolvedSafety, port: number): NodeJS.ProcessEnv {
 	const env: NodeJS.ProcessEnv = { ...process.env };
 	// Inherited URLs and CA paths must not redirect the pool regardless of the
 	// pinned branch variables. `next dev` loads .env without overriding these.

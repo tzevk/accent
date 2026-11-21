@@ -41,6 +41,10 @@ test.afterEach(async ({ db }) => {
 	await cleanupPayrollReviewFixture(db, owned);
 });
 
+// Actor: Payroll reviewer with payroll:read and no write permissions.
+// Starting state: A recorded Payroll Slip and current attendance for the same employee and month.
+// Action: Open the company sheet, expand the employee's attendance, and open the Slip.
+// Proof: The sheet and Slip retain the recorded money while the sheet shows current attendance.
 test('payroll review separates current attendance from recorded money', async ({
 	page,
 	db,
