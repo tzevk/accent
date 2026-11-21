@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL;
@@ -7,9 +8,14 @@ if (!baseURL) {
 	);
 }
 
+// The harness publishes E2E_ARTIFACTS_DIR to every Playwright process. A
+// full-suite group run points it at that group's directory; focused local
+// invocations keep the historical shared e2e/artifacts locations.
+const artifactsDir = process.env.E2E_ARTIFACTS_DIR ?? './e2e/artifacts';
+
 export default defineConfig({
 	testDir: './e2e/specs',
-	outputDir: './e2e/artifacts/test-results',
+	outputDir: path.join(artifactsDir, 'test-results'),
 	timeout: 90_000,
 	expect: { timeout: 10_000 },
 	fullyParallel: true,
@@ -19,7 +25,7 @@ export default defineConfig({
 		['list'],
 		[
 			'html',
-			{ outputFolder: './e2e/artifacts/html-report', open: 'never' },
+			{ outputFolder: path.join(artifactsDir, 'html-report'), open: 'never' },
 		],
 	],
 	use: {

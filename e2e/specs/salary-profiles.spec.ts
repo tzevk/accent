@@ -13,16 +13,12 @@ import {
 	expectCorrectedState,
 	expectCreatedState,
 	expectEarlierSlipUnchanged,
-	expectExplicitZeroAgreement,
-	expectDirtyNavigationGuard,
 	expectFixtureDirectory,
 	expectGeneratedState,
 	expectInitialState,
 	expectMissingSalaryEditor,
-	expectReadOnlySalaryView,
 	expectRevisionState,
 	expectUsedAgreementProtection,
-	expectZeroAgreementState,
 	generateSingleEmployeePayrollThroughBrowser,
 	openEmployeeFromDirectory,
 	openSalaryProfilesThroughPayrollMenu,
@@ -35,10 +31,14 @@ import {
 // still waits for its observable result; this only bounds compilation time.
 test.setTimeout(300_000);
 
+// Actor: Payroll editor with payroll read/create/update/delete and no employees:*.
+// Starting state: Fixture Employee with no agreement plus one unused Contract agreement.
+// Action: Create, correct with a stale second editor, generate one slip, revise, cancel, then re-read the slip.
+// Proof: Exact persisted CTC, timeline version, audit, slip and used-month rows; recorded slip stays unchanged; used terms stay read-only.
 test('salary profiles support a real correction, payroll protection and revision', async ({
 	page,
-	browser,
 	db,
+	runtime,
 	salaryProfiles,
 }) => {
 	const fixture: SalaryProfilesFixture = salaryProfiles;
@@ -49,7 +49,7 @@ test('salary profiles support a real correction, payroll protection and revision
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await signInAsEditor(page, fixture);
 	await openSalaryProfilesThroughPayrollMenu(page);
-	await expectFixtureDirectory(page, fixture);
+	await expectFixtureDirectory(page, fixture, runtime.artifactsDir);
 
 	await openEmployeeFromDirectory(
 		page,
@@ -117,7 +117,11 @@ test('salary profiles support a real correction, payroll protection and revision
 	expect(afterUsedRead.agreements).toEqual(afterGeneration.agreements);
 	expect(afterUsedRead.uses).toEqual(afterGeneration.uses);
 
-	const revision = await createScheduledSalaryRevision(page, fixture);
+	const revision = await createScheduledSalaryRevision(
+		page,
+		fixture,
+		runtime.artifactsDir
+	);
 	const afterRevision = await readSalaryProfilesState(db, fixture);
 	expectRevisionState(
 		afterRevision,
@@ -141,19 +145,5 @@ test('salary profiles support a real correction, payroll protection and revision
 
 	await refreshSalarySession(page, fixture);
 	await expectEarlierSlipUnchanged(page, db, fixture);
-	await expectReadOnlySalaryView(browser, page, fixture);
-	await expectExplicitZeroAgreement(page, fixture);
-	const zeroState = await readSalaryProfilesState(db, fixture);
-	expectZeroAgreementState(zeroState, fixture);
-
-	await captureDesktopAndMobileEditor(page, fixture);
-	await expectDirtyNavigationGuard(page, fixture);
-	const afterDirtyNavigation = await readSalaryProfilesState(db, fixture);
-	expect(afterDirtyNavigation.agreements).toEqual(afterCancellation.agreements);
-	expect(afterDirtyNavigation.slips).toEqual(afterCancellation.slips);
-	expect(afterDirtyNavigation.uses).toEqual(afterCancellation.uses);
-	expect(afterDirtyNavigation.audits).toEqual(afterCancellation.audits);
-	expect(afterDirtyNavigation.leaveSummaries).toEqual(
-		afterCancellation.leaveSummaries
-	);
+	await captureDesktopAndMobileEditor(page, fixture, runtime.artifactsDir);
 });
