@@ -78,7 +78,7 @@ export const FULL_SUITE_GROUPS: readonly E2EGroupDefinition[] = [
 	{
 		name: 'session-and-transactions',
 		specs: [
-			{ file: 'e2e/specs/session.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/session.spec.ts', plannedLogins: 3 },
 			{ file: 'e2e/specs/salary-contention.spec.ts', plannedLogins: 0 },
 		],
 	},
@@ -95,6 +95,124 @@ export const FULL_SUITE_GROUPS: readonly E2EGroupDefinition[] = [
 				plannedLogins: 1,
 			},
 		],
+	},
+	{
+		name: 'company-vendor-and-lead-work',
+		specs: [
+			{ file: 'e2e/specs/company-vendor.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/lead-work.spec.ts', plannedLogins: 2 },
+		],
+	},
+	{
+		name: 'collaboration-and-monitoring',
+		specs: [
+			{ file: 'e2e/specs/messages.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/monitoring.spec.ts', plannedLogins: 2 },
+		],
+	},
+	{
+		name: 'tickets-and-own-timesheet',
+		specs: [
+			{ file: 'e2e/specs/tickets.spec.ts', plannedLogins: 3 },
+			{ file: 'e2e/specs/employee-time.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'work-logs-and-ledger',
+		specs: [
+			{ file: 'e2e/specs/work-logs.spec.ts', plannedLogins: 3 },
+			{ file: 'e2e/specs/accounts-ledger.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'personal-tasks-and-utilization',
+		specs: [
+			{ file: 'e2e/specs/personal-tasks.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/workforce-reports.spec.ts', plannedLogins: 2 },
+		],
+	},
+	{
+		name: 'sales-invoice-and-register',
+		specs: [
+			{ file: 'e2e/specs/sales-invoice.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/sales-register.spec.ts', plannedLogins: 2 },
+		],
+	},
+	{
+		name: 'attendance-and-holidays',
+		specs: [
+			{ file: 'e2e/specs/attendance.spec.ts', plannedLogins: 3 },
+			{ file: 'e2e/specs/holiday.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'leave',
+		specs: [{ file: 'e2e/specs/leave-workflows.spec.ts', plannedLogins: 4 }],
+	},
+	{
+		name: 'user-administration-and-roles',
+		specs: [
+			{ file: 'e2e/specs/user-administration.spec.ts', plannedLogins: 3 },
+			{ file: 'e2e/specs/roles.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'account-access',
+		specs: [{ file: 'e2e/specs/account-access.spec.ts', plannedLogins: 3 }],
+	},
+	{
+		name: 'project-lead-policy',
+		specs: [
+			{ file: 'e2e/specs/project-lead-policy.spec.ts', plannedLogins: 2 },
+		],
+	},
+	{
+		name: 'profile-timesheet-and-payslip',
+		specs: [
+			{ file: 'e2e/specs/profile-dashboard.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/timesheet-report.spec.ts', plannedLogins: 1 },
+			{ file: 'e2e/specs/employee-payslip.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'proposal-project-budget-and-payments',
+		specs: [
+			{ file: 'e2e/specs/project-budget.spec.ts', plannedLogins: 1 },
+			{ file: 'e2e/specs/payment-workflows.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/proposal-project.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'financial-close-and-evidence',
+		specs: [
+			{ file: 'e2e/specs/financial-close.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/expenditure-evidence.spec.ts', plannedLogins: 2 },
+		],
+	},
+	{
+		name: 'orders-and-supplier-invoice',
+		specs: [
+			{ file: 'e2e/specs/orders.spec.ts', plannedLogins: 3 },
+			{ file: 'e2e/specs/supplier-invoice.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'expense-recognition',
+		specs: [
+			{ file: 'e2e/specs/expense-recognition.spec.ts', plannedLogins: 1 },
+			{ file: 'e2e/specs/petty-cash-spend.spec.ts', plannedLogins: 1 },
+		],
+	},
+	{
+		name: 'payroll-run-and-rates',
+		specs: [
+			{ file: 'e2e/specs/payroll-run.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/payroll-rates.spec.ts', plannedLogins: 2 },
+		],
+	},
+	{
+		name: 'project-workspace',
+		specs: [{ file: 'e2e/specs/project-workspace.spec.ts', plannedLogins: 4 }],
 	},
 ];
 

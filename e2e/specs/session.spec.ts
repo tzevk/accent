@@ -157,3 +157,47 @@ test('redirects an employee without rights away from the admin dashboard', async
 		await journey.dispose();
 	}
 });
+
+// Actor: an anonymous visitor submitting the sign-in form.
+// Starting state: a real active account with a known username and zero session rows.
+// Action: enter that username with a wrong password and press Sign In.
+// Proof: the Invalid credentials alert stays on /signin and no session row is created.
+test('refuses a known account with the wrong password', async ({
+	page,
+	db,
+	namespace,
+}) => {
+	const journey = await createJourneyUser(
+		db,
+		`${namespace}-wrong-password`,
+		[]
+	);
+	try {
+		page.setDefaultNavigationTimeout(60_000);
+		await page.setViewportSize({ width: 1440, height: 900 });
+		expect(await countSessions(db, journey.userId)).toBe(0);
+
+		await page.goto('/signin');
+		await page
+			.getByLabel('Username or Email', { exact: true })
+			.fill(journey.username);
+		await page
+			.getByLabel('Password', { exact: true })
+			.fill(`${journey.password}-wrong`);
+
+		const loginResponse = page.waitForResponse(
+			(response) =>
+				response.request().method() === 'POST' &&
+				new URL(response.url()).pathname === '/api/login'
+		);
+		await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+		expect((await loginResponse).status()).toBe(401);
+
+		await expect(page.getByRole('alert')).toHaveText('Invalid credentials');
+		await expect(page).toHaveURL(/\/signin$/);
+		await expectSignInForm(page);
+		expect(await countSessions(db, journey.userId)).toBe(0);
+	} finally {
+		await journey.dispose();
+	}
+});
