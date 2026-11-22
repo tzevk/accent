@@ -129,11 +129,9 @@ test('finalizing an eligible draft month locks the saved employee roster', async
 	expect(dialogMessage).toContain('Payroll Slips: 1.00');
 	expect(dialogMessage).toContain(`Net Pay: ${currencyLabel(45_000)}`);
 	await expect(
-		page
-			.getByRole('status')
-			.filter({
-				hasText: `Payroll Run for ${month} finalized — 1 employees locked`,
-			})
+		page.getByRole('status').filter({
+			hasText: `Payroll Run for ${month} finalized — 1 employees locked`,
+		})
 	).toBeVisible();
 	await expect(header.getByText('Finalized', { exact: true })).toBeVisible();
 	await expect(finalizeButton).toBeDisabled();
@@ -253,22 +251,25 @@ test('marking a finalized month paid records the chosen payment date', async ({
 		page.getByRole('heading', { name: /^Payroll Run/ })
 	).toBeVisible();
 
-	const runRead = page.waitForResponse(
-		(response) =>
-			new URL(response.url()).pathname === '/api/payroll/runs' &&
-			new URL(response.url()).searchParams.get('month') === run.month
-	);
-	const slipsRead = page.waitForResponse(
-		(response) =>
-			new URL(response.url()).pathname === '/api/payroll/slips' &&
-			new URL(response.url()).searchParams.get('month') === run.month
-	);
+	// The heading paints before the dashboard's first slips read settles, so the
+	// month picker is only safe to drive once that read has replaced its loading
+	// line with its own loaded status line.
+	const slipsStatus = page
+		.getByRole('status')
+		.filter({ hasText: /Showing \d+ payroll employees? for / });
+	await expect(slipsStatus).toBeVisible();
+
 	await page.getByLabel('Month:', { exact: true }).fill(run.monthSlug);
-	expect((await runRead).ok()).toBe(true);
-	expect((await slipsRead).ok()).toBe(true);
+	await expect(slipsStatus).toHaveText(
+		`Showing 1 payroll employee for ${month}`
+	);
 
 	const header = page.getByRole('heading', { name: /^Payroll Run/ });
 	await expect(header.getByText('Finalized', { exact: true })).toBeVisible();
+	const row = page.getByRole('row').filter({
+		has: page.getByRole('link', { name: employee.fullName, exact: true }),
+	});
+	await expect(row).toBeVisible();
 	await expect(
 		page.getByRole('button', { name: 'Mark month paid', exact: true })
 	).toBeVisible();
@@ -302,9 +303,6 @@ test('marking a finalized month paid records the chosen payment date', async ({
 	).toBeVisible();
 	await expect(header.getByText('Paid', { exact: true })).toBeVisible();
 
-	const row = page
-		.getByRole('row')
-		.filter({ has: page.getByRole('link', { name: employee.fullName }) });
 	await expect(row.getByText('paid', { exact: true })).toBeVisible();
 	await row
 		.getByRole('button', {
