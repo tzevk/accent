@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ComponentType, type SVGProps } from 'react';
-import { LogOut, Menu, Moon } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
 	BanknotesIcon,
@@ -39,6 +39,7 @@ import {
 	AccordionTrigger,
 } from '@/components/ui/accordion';
 import NotificationsBell from '@/components/NotificationsBell';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -110,22 +111,6 @@ function pathMatches(pathname: string, href: string) {
 	return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-function DarkModeButton() {
-	// Dark mode is deliberately inert until the app ships a dark palette.
-	return (
-		<Button
-			variant="ghost"
-			size="icon"
-			className="shrink-0 rounded-xl"
-			disabled
-			aria-label="Dark mode (coming soon)"
-			title="Dark mode — coming soon"
-		>
-			<Moon className="size-5" aria-hidden="true" />
-		</Button>
-	);
-}
-
 export function Navigation2({
 	navigation,
 	reportsMenuItems,
@@ -182,7 +167,7 @@ export function Navigation2({
 	};
 
 	return (
-		<header className="fixed inset-x-0 top-0 z-50 h-16 border-b border-border bg-white print:hidden">
+		<header className="fixed inset-x-0 top-0 z-50 h-16 border-b border-border bg-background print:hidden">
 			<div className="flex h-full items-center justify-between gap-6 px-6 md:ps-0">
 				<div className="flex min-w-0 items-center gap-6">
 					<Link
@@ -196,7 +181,7 @@ export function Navigation2({
 								alt=""
 								width={144}
 								height={128}
-								className="h-8 w-auto -translate-y-1 object-contain"
+								className="h-8 w-auto -translate-y-1 object-contain dark:brightness-150 dark:saturate-75"
 								priority
 							/>
 						</span>
@@ -333,7 +318,7 @@ export function Navigation2({
 				</div>
 
 				<div className="flex items-center gap-1">
-					<DarkModeButton />
+					<ThemeToggle />
 					<NotificationsBell />
 
 					<Sheet
@@ -355,7 +340,7 @@ export function Navigation2({
 
 						<SheetContent
 							side="right"
-							className="flex flex-col gap-6 overflow-y-auto border-border bg-white p-6 text-foreground data-[side=right]:w-[min(340px,85vw)] sm:data-[side=right]:w-[380px]"
+							className="flex flex-col gap-6 overflow-y-auto border-border bg-background p-6 text-foreground data-[side=right]:w-[min(340px,85vw)] sm:data-[side=right]:w-[380px]"
 						>
 							<SheetTitle className="sr-only">Primary navigation</SheetTitle>
 
@@ -371,7 +356,7 @@ export function Navigation2({
 										alt=""
 										width={144}
 										height={128}
-										className="h-9 w-auto object-contain"
+										className="h-9 w-auto object-contain dark:brightness-150 dark:saturate-75"
 									/>
 									<span className="text-lg font-bold tracking-tight text-foreground">
 										Accent

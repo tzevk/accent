@@ -1195,13 +1195,7 @@ export default function ReportsPage() {
 							</div>
 
 							{/* Month Title */}
-							<div
-								className="border-b-2 border-purple-800 px-3 py-2 font-bold text-center text-xs text-purple-800 tracking-wide"
-								style={{
-									background:
-										'linear-gradient(90deg, #f3e5f5, #e1bee7, #f3e5f5)',
-								}}
-							>
+							<div className="border-b-2 border-primary bg-accent px-3 py-2 font-bold text-center text-xs text-accent-foreground tracking-wide">
 								SALARY SLIP FOR THE MONTH OF{' '}
 								{formatMonth(selectedSlip.month).toUpperCase()}
 							</div>
@@ -1529,13 +1523,7 @@ export default function ReportsPage() {
 										<td className="border border-purple-200 px-2 py-1 bg-rose-50"></td>
 										<td className="border border-purple-200 px-2 py-1 bg-rose-50"></td>
 									</tr>
-									<tr
-										className="font-bold"
-										style={{
-											background:
-												'linear-gradient(90deg, #e8f5e9, #f3e5f5, #fce4ec)',
-										}}
-									>
+									<tr className="font-bold bg-muted">
 										<td className="border border-purple-300 border-t-2 border-t-purple-800 px-2 py-1.5">
 											GROSS EARNING
 										</td>
@@ -1574,10 +1562,7 @@ export default function ReportsPage() {
 							</table>
 
 							{/* Footer */}
-							<div
-								className="text-center text-[10px] text-purple-700 border-t-2 border-purple-800 pt-2 mt-0 font-medium"
-								style={{ background: '#f3e5f5' }}
-							>
+							<div className="text-center text-[10px] text-accent-foreground border-t-2 border-primary bg-accent pt-2 mt-0 font-medium">
 								<p>
 									NOTE: THIS IS A COMPUTER GENERATED SALARY SLIP HENCE
 									DOESN&apos;T REQUIRE SIGNATURE

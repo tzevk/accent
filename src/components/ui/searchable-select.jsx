@@ -96,17 +96,19 @@ export default function SearchableSelect({
 				aria-label={ariaLabel}
 				disabled={disabled}
 				onClick={() => setIsOpen(!isOpen)}
-				className={`w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm transition-colors text-left flex items-center justify-between gap-1 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-gray-300'} ${buttonClassName || ''}`}
+				className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-colors text-left flex items-center justify-between gap-1 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-ring/50'} ${buttonClassName || ''}`}
 			>
 				<span
 					className={
-						value ? 'text-gray-900 truncate' : 'text-gray-400 truncate'
+						value
+							? 'text-foreground truncate'
+							: 'text-muted-foreground truncate'
 					}
 				>
 					{selectedLabel || placeholder}
 				</span>
 				<svg
-					className={`h-3 w-3 text-gray-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+					className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
 					fill="none"
 					viewBox="0 0 24 24"
 					stroke="currentColor"
@@ -131,21 +133,21 @@ export default function SearchableSelect({
 							width: coords.width,
 							zIndex: 9999,
 						}}
-						className="bg-white border border-gray-300 rounded-md shadow-lg max-h-60 flex flex-col overflow-hidden"
+						className="bg-popover text-popover-foreground border border-border rounded-md shadow-lg max-h-60 flex flex-col overflow-hidden"
 					>
-						<div className="p-1.5 border-b border-gray-200">
+						<div className="p-1.5 border-b border-border">
 							<input
 								ref={inputRef}
 								type="text"
 								value={search}
 								onChange={(e) => setSearch(e.target.value)}
 								placeholder="Search..."
-								className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
+								className="w-full px-2 py-1.5 text-sm border border-input rounded bg-background text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-ring"
 							/>
 						</div>
 						<div className="overflow-y-auto flex-1">
 							{filteredOptions.length === 0 ? (
-								<div className="px-3 py-2 text-sm text-gray-500">
+								<div className="px-3 py-2 text-sm text-muted-foreground">
 									No results
 								</div>
 							) : (
@@ -154,10 +156,10 @@ export default function SearchableSelect({
 										key={opt.id ?? opt.value}
 										type="button"
 										onClick={() => handleSelect(opt.value)}
-										className={`w-full text-left px-3 py-1.5 text-sm hover:bg-purple-50 transition-colors ${
+										className={`w-full text-left px-3 py-1.5 text-sm hover:bg-muted transition-colors ${
 											opt.value === value
-												? 'bg-purple-100 text-purple-700 font-medium'
-												: 'text-gray-900'
+												? 'bg-accent text-accent-foreground font-medium'
+												: 'text-foreground'
 										}`}
 									>
 										{opt.label}

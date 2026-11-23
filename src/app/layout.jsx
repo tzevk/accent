@@ -1,6 +1,7 @@
 import { Geist_Mono, Poppins } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
 import './globals.css';
+import './theme-transition.css';
 import Sidebar from '@/components/Sidebar';
 import AuthGate from '@/components/AuthGate';
 import ActivityTracker from '@/components/ActivityTracker';
@@ -11,6 +12,7 @@ import { SpellCheckProvider } from '@/hooks/useSpellCheck';
 import SkipToMainLink from '@/components/SkipToMainLink';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { themeBootstrapScript } from '@/lib/theme';
 
 const poppins = Poppins({
 	variable: '--font-poppins',
@@ -32,6 +34,17 @@ export const metadata = {
 export default function RootLayout({ children }) {
 	return (
 		<html lang="en" suppressHydrationWarning>
+			<head>
+				<meta
+					name="color-scheme"
+					content="light dark"
+					suppressHydrationWarning
+				/>
+				{/* Parser-blocking on purpose: restore the explicit override before
+				    first paint. Next's hydration queue runs too late and would flash
+				    the light theme. */}
+				<script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+			</head>
 			<body
 				className={`${poppins.variable} ${geistMono.variable} antialiased`}
 				suppressHydrationWarning
@@ -54,20 +67,20 @@ export default function RootLayout({ children }) {
 										position="top-right"
 										toastOptions={{
 											style: {
-												background: '#1f2937',
-												color: '#f9fafb',
-												border: '1px solid #374151',
+												background: 'var(--popover)',
+												color: 'var(--popover-foreground)',
+												border: '1px solid var(--border)',
 											},
 											success: {
 												iconTheme: {
-													primary: '#a855f7',
-													secondary: '#f9fafb',
+													primary: 'var(--primary)',
+													secondary: 'var(--popover-foreground)',
 												},
 											},
 											error: {
 												iconTheme: {
-													primary: '#ef4444',
-													secondary: '#f9fafb',
+													primary: 'var(--destructive)',
+													secondary: 'var(--popover-foreground)',
 												},
 											},
 										}}

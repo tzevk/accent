@@ -1,4 +1,23 @@
 @import 'tailwindcss';
+@import './theme-palette.css';
+
+/* Explicit data-theme plus the no-preference OS fallback. Screen-only so
+   print never enters the dark variant. */
+@custom-variant dark {
+	@media screen {
+		&:where([data-theme='dark'], [data-theme='dark'] *) {
+			@slot;
+		}
+	}
+	@media screen and (prefers-color-scheme: dark) {
+		&:where(
+			:root:not([data-theme='light']),
+			:root:not([data-theme='light']) *
+		) {
+			@slot;
+		}
+	}
+}
 
 @theme inline {
 	--color-background: var(--background);
@@ -95,73 +114,21 @@
 }
 
 :root {
-	--background: #ffffff;
-	--foreground: #171717;
 	/* Sidebar/card background (keeps sign-in and sidebar in sync) */
 	--sidebar-bg: #4d025b;
 	/* Map Next font variables to Tailwind v4 tokens without using @theme */
 	--font-sans: var(--font-poppins);
 	--font-mono: var(--font-geist-mono);
-	/* Optional color aliases if referenced */
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	/* Admin dashboard chart series (ADR-0028): one token per series, read via
-	   var() from recharts so a restyle is a single edit here. Status colours
-	   sit at the 600 level to hold 4.5:1 against the white card (ADR-0027). */
-	--chart-logged: #64126d; /* Logged Hours bars, brand primary */
-	--chart-capacity: #64748b; /* Capacity dashed reference line */
-	--chart-pending: #d97706; /* proposals: pending */
-	--chart-approved: #059669; /* proposals: approved */
-	--chart-draft: #2563eb; /* proposals: draft */
-	--chart-rejected: #e11d48; /* proposals: rejected */
-}
-
-/* Shadcn primitives and semantic roles in the project's hex notation. */
-:root {
-	--purple-50: #faf5ff;
-	--purple-100: #f3e8ff;
-	--purple-200: #e9d5ff;
-	--purple-700: #64126d;
-	--purple-800: #52105a;
-	--neutral-500: #6b7280;
-	--red-600: #dc2626;
-
-	--card: #ffffff;
-	--card-foreground: #171717;
-	--popover: #ffffff;
-	--popover-foreground: #171717;
-	--primary: var(--purple-700);
-	--primary-foreground: #ffffff;
-	--secondary: var(--purple-50);
-	--secondary-foreground: var(--purple-700);
-	--muted: var(--purple-50);
-	--muted-foreground: var(--neutral-500);
-	--accent: var(--purple-100);
-	--accent-foreground: var(--purple-700);
-	--destructive: var(--red-600);
-	--destructive-foreground: #ffffff;
-	--border: var(--purple-200);
-	--input: var(--purple-200);
-	--ring: #86288f;
-	--sidebar-background: #ffffff;
-	--sidebar-foreground: var(--purple-700);
-	--sidebar-primary: var(--purple-700);
-	--sidebar-primary-foreground: #ffffff;
-	--sidebar-accent: var(--purple-100);
-	--sidebar-accent-foreground: var(--purple-700);
-	--sidebar-border: var(--purple-200);
-	--sidebar-ring: #86288f;
 	--radius: 0.5rem;
+	/* Explicit themes are opt-in; otherwise the OS preference supplies the
+	   used colour scheme, and this drives native controls and scrollbars. */
+	color-scheme: light dark;
 }
-
-/* Light-only app: backgrounds are forced white below, so a dark-mode foreground
-   here would render near-invisible text on white. */
 
 body {
 	background: var(--background);
 	color: var(--foreground);
 	font-family: var(--font-poppins), sans-serif;
-	color-scheme: light;
 	-webkit-font-smoothing: antialiased;
 }
 
@@ -203,7 +170,7 @@ html,
 body,
 #__next,
 :root {
-	background-color: #fff;
+	background-color: var(--background);
 }
 
 /* Avoid flicker outlines and ensure seamless layout */
@@ -219,8 +186,8 @@ body,
 	z-index: 60;
 	padding: 8px 14px;
 	border-radius: 8px;
-	background: #64126d;
-	color: #fff;
+	background: var(--primary);
+	color: var(--primary-foreground);
 	font-size: 14px;
 	font-weight: 600;
 	text-decoration: none;
@@ -382,25 +349,31 @@ html {
 	}
 }
 
-/* Ensure all form field text renders in black */
+/* Ensure all form field text follows the foreground role */
 input,
 textarea,
 select {
-	color: #000 !important;
-	caret-color: #000;
+	color: var(--foreground) !important;
+	caret-color: var(--foreground);
+}
+
+/* Native option lists follow the themed popover surface. */
+select option {
+	background-color: var(--popover);
+	color: var(--popover-foreground);
 }
 
 /* Optional: readable placeholder color */
 input::placeholder,
 textarea::placeholder {
-	color: #6b7280; /* gray-500 */
+	color: var(--muted-foreground);
 	opacity: 1;
 }
 
 /* ContentEditable placeholder styling */
 [contenteditable][data-placeholder]:empty::before {
 	content: attr(data-placeholder);
-	color: #9ca3af; /* gray-400 */
+	color: var(--editor-placeholder);
 	pointer-events: none;
 	position: absolute;
 }
@@ -411,7 +384,7 @@ textarea::placeholder {
 
 /* Ensure contentEditable has proper text color */
 [contenteditable] {
-	color: #374151; /* gray-700 */
+	color: var(--editor-ink);
 	min-height: 1em;
 }
 
@@ -457,7 +430,12 @@ textarea::placeholder {
 .skeleton {
 	position: relative;
 	overflow: hidden;
-	background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 37%, #f3f4f6 63%);
+	background: linear-gradient(
+		90deg,
+		var(--color-gray-100) 25%,
+		var(--color-gray-200) 37%,
+		var(--color-gray-100) 63%
+	);
 	background-size: 400% 100%;
 	animation: shimmer 1.2s ease-in-out infinite;
 }
@@ -473,18 +451,18 @@ textarea::placeholder {
 
 /* Futuristic UI helpers */
 .glass-panel {
-	background: rgba(255, 255, 255, 0.75);
+	background: var(--glass-panel-bg);
 	backdrop-filter: blur(12px) saturate(1.1);
 	-webkit-backdrop-filter: blur(12px) saturate(1.1);
-	border: 1px solid rgba(255, 255, 255, 0.65);
-	box-shadow: 0 10px 30px rgba(16, 0, 24, 0.08);
+	border: 1px solid var(--glass-panel-border);
+	box-shadow: var(--glass-panel-shadow);
 }
 
 .glass-soft {
-	background: rgba(255, 255, 255, 0.6);
+	background: var(--glass-soft-bg);
 	backdrop-filter: blur(10px);
 	-webkit-backdrop-filter: blur(10px);
-	border: 1px solid rgba(255, 255, 255, 0.55);
+	border: 1px solid var(--glass-soft-border);
 }
 
 .animated-grid {
@@ -493,30 +471,26 @@ textarea::placeholder {
 	background-image:
 		radial-gradient(
 			40rem 30rem at 85% 10%,
-			rgba(209, 128, 221, 0.22),
+			var(--grid-glow-a),
 			transparent 70%
 		),
 		radial-gradient(
 			36rem 28rem at 10% 90%,
-			rgba(123, 97, 255, 0.18),
+			var(--grid-glow-b),
 			transparent 70%
 		),
-		linear-gradient(
-			to bottom,
-			rgba(255, 255, 255, 0.6),
-			rgba(255, 255, 255, 0.8)
-		),
+		linear-gradient(to bottom, var(--grid-fade-a), var(--grid-fade-b)),
 		repeating-linear-gradient(
 			to right,
-			rgba(100, 18, 109, 0.06) 0px,
-			rgba(100, 18, 109, 0.06) 1px,
+			var(--grid-line) 0px,
+			var(--grid-line) 1px,
 			transparent 1px,
 			transparent 20px
 		),
 		repeating-linear-gradient(
 			to bottom,
-			rgba(100, 18, 109, 0.06) 0px,
-			rgba(100, 18, 109, 0.06) 1px,
+			var(--grid-line) 0px,
+			var(--grid-line) 1px,
 			transparent 1px,
 			transparent 20px
 		);
@@ -559,7 +533,7 @@ textarea::placeholder {
 .neon-progress {
 	height: 6px;
 	border-radius: 9999px;
-	background: rgba(0, 0, 0, 0.08);
+	background: color-mix(in srgb, var(--foreground) 10%, transparent);
 	position: relative;
 	overflow: hidden;
 }
@@ -609,10 +583,10 @@ textarea::placeholder {
 .employees-screen .text-gray-700,
 .employees-screen .text-gray-800,
 .employees-screen .text-gray-900 {
-	color: #000 !important;
+	color: var(--foreground) !important;
 }
 
-/* Keep chips, links and brand accents as-is (do not force black within these) */
+/* Keep chips, links and brand accents as-is (do not force foreground within these) */
 .employees-screen .text-green-800,
 .employees-screen .text-yellow-800,
 .employees-screen .text-red-800,
@@ -755,14 +729,14 @@ textarea::placeholder {
 	font-size: 1.5rem;
 	font-weight: 700;
 	margin: 1rem 0 0.5rem;
-	color: #111827;
+	color: var(--foreground);
 }
 
 .rich-text-content h2 {
 	font-size: 1.25rem;
 	font-weight: 600;
 	margin: 0.875rem 0 0.5rem;
-	color: #1f2937;
+	color: var(--foreground);
 }
 
 .rich-text-content p {
@@ -786,16 +760,16 @@ textarea::placeholder {
 }
 
 .rich-text-content blockquote {
-	border-left: 4px solid #e5e7eb;
+	border-left: 4px solid var(--border);
 	padding-left: 1rem;
 	margin: 0.5rem 0;
-	color: #6b7280;
+	color: var(--muted-foreground);
 	font-style: italic;
 }
 
 .rich-text-content strong {
 	font-weight: 700;
-	color: #111827;
+	color: var(--foreground);
 }
 
 .rich-text-content em {
@@ -820,7 +794,7 @@ textarea::placeholder {
 .ProseMirror p.is-editor-empty:first-child::before {
 	content: attr(data-placeholder);
 	float: left;
-	color: #9ca3af;
+	color: var(--editor-placeholder);
 	pointer-events: none;
 	height: 0;
 }
@@ -828,7 +802,7 @@ textarea::placeholder {
 /* Thin horizontal scrollbar for tab bars and overflow containers */
 .scrollbar-thin {
 	scrollbar-width: thin;
-	scrollbar-color: #cbd5e1 transparent;
+	scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .scrollbar-thin::-webkit-scrollbar {
@@ -840,12 +814,12 @@ textarea::placeholder {
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-	background-color: #cbd5e1;
+	background-color: var(--scrollbar-thumb);
 	border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-	background-color: #94a3b8;
+	background-color: var(--scrollbar-thumb-hover);
 }
 
 /* ── View Transitions (Next 16) — directional slide for Leads nav ─────────

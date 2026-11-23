@@ -7,7 +7,7 @@ import {
 } from '@testing-library/react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const fetchMock = vi.fn();
 const rbacMock = vi.hoisted(() => ({
@@ -54,6 +54,14 @@ vi.stubGlobal(
 		disconnect() {}
 	}
 );
+
+function resetTheme() {
+	document.documentElement.removeAttribute('data-theme');
+	localStorage.removeItem('accent-theme');
+}
+
+beforeEach(resetTheme);
+afterEach(resetTheme);
 
 function renderNavbar() {
 	return render(<Navbar />, {
@@ -249,17 +257,33 @@ describe('Navbar actions', () => {
 		).not.toBeInTheDocument();
 	});
 
-	it('keeps an inert dark mode control', () => {
+	it('switches the app to dark and back from the header control', async () => {
 		renderNavbar();
 
-		const darkModeControls = screen.getAllByRole('button', {
-			name: /dark mode/i,
+		const toDark = screen.getByRole('button', { name: 'Switch to dark mode' });
+		expect(toDark).toBeEnabled();
+
+		fireEvent.click(toDark);
+
+		await waitFor(() => {
+			expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
 		});
-		expect(darkModeControls.length).toBeGreaterThan(0);
-		for (const control of darkModeControls) {
-			expect(control).toBeDisabled();
-			expect(control).toHaveAttribute('title', 'Dark mode — coming soon');
-		}
+		expect(
+			screen.getByRole('button', { name: 'Switch to light mode' })
+		).toBeVisible();
+		expect(localStorage.getItem('accent-theme')).toBe('dark');
+
+		fireEvent.click(
+			screen.getByRole('button', { name: 'Switch to light mode' })
+		);
+
+		await waitFor(() => {
+			expect(document.documentElement).not.toHaveAttribute('data-theme');
+		});
+		expect(
+			screen.getByRole('button', { name: 'Switch to dark mode' })
+		).toBeVisible();
+		expect(localStorage.getItem('accent-theme')).toBeNull();
 	});
 
 	it('lists the report sub-items under Reports', async () => {

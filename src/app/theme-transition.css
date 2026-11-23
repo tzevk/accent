@@ -1,0 +1,51 @@
+/* Circular light/dark reveal, scoped to a temporary root marker so it cannot
+   interfere with Next's directional navigation transitions. theme.ts sets the
+   origin/radius custom properties and applies the theme inside the transition
+   update; the new root snapshot is clipped from the pointer to the farthest
+   viewport corner. The old snapshot stays still beneath it, so no crossfade or
+   blend is involved. */
+
+@keyframes accent-theme-circle-reveal {
+	from {
+		clip-path: circle(
+			0px at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%)
+		);
+	}
+	to {
+		clip-path: circle(
+			var(--theme-reveal-radius, 150vmax) at var(--theme-reveal-x, 50%)
+				var(--theme-reveal-y, 50%)
+		);
+	}
+}
+
+:root[data-theme-transition='reveal']::view-transition-group(root) {
+	animation: none;
+}
+
+:root[data-theme-transition='reveal']::view-transition-old(root) {
+	animation: none;
+	mix-blend-mode: normal;
+}
+
+:root[data-theme-transition='reveal']::view-transition-new(root) {
+	animation: accent-theme-circle-reveal 400ms ease-out both;
+	mix-blend-mode: normal;
+}
+
+/* Theme colours must be captured at their final values. Leaving transitioned
+   backgrounds/foregrounds running at snapshot time would bake a half-finished
+   local interpolation into the old or new image. theme.ts removes this marker
+   as soon as the snapshots are ready. */
+:root[data-theme-snapshot],
+:root[data-theme-snapshot] *,
+:root[data-theme-snapshot] *::before,
+:root[data-theme-snapshot] *::after {
+	transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root[data-theme-transition='reveal']::view-transition-new(root) {
+		animation: none !important;
+	}
+}

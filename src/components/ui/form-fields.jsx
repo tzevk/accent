@@ -4,7 +4,7 @@ import { forwardRef } from 'react';
 import { cn } from '@/lib/cn';
 
 const inputBase =
-	'w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 shadow-sm transition-colors focus:border-[#64126D] focus:outline-none focus:ring-1 focus:ring-[#64126D] disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500';
+	'w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground shadow-sm transition-colors focus:border-ring focus:outline-hidden focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground';
 
 const Input = forwardRef(function Input(
 	{ className, type = 'text', ...props },
@@ -53,7 +53,7 @@ const Label = forwardRef(function Label(
 		<label
 			ref={ref}
 			className={cn(
-				'block text-xs font-semibold text-gray-700 mb-1',
+				'block text-xs font-semibold text-foreground mb-1',
 				className
 			)}
 			{...props}
@@ -70,7 +70,7 @@ const FieldHint = forwardRef(function FieldHint(
 	return (
 		<p
 			ref={ref}
-			className={cn('text-[11px] text-gray-500 mt-1', className)}
+			className={cn('text-[11px] text-muted-foreground mt-1', className)}
 			{...props}
 		>
 			{children}
@@ -92,12 +92,12 @@ function FieldGroup({
 			{label ? (
 				<Label htmlFor={htmlFor}>
 					{label}
-					{required ? <span className="text-rose-500 ml-0.5">*</span> : null}
+					{required ? <span className="text-destructive ml-0.5">*</span> : null}
 				</Label>
 			) : null}
 			{children}
 			{error ? (
-				<p className="text-[11px] text-rose-600 mt-1">{error}</p>
+				<p className="text-[11px] text-destructive mt-1">{error}</p>
 			) : hint ? (
 				<FieldHint>{hint}</FieldHint>
 			) : null}

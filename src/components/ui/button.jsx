@@ -4,11 +4,12 @@ import { forwardRef } from 'react';
 import { cn } from '@/lib/cn';
 
 const variantMap = {
-	default: 'bg-[#64126D] text-white hover:bg-[#52105a] disabled:bg-purple-300',
+	default:
+		'bg-primary text-primary-foreground hover:bg-[#52105a] disabled:bg-primary/40',
 	outline:
-		'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50',
-	danger: 'bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-300',
-	ghost: 'text-[#64126D] hover:bg-purple-50 disabled:opacity-50',
+		'border border-border bg-card text-foreground hover:bg-muted disabled:opacity-50',
+	danger: 'bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-600/40',
+	ghost: 'text-primary hover:bg-muted disabled:opacity-50',
 };
 
 const sizeMap = {
@@ -36,7 +37,7 @@ const Button = forwardRef(function Button(
 			type={type}
 			disabled={disabled || loading}
 			className={cn(
-				'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:cursor-not-allowed',
+				'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring disabled:cursor-not-allowed',
 				variantMap[variant] || variantMap.default,
 				sizeMap[size] || sizeMap.md,
 				className
