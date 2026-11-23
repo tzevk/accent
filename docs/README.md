@@ -92,6 +92,8 @@ Verify a finding against current code before treating it as open or resolved.
 - [Responsive audit](explanations/RESPONSIVE_AUDIT.md)
 - [Changes summary](explanations/CHANGES_SUMMARY.md)
 - [E2E harness removal](explanations/E2E_HARNESS_REMOVAL.md)
+- [Claude Code verification practices in Accent](explanations/CLAUDE_VERIFICATION_ALIGNMENT.md)
+- [Verification map: browser, property, and differential checks](agents/verification-map.md)
 
 ## Plans and follow-ups
 

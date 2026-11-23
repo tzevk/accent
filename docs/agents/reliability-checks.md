@@ -32,3 +32,5 @@ diff does not belong here.
   "the code looks risky" is not.
 - Prefer a command, a test name, or a named invariant over "review carefully".
 - Remove or rewrite a row when its check stops catching the miss.
+- Before enforcing a new gate, observe what it would block. Replay the triggering incident and a similar accepted change. Record misses and false alarms before asking a maintainer to enable blocking.
+- When a check misses a regression, add the evidence to the existing row before creating a new one. Ask the affected code owner to define the expected result and approve or prune the rule.

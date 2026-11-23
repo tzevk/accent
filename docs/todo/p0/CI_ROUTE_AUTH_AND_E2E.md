@@ -1,8 +1,7 @@
 # Consolidate route authorization into ESLint and merge the browser job
 
-Status: cutover applied in the working tree. CI has not run on this change, so
-no CI result is claimed here. Repository required-check settings still need an
-administrator review.
+Status: CI cutover passed in [Checks run 44896131184](https://github.com/tzevk/accent/actions/runs/44896131184).
+Repository required-check settings still need an administrator review.
 
 ## Baseline
 
@@ -43,8 +42,8 @@ Applied:
 
 Pending:
 
-- [ ] CI must confirm the rule runs over every covered handler and that the
-      existing allowlist entries still pass under the parsed per-method check.
+- [x] Confirm the ESLint rule and existing allowlist pass on the current
+      API routes in CI.
 - [ ] Check repository merge rules before relying on the removal of the
       separately required `route-auth` status. This needs administrator access;
       do not claim merges are gated from workflow YAML alone.
@@ -83,9 +82,9 @@ Applied:
 
 Pending:
 
-- [ ] Run the merged job once in CI and confirm both suites report
-      independently and that a Leads failure still leaves browser results and
-      artifacts. Until that run exists, do not describe the job as verified.
+- [x] Confirm Leads HTTP and Playwright both pass in the merged CI job.
+- [ ] Confirm a Leads failure still leaves browser results and artifacts.
+      The successful run did not exercise this failure path.
 
 ## Not in this change: new browser journeys
 

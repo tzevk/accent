@@ -72,6 +72,8 @@ This file owns coding, security, data, and testing requirements. Read only secti
 
 Before reviewing a diff or choosing checks, read [reliability checks](docs/agents/reliability-checks.md) and run only the rows whose trigger matches.
 
+Use the [verification map](docs/agents/verification-map.md) to find existing proof for an Accent feature.
+
 ### Test layers
 
 - `npm run test:unit` runs the existing Vitest logic, component, mocked route-contract, and harness suites. Pass a file or test-name filter for focused feedback. `npm test -- <test-file> --watch` remains the interactive loop.
@@ -81,20 +83,22 @@ Before reviewing a diff or choosing checks, read [reliability checks](docs/agent
 
 ### Development loop
 
-- Choose the smallest check that exercises the changed behavior. Follow [verification ownership](#verification-ownership) before starting broad checks.
+- Before editing, name the result a person or API caller must observe. Pick the fastest check that can fail when that result is wrong. Follow [verification ownership](#verification-ownership) before starting broad checks.
 - Match the Node version declared in `package.json` and CI. Check installed CLI help before using unfamiliar test flags.
 - While editing, run an explicit Vitest file or named test. Use `npm test -- <test-file> --watch` interactively, or `npm run test:unit -- <test-file>` for one-shot feedback. Run installed ESLint on changed source files rather than repeatedly linting the repository.
 - Use `npm test -- related <source-file> --run` or `npm test -- --changed origin/main --run` as selection aids. Confirm the Git reference exists and is current. Import graphs do not prove effects through HTTP, migrations, computed imports, or runtime configuration; select those integration checks explicitly.
 - Run ESLint on the changed route files, or `npm run lint` for the whole covered tree, for fast feedback while changing API routes or authorization rules. Authorization is part of lint, not a separate command.
-- After a failure, inspect the first actionable error, trace, and owned server output. Classify the cause as application, fixture, or environment before choosing the next check. Rerun after a relevant fix or an evidence-backed transient failure, not as a blind retry.
+- Run the changed path on the real app when a change crosses the browser, HTTP, or database boundary. Check the result, not just startup or a passing build. Use the owned test runtime. For browser journeys, follow [CI-owned browser verification](#owned-browser-runtime).
+- Treat a test that passes only on retry as flaky. Preserve the first failure and investigate it. Do not add sleeps, skips, or retries to obtain a pass.
+- After a failure, inspect the first actionable error, trace, and owned server output. Classify the cause as application, fixture, or environment before rerunning.
 - If the same check fails after three fix-and-rerun rounds, stop and report the command, the first actionable error, and what changed on each attempt. Do not start a fourth blind attempt; a human decides the next step.
-- Report the command, selected scope, result, and any verification gap. Stop checking when the assigned scope has sufficient evidence; another agent finishing is not a reason to repeat it.
-- Stamp the final commit with how it was verified: `Verified: npm run verify`, `Verified: npm run test:unit -- <file>`, or `Verified: none`. Use `none` when no runtime check ran, including documentation-only changes. The stamp is evidence; it does not replace the reported command and result.
+- Record the expected and observed result, command or CI run, tested revision, and gaps. For a browser failure, name the failed action and link its trace or screenshot when available.
+- Stamp the final commit with the evidence, for example `Verified: npm run verify` or `Verified: npm run test:unit -- <file>`. Use `Verified: none` when no runtime check ran. Record why and name any missing runtime proof.
 
 ### Verification ownership
 
 - **Implementation workers:** run focused checks for their changes. Do not independently run `npm run verify`, production builds, or unrelated suites during iteration. Browser execution requires explicit runtime ownership.
-- **Reviewers:** review the diff against affected standards, coverage placement, observable assertions, and fixture isolation. Reuse existing evidence. Request the smallest missing check rather than launching the complete gate. Treat test, harness, lint, and CI diffs as part of the change: compare them with the base. A protected verification file needs the `test-change` label after human review.
+- **Reviewer:** use one review owner per change. Review a fixed revision against the base branch's verification rules. Cite the triggering diff and risk. Later rounds revisit earlier findings and changed inputs. Distinguish merge blockers from pre-existing issues and suggestions. A protected verification change needs human review before the `test-change` label.
 - **Integration owner:** the main agent owns integration unless another agent is explicitly assigned. For code, test, or build/CI changes, run `npm run verify` against the final candidate before pushing. This is one shared gate, not one gate per worker or commit.
 - Successful gate evidence remains valid only while its checked inputs remain unchanged. Rerun affected focused checks after fixes, then complete the required gate against the final candidate. Do not repeat a successful unchanged gate for handoffs or status reports.
 - **Documentation-only changes:** check affected links, anchors, and formatting. Skip application builds, databases, and browser suites unless the task explicitly requires runtime proof.
@@ -107,20 +111,22 @@ Before reviewing a diff or choosing checks, read [reliability checks](docs/agent
 
 ### Coverage and assertions
 
-- Prefer the lowest layer that can hold the assertion: pure logic, component rendering, route contracts, real-database integration, then browser journeys. Pure logic tests have no DB, network, or `fetch`; write them before implementation after listing failure modes.
+- Use the lowest layer that can prove the behavior. Use E2E for critical outcomes that depend on layers working together. A passing unit test does not prove a user journey works.
 - Component tests render the real component with realistic payloads. Query by accessible role or label and assert observable behavior, such as accessible names, focus, and empty states. Do not fake route handlers or pin source text as proof.
 - Route tests cover API contracts, status codes, and authorization decisions. Existing route suites may mock the database. Use real MariaDB integration for SQL behavior, constraints, migrations, transactions, and contention; mocked HTTP or database responses cannot prove those invariants.
-- Use browser tests only for critical journeys: real sign-in, one representative CRUD flow, and one financial flow. A ticket that does not touch a critical journey does not need an E2E spec. Run routine browser verification in GitHub Actions, including changes to those boundaries; local work uses focused lower-layer checks.
+- Cover critical browser journeys with independent specs. Include real sign-in and verify the result a person sees. Run the maintained suite in CI on every runtime PR. Do not add a browser case for every rule or edge case.
 - Before writing a browser test, state the behavior and why a browser is needed. Keep one behavior per test. Select by role, label, or `data-testid`, not styling-sensitive selectors. Namespace data per run (`E2E-<issue>-<run>-<worker>`), track fixture records by primary key, and clean owned records in teardown, including failure paths.
 - Assert visible UI state even when TanStack Query serves cached data. Await a response only when the action guarantees a request; arm that wait before the action. Test API contracts through explicit requests and independently read persisted database state when asserting persistence or financial integrity.
 - Keep cold-start readiness and interaction budgets separate. Diagnose missing events before increasing a timeout or retry count. Preserve first-failure evidence; do not disable authentication, rate limits, or financial assertions to obtain green results.
-- Move coverage to a lower layer when a browser spec exceeds 200 lines or a feature needs a second spec.
+- Move rule combinations to lower layers. Split browser specs by independent outcomes, not by screens or a fixed count.
 - Do not serialize browser tests or disable parallelism to enforce ordering; combine dependent steps into one test. Do not use `page.waitForTimeout`; wait for a locator assertion or a guaranteed response.
 - Never use hardcoded or shared test data. Do not commit route, page, or component tests that mock their own dependencies and only assert that the mock answered.
+- Use property tests for rules that must hold across many inputs. State the invariant independently of the implementation. Keep the failing seed and path from `fast-check` so a failure is reproducible.
+- Use differential tests for rewrites that must preserve behavior. Give the baseline and replacement the same inputs. Normalize only irrelevant differences. List approved behavior changes and test their new results explicitly. Use synthetic or sanitized fixtures, not live operational records.
 
 ### Owned browser runtime
 
-- GitHub Actions owns routine E2E verification. Use the `e2e` job and its failure artifacts; it runs the Leads HTTP integration and then Playwright as separate owned runs inside one job, and does not run a local browser suite as a task-completion gate. A local browser run is an explicit user-authorized debugging exception, not the default after a failed check.
+- GitHub Actions runs routine E2E. Use the `e2e` job for Leads HTTP and Playwright. Local browser runs require explicit authorization for debugging; do not use them as the routine completion gate.
 - The maintained Playwright harness lives in `e2e/` with orchestration in `scripts/e2e/`. Use `npm run test:e2e`, not direct `npx playwright test`. The harness owns a unique disposable MariaDB database, migrations, fixture hooks, loopback `next dev`, database-target verification, and cleanup.
 - For authorized local debugging, keep one owned runtime open with `npm run test:e2e -- --local-run-reason "browser-only failure investigation" --ui`. A test failure stops that attempt, not the UI session. Inspect the failure, fix the cause, and rerun the selected test inside that session. Use per-test watch or manual reruns after app changes; automatic app-source invalidation is not guaranteed.
 - Restart only after migration, startup fixture-hook, or pinned environment changes, or an unusable owned server. Record the reason before restarting. Do not recreate the database and server merely because a browser assertion failed.
