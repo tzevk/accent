@@ -160,6 +160,7 @@ jobs:
         if: success()
         run: npx playwright install --with-deps chromium
       - name: 'Full Playwright suite (issue #426)'
+        id: playwright
         # Runs only after the shared setup and Chromium install succeeded, even
         # when Leads failed, so browser results stay independent of Leads.
         if: success()
@@ -171,6 +172,17 @@ jobs:
           INTEGRATION_DB_PASSWORD: integration-root-pass
           E2E_ISSUE: '426'
         run: npm run test:e2e
+      - name: Upload Playwright traces retained by passing retries
+        # `retain-on-failure` keeps the trace.zip from a failed first attempt
+        # even when the retry passes, so upload only those ZIPs on green runs.
+        # The HTML report, screenshots, and videos stay in the failure upload.
+        if: steps.playwright.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-retained-traces
+          path: e2e/artifacts/**/test-results/**/trace.zip
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Upload Playwright failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

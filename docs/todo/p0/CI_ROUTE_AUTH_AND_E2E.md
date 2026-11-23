@@ -93,10 +93,12 @@ The consolidation runs the existing specs under
 [`e2e/specs/`](../../../e2e/specs/). It does not add new journeys; these stay
 proposed and need their own scoped change:
 
-- [ ] Add an independent spec for saving a quotation and reopening it, asserting
-      the saved values on reopen, not just a success message.
-- [ ] Add an independent spec for creating a voucher and reopening it, asserting
-      the saved values on reopen.
+- [x] Add an independent spec for saving a quotation and reopening it, asserting
+      the saved values on reopen, not just a success message. See
+      [`e2e/specs/quotation.spec.ts`](../../../e2e/specs/quotation.spec.ts).
+- [x] Add an independent spec for creating a voucher and reopening it, asserting
+      the saved values on reopen. See
+      [`e2e/specs/cash-voucher.spec.ts`](../../../e2e/specs/cash-voucher.spec.ts).
 
 Keep rule combinations and database edge cases at lower test layers. The
 browser job covers critical journeys only; it is not a second integration

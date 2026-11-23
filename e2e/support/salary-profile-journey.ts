@@ -1,14 +1,18 @@
 /**
  * Journey helpers for the #447 Salary Profiles browser proof.
  *
- * The spec keeps the business sequence readable; these helpers own only the
+ * The specs keep the business sequence readable; these helpers own only the
  * mechanics and the independent persistence assertions. Every selector is a
  * user-facing role, label or visible text. No helper starts a server, seeds a
  * database outside the Playwright fixtures, or bypasses normal sign-in.
+ *
+ * Independent outcomes (read-only history, explicit zero, dirty navigation)
+ * share these mechanics but never a browser session: each spec test signs in
+ * once and asserts against the fixture row it actually seeded.
  */
+import { join } from 'node:path';
 import {
 	expect,
-	type Browser,
 	type Dialog,
 	type Page,
 	type Response,
@@ -20,6 +24,7 @@ import {
 	REVISION_CTC,
 	readSalaryProfilesState,
 	type SalaryAgreementRow,
+	type SalaryFixtureEmployee,
 	type SalaryProfilesFixture,
 	type SalaryProfilesState,
 } from '../fixtures/salary-profiles.ts';
@@ -203,6 +208,23 @@ function employeeEditorUrl(
 	)}`;
 }
 
+/**
+ * Open one Employee's salary editor at an exact as-of date from the fixture.
+ * Tests for read-only, zero and dirty outcomes navigate here directly so their
+ * proof does not depend on a prior directory interaction.
+ */
+export async function openSalaryProfileEditor(
+	page: Page,
+	fixture: SalaryProfilesFixture,
+	employee: SalaryFixtureEmployee,
+	date: string
+): Promise<void> {
+	await page.goto(employeeEditorUrl(fixture, employee.id, date));
+	await expect(
+		page.getByRole('heading', { name: employee.fullName, exact: true })
+	).toBeVisible();
+}
+
 function directoryRow(
 	page: Page,
 	employee: { fullName: string; employeeCode: string }
@@ -300,13 +322,28 @@ export async function dismissDailyActivityPrompt(page: Page): Promise<void> {
 	await expect(prompt).toBeHidden();
 }
 
+async function signInAsSalaryIdentity(
+	page: Page,
+	identity: { username: string; password: string }
+): Promise<void> {
+	await signInThroughUi(page, credentials(identity));
+	await expect(page).toHaveURL(/\/user\/dashboard/);
+	await dismissDailyActivityPrompt(page);
+}
+
 export async function signInAsEditor(
 	page: Page,
 	fixture: SalaryProfilesFixture
 ): Promise<void> {
-	await signInThroughUi(page, credentials(fixture.editor));
-	await expect(page).toHaveURL(/\/user\/dashboard/);
-	await dismissDailyActivityPrompt(page);
+	await signInAsSalaryIdentity(page, fixture.editor);
+}
+
+/** The payroll:read-only identity; it never receives payroll:update. */
+export async function signInAsReader(
+	page: Page,
+	fixture: SalaryProfilesFixture
+): Promise<void> {
+	await signInAsSalaryIdentity(page, fixture.reader);
 }
 
 /**
@@ -442,7 +479,8 @@ export async function chooseDirectoryStream(
  */
 export async function expectFixtureDirectory(
 	page: Page,
-	fixture: SalaryProfilesFixture
+	fixture: SalaryProfilesFixture,
+	artifactsDir: string
 ): Promise<void> {
 	await chooseDirectoryStream(page, 'All', 'all');
 	await chooseDirectoryDate(page, fixture.asOfDate);
@@ -474,7 +512,7 @@ export async function expectFixtureDirectory(
 	await chooseDirectoryStream(page, 'All', 'all');
 	await expect(missing).toBeVisible();
 	await page.screenshot({
-		path: 'e2e/artifacts/salary-profiles-list-desktop.png',
+		path: join(artifactsDir, 'salary-profiles-list-desktop.png'),
 		fullPage: true,
 	});
 }
@@ -489,7 +527,9 @@ export async function openEmployeeFromDirectory(
 			? fixture.employees.contract
 			: employeeId === fixture.employees.zero.id
 				? fixture.employees.zero
-				: fixture.employees.noProfile;
+				: employeeId === fixture.employees.used.id
+					? fixture.employees.used
+					: fixture.employees.noProfile;
 	await directoryRow(page, employee)
 		.getByRole('link', {
 			name: 'Open profile',
@@ -780,7 +820,8 @@ export async function expectUsedAgreementProtection(
 
 export async function createScheduledSalaryRevision(
 	page: Page,
-	fixture: SalaryProfilesFixture
+	fixture: SalaryProfilesFixture,
+	artifactsDir: string
 ): Promise<SalaryCommandResult> {
 	await page
 		.getByRole('button', { name: 'New Salary Revision', exact: true })
@@ -801,7 +842,7 @@ export async function createScheduledSalaryRevision(
 		page.getByLabel('PL entitlement (days)', { exact: true })
 	).toHaveValue('21');
 	await page.screenshot({
-		path: 'e2e/artifacts/salary-profiles-editor-desktop.png',
+		path: join(artifactsDir, 'salary-profiles-editor-desktop.png'),
 		fullPage: true,
 	});
 
@@ -987,56 +1028,61 @@ export async function expectEarlierSlipUnchanged(
 
 /* ── read-only, zero, visual and navigation proof ──────────────────── */
 
-export async function expectReadOnlySalaryView(
-	browser: Browser,
+/**
+ * A payroll:read session must see the seeded used agreement's history and no
+ * write control. The used agreement and its durable use row come from the
+ * fixture, so this proof never depends on the lifecycle spec or its writes.
+ */
+export async function expectReadOnlySalaryHistory(
 	page: Page,
-	fixture: SalaryProfilesFixture
+	fixture: SalaryProfilesFixture,
+	artifactsDir: string
 ): Promise<void> {
-	const context = await browser.newContext({
-		baseURL: new URL(page.url()).origin,
-		viewport: { width: 1440, height: 900 },
+	await openSalaryProfileEditor(
+		page,
+		fixture,
+		fixture.employees.used,
+		fixture.asOfDate
+	);
+	await expect(
+		page.getByText(
+			'Your role can read salary profiles but cannot change them.',
+			{ exact: true }
+		)
+	).toBeVisible();
+	const history = page.getByRole('region', {
+		name: 'Salary history',
+		exact: true,
 	});
-	try {
-		const readerPage = await context.newPage();
-		await signInThroughUi(readerPage, credentials(fixture.reader));
-		await expect(readerPage).toHaveURL(/\/user\/dashboard/);
-		await dismissDailyActivityPrompt(readerPage);
-		await readerPage.goto(
-			employeeEditorUrl(
-				fixture,
-				fixture.employees.noProfile.id,
-				fixture.asOfDate
-			)
-		);
+	await expect(history).toBeVisible();
+	// The fixture seeds exactly one agreement for this Employee, so the single
+	// history item is the exact persisted row the test also reads from MySQL.
+	const items = history.locator('li');
+	await expect(items).toHaveCount(1);
+	const used = items.first();
+	await expect(used).toContainText(`Agreement #${fixture.agreements.used}`);
+	await expect(used).toContainText('Current');
+	await expect(used).toContainText('Payroll');
+	await expect(used).toContainText('Used by payroll');
+	await expect(used).toContainText('Read-only');
+	await expect(used).toContainText('Used months:');
+	await expect(used).toContainText(
+		`₹${fixture.amounts.usedCtc.toLocaleString('en-IN')}.00`
+	);
+	for (const label of [
+		'Create Salary Profile',
+		'Edit agreement',
+		'New Salary Revision',
+		'Cancel scheduled agreement',
+	]) {
 		await expect(
-			readerPage.getByText(
-				'Your role can read salary profiles but cannot change them.',
-				{ exact: true }
-			)
-		).toBeVisible();
-		await expect(
-			readerPage.getByRole('heading', { name: 'Salary history', exact: true })
-		).toBeVisible();
-		await expect(
-			readerPage.getByText('Used by payroll', { exact: true })
-		).toBeVisible();
-		for (const label of [
-			'Create Salary Profile',
-			'Edit agreement',
-			'New Salary Revision',
-			'Cancel scheduled agreement',
-		]) {
-			await expect(
-				readerPage.getByRole('button', { name: label, exact: true })
-			).toHaveCount(0);
-		}
-		await readerPage.screenshot({
-			path: 'e2e/artifacts/salary-profiles-readonly-desktop.png',
-			fullPage: true,
-		});
-	} finally {
-		await context.close();
+			page.getByRole('button', { name: label, exact: true })
+		).toHaveCount(0);
 	}
+	await page.screenshot({
+		path: join(artifactsDir, 'salary-profiles-readonly-desktop.png'),
+		fullPage: true,
+	});
 }
 
 /** A canonical zero CTC is a real amount, distinct from an unrecorded CTC. */
@@ -1070,7 +1116,8 @@ export async function expectExplicitZeroAgreement(
  */
 export async function captureDesktopAndMobileEditor(
 	page: Page,
-	fixture: SalaryProfilesFixture
+	fixture: SalaryProfilesFixture,
+	artifactsDir: string
 ): Promise<void> {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.goto(
@@ -1080,7 +1127,7 @@ export async function captureDesktopAndMobileEditor(
 		page.getByRole('heading', { name: 'Salary history', exact: true })
 	).toBeVisible();
 	await page.screenshot({
-		path: 'e2e/artifacts/salary-profiles-history-desktop.png',
+		path: join(artifactsDir, 'salary-profiles-history-desktop.png'),
 		fullPage: true,
 	});
 
@@ -1114,7 +1161,7 @@ export async function captureDesktopAndMobileEditor(
 	);
 	expect(overflow).toBeLessThanOrEqual(1);
 	await page.screenshot({
-		path: 'e2e/artifacts/salary-profiles-editor-mobile.png',
+		path: join(artifactsDir, 'salary-profiles-editor-mobile.png'),
 		fullPage: true,
 	});
 	await page.setViewportSize({ width: 1440, height: 900 });
@@ -1140,20 +1187,27 @@ export async function expectDirtyNavigationGuard(
 	page: Page,
 	fixture: SalaryProfilesFixture
 ): Promise<void> {
-	await page.goto(
-		employeeEditorUrl(fixture, fixture.employees.noProfile.id, fixture.asOfDate)
+	await openSalaryProfileEditor(
+		page,
+		fixture,
+		fixture.employees.used,
+		fixture.asOfDate
 	);
 	await page
 		.getByRole('button', { name: 'New Salary Revision', exact: true })
 		.click();
 	const ctc = page.getByLabel('Monthly CTC', { exact: true });
+	// The draft starts from the agreement the fixture actually persisted.
+	await expect(ctc).toHaveValue(
+		new RegExp(`^${fixture.amounts.usedCtc}(?:\\.0+)?$`)
+	);
 	await ctc.fill('61000');
 	// Sentinel arming/consumption is covered by the component regression; here
 	// the user-visible proof is that a dirty Browser Back raises the prompt and
 	// Stay keeps the draft. `history.length` is a depth counter that a real
 	// session's earlier traversals also move, so it cannot identify the sentinel.
 	const editorPattern = new RegExp(
-		`/admin/payroll/salary-profiles/${fixture.employees.noProfile.id}(?:\\?|$)`
+		`/admin/payroll/salary-profiles/${fixture.employees.used.id}(?:\\?|$)`
 	);
 
 	// Surface 1: Browser Back. No native dialog may fire here — the prompt is
@@ -1201,6 +1255,60 @@ export async function expectDirtyNavigationGuard(
 
 /* ── independent DB assertions ─────────────────────────────────────── */
 
+/**
+ * The exact seeded "used" row: one current canonical agreement at the
+ * fixture's CTC plus the durable use evidence for the fixture month. Tests use
+ * these values, never a lookalike from the page or a second query.
+ */
+export function expectSeededUsedAgreementState(
+	state: SalaryProfilesState,
+	fixture: SalaryProfilesFixture
+): void {
+	const agreement = agreementFor(state, fixture.agreements.used);
+	expect(agreement.employeeId).toBe(fixture.employees.used.id);
+	expect(agreement.salaryType).toBe('monthly');
+	expect(agreement.employerCost).toBe(fixture.amounts.usedCtc);
+	expect(agreement.gross).toBeNull();
+	expect(agreement.grossSalary).toBeNull();
+	expect(agreement.contractAmount).toBeNull();
+	expect(agreement.effectiveFrom).toBe(fixture.month);
+	expect(agreement.effectiveTo).toBeNull();
+	expect(agreement.isActive).toBe(1);
+	expect(timelineVersion(state, fixture.employees.used.id)).toBe(0);
+	const uses = state.uses.filter(
+		(row) => row.employeeId === fixture.employees.used.id
+	);
+	expect(uses).toHaveLength(1);
+	expect(uses[0]).toMatchObject({
+		month: fixture.month,
+		agreementId: fixture.agreements.used,
+		agreementSource: 'employee_salary_profile',
+		evidence: 'payroll_generation',
+		isAmbiguous: 0,
+		firstUsedBy: fixture.editor.userId,
+	});
+	expect(
+		state.slips.filter((row) => row.employeeId === fixture.employees.used.id)
+	).toEqual([]);
+}
+
+/**
+ * Read-only, viewing-only and discarded-draft actions must leave every owned
+ * salary table exactly as the previous read saw it.
+ */
+export function expectNoSalaryWrites(
+	before: SalaryProfilesState,
+	after: SalaryProfilesState
+): void {
+	expect(after.run).toEqual(before.run);
+	expect(after.agreements).toEqual(before.agreements);
+	expect(after.uses).toEqual(before.uses);
+	expect(after.audits).toEqual(before.audits);
+	expect(after.slips).toEqual(before.slips);
+	expect(after.timelines).toEqual(before.timelines);
+	expect(after.leaveSummaries).toEqual(before.leaveSummaries);
+}
+
 export function expectInitialState(
 	state: SalaryProfilesState,
 	fixture: SalaryProfilesFixture
@@ -1223,7 +1331,10 @@ export function expectInitialState(
 	expect(zero.employerCost).toBe(0);
 	expect(zero.gross).toBeNull();
 	expect(zero.grossSalary).toBeNull();
-	expect(state.uses).toEqual([]);
+	expectSeededUsedAgreementState(state, fixture);
+	expect(
+		state.uses.filter((row) => row.employeeId !== fixture.employees.used.id)
+	).toEqual([]);
 	expect(state.slips).toEqual([]);
 	expect(state.audits).toEqual([]);
 	expect(timelineVersion(state, fixture.employees.noProfile.id)).toBe(0);

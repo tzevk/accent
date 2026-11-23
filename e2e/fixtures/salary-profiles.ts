@@ -12,8 +12,15 @@
  * - an unused current Contract agreement whose Employee Type is Payroll, so
  *   the directory can prove Salary Type chooses the pay stream;
  * - an explicit zero-CTC payroll agreement with legacy amounts unset;
+ * - a current payroll agreement plus its durable payroll-use row, so a
+ *   read-only session can prove used salary history without repeating the
+ *   write journey;
  * - one recorded logged-hours assignment for the journey Employee;
  * - one read-only privilege-leave summary row.
+ *
+ * Both role rows are scoped to a hash of the namespace. Two Playwright workers
+ * therefore never create, reuse or delete the same role row, so one worker's
+ * teardown cannot race another worker's seed.
  *
  * Every row is keyed and tracked by its real primary key. The generated
  * payroll run, slip, use evidence and audit rows are found by the owned
@@ -47,6 +54,8 @@ export const CORRECTED_CTC = 52000;
 export const REVISION_CTC = 60000;
 export const CONTRACT_CTC = 45000;
 export const ZERO_CTC = 0;
+/** Recorded payroll use on a separate Employee, seeded with its use ledger. */
+export const USED_CTC = 48000;
 export const FIXTURE_LOGGED_HOURS = 160;
 export const FIXTURE_PL_ENTITLEMENT = 21;
 export const FIXTURE_PL_USED = 2;
@@ -67,6 +76,9 @@ export interface SalaryFixtureIdentity {
 	userId: number;
 	roleId: number;
 	roleOwned: boolean;
+	/** Namespaced role row this identity uses; cleanup trusts these exact values. */
+	roleCode: string;
+	roleName: string;
 	username: string;
 	email: string;
 	/** Ephemeral per-run password. Never log or persist it. */
@@ -106,10 +118,13 @@ export interface SalaryProfilesFixture {
 		noProfile: SalaryFixtureEmployee;
 		contract: SalaryFixtureEmployee;
 		zero: SalaryFixtureEmployee;
+		/** Current agreement already recorded as used by payroll. */
+		used: SalaryFixtureEmployee;
 	};
 	agreements: {
 		contract: number;
 		zero: number;
+		used: number;
 	};
 	amounts: {
 		initialCtc: number;
@@ -117,6 +132,7 @@ export interface SalaryProfilesFixture {
 		revisionCtc: number;
 		contractCtc: number;
 		zeroCtc: number;
+		usedCtc: number;
 		loggedHours: number;
 		plEntitlement: number;
 		plUsed: number;
@@ -260,24 +276,44 @@ export async function seedSalaryProfilesFixture(
 		const allocated = await allocateMonth(connection, fixtureNamespace);
 		owned.runId = allocated.runId;
 
+		// A role row per namespace, never a shared `e2e_salary_*` row: parallel
+		// Playwright workers must not see, reuse or delete one another's roles.
+		const roleScope = sha256(fixtureNamespace).slice(0, 8);
+		const editorRoleCode = fitIdentifier(
+			`${SALARY_EDITOR_ROLE_CODE}_${roleScope}`,
+			50
+		);
+		const editorRoleName = fitIdentifier(
+			`${EDITOR_ROLE_NAME} ${roleScope}`,
+			255
+		);
+		const readerRoleCode = fitIdentifier(
+			`${SALARY_READER_ROLE_CODE}_${roleScope}`,
+			50
+		);
+		const readerRoleName = fitIdentifier(
+			`${READER_ROLE_NAME} ${roleScope}`,
+			255
+		);
+
 		const editorRole = await ensureRole(
 			connection,
-			SALARY_EDITOR_ROLE_CODE,
-			EDITOR_ROLE_NAME,
+			editorRoleCode,
+			editorRoleName,
 			SALARY_EDITOR_PERMISSIONS
 		);
 		if (editorRole.owned) {
-			owned.roleIds.push({ id: editorRole.id, name: EDITOR_ROLE_NAME });
+			owned.roleIds.push({ id: editorRole.id, name: editorRoleName });
 		}
 
 		const readerRole = await ensureRole(
 			connection,
-			SALARY_READER_ROLE_CODE,
-			READER_ROLE_NAME,
+			readerRoleCode,
+			readerRoleName,
 			SALARY_READER_PERMISSIONS
 		);
 		if (readerRole.owned) {
-			owned.roleIds.push({ id: readerRole.id, name: READER_ROLE_NAME });
+			owned.roleIds.push({ id: readerRole.id, name: readerRoleName });
 		}
 
 		const key = sha256(fixtureNamespace).slice(0, 8);
@@ -293,7 +329,7 @@ export async function seedSalaryProfilesFixture(
 			connection,
 			fixtureNamespace,
 			'editor',
-			editorRole,
+			{ ...editorRole, code: editorRoleCode, name: editorRoleName },
 			SALARY_EDITOR_PERMISSIONS
 		);
 		owned.userIds.push(editor.userId);
@@ -302,7 +338,7 @@ export async function seedSalaryProfilesFixture(
 			connection,
 			fixtureNamespace,
 			'reader',
-			readerRole,
+			{ ...readerRole, code: readerRoleCode, name: readerRoleName },
 			SALARY_READER_PERMISSIONS
 		);
 		owned.userIds.push(reader.userId);
@@ -337,6 +373,16 @@ export async function seedSalaryProfilesFixture(
 		});
 		owned.employeeIds.push(zero.id);
 
+		const used = await seedEmployee(connection, searchToken, department, {
+			codeSuffix: 'US',
+			lastName: `Used-${key}`,
+			position: 'Fixture Used Payroll',
+			employeeType: 'Payroll',
+			joiningDate: monthDate,
+			hireDate: monthDate,
+		});
+		owned.employeeIds.push(used.id);
+
 		const contractAgreementId = await seedAgreement(connection, {
 			employeeId: contract.id,
 			effectiveFrom: monthDate,
@@ -351,6 +397,20 @@ export async function seedSalaryProfilesFixture(
 			employerCost: ZERO_CTC,
 			plTotal: 0,
 		});
+		const usedAgreementId = await seedAgreement(connection, {
+			employeeId: used.id,
+			effectiveFrom: monthDate,
+			salaryType: 'monthly',
+			employerCost: USED_CTC,
+			plTotal: 0,
+		});
+		await seedPayrollUse(
+			connection,
+			editor.userId,
+			used.id,
+			usedAgreementId,
+			monthDate
+		);
 
 		await seedLoggedHours(connection, editor.userId, noProfile.id, monthDate);
 		await seedLeaveSummary(connection, noProfile.id, monthSlug);
@@ -372,10 +432,12 @@ export async function seedSalaryProfilesFixture(
 				noProfile: { ...noProfile, employeeType: 'Deputation' },
 				contract: { ...contract, employeeType: 'Payroll' },
 				zero: { ...zero, employeeType: 'Contract' },
+				used: { ...used, employeeType: 'Payroll' },
 			},
 			agreements: {
 				contract: contractAgreementId,
 				zero: zeroAgreementId,
+				used: usedAgreementId,
 			},
 			amounts: {
 				initialCtc: INITIAL_CTC,
@@ -383,6 +445,7 @@ export async function seedSalaryProfilesFixture(
 				revisionCtc: REVISION_CTC,
 				contractCtc: CONTRACT_CTC,
 				zeroCtc: ZERO_CTC,
+				usedCtc: USED_CTC,
 				loggedHours: FIXTURE_LOGGED_HOURS,
 				plEntitlement: FIXTURE_PL_ENTITLEMENT,
 				plUsed: FIXTURE_PL_USED,
@@ -420,10 +483,10 @@ export async function cleanupSalaryProfilesFixture(
 		runId: fixture.runId,
 		roleIds: [
 			...(fixture.editor.roleOwned
-				? [{ id: fixture.editor.roleId, name: EDITOR_ROLE_NAME }]
+				? [{ id: fixture.editor.roleId, name: fixture.editor.roleName }]
 				: []),
 			...(fixture.reader.roleOwned
-				? [{ id: fixture.reader.roleId, name: READER_ROLE_NAME }]
+				? [{ id: fixture.reader.roleId, name: fixture.reader.roleName }]
 				: []),
 		],
 		userIds: [fixture.editor.userId, fixture.reader.userId],
@@ -431,6 +494,7 @@ export async function cleanupSalaryProfilesFixture(
 			fixture.employees.noProfile.id,
 			fixture.employees.contract.id,
 			fixture.employees.zero.id,
+			fixture.employees.used.id,
 		],
 	});
 }
@@ -445,6 +509,7 @@ export async function readSalaryProfilesState(
 		fixture.employees.noProfile.id,
 		fixture.employees.contract.id,
 		fixture.employees.zero.id,
+		fixture.employees.used.id,
 	];
 	const placeholders = employeeIds.map(() => '?').join(', ');
 	// A Playwright `db` fixture is one mysql2 connection, not a pool. Keep the
@@ -671,7 +736,7 @@ async function createIdentity(
 	connection: Connection,
 	namespace: string,
 	kind: 'editor' | 'reader',
-	role: { id: number; owned: boolean },
+	role: { id: number; owned: boolean; code: string; name: string },
 	permissions: readonly string[]
 ): Promise<SalaryFixtureIdentity> {
 	const username = fitIdentifier(`${namespace}-${kind}`, 50);
@@ -700,6 +765,8 @@ async function createIdentity(
 		userId,
 		roleId: role.id,
 		roleOwned: role.owned,
+		roleCode: role.code,
+		roleName: role.name,
 		username,
 		email,
 		password,
@@ -780,6 +847,23 @@ async function seedAgreement(
 			input.salaryType,
 			input.plTotal,
 		]
+	);
+}
+
+async function seedPayrollUse(
+	connection: Connection,
+	userId: number,
+	employeeId: number,
+	agreementId: number,
+	monthDate: string
+): Promise<void> {
+	await connection.execute(
+		`INSERT INTO employee_salary_payroll_use (
+        employee_id, month, agreement_id, agreement_source, evidence,
+        is_ambiguous, evidence_context, first_used_by
+      ) VALUES (?, ?, ?, 'employee_salary_profile', 'payroll_generation',
+                0, NULL, ?)`,
+		[employeeId, monthDate, agreementId, userId]
 	);
 }
 

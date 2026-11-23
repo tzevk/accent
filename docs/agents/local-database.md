@@ -26,7 +26,9 @@ See the [leads integration guide](../app/leads/integration.md) for execution det
 
 ## Playwright financial-smoke harness
 
-GitHub Actions owns routine E2E verification through the `e2e` job. The job runs the Leads authenticated HTTP integration (`npm run test:integration`, fixed port 31369, database `accent_integration_369`) and then the full Playwright suite (`npm run test:e2e`, automatic loopback port, run-suffixed disposable database). Each step owns its own database, app process, and cleanup against the job's single MariaDB 10.11 service. The browser step runs even when Leads fails, and a final step fails the job. Local browser execution is only for explicit user-authorized debugging. Every local invocation requires `--local-run-reason`; otherwise the CLI refuses before database or server startup. CI keeps its one-shot commands. Do not run `npx playwright test` directly or point the harness at a shared server.
+GitHub Actions runs the Leads authenticated HTTP integration, then the full suite in the `e2e` job. Both use the job's MariaDB 10.11 service. The full suite runs each [registered spec group](../../scripts/e2e/groups.ts) in its own disposable database and loopback app. This isolates the real sign-in request budget without changing the rate limiter. Browser groups still run after a Leads failure, and a final step fails the job.
+
+Only debug locally with explicit authorization and `--local-run-reason`. Do not run `npx playwright test` directly or point the harness at a shared server.
 
 GitHub Actions runs this harness on `ubuntu-latest` with Node 24 against a MariaDB 10.11 service. Use its failure artifacts before considering local reproduction. The commands below are for authorized local debugging only. The [testing and verification rules](../../CODING_STANDARDS.md#testing-and-verification) are canonical.
 
@@ -68,7 +70,7 @@ npm run test:e2e -- --local-run-reason "reproduce CI payroll failure" --grep "pa
 
 Both `--local-run-reason "reason"` and `--local-run-reason=reason` are accepted. The harness consumes that option instead of forwarding it to Playwright. UI mode also requires a reason. Only GitHub Actions receives reason-free execution; setting `CI=true` alone does not enable it. Do not spoof CI environment variables or use local E2E as routine final verification.
 
-Pass ordinary Playwright arguments after the harness option. Reports, traces, and screenshots on failure are under ignored `e2e/artifacts/`; open the HTML report with `npm run test:e2e:report`.
+Pass a spec path or `--grep` after the harness option to focus on one runtime. Open the focused HTML report with `npm run test:e2e:report`. The full CI run stores separate reports and traces under `e2e/artifacts/groups/`.
 
 ### Fixture ownership and cleanup
 
@@ -90,7 +92,7 @@ Cleanup runs after both success and failure and drops the database, closes conne
 - `.next/dev/lock` or `.next/lock` exists: an unowned dev server or build may be running. Stop it first; never delete the lock while its PID is alive.
 - Port already in use: another process owns `E2E_PORT`. Stop it or unset `E2E_PORT`.
 - App-target verification failed: the probe login did not reach the disposable database. Check for inherited database settings and that `DB_HOST`/`DB_PORT` point at loopback MariaDB.
-- Playwright reports no tests: confirm the selected file exists and the filter matches. The maintained journey is `e2e/specs/payroll-review.spec.ts`.
+- Playwright reports no tests: confirm the filter matches a file or title in [`e2e/specs/`](../../e2e/specs/). Full runs also require each spec in exactly one runtime group.
 - Browser missing: run `npm run test:e2e:install`.
 
 The historical 41-spec suite was removed on 2026-10-10 and is archived at tag `e2e-v1`. The current scope and rules are in [CODING_STANDARDS.md](../../CODING_STANDARDS.md#testing-and-verification).
