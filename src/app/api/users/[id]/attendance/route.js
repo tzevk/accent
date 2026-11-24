@@ -1,11 +1,15 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import { isWeeklyOff } from '@/utils/weekly-off';
+import { computeAttendanceSummary } from '@/lib/attendance-summary';
+import {
+	buildAttendancePunchDays,
+	overlayAttendanceRecordPunch,
+} from '@/lib/attendance-record-punches';
 
 /**
  * GET /api/users/[id]/attendance
- * Fetch attendance data for a user including in/out time, leaves, etc.
+ * Fetch the linked Employee's current-month attendance and the user's CRM access.
  */
 export async function GET(request, { params }) {
 	let db;
@@ -36,155 +40,125 @@ export async function GET(request, { params }) {
 
 		db = await dbConnect();
 
-		const now = new Date();
-		const currentMonth = now.getMonth() + 1;
-		const currentYear = now.getFullYear();
-		const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-
-		// Try to get attendance data from attendance table if it exists
-		let attendanceData = {
-			inTime: null,
-			outTime: null,
+		const attendanceData = {
 			idleTime: 0,
 			loginTime: null,
 			logoutTime: null,
 			accessStatus: 'error',
 			accessDate: null,
-			currentMonth: now.toLocaleString('default', {
-				month: 'long',
-				year: 'numeric',
-			}),
-			daysInMonth: daysInMonth,
-			daysPresent: 0,
-			weeklyOff: 0,
-			holidays: 0,
-			overtimeHours: 0,
-			leaves: {
-				total: 21, // Default annual leave
-				used: 0,
-				balance: 21,
-			},
+			currentMonth: null,
+			daysInMonth: null,
+			daysPresent: null,
+			overtimeHours: null,
+			leaves: null,
 		};
 
 		try {
-			// Check if attendance table exists and get today's record
-			const [todayAttendance] = await db.execute(
-				`
-        SELECT in_time, out_time 
-        FROM attendance 
-        WHERE user_id = ? AND DATE(date) = CURDATE()
-        LIMIT 1
-      `,
+			// The LEFT JOIN preserves the DB calendar metadata for an unlinked
+			// user. Employment data needs a linked Employee that was not deleted.
+			const [employeeRows] = await db.execute(
+				`SELECT
+          e.id AS employee_id,
+          DATE_FORMAT(CURDATE(), '%Y-%m-01') AS month_start,
+          DATE_FORMAT(LAST_DAY(CURDATE()) + INTERVAL 1 DAY, '%Y-%m-%d') AS next_month_start,
+          DAY(LAST_DAY(CURDATE())) AS days_in_month,
+          DATE_FORMAT(CURDATE(), '%M %Y') AS current_month,
+          YEAR(CURDATE()) AS current_year
+        FROM users u
+        LEFT JOIN employees e
+          ON e.id = u.employee_id
+          AND e.isDelete = 0
+        WHERE u.id = ? AND u.isDelete = 0`,
 				[requestedUserId]
 			);
+			const employeeContext = employeeRows?.[0] ?? null;
 
-			if (todayAttendance.length > 0) {
-				attendanceData.inTime = todayAttendance[0].in_time;
-				attendanceData.outTime = todayAttendance[0].out_time;
-			}
+			if (employeeContext) {
+				attendanceData.currentMonth = employeeContext.current_month ?? null;
+				attendanceData.daysInMonth =
+					employeeContext.days_in_month == null
+						? null
+						: Number(employeeContext.days_in_month);
 
-			// Get today's idle time from user_screen_time
-			try {
-				const [screenTime] = await db.execute(
-					`SELECT idle_time_minutes FROM user_screen_time WHERE user_id = ? AND date = CURDATE() LIMIT 1`,
-					[requestedUserId]
-				);
-				if (screenTime.length > 0) {
-					attendanceData.idleTime = screenTime[0].idle_time_minutes || 0;
-				}
-			} catch (stErr) {
-				console.log('Screen time fetch skipped:', stErr.message);
-			}
+				const employeeId = employeeContext.employee_id;
+				if (employeeId != null) {
+					const rangeParams = [
+						employeeId,
+						employeeContext.month_start,
+						employeeContext.next_month_start,
+					];
 
-			// Get monthly attendance summary
-			const [monthlyAttendance] = await db.execute(
-				`
-        SELECT 
-          COUNT(DISTINCT DATE(date)) as days_present,
-          COUNT(DISTINCT CASE WHEN status = 'weekly_off' THEN DATE(date) END) as weekly_off,
-          COUNT(DISTINCT CASE WHEN status = 'holiday' THEN DATE(date) END) as holidays
-        FROM attendance 
-        WHERE user_id = ? 
-        AND MONTH(date) = ? 
-        AND YEAR(date) = ?
-      `,
-				[requestedUserId, currentMonth, currentYear]
-			);
+					try {
+						const [records] = await db.execute(
+							`SELECT
+                DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
+                status,
+                in_time,
+                out_time,
+                overtime_hours
+              FROM employee_attendance
+              WHERE employee_id = ?
+                AND attendance_date >= ?
+                AND attendance_date < ?`,
+							rangeParams
+						);
+						const [punchRows] = await db.execute(
+							`SELECT employee_id, log_date, direction
+              FROM attendance_logs
+              WHERE employee_id = ?
+                AND log_date >= ?
+                AND log_date < ?
+              ORDER BY log_date`,
+							rangeParams
+						);
+						const punchDays = buildAttendancePunchDays(punchRows);
+						const employeePunchDays = punchDays[String(employeeId)] ?? {};
+						const summary = computeAttendanceSummary(
+							Object.fromEntries(
+								records.map((record) => {
+									const date = String(record.attendance_date).slice(0, 10);
+									return [
+										date,
+										overlayAttendanceRecordPunch(
+											record,
+											employeePunchDays[date]
+										),
+									];
+								})
+							)
+						);
 
-			if (monthlyAttendance.length > 0) {
-				attendanceData.daysPresent = monthlyAttendance[0].days_present || 0;
-				attendanceData.weeklyOff = monthlyAttendance[0].weekly_off || 0;
-				attendanceData.holidays = monthlyAttendance[0].holidays || 0;
-			}
+						attendanceData.daysPresent = summary.P;
+						attendanceData.overtimeHours = summary.totalOTHours;
+					} catch (attendanceError) {
+						// Unavailable employment data must not become activity-based
+						// presence or a misleading zero.
+						console.error(
+							'Employee attendance fetch skipped:',
+							attendanceError
+						);
+					}
 
-			// Calculate overtime hours for the month
-			// Overtime = total hours worked beyond 8h per day, summed across all days
-			try {
-				const [overtimeRows] = await db.execute(
-					`
-          SELECT 
-            COALESCE(SUM(
-              GREATEST(
-                TIMESTAMPDIFF(MINUTE, in_time, out_time) / 60.0 - 8,
-                0
-              )
-            ), 0) as overtime_hours
-          FROM attendance 
-          WHERE user_id = ? 
-          AND MONTH(date) = ? 
-          AND YEAR(date) = ?
-          AND in_time IS NOT NULL 
-          AND out_time IS NOT NULL
-        `,
-					[requestedUserId, currentMonth, currentYear]
-				);
-
-				if (overtimeRows.length > 0) {
-					attendanceData.overtimeHours =
-						Math.round((parseFloat(overtimeRows[0].overtime_hours) || 0) * 10) /
-						10;
-				}
-			} catch (otErr) {
-				console.log('Overtime calculation skipped:', otErr.message);
-			}
-		} catch {
-			// Attendance table might not exist, use activity logs to estimate
-			console.log('Attendance table not found, using activity logs');
-
-			try {
-				// Check if user_activity_logs table exists
-				const [tables] = await db.execute(
-					`SHOW TABLES LIKE 'user_activity_logs'`
-				);
-
-				if (tables.length > 0) {
-					// Count distinct days with activity as proxy for presence
-					const [activityDays] = await db.execute(
-						`
-            SELECT COUNT(DISTINCT DATE(created_at)) as days_active
-            FROM user_activity_logs 
-            WHERE user_id = ? 
-            AND MONTH(created_at) = ? 
-            AND YEAR(created_at) = ?
-          `,
-						[requestedUserId, currentMonth, currentYear]
-					);
-
-					if (activityDays.length > 0) {
-						attendanceData.daysPresent = activityDays[0].days_active || 0;
+					try {
+						const [leaveRows] = await db.execute(
+							`SELECT
+                COALESCE(SUM(total_leaves), 24) AS total_leaves,
+                COALESCE(SUM(used_leaves), 0) AS used_leaves
+              FROM employee_leaves
+              WHERE employee_id = ? AND year = ?`,
+							[employeeId, employeeContext.current_year]
+						);
+						const leaveData = leaveRows?.[0];
+						const total = Number(leaveData?.total_leaves ?? 24);
+						const used = Number(leaveData?.used_leaves ?? 0);
+						attendanceData.leaves = { total, used, balance: total - used };
+					} catch (leaveError) {
+						console.error('Employee leave fetch skipped:', leaveError);
 					}
 				}
-			} catch (logError) {
-				console.log('Activity logs table also not found:', logError.message);
 			}
-
-			// Weekly offs via the shared company rule (Sundays + 2nd/4th Saturdays).
-			let weeklyOff = 0;
-			for (let d = 1; d <= daysInMonth; d++) {
-				const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-				if (isWeeklyOff(dateStr)) weeklyOff++;
-			}
-			attendanceData.weeklyOff = weeklyOff;
+		} catch (employeeError) {
+			console.error('Employee link fetch skipped:', employeeError);
 		}
 
 		// Today's app access, read from successful user_activity_logs rows in
@@ -225,36 +199,17 @@ export async function GET(request, { params }) {
 			attendanceData.accessStatus = 'error';
 		}
 
-		// Try to get leave data (still using same db connection)
+		// CRM idle time is independent of employment and attendance availability.
 		try {
-			// First check if employee_leaves table exists
-			const [leaveTable] = await db.execute(
-				`SHOW TABLES LIKE 'employee_leaves'`
+			const [screenTime] = await db.execute(
+				`SELECT idle_time_minutes FROM user_screen_time WHERE user_id = ? AND date = CURDATE() LIMIT 1`,
+				[requestedUserId]
 			);
-
-			if (leaveTable.length > 0) {
-				const [leaveData] = await db.execute(
-					`
-          SELECT 
-            COALESCE(SUM(total_leaves), 24) as total_leaves,
-            COALESCE(SUM(used_leaves), 0) as used_leaves
-          FROM employee_leaves 
-          WHERE employee_id = (SELECT employee_id FROM users WHERE id = ?)
-          AND year = ?
-        `,
-					[requestedUserId, currentYear]
-				);
-
-				if (leaveData.length > 0 && leaveData[0].total_leaves) {
-					attendanceData.leaves.total = leaveData[0].total_leaves;
-					attendanceData.leaves.used = leaveData[0].used_leaves;
-					attendanceData.leaves.balance =
-						leaveData[0].total_leaves - leaveData[0].used_leaves;
-				}
+			if (screenTime.length > 0) {
+				attendanceData.idleTime = screenTime[0].idle_time_minutes || 0;
 			}
-		} catch (leaveError) {
-			// Leave table might not exist, use defaults
-			console.log('Leave table not found, using defaults:', leaveError.message);
+		} catch (screenTimeError) {
+			console.log('Screen time fetch skipped:', screenTimeError.message);
 		}
 
 		const response = NextResponse.json({

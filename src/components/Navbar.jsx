@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
 	HomeIcon,
 	DocumentTextIcon,
@@ -18,7 +18,6 @@ import {
 	ClipboardDocumentCheckIcon,
 	ClipboardDocumentListIcon,
 	FingerPrintIcon,
-	ChatBubbleLeftRightIcon,
 	TicketIcon,
 	BuildingOfficeIcon,
 	BuildingLibraryIcon,
@@ -52,7 +51,6 @@ const navigationConfig = [
 
 // Sidebar pages surfaced in the mobile menu (the sidebar is hidden below 640px)
 const mobilePagesConfig = [
-	{ name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon },
 	{ name: 'Support Tickets', href: '/tickets', icon: TicketIcon },
 	{
 		name: 'Employees',
@@ -440,32 +438,6 @@ export default function Navbar() {
 		PERMISSIONS,
 	} = useSessionRBAC();
 
-	// Check again whenever the session refreshes. A previous session snapshot
-	// must not keep Projects visible after an administrator revokes access.
-	const [projectAccessUser, setProjectAccessUser] = useState(null);
-	useEffect(() => {
-		if (userLoading || !user || user.is_super_admin) return;
-
-		const controller = new AbortController();
-		const { signal } = controller;
-		const loadProjectAccess = async () => {
-			try {
-				const response = await fetch('/api/projects/access', {
-					cache: 'no-store',
-					signal,
-				});
-				const body = response.ok ? await response.json() : null;
-				if (!signal.aborted) {
-					setProjectAccessUser(body?.data?.hasAccess === true ? user : null);
-				}
-			} catch {
-				if (!signal.aborted) setProjectAccessUser(null);
-			}
-		};
-		void loadProjectAccess();
-		return () => controller.abort();
-	}, [user, userLoading]);
-
 	// Filter navigation items based on user permissions
 	const navigation = useMemo(() => {
 		if (userLoading && !user) return []; // Hide nav while loading (prevents flash)
@@ -474,15 +446,12 @@ export default function Navbar() {
 
 		return navigationConfig.filter((item) => {
 			if (item.href === '/projects') {
-				// `/api/projects/access` is authoritative: it includes a
-				// super admin and any scoped action that actually covers a
-				// project. A global `projects:read` string says nothing about
-				// project scope, so it must not reveal the entry.
-				return !userLoading && projectAccessUser === user;
+				// Session carries scoped server access, not just a global grant.
+				return !userLoading && user.hasProjectAccess === true;
 			}
 			return can(item.resource, PERMISSIONS.READ);
 		});
-	}, [user, userLoading, can, PERMISSIONS, projectAccessUser]);
+	}, [user, userLoading, can, PERMISSIONS]);
 
 	// Mobile-only page list — mirrors the sidebar, which is hidden below 640px
 	const mobilePageItems = useMemo(() => {

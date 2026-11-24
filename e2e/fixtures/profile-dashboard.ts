@@ -9,12 +9,10 @@
  * owned Employee record, links it through `users.employee_id`, and writes the
  * current-month rows the dashboard and self-service Timesheet read.
  *
- * The live `/api/users/[id]/attendance` reader still probes a legacy
- * `attendance` table that the migrations never create, so its monthly Present
- * count comes from distinct `user_activity_logs` days. This fixture seeds
- * those app-entry days for the dashboard figures, and gives the same dates
- * `employee_attendance` rows so the Timesheet handoff has the linked
- * employee's own month to show.
+ * Present and Payable OT read the linked Employee's Attendance Records.
+ * App-entry logs are separate evidence for Dashboard Log In. One app-entry
+ * day versus three Present days prevents an activity-day proxy from passing.
+ * The same attendance rows give the linked employee's Timesheet its month.
  *
  * Cleanup deletes every row this module created, including failure paths, and
  * is safe to call twice.
@@ -33,6 +31,7 @@ const PROFILE_SAVE_PERMISSION = 'users:update';
 
 /** Fixed evidence the dashboard journey writes and the spec asserts. */
 const PRESENT_DAY_COUNT = 3;
+const PAYABLE_OVERTIME_HOURS = 2.5;
 const LEAVE_TOTAL = 20;
 const LEAVE_USED = 6;
 
@@ -78,6 +77,10 @@ export interface EmployeeDashboardFixture {
 	monthLabel: string;
 	daysInMonth: number;
 	presentDays: number;
+	/** Distinct current-month days seeded in user_activity_logs. */
+	appEntryDays: number;
+	/** Authored Payable OT hours from employee_attendance. */
+	payableOvertimeHours: number;
 	/** DECIMAL sums arrive as strings from mysql2. */
 	leaveUsed: string;
 	leaveTotal: string;
@@ -222,12 +225,12 @@ export async function createEmployeeDashboardFixture(
 		const daysInMonth = new Date(year, month, 0).getDate();
 		const monthKey = `${year}-${String(month).padStart(2, '0')}`;
 
-		// Today is always one seeded day; two other mid-month days keep the
-		// count at three even when the run happens on the 1st or 2nd.
+		// Today is always one seeded day; two other days keep the count at
+		// three, including when the run happens on the 1st or 2nd.
 		const dayNumbers = [dayOfMonth];
 		for (
 			let day = 1;
-			day <= 28 && dayNumbers.length < PRESENT_DAY_COUNT;
+			day <= daysInMonth && dayNumbers.length < PRESENT_DAY_COUNT;
 			day += 1
 		) {
 			if (!dayNumbers.includes(day)) dayNumbers.push(day);
@@ -236,33 +239,30 @@ export async function createEmployeeDashboardFixture(
 			.map((day) => `${monthKey}-${String(day).padStart(2, '0')}`)
 			.sort();
 
-		const logPlaceholders = presentDates
-			.map(() => '(?, ?, ?, ?, ?, ?)')
-			.join(', ');
-		const logValues: ExecuteValues[] = [];
-		for (const date of presentDates) {
-			logValues.push(
-				journey.userId,
-				'login',
-				'session',
-				`[profile-dashboard] seeded app entry ${date}`,
-				'success',
-				`${date} ${date === todayDate ? '00:00:00' : '09:00:00'}`
-			);
-		}
 		await connection.execute(
 			`INSERT INTO user_activity_logs (
         user_id, action_type, resource_type, description, status, created_at
-      ) VALUES ${logPlaceholders}`,
-			logValues
+      ) VALUES (?, 'login', 'session', ?, 'success', ?)`,
+			[
+				journey.userId,
+				`[profile-dashboard] seeded app entry ${todayDate}`,
+				`${todayDate} 00:00:00`,
+			]
 		);
 
 		const attendancePlaceholders = presentDates
 			.map(() => '(?, ?, ?, ?, ?, ?)')
 			.join(', ');
 		const attendanceValues: ExecuteValues[] = [];
-		for (const date of presentDates) {
-			attendanceValues.push(linkId, date, 'P', 0, 0, 0);
+		for (const [index, date] of presentDates.entries()) {
+			attendanceValues.push(
+				linkId,
+				date,
+				'P',
+				index === 0 ? PAYABLE_OVERTIME_HOURS : 0,
+				0,
+				0
+			);
 		}
 		await connection.execute(
 			`INSERT INTO employee_attendance (
@@ -297,6 +297,8 @@ export async function createEmployeeDashboardFixture(
 			monthLabel: `${MONTH_NAMES[month - 1]} ${year}`,
 			daysInMonth,
 			presentDays: PRESENT_DAY_COUNT,
+			appEntryDays: 1,
+			payableOvertimeHours: PAYABLE_OVERTIME_HOURS,
 			leaveUsed: LEAVE_USED.toFixed(1),
 			leaveTotal: LEAVE_TOTAL.toFixed(1),
 			leaveBalance: LEAVE_TOTAL - LEAVE_USED,

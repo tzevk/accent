@@ -59,8 +59,11 @@ describe('getRolePermissionGroups', () => {
 		).toMatchObject({ granted: false });
 	});
 
-	it('keeps an unknown stored resource/action visible and removable', () => {
-		const groups = getRolePermissionGroups(['legacy_module:special']);
+	it('shows unknown stored grants but hides retired Messages permissions', () => {
+		const groups = getRolePermissionGroups([
+			'legacy_module:special',
+			'messages:read',
+		]);
 		const legacy = groups.find((group) => group.resource === 'legacy_module');
 
 		expect(legacy?.actions).toEqual([
@@ -71,6 +74,7 @@ describe('getRolePermissionGroups', () => {
 				granted: true,
 			},
 		]);
+		expect(groups.some((group) => group.resource === 'messages')).toBe(false);
 	});
 });
 

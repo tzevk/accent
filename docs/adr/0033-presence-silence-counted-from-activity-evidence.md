@@ -54,3 +54,22 @@ sweep signals stay database wall-clock strings, and explicit logout still uses t
 Supersedes the Log Out presentation above: the dashboard now shows a dash instead of a time.
 Last app access is not sign-out; displaying it under Log Out confuses users.
 Log In, activity tracking, stored access times, and attendance calculations remain unchanged.
+
+## Dashboard attendance evidence separation (2026-11-24)
+
+Present and Payable OT come from the linked Employee's Attendance Records through the attendance grid summary.
+Present is `summary.P`: `P` plus `OT`, not Half Day or leave.
+Payable OT is `summary.totalOTHours`, keeping only overtime past the two-hour gate.
+Recorded days keep ADR-0007's direction-gated Punch precedence, not Time Present.
+Punch-only days do not create Attendance Records or Present days.
+Neither the legacy attendance table nor CRM app-entry days can substitute for those records.
+
+Dashboard Log In remains separate app-access evidence: the first recorded app entry of the day.
+It remains available without an Employee link.
+Without that link, Present, Payable OT, and Leaves show a dash rather than a fabricated zero or app-day proxy.
+Linked employees keep the existing monthly leave allowance rules.
+App-entry acknowledgement, sign-in, and sign-out behavior are unchanged.
+
+Monthly attendance reads on dashboard mount, return, and window focus.
+They also refresh after the app-entry acknowledgement.
+There is no periodic monthly poll.

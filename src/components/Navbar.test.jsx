@@ -163,10 +163,9 @@ describe('Navbar admin menu', () => {
 });
 
 describe('Navbar Projects entry', () => {
-	const projectAccessResponse = (hasAccess) => ({
-		ok: true,
-		json: async () => ({ success: true, data: { hasAccess } }),
-	});
+	const setProjectAccess = (hasProjectAccess) => {
+		rbacMock.member = { ...rbacMock.member, hasProjectAccess };
+	};
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -174,59 +173,46 @@ describe('Navbar Projects entry', () => {
 		rbacMock.payrollRead = false;
 		rbacMock.adminRead = false;
 		rbacMock.projectsRead = false;
+		setProjectAccess(false);
 		vi.stubGlobal('fetch', fetchMock);
 	});
 
-	it('shows Projects to a user with a project relationship but no project permission', async () => {
-		fetchMock.mockResolvedValue(projectAccessResponse(true));
+	it('shows Projects from the session snapshot without a second request', () => {
+		setProjectAccess(true);
 
 		renderNavbar();
 
-		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
-		expect(fetchMock).toHaveBeenCalledWith(
-			'/api/projects/access',
-			expect.objectContaining({ cache: 'no-store' })
-		);
+		expect(screen.getByRole('link', { name: 'Projects' })).toBeVisible();
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it('hides Projects from a user with no relationship and no project permission', async () => {
-		fetchMock.mockResolvedValue(projectAccessResponse(false));
-
+	it('hides Projects from a user with no relationship and no project permission', () => {
 		renderNavbar();
 
-		await waitFor(() => {
-			expect(fetchMock).toHaveBeenCalled();
-		});
+		expect(fetchMock).not.toHaveBeenCalled();
 		expect(
 			screen.queryByRole('link', { name: 'Projects' })
 		).not.toBeInTheDocument();
 	});
 
-	it('hides Projects when a refreshed session no longer has project access', async () => {
-		fetchMock.mockResolvedValue(projectAccessResponse(true));
+	it('hides Projects when a refreshed session no longer has project access', () => {
+		setProjectAccess(true);
 		const view = renderNavbar();
-		expect(await screen.findByRole('link', { name: 'Projects' })).toBeVisible();
+		expect(screen.getByRole('link', { name: 'Projects' })).toBeVisible();
 
-		fetchMock.mockResolvedValue(projectAccessResponse(false));
-		rbacMock.member = { ...rbacMock.member };
+		setProjectAccess(false);
 		view.rerender(<Navbar />);
 
-		await waitFor(() => {
-			expect(
-				screen.queryByRole('link', { name: 'Projects' })
-			).not.toBeInTheDocument();
-		});
+		expect(
+			screen.queryByRole('link', { name: 'Projects' })
+		).not.toBeInTheDocument();
 	});
 
-	it('hides Projects from a scoped read grant that leads nothing', async () => {
+	it('hides Projects when a global read grant covers no accessible Project', () => {
 		rbacMock.projectsRead = true;
-		fetchMock.mockResolvedValue(projectAccessResponse(false));
 
 		renderNavbar();
 
-		await waitFor(() => {
-			expect(fetchMock).toHaveBeenCalled();
-		});
 		expect(
 			screen.queryByRole('link', { name: 'Projects' })
 		).not.toBeInTheDocument();

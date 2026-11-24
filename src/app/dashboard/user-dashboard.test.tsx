@@ -26,7 +26,9 @@ vi.mock('next/link', () => ({
 }));
 vi.mock('@/components/Navbar', () => ({ default: () => <nav>Navbar</nav> }));
 vi.mock('@/components/LeaveLoginToast', () => ({ default: () => null }));
-vi.mock('@/components/TodoList', () => ({ default: () => null }));
+vi.mock('@/components/TodoList', () => ({
+	default: () => <div data-testid="todo-list-panel">Todo list</div>,
+}));
 vi.mock('@/components/ProjectActivityAssignments', () => ({
 	default: () => null,
 }));
@@ -51,11 +53,8 @@ const ACCESS_DAY = {
 	accessStatus: 'ok' as const,
 	accessDate: '2026-10-26',
 	idleTime: 9,
-	currentMonth: 'October 2026',
 	daysInMonth: 31,
 	daysPresent: 5,
-	weeklyOff: 5,
-	holidays: 0,
 	overtimeHours: 0,
 	leaves: { total: 21, used: 1, balance: 20 },
 };
@@ -96,17 +95,32 @@ const ACCESS_EMPTY_DAY = {
 	accessStatus: 'ok' as const,
 };
 
+/** App access is independent of a linked Employee's monthly attendance. */
+const MISSING_EMPLOYEE_DAY = {
+	...ACCESS_EMPTY_DAY,
+	loginTime: '09:06',
+	logoutTime: null,
+	daysInMonth: null,
+	daysPresent: null,
+	overtimeHours: null,
+	leaves: null,
+};
+
 /**
- * A later poll of the same day: first entry stays fixed while the latest
- * recorded access advances, with no explicit sign-out anywhere.
+ * A later read of the same day: first entry stays fixed while monthly
+ * totals and the latest recorded access advance, without an explicit
+ * sign-out anywhere.
  */
 const ACCESS_DAY_LATER = {
 	...ACCESS_DAY,
 	idleTime: 0,
+	daysPresent: 6,
+	overtimeHours: 2.5,
+	leaves: { total: 21, used: 2, balance: 19 },
 	logoutTime: '19:02',
 };
 
-function mockTierFetches(): void {
+function mockDashboardFetches(): void {
 	fetchMock.mockImplementation((url: string) => {
 		if (url.includes('/activity-assignments')) {
 			return Promise.resolve({
@@ -122,21 +136,6 @@ function mockTierFetches(): void {
 				}),
 			});
 		}
-		if (url.includes('/api/messages/unread-count')) {
-			return Promise.resolve({
-				json: async () => ({ success: true, data: { unread_count: 0 } }),
-			});
-		}
-		if (url.includes('/api/todos')) {
-			return Promise.resolve({
-				json: async () => ({ success: true, data: [] }),
-			});
-		}
-		if (url.includes('/api/work-logs')) {
-			return Promise.resolve({
-				json: async () => ({ success: true, data: [] }),
-			});
-		}
 		return Promise.reject(new Error(`Unexpected request: ${url}`));
 	});
 }
@@ -148,7 +147,14 @@ function renderDashboard(
 	}
 ) {
 	const client = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 } },
+		defaultOptions: {
+			queries: {
+				retry: false,
+				gcTime: 0,
+				staleTime: 30_000,
+				refetchOnWindowFocus: false,
+			},
+		},
 	});
 	return render(
 		<QueryClientProvider client={client}>
@@ -157,12 +163,12 @@ function renderDashboard(
 	);
 }
 
-describe('user dashboard attendance sources', () => {
+describe('user dashboard', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.setSystemTime(new Date('2026-10-26T12:00:00'));
 		vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
-		mockTierFetches();
+		mockDashboardFetches();
 	});
 
 	afterEach(() => {
@@ -212,9 +218,172 @@ describe('user dashboard attendance sources', () => {
 			within(card).queryByTestId('total-time-remaining')
 		).not.toBeInTheDocument();
 		expect(within(card).queryByText(/m remaining/)).not.toBeInTheDocument();
+
+		// The dashboard does not request unread messages.
+		expect(
+			fetchMock.mock.calls.some(
+				(call: unknown[]) => call[0] === '/api/messages/unread-count'
+			)
+		).toBe(false);
 	});
 
-	it('keeps first entry fixed while a later poll refreshes attendance', async () => {
+	it('does not request todos or work logs when the dashboard opens', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		renderDashboard();
+
+		await screen.findByTestId('attendance-card');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/users/7/activity-assignments',
+			expect.anything()
+		);
+		expect(apiGet.mock.calls.map(([url]) => url)).toEqual([
+			'/api/users/7/attendance',
+		]);
+		expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain(
+			'/api/todos'
+		);
+		expect(
+			fetchMock.mock.calls.some(([url]) =>
+				String(url).startsWith('/api/work-logs?')
+			)
+		).toBe(false);
+	});
+
+	it('mounts the Tasks panel only after the sidebar opens it', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		renderDashboard();
+
+		await screen.findByTestId('attendance-card');
+		expect(screen.queryByTestId('todo-list-panel')).not.toBeInTheDocument();
+
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent('toggleTodoPanel', { detail: { open: true } })
+			);
+		});
+
+		expect(await screen.findByTestId('todo-list-panel')).toBeInTheDocument();
+	});
+
+	it('renders the shared monthly grid totals and labels Payable OT', async () => {
+		apiGet.mockResolvedValue({
+			success: true,
+			data: { ...ACCESS_DAY, overtimeHours: 2.5 },
+		});
+		renderDashboard();
+
+		const card = await screen.findByTestId('attendance-card');
+
+		expect(within(card).getByText('Payable OT')).toBeInTheDocument();
+		expect(within(card).getByTestId('present-figure')).toHaveTextContent(
+			/^5\s*\/\s*31$/
+		);
+		expect(within(card).getByTestId('present-progress')).toBeInTheDocument();
+		expect(within(card).getByTestId('leave-figure')).toHaveTextContent(
+			/^1\.0\s*\/\s*21\.0$/
+		);
+		expect(within(card).getByTestId('leave-balance')).toHaveTextContent(
+			'20 remaining'
+		);
+		expect(within(card).getByTestId('overtime-figure')).toHaveTextContent(
+			/^2\.5h$/
+		);
+	});
+
+	it('keeps Dashboard Log In available when the Employee is missing', async () => {
+		apiGet.mockResolvedValue({ success: true, data: MISSING_EMPLOYEE_DAY });
+		renderDashboard();
+
+		const card = await screen.findByTestId('attendance-card');
+
+		expect(within(card).getByText('Log In')).toBeInTheDocument();
+		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+			'9:06 AM'
+		);
+		expect(within(card).getByTestId('present-figure')).toHaveTextContent(/^—$/);
+		expect(
+			within(card).queryByTestId('present-denominator')
+		).not.toBeInTheDocument();
+		expect(
+			within(card).queryByTestId('present-progress')
+		).not.toBeInTheDocument();
+		expect(within(card).getByTestId('leave-figure')).toHaveTextContent(/^—$/);
+		expect(
+			within(card).queryByTestId('leave-denominator')
+		).not.toBeInTheDocument();
+		expect(within(card).queryByTestId('leave-balance')).not.toBeInTheDocument();
+		expect(within(card).getByTestId('overtime-figure')).toHaveTextContent(
+			/^—$/
+		);
+		expect(within(card).getByTestId('leave-tile')).toHaveAccessibleName(
+			/Open leave management/
+		);
+	});
+
+	it('shows zero monthly figures for a linked Employee with no records', async () => {
+		apiGet.mockResolvedValue({
+			success: true,
+			data: {
+				...ACCESS_EMPTY_DAY,
+				daysPresent: 0,
+				overtimeHours: 0,
+				leaves: { total: 21, used: 0, balance: 21 },
+			},
+		});
+		renderDashboard();
+
+		const card = await screen.findByTestId('attendance-card');
+
+		expect(within(card).getByTestId('present-figure')).toHaveTextContent(
+			/^0\s*\/\s*31$/
+		);
+		expect(within(card).getByTestId('present-progress')).toBeInTheDocument();
+		expect(within(card).getByTestId('leave-figure')).toHaveTextContent(
+			/^0\.0\s*\/\s*21\.0$/
+		);
+		expect(within(card).getByTestId('leave-balance')).toHaveTextContent(
+			'21 remaining'
+		);
+		expect(within(card).getByTestId('overtime-figure')).toHaveTextContent(
+			/^0h$/
+		);
+	});
+
+	it('refetches attendance on mount even when the cache is fresh', async () => {
+		const client = new QueryClient({
+			defaultOptions: {
+				queries: {
+					retry: false,
+					gcTime: 0,
+					staleTime: 30_000,
+					refetchOnWindowFocus: false,
+				},
+			},
+		});
+		client.setQueryData(['users', 7, 'attendance'], {
+			success: true,
+			data: ACCESS_DAY,
+		});
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY_LATER });
+		const { unmount } = render(
+			<QueryClientProvider client={client}>
+				<UserDashboard verifiedUser={{ id: 7, full_name: 'Test User' }} />
+			</QueryClientProvider>
+		);
+
+		const card = await screen.findByTestId('attendance-card');
+		await waitFor(() => {
+			expect(within(card).getByTestId('present-figure')).toHaveTextContent(
+				/^6\s*\/\s*31$/
+			);
+		});
+		expect(apiGet).toHaveBeenCalledTimes(1);
+		unmount();
+		client.clear();
+	});
+
+	it('keeps first entry fixed while a later refetch refreshes attendance', async () => {
 		const client = new QueryClient({
 			defaultOptions: { queries: { retry: false, gcTime: 0 } },
 		});
@@ -232,12 +401,14 @@ describe('user dashboard attendance sources', () => {
 			'9:06 AM'
 		);
 
-		// A poll updates visible attendance while Log In remains fixed.
+		// A refetch updates visible attendance while Log In remains fixed.
 		await act(async () => {
 			await client.refetchQueries({ queryKey: ['users', 7, 'attendance'] });
 		});
 		await waitFor(() => {
-			expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
+			expect(within(card).getByTestId('present-figure')).toHaveTextContent(
+				/^6\s*\/\s*31$/
+			);
 		});
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
@@ -247,7 +418,82 @@ describe('user dashboard attendance sources', () => {
 		client.clear();
 	});
 
-	it('clears the attendance error line when a later poll recovers', async () => {
+	it('does not refetch attendance every two minutes in visible or hidden tabs', async () => {
+		vi.useFakeTimers();
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		const visibilityState = vi
+			.spyOn(document, 'visibilityState', 'get')
+			.mockReturnValue('visible');
+
+		try {
+			renderDashboard();
+			// Flush the initial query and its scheduled React notification.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1);
+			});
+			const card = screen.getByTestId('attendance-card');
+			expect(apiGet).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(120_000);
+			});
+			expect(apiGet).toHaveBeenCalledTimes(1);
+
+			visibilityState.mockReturnValue('hidden');
+			await act(async () => {
+				window.dispatchEvent(new Event('visibilitychange'));
+			});
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(120_000);
+			});
+
+			expect(apiGet).toHaveBeenCalledTimes(1);
+			expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+				'9:06 AM'
+			);
+		} finally {
+			visibilityState.mockRestore();
+		}
+	});
+
+	it('refetches attendance immediately when a fresh document becomes visible', async () => {
+		apiGet
+			.mockResolvedValueOnce({ success: true, data: ACCESS_DAY })
+			.mockResolvedValue({ success: true, data: ACCESS_DAY_LATER });
+		const visibilityState = vi
+			.spyOn(document, 'visibilityState', 'get')
+			.mockReturnValue('visible');
+
+		try {
+			renderDashboard();
+			const card = await screen.findByTestId('attendance-card');
+			expect(apiGet).toHaveBeenCalledTimes(1);
+
+			visibilityState.mockReturnValue('hidden');
+			await act(async () => {
+				window.dispatchEvent(new Event('visibilitychange'));
+			});
+			expect(apiGet).toHaveBeenCalledTimes(1);
+
+			// The provider's 30-second stale window has not elapsed, so this
+			// read proves the attendance query overrides disabled focus refetching.
+			visibilityState.mockReturnValue('visible');
+			await act(async () => {
+				window.dispatchEvent(new Event('visibilitychange'));
+			});
+
+			await waitFor(() => {
+				expect(within(card).getByTestId('present-figure')).toHaveTextContent(
+					/^6\s*\/\s*31$/
+				);
+			});
+			expect(apiGet).toHaveBeenCalledTimes(2);
+		} finally {
+			visibilityState.mockRestore();
+		}
+	});
+
+	it('clears the attendance error line when a later refetch recovers', async () => {
 		const client = new QueryClient({
 			defaultOptions: { queries: { retry: false, gcTime: 0 } },
 		});
@@ -265,7 +511,7 @@ describe('user dashboard attendance sources', () => {
 			await within(card).findByTestId('attendance-fetch-error')
 		).toBeInTheDocument();
 
-		// A later poll refetch recovers the day: the error line clears and
+		// A later refetch recovers the day: the error line clears and
 		// the tiles read the payload, never both states at once. The
 		// observer notifies after the refetch promise settles, so the
 		// assertions wait for the repaint, not the fetch.
@@ -426,7 +672,9 @@ describe('user dashboard attendance sources', () => {
 			);
 		});
 		await waitFor(() => {
-			expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
+			expect(within(card).getByTestId('present-figure')).toHaveTextContent(
+				/^6\s*\/\s*31$/
+			);
 		});
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
@@ -472,7 +720,9 @@ describe('user dashboard attendance sources', () => {
 		});
 		const card = await screen.findByTestId('attendance-card');
 		await waitFor(() => {
-			expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
+			expect(within(card).getByTestId('present-figure')).toHaveTextContent(
+				/^6\s*\/\s*31$/
+			);
 		});
 		expect(within(card).getByTestId('login-figure')).toHaveTextContent(
 			'9:06 AM'
@@ -663,7 +913,7 @@ describe('activity log reminder project gating', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
-		mockTierFetches();
+		mockDashboardFetches();
 		const storage = createIsolatedStorage();
 		vi.stubGlobal('localStorage', storage);
 		try {

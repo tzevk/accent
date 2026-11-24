@@ -19,7 +19,6 @@ import { apiGet } from '@/lib/api-client';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
 	ClockIcon,
-	BellIcon,
 	ClipboardDocumentListIcon,
 	ArrowLeftStartOnRectangleIcon,
 	ArrowRightStartOnRectangleIcon,
@@ -284,8 +283,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		[]
 	);
 
-	// Attendance reads share a per-user cache with the two-minute poll.
-	// Log In shows the first app entry; Log Out stays a dash.
+	// Attendance reads share a per-user cache. Refetch on mount and when
+	// returning to the page, without a background timer. Log In shows the
+	// first app entry; Log Out stays a dash.
 	const currentUserId = verifiedUser?.id || user?.id;
 	const queryClient = useQueryClient();
 	const attendanceQueryKey = useMemo(
@@ -296,8 +296,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		queryKey: attendanceQueryKey,
 		queryFn: () => apiGet(`/api/users/${currentUserId}/attendance`),
 		enabled: !!currentUserId,
-		refetchInterval: 120000, // Matches heartbeat interval
-		refetchIntervalInBackground: true,
+		refetchOnMount: 'always',
+		// Override the provider default so returning to a fresh page still reads now.
+		refetchOnWindowFocus: 'always',
 	});
 	const attendanceDay = attendanceQuery.data?.data ?? null;
 	const attendance = {
@@ -306,18 +307,15 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		logoutTime: null,
 		accessStatus: 'ok',
 		accessDate: null,
-		currentMonth: '',
-		daysInMonth: 0,
-		daysPresent: 0,
-		weeklyOff: 0,
-		holidays: 0,
-		overtimeHours: 0,
-		leaves: { total: 24, used: 0, balance: 24 },
+		daysInMonth: null,
+		daysPresent: null,
+		overtimeHours: null,
+		leaves: null,
 		...(attendanceDay || {}),
 	};
 	// A failed fetch and a day that recorded nothing are different facts
 	// (#340): the query state decides which one the tiles see, and a
-	// successful poll clears either back to the day's own state. The access
+	// successful refetch clears either back to the day's own state. The access
 	// source names its own failure, so the clocks never read stale or
 	// fabricated times.
 	const accessSourceError = attendance.accessStatus === 'error';
@@ -353,31 +351,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 			window.removeEventListener('app-access-recorded', onAccessRecorded);
 	}, [currentUserId, queryClient]);
 
-	// Module data
+	// Activity assignments
 	const [moduleAssignments, setModuleAssignments] = useState({
-		unreadMessages: 0,
-		pendingTodos: 0,
-		highPriorityTodos: 0,
-		upcomingDeadlines: [],
-		overdueActivities: 0,
-		recentWorkLogs: [],
-		todayWorkHours: 0,
-		statusSummary: {
-			not_started: 0,
-			in_progress: 0,
-			on_hold: 0,
-			completed: 0,
-			total: 0,
-		},
-		workloadSummary: {
-			total_active_activities: 0,
-			total_estimated_hours: 0,
-			total_actual_hours: 0,
-			avg_progress: 0,
-		},
-		priorityBreakdown: [],
-		activeProjects: [],
-		recentUpdates: [],
 		activityAssignments: {
 			assignments: [],
 			emptyProjects: [],
@@ -397,17 +372,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		},
 	});
 
-	const [moduleAccess, setModuleAccess] = useState({
-		messages: true,
-		todos: true,
-		workLogs: true,
-		dashboard: true,
-	});
-
-	// ── Data fetching with tiered loading + AbortController ──
-	// Attendance rides the shared query above, so this effect owns only the
-	// activity assignments and the tier-2 reads. The shell still waits for
-	// the attendance query before its first paint.
+	// The assignments fetch owns tier 1. Attendance rides the shared query
+	// above, so the shell waits for both critical sources before its first paint.
 	useEffect(() => {
 		const userId = verifiedUser?.id || user?.id;
 		if (!userId) return;
@@ -481,83 +447,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 				} else {
 					setAssignmentsLoad(LOAD_ERROR);
 				}
-
-				// First paint waits for the attendance query too — the header
-				// and the tiles read it, so an early shell would flash empty.
-				// Tier 2 stays non-blocking below.
-
-				// ── Tier 2 (non-blocking): messages, todos, work-logs ──
-				// Fetched after shell renders so user sees content sooner
-				const tier2 = await Promise.allSettled([
-					fetch('/api/messages/unread-count', { signal })
-						.then((r) => {
-							if (r.status === 401 || r.status === 403)
-								return { _denied: 'messages' };
-							return r.json();
-						})
-						.catch(() => ({ _denied: 'messages' })),
-
-					fetch('/api/todos', { signal })
-						.then((r) => {
-							if (r.status === 401 || r.status === 403)
-								return { _denied: 'todos' };
-							return r.json();
-						})
-						.catch(() => ({ _denied: 'todos' })),
-
-					fetch(`/api/work-logs?start_date=${today}&end_date=${today}`, {
-						signal,
-					})
-						.then((r) => {
-							if (r.status === 401 || r.status === 403)
-								return { _denied: 'workLogs' };
-							return r.json();
-						})
-						.catch(() => ({ _denied: 'workLogs' })),
-				]);
-
-				if (signal.aborted) return;
-
-				// Batch all tier-2 updates into a single setState to avoid cascading re-renders
-				const accessPatch = {};
-				const dataPatch = {};
-
-				const msgVal = tier2[0].status === 'fulfilled' ? tier2[0].value : null;
-				if (msgVal?._denied) accessPatch.messages = false;
-				else if (msgVal?.success)
-					dataPatch.unreadMessages = msgVal.data.unread_count || 0;
-
-				const todoVal = tier2[1].status === 'fulfilled' ? tier2[1].value : null;
-				if (todoVal?._denied) accessPatch.todos = false;
-				else if (todoVal?.success && todoVal.data) {
-					const pending = todoVal.data.filter((t) => t.status !== 'completed');
-					dataPatch.pendingTodos = pending.length;
-					dataPatch.highPriorityTodos = pending.filter(
-						(t) => t.priority === 'high'
-					).length;
-				}
-
-				const wlVal = tier2[2].status === 'fulfilled' ? tier2[2].value : null;
-				if (wlVal?._denied) accessPatch.workLogs = false;
-				else if (wlVal?.success && wlVal.data) {
-					const totalHours = wlVal.data.reduce(
-						(sum, log) => sum + ((log && parseFloat(log.hours_worked)) || 0),
-						0
-					);
-					dataPatch.recentWorkLogs = wlVal.data.slice(0, 5);
-					dataPatch.todayWorkHours = Math.round(totalHours * 10) / 10;
-				}
-
-				// Single batched state updates
-				if (Object.keys(dataPatch).length)
-					setModuleAssignments((prev) => ({ ...prev, ...dataPatch }));
-				if (Object.keys(accessPatch).length)
-					setModuleAccess((prev) => ({ ...prev, ...accessPatch }));
 			} catch (error) {
 				console.error('Failed to load dashboard data:', error);
 				if (signal.aborted) return;
-				// A throw before tier-1 settles must still release the shell;
-				// a later tier-2 throw must not demote an already-settled source.
+				// A throw before tier 1 settles must still release the shell.
 				setAssignmentsLoad((prev) =>
 					prev === LOAD_PENDING ? LOAD_ERROR : prev
 				);
@@ -571,7 +464,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	// The shell clears once both tier-1 reads settled: the assignments
 	// effect above and the attendance query. Either may fail — the tiles
 	// name their own failure — but neither may leave the loader spinning.
-	// A later poll refetches behind the painted shell, never through it.
+	// A later refetch updates behind the painted shell, never through it.
 	useEffect(() => {
 		if (
 			assignmentsLoad !== LOAD_PENDING &&
@@ -587,8 +480,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		attendanceQuery.isError,
 	]);
 
-	// Polling replaces the day's payload, including null clears.
-	// The per-user query key isolates reads across viewer changes.
+	// Mount and focus refetches replace the day's payload, including null
+	// clears. The per-user query key isolates reads across viewer changes.
 
 	// Saved-activity reminder: two quiet hours without a logged save, even
 	// while browsing. Only the viewed user's own dashboard enables it — an
@@ -636,6 +529,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 	// Log In stays fixed across later logins, refreshes, and tabs.
 	const loginValue = attendance.loginTime;
+	const presentAvailable = attendance.daysPresent !== null;
+	const presentDenominatorAvailable =
+		presentAvailable && attendance.daysInMonth !== null;
+	const presentProgressAvailable =
+		presentDenominatorAvailable && attendance.daysInMonth > 0;
+	const leaveAvailable = attendance.leaves !== null;
+	const overtimeAvailable = attendance.overtimeHours !== null;
 
 	// ── Loading state ──
 	if (loading) {
@@ -1027,7 +927,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.daysPresent > 0 ? 'bg-gradient-to-br from-blue-500 to-sky-600 text-white shadow-blue-200 group-hover:shadow-blue-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${presentAvailable && attendance.daysPresent > 0 ? 'bg-gradient-to-br from-blue-500 to-sky-600 text-white shadow-blue-200 group-hover:shadow-blue-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<CalendarDaysIcon className="h-4 w-4" />
 												</div>
@@ -1037,18 +937,23 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											</p>
 											<p
 												data-testid="present-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-500'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${presentAvailable && attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{attendance.daysPresent}
-												<span
-													data-testid="present-denominator"
-													className="text-sm font-semibold text-gray-500 ml-0.5"
-												>
-													/ {attendance.daysInMonth}
-												</span>
+												{presentAvailable ? attendance.daysPresent : NO_VALUE}
+												{presentDenominatorAvailable && (
+													<span
+														data-testid="present-denominator"
+														className="text-sm font-semibold text-gray-500 ml-0.5"
+													>
+														/ {attendance.daysInMonth}
+													</span>
+												)}
 											</p>
-											{attendance.daysInMonth > 0 && (
-												<div className="mt-2 h-1.5 rounded-full bg-blue-100 overflow-hidden">
+											{presentProgressAvailable && (
+												<div
+													data-testid="present-progress"
+													className="mt-2 h-1.5 rounded-full bg-blue-100 overflow-hidden"
+												>
 													<div
 														className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-500 transition-all duration-700 ease-out"
 														style={{
@@ -1072,7 +977,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.leaves.used > 0 ? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200 group-hover:shadow-amber-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${leaveAvailable && attendance.leaves.used > 0 ? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200 group-hover:shadow-amber-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<CalendarIcon className="h-4 w-4" />
 												</div>
@@ -1082,23 +987,29 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											</p>
 											<p
 												data-testid="leave-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-500'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${leaveAvailable && attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{attendance.leaves.used}
-												<span
-													data-testid="leave-denominator"
-													className="text-sm font-semibold text-gray-500 ml-0.5"
+												{leaveAvailable
+													? Number(attendance.leaves.used).toFixed(1)
+													: NO_VALUE}
+												{leaveAvailable && (
+													<span
+														data-testid="leave-denominator"
+														className="text-sm font-semibold text-gray-500 ml-0.5"
+													>
+														/ {Number(attendance.leaves.total).toFixed(1)}
+													</span>
+												)}
+											</p>
+											{leaveAvailable && (
+												<p
+													data-testid="leave-balance"
+													className="text-xs text-amber-700 font-semibold mt-1.5 flex items-center gap-1 tabular-nums"
 												>
-													/ {attendance.leaves.total}
-												</span>
-											</p>
-											<p
-												data-testid="leave-balance"
-												className="text-xs text-amber-700 font-semibold mt-1.5 flex items-center gap-1 tabular-nums"
-											>
-												<span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />{' '}
-												{attendance.leaves.balance} remaining
-											</p>
+													<span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />{' '}
+													{attendance.leaves.balance} remaining
+												</p>
+											)}
 											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
 												View &amp; apply
 												<ArrowRightIcon className="h-2.5 w-2.5 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
@@ -1111,22 +1022,26 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.overtimeHours > 0 ? 'bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-orange-200 group-hover:shadow-orange-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${overtimeAvailable && attendance.overtimeHours > 0 ? 'bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-orange-200 group-hover:shadow-orange-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<FireIcon className="h-4 w-4" />
 												</div>
 											</div>
 											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-												Overtime
+												Payable OT
 											</p>
 											<p
 												data-testid="overtime-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-500'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${overtimeAvailable && attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{attendance.overtimeHours}
-												<span className="text-sm font-semibold text-gray-500 ml-0.5">
-													h
-												</span>
+												{overtimeAvailable
+													? attendance.overtimeHours
+													: NO_VALUE}
+												{overtimeAvailable && (
+													<span className="text-sm font-semibold text-gray-500 ml-0.5">
+														h
+													</span>
+												)}
 											</p>
 											<p className="text-xs text-gray-500 mt-1.5 font-medium">
 												this month
@@ -1215,59 +1130,6 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									})()}
 								</div>
 							</div>
-
-							{/* ── Upcoming Deadlines ── */}
-							{moduleAccess.dashboard &&
-								moduleAssignments.upcomingDeadlines.length > 0 && (
-									<div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-200/80 p-3 xl:p-4">
-										<div className="flex items-center gap-2 mb-2">
-											<BellIcon className="w-4 h-4 xl:w-5 xl:h-5 text-amber-600" />
-											<h3 className="text-xs xl:text-sm font-semibold text-amber-800 uppercase tracking-wide">
-												Upcoming Deadlines (Next 7 Days)
-											</h3>
-										</div>
-										<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 xl:gap-3">
-											{moduleAssignments.upcomingDeadlines
-												.slice(0, 6)
-												.map((deadline, idx) => (
-													<div
-														key={idx}
-														className="bg-white rounded-md p-2 border border-amber-100"
-													>
-														<div className="flex items-start justify-between">
-															<div className="flex-1 min-w-0">
-																<p className="text-xs font-medium text-gray-900 truncate">
-																	{deadline.activity_name ||
-																		deadline.title ||
-																		'Activity'}
-																</p>
-																<p className="text-xs text-gray-500 truncate">
-																	{deadline.project_title ||
-																		deadline.project_code ||
-																		''}
-																</p>
-															</div>
-															<span
-																className={`ml-1.5 px-1.5 py-0.5 text-xs font-medium rounded ${
-																	deadline.days_remaining <= 1
-																		? 'bg-red-100 text-red-700'
-																		: deadline.days_remaining <= 3
-																			? 'bg-orange-100 text-orange-700'
-																			: 'bg-green-100 text-green-700'
-																}`}
-															>
-																{deadline.days_remaining === 0
-																	? 'Today'
-																	: deadline.days_remaining === 1
-																		? 'Tomorrow'
-																		: `${deadline.days_remaining} days`}
-															</span>
-														</div>
-													</div>
-												))}
-										</div>
-									</div>
-								)}
 
 							{/* ── Project Activity Assignments — lazy-loaded ── */}
 							<div data-section="project-activities">

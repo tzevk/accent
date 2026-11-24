@@ -30,6 +30,7 @@ function normalizeLeaveBody(body) {
  * Badge shows pending leave count (live from leave_applications) — the
  * actionable queue — falling back to unread notification count.
  * Panel lists pending leaves first, then recent notifications.
+ * Only signed-in users who can see the bell poll the notification feed.
  */
 export default function NotificationsBell() {
 	const router = useRouter();
@@ -59,11 +60,11 @@ export default function NotificationsBell() {
 	}, []);
 
 	useEffect(() => {
-		if (!user) return;
+		if (!user || !isApprover) return;
 		fetchNotifications();
 		const interval = setInterval(fetchNotifications, POLL_MS);
 		return () => clearInterval(interval);
-	}, [user, fetchNotifications]);
+	}, [user, isApprover, fetchNotifications]);
 
 	// Opening the panel marks notification rows read (pending stays until approved).
 	useEffect(() => {

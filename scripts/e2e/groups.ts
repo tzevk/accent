@@ -106,7 +106,7 @@ export const FULL_SUITE_GROUPS: readonly E2EGroupDefinition[] = [
 	{
 		name: 'collaboration-and-monitoring',
 		specs: [
-			{ file: 'e2e/specs/messages.spec.ts', plannedLogins: 2 },
+			{ file: 'e2e/specs/messages.spec.ts', plannedLogins: 1 },
 			{ file: 'e2e/specs/monitoring.spec.ts', plannedLogins: 2 },
 		],
 	},
