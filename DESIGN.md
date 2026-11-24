@@ -169,6 +169,8 @@ Accent ships both schemes. `:root[data-theme='light']` and `:root[data-theme='da
 
 **The reveal is a pointer gesture.** Where the browser supports same-document view transitions, a pointer click starts a 400ms `::view-transition-new(root)` clip: a `circle(0px at <click x> <click y>)` expanding to the farthest viewport corner, with the previous theme as the snapshot underneath. It is one snapshot clip, not a cross-fade of every element. Keyboard activation, assistive-technology clicks, programmatic theme changes, operating-system changes, reduced-motion preferences and browsers without view-transition support swap instantly with no animation or ripple. Never animate a theme change the person did not make with a pointer.
 
+**The sign-in screen reveals only its foreground.** Its background is a continuously animated WebGL canvas that must never freeze. Sign-in therefore snapshots one full-viewport transparent foreground layer — scrim, theme switch and card — under its own view-transition name while the root opts out of capture for that transition. The old foreground is masked outside the expanding circle and the new foreground is clipped inside it, both over the live canvas, so the gradient keeps animating and neither the scrim nor the card paints twice. Elsewhere the reveal remains the single root snapshot pair described above.
+
 ## Typography
 
 **Body Font:** Poppins (sans-serif fallback), loaded via `next/font/google` in the root layout at 400, 500, 600 and 700, and applied on `body` in `globals.css`.
