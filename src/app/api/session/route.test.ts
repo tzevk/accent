@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockExecute = vi.fn();
-const mockRelease = vi.fn();
-const mockDbConnect = vi.fn();
-const mockGetCurrentUser = vi.fn();
+import { GET } from './route';
+
+const { mockExecute, mockRelease, mockDbConnect, mockGetCurrentUser } =
+	vi.hoisted(() => ({
+		mockExecute: vi.fn(),
+		mockRelease: vi.fn(),
+		mockDbConnect: vi.fn(),
+		mockGetCurrentUser: vi.fn(),
+	}));
 
 vi.mock('@/utils/database', () => ({
 	dbConnect: mockDbConnect,
@@ -12,8 +17,6 @@ vi.mock('@/utils/database', () => ({
 vi.mock('@/utils/api-permissions', () => ({
 	getCurrentUser: mockGetCurrentUser,
 }));
-
-const { GET } = await import('@/app/api/projects/access/route');
 
 const member = {
 	id: 42,
@@ -26,10 +29,10 @@ const member = {
 };
 
 function request(): Request {
-	return new Request('http://localhost/api/projects/access');
+	return new Request('http://localhost/api/session');
 }
 
-describe('GET /api/projects/access', () => {
+describe('GET /api/session', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockDbConnect.mockResolvedValue({
@@ -44,12 +47,12 @@ describe('GET /api/projects/access', () => {
 		);
 	});
 
-	it('returns 401 without a session', async () => {
+	it('does not check Projects access without a session', async () => {
 		mockGetCurrentUser.mockResolvedValueOnce(null);
 
 		const response = await GET(request());
 
-		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual({ authenticated: false });
 		expect(mockDbConnect).not.toHaveBeenCalled();
 	});
 
@@ -62,7 +65,10 @@ describe('GET /api/projects/access', () => {
 		const response = await GET(request());
 		const body = await response.json();
 
-		expect(body.data.hasAccess).toBe(true);
+		expect(body).toMatchObject({
+			authenticated: true,
+			user: { id: member.id, hasProjectAccess: true },
+		});
 		expect(mockExecute).not.toHaveBeenCalled();
 	});
 
@@ -80,10 +86,17 @@ describe('GET /api/projects/access', () => {
 		const response = await GET(request());
 		const body = await response.json();
 
-		expect(body).toEqual({ success: true, data: { hasAccess: true } });
+		expect(body).toMatchObject({
+			authenticated: true,
+			user: { id: member.id, hasProjectAccess: true },
+		});
 	});
 
-	it('denies an unrelated user', async () => {
+	it('hides Projects for a user with a global read grant but no accessible Project', async () => {
+		mockGetCurrentUser.mockResolvedValueOnce({
+			...member,
+			merged_permissions: ['projects:read'],
+		});
 		mockExecute.mockResolvedValueOnce([
 			[
 				{
@@ -97,16 +110,22 @@ describe('GET /api/projects/access', () => {
 		const response = await GET(request());
 		const body = await response.json();
 
-		expect(body).toEqual({ success: true, data: { hasAccess: false } });
+		expect(body).toMatchObject({
+			authenticated: true,
+			user: { id: member.id, hasProjectAccess: false },
+		});
 	});
 
-	it('fails closed when the scan errors', async () => {
+	it('hides Projects but preserves the authenticated session when the scan errors', async () => {
 		mockExecute.mockRejectedValueOnce(new Error('connection lost'));
 
 		const response = await GET(request());
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(body.data.hasAccess).toBe(false);
+		expect(body).toMatchObject({
+			authenticated: true,
+			user: { id: member.id, hasProjectAccess: false },
+		});
 	});
 });

@@ -26,7 +26,9 @@ vi.mock('next/link', () => ({
 }));
 vi.mock('@/components/Navbar', () => ({ default: () => <nav>Navbar</nav> }));
 vi.mock('@/components/LeaveLoginToast', () => ({ default: () => null }));
-vi.mock('@/components/TodoList', () => ({ default: () => null }));
+vi.mock('@/components/TodoList', () => ({
+	default: () => <div data-testid="todo-list-panel">Todo list</div>,
+}));
 vi.mock('@/components/ProjectActivityAssignments', () => ({
 	default: () => null,
 }));
@@ -106,7 +108,7 @@ const ACCESS_DAY_LATER = {
 	logoutTime: '19:02',
 };
 
-function mockTierFetches(): void {
+function mockDashboardFetches(): void {
 	fetchMock.mockImplementation((url: string) => {
 		if (url.includes('/activity-assignments')) {
 			return Promise.resolve({
@@ -122,16 +124,6 @@ function mockTierFetches(): void {
 				}),
 			});
 		}
-		if (url.includes('/api/todos')) {
-			return Promise.resolve({
-				json: async () => ({ success: true, data: [] }),
-			});
-		}
-		if (url.includes('/api/work-logs')) {
-			return Promise.resolve({
-				json: async () => ({ success: true, data: [] }),
-			});
-		}
 		return Promise.reject(new Error(`Unexpected request: ${url}`));
 	});
 }
@@ -143,7 +135,14 @@ function renderDashboard(
 	}
 ) {
 	const client = new QueryClient({
-		defaultOptions: { queries: { retry: false, gcTime: 0 } },
+		defaultOptions: {
+			queries: {
+				retry: false,
+				gcTime: 0,
+				staleTime: 30_000,
+				refetchOnWindowFocus: false,
+			},
+		},
 	});
 	return render(
 		<QueryClientProvider client={client}>
@@ -152,12 +151,12 @@ function renderDashboard(
 	);
 }
 
-describe('user dashboard attendance sources', () => {
+describe('user dashboard', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.setSystemTime(new Date('2026-10-26T12:00:00'));
 		vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
-		mockTierFetches();
+		mockDashboardFetches();
 	});
 
 	afterEach(() => {
@@ -208,22 +207,51 @@ describe('user dashboard attendance sources', () => {
 		).not.toBeInTheDocument();
 		expect(within(card).queryByText(/m remaining/)).not.toBeInTheDocument();
 
-		// Tier 2 still loads todos and work logs without requesting messages.
-		await waitFor(() => {
-			expect(
-				fetchMock.mock.calls.some((call: unknown[]) => call[0] === '/api/todos')
-			).toBe(true);
-			expect(
-				fetchMock.mock.calls.some((call: unknown[]) =>
-					String(call[0]).startsWith('/api/work-logs?')
-				)
-			).toBe(true);
-		});
+		// The dashboard does not request unread messages.
 		expect(
 			fetchMock.mock.calls.some(
 				(call: unknown[]) => call[0] === '/api/messages/unread-count'
 			)
 		).toBe(false);
+	});
+
+	it('does not request todos or work logs when the dashboard opens', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		renderDashboard();
+
+		await screen.findByTestId('attendance-card');
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/users/7/activity-assignments',
+			expect.anything()
+		);
+		expect(apiGet.mock.calls.map(([url]) => url)).toEqual([
+			'/api/users/7/attendance',
+		]);
+		expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain(
+			'/api/todos'
+		);
+		expect(
+			fetchMock.mock.calls.some(([url]) =>
+				String(url).startsWith('/api/work-logs?')
+			)
+		).toBe(false);
+	});
+
+	it('mounts the Tasks panel only after the sidebar opens it', async () => {
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		renderDashboard();
+
+		await screen.findByTestId('attendance-card');
+		expect(screen.queryByTestId('todo-list-panel')).not.toBeInTheDocument();
+
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent('toggleTodoPanel', { detail: { open: true } })
+			);
+		});
+
+		expect(await screen.findByTestId('todo-list-panel')).toBeInTheDocument();
 	});
 
 	it('keeps first entry fixed while a later poll refreshes attendance', async () => {
@@ -257,6 +285,79 @@ describe('user dashboard attendance sources', () => {
 		expect(within(card).queryByText('Late')).not.toBeInTheDocument();
 		expect(within(card).queryByText('OT')).not.toBeInTheDocument();
 		client.clear();
+	});
+
+	it('pauses the two-minute attendance read while the document is hidden', async () => {
+		vi.useFakeTimers();
+		apiGet.mockResolvedValue({ success: true, data: ACCESS_DAY });
+		const visibilityState = vi
+			.spyOn(document, 'visibilityState', 'get')
+			.mockReturnValue('visible');
+
+		try {
+			renderDashboard();
+			// Flush the initial query and its scheduled React notification.
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(1);
+			});
+			const card = screen.getByTestId('attendance-card');
+			expect(apiGet).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(120_000);
+			});
+			expect(apiGet).toHaveBeenCalledTimes(2);
+
+			visibilityState.mockReturnValue('hidden');
+			await act(async () => {
+				window.dispatchEvent(new Event('visibilitychange'));
+			});
+			await act(async () => {
+				await vi.advanceTimersByTimeAsync(120_000);
+			});
+
+			expect(apiGet).toHaveBeenCalledTimes(2);
+			expect(within(card).getByTestId('login-figure')).toHaveTextContent(
+				'9:06 AM'
+			);
+		} finally {
+			visibilityState.mockRestore();
+		}
+	});
+
+	it('refetches attendance immediately when a fresh document becomes visible', async () => {
+		apiGet
+			.mockResolvedValueOnce({ success: true, data: ACCESS_DAY })
+			.mockResolvedValue({ success: true, data: ACCESS_DAY_LATER });
+		const visibilityState = vi
+			.spyOn(document, 'visibilityState', 'get')
+			.mockReturnValue('visible');
+
+		try {
+			renderDashboard();
+			const card = await screen.findByTestId('attendance-card');
+			expect(apiGet).toHaveBeenCalledTimes(1);
+
+			visibilityState.mockReturnValue('hidden');
+			await act(async () => {
+				window.dispatchEvent(new Event('visibilitychange'));
+			});
+			expect(apiGet).toHaveBeenCalledTimes(1);
+
+			// The provider's 30-second stale window has not elapsed, so this
+			// read proves the attendance query overrides disabled focus refetching.
+			visibilityState.mockReturnValue('visible');
+			await act(async () => {
+				window.dispatchEvent(new Event('visibilitychange'));
+			});
+
+			await waitFor(() => {
+				expect(within(card).getByTestId('idle-figure')).toHaveTextContent('0s');
+			});
+			expect(apiGet).toHaveBeenCalledTimes(2);
+		} finally {
+			visibilityState.mockRestore();
+		}
 	});
 
 	it('clears the attendance error line when a later poll recovers', async () => {
@@ -675,7 +776,7 @@ describe('activity log reminder project gating', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
-		mockTierFetches();
+		mockDashboardFetches();
 		const storage = createIsolatedStorage();
 		vi.stubGlobal('localStorage', storage);
 		try {

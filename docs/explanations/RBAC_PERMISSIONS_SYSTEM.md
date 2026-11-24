@@ -200,6 +200,11 @@ Component calls session.can("leads", "read")
 5. **`can()` is memoized** on the `user` object — it only re-evaluates when the user changes
 6. **Helpers:** `refreshSession()` forces a re-fetch; `clearSessionCache()` / `setSessionData()` are exported for the login/logout flows (`src/app/signin/page.jsx`, `src/components/Navbar.jsx`)
 
+The session response also includes `user.hasProjectAccess`, the server's decision about Projects navigation visibility.
+It considers Project team membership, lead designation, and scoped grants.
+If the Project lookup fails, the session stays valid and the navbar hides Projects.
+Project pages and API handlers still check access to the requested Project.
+
 (A separate `AutoRefresh` watchdog in `src/app/layout.jsx` reloads a page that fails to finish loading within 30 s — it is not a session poller.)
 
 ### `useSessionRBAC()` (`src/utils/client-rbac.js`)

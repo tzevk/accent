@@ -19,7 +19,6 @@ import { apiGet } from '@/lib/api-client';
 import { useSessionRBAC } from '@/utils/client-rbac';
 import {
 	ClockIcon,
-	BellIcon,
 	ClipboardDocumentListIcon,
 	ArrowLeftStartOnRectangleIcon,
 	ArrowRightStartOnRectangleIcon,
@@ -284,8 +283,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		[]
 	);
 
-	// Attendance reads share a per-user cache with the two-minute poll.
-	// Log In shows the first app entry; Log Out stays a dash.
+	// Attendance reads share a per-user cache. Its two-minute poll runs only
+	// while the document is visible. Log In shows the first app entry;
+	// Log Out stays a dash.
 	const currentUserId = verifiedUser?.id || user?.id;
 	const queryClient = useQueryClient();
 	const attendanceQueryKey = useMemo(
@@ -297,7 +297,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		queryFn: () => apiGet(`/api/users/${currentUserId}/attendance`),
 		enabled: !!currentUserId,
 		refetchInterval: 120000, // Matches heartbeat interval
-		refetchIntervalInBackground: true,
+		refetchIntervalInBackground: false,
+		// Override the provider default so returning to a fresh page still reads now.
+		refetchOnWindowFocus: 'always',
 	});
 	const attendanceDay = attendanceQuery.data?.data ?? null;
 	const attendance = {
@@ -353,30 +355,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 			window.removeEventListener('app-access-recorded', onAccessRecorded);
 	}, [currentUserId, queryClient]);
 
-	// Module data
+	// Activity assignments
 	const [moduleAssignments, setModuleAssignments] = useState({
-		pendingTodos: 0,
-		highPriorityTodos: 0,
-		upcomingDeadlines: [],
-		overdueActivities: 0,
-		recentWorkLogs: [],
-		todayWorkHours: 0,
-		statusSummary: {
-			not_started: 0,
-			in_progress: 0,
-			on_hold: 0,
-			completed: 0,
-			total: 0,
-		},
-		workloadSummary: {
-			total_active_activities: 0,
-			total_estimated_hours: 0,
-			total_actual_hours: 0,
-			avg_progress: 0,
-		},
-		priorityBreakdown: [],
-		activeProjects: [],
-		recentUpdates: [],
 		activityAssignments: {
 			assignments: [],
 			emptyProjects: [],
@@ -396,16 +376,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		},
 	});
 
-	const [moduleAccess, setModuleAccess] = useState({
-		todos: true,
-		workLogs: true,
-		dashboard: true,
-	});
-
-	// ── Data fetching with tiered loading + AbortController ──
-	// Attendance rides the shared query above, so this effect owns only the
-	// activity assignments and the tier-2 reads. The shell still waits for
-	// the attendance query before its first paint.
+	// The assignments fetch owns tier 1. Attendance rides the shared query
+	// above, so the shell waits for both critical sources before its first paint.
 	useEffect(() => {
 		const userId = verifiedUser?.id || user?.id;
 		if (!userId) return;
@@ -479,70 +451,10 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 				} else {
 					setAssignmentsLoad(LOAD_ERROR);
 				}
-
-				// First paint waits for the attendance query too — the header
-				// and the tiles read it, so an early shell would flash empty.
-				// Tier 2 stays non-blocking below.
-
-				// ── Tier 2 (non-blocking): todos, work-logs ──
-				// Fetched after shell renders so user sees content sooner
-				const tier2 = await Promise.allSettled([
-					fetch('/api/todos', { signal })
-						.then((r) => {
-							if (r.status === 401 || r.status === 403)
-								return { _denied: 'todos' };
-							return r.json();
-						})
-						.catch(() => ({ _denied: 'todos' })),
-
-					fetch(`/api/work-logs?start_date=${today}&end_date=${today}`, {
-						signal,
-					})
-						.then((r) => {
-							if (r.status === 401 || r.status === 403)
-								return { _denied: 'workLogs' };
-							return r.json();
-						})
-						.catch(() => ({ _denied: 'workLogs' })),
-				]);
-
-				if (signal.aborted) return;
-
-				// Batch all tier-2 updates into a single setState to avoid cascading re-renders
-				const accessPatch = {};
-				const dataPatch = {};
-
-				const todoVal = tier2[0].status === 'fulfilled' ? tier2[0].value : null;
-				if (todoVal?._denied) accessPatch.todos = false;
-				else if (todoVal?.success && todoVal.data) {
-					const pending = todoVal.data.filter((t) => t.status !== 'completed');
-					dataPatch.pendingTodos = pending.length;
-					dataPatch.highPriorityTodos = pending.filter(
-						(t) => t.priority === 'high'
-					).length;
-				}
-
-				const wlVal = tier2[1].status === 'fulfilled' ? tier2[1].value : null;
-				if (wlVal?._denied) accessPatch.workLogs = false;
-				else if (wlVal?.success && wlVal.data) {
-					const totalHours = wlVal.data.reduce(
-						(sum, log) => sum + ((log && parseFloat(log.hours_worked)) || 0),
-						0
-					);
-					dataPatch.recentWorkLogs = wlVal.data.slice(0, 5);
-					dataPatch.todayWorkHours = Math.round(totalHours * 10) / 10;
-				}
-
-				// Single batched state updates
-				if (Object.keys(dataPatch).length)
-					setModuleAssignments((prev) => ({ ...prev, ...dataPatch }));
-				if (Object.keys(accessPatch).length)
-					setModuleAccess((prev) => ({ ...prev, ...accessPatch }));
 			} catch (error) {
 				console.error('Failed to load dashboard data:', error);
 				if (signal.aborted) return;
-				// A throw before tier-1 settles must still release the shell;
-				// a later tier-2 throw must not demote an already-settled source.
+				// A throw before tier 1 settles must still release the shell.
 				setAssignmentsLoad((prev) =>
 					prev === LOAD_PENDING ? LOAD_ERROR : prev
 				);
@@ -1200,59 +1112,6 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 									})()}
 								</div>
 							</div>
-
-							{/* ── Upcoming Deadlines ── */}
-							{moduleAccess.dashboard &&
-								moduleAssignments.upcomingDeadlines.length > 0 && (
-									<div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-200/80 p-3 xl:p-4">
-										<div className="flex items-center gap-2 mb-2">
-											<BellIcon className="w-4 h-4 xl:w-5 xl:h-5 text-amber-600" />
-											<h3 className="text-xs xl:text-sm font-semibold text-amber-800 uppercase tracking-wide">
-												Upcoming Deadlines (Next 7 Days)
-											</h3>
-										</div>
-										<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 xl:gap-3">
-											{moduleAssignments.upcomingDeadlines
-												.slice(0, 6)
-												.map((deadline, idx) => (
-													<div
-														key={idx}
-														className="bg-white rounded-md p-2 border border-amber-100"
-													>
-														<div className="flex items-start justify-between">
-															<div className="flex-1 min-w-0">
-																<p className="text-xs font-medium text-gray-900 truncate">
-																	{deadline.activity_name ||
-																		deadline.title ||
-																		'Activity'}
-																</p>
-																<p className="text-xs text-gray-500 truncate">
-																	{deadline.project_title ||
-																		deadline.project_code ||
-																		''}
-																</p>
-															</div>
-															<span
-																className={`ml-1.5 px-1.5 py-0.5 text-xs font-medium rounded ${
-																	deadline.days_remaining <= 1
-																		? 'bg-red-100 text-red-700'
-																		: deadline.days_remaining <= 3
-																			? 'bg-orange-100 text-orange-700'
-																			: 'bg-green-100 text-green-700'
-																}`}
-															>
-																{deadline.days_remaining === 0
-																	? 'Today'
-																	: deadline.days_remaining === 1
-																		? 'Tomorrow'
-																		: `${deadline.days_remaining} days`}
-															</span>
-														</div>
-													</div>
-												))}
-										</div>
-									</div>
-								)}
 
 							{/* ── Project Activity Assignments — lazy-loaded ── */}
 							<div data-section="project-activities">
