@@ -14,13 +14,15 @@ Production uses MariaDB 10.11.15. Test database-specific behavior against MariaD
 
 ## Database authoring and migrations
 
-New application queries use Drizzle over the shared app `mysql2` connection;
-existing queries stay unchanged unless their behavior must change. Knex
-history is frozen at
-`migrations/20261115140000_salary_profile_revisions.ts` and still bootstraps
-fresh databases, upgrades existing ones, and supplies staged historical test
-cutovers. Drizzle owns all future migrations in `drizzle/`; its partial schema
-is not a generation source.
+All active migrations use Drizzle. The 68 translated Knex migrations live in
+`drizzle/history/`; `drizzle/history/manifest.json` preserves their original
+filenames as stable IDs and fixes their order. `npm run migrate` adopts an exact
+existing `knex_migrations` prefix without replay and runs every translated
+callback on a fresh database. Unknown names, gaps, or other untracked state fail
+closed. New application queries use Drizzle over the shared app `mysql2`
+connection; existing queries stay unchanged unless their behavior must change.
+The deployed `knex_migrations` table remains historical evidence. New native
+migrations live in `drizzle/`; its partial schema is not a generation source.
 
 Generate a custom migration with an empty SQL file. Write and review the
 forward MariaDB SQL, then commit both the SQL file and journal metadata:
@@ -32,7 +34,8 @@ npm run migrate:status
 ```
 
 Never use schema push or batch down. Correct a mistake with another forward
-migration and recover from verified MariaDB backups. The configured
+migration and recover from verified MariaDB backups. The runner Zod-validates
+migration metadata before status or apply. The configured
 `npm run migrate:prod` and `npm run migrate:prod:status` commands are only for
 explicitly approved production work; local commands must stay on loopback
 development or disposable databases.

@@ -27,7 +27,7 @@ export interface ResolvedSafety {
 	user: string;
 	password: string;
 	// Exact values the app server must use so the app pool, proxy pool,
-	// and knex all point at the same disposable database.
+	// and migration runner all point at the same disposable database.
 	serverEnv: Record<string, string>;
 	// Exact connection the independent reader uses (its own client).
 	reader: {
@@ -147,7 +147,7 @@ export function resolveSafetyTarget(
 			DEV_DB_NAME: name,
 			DEV_DB_USER: user,
 			DEV_DB_PASSWORD: password,
-			// Pin every branch the runtime or knex could select (NODE_ENV is set
+			// Pin every branch the app or migration runner could select (NODE_ENV is set
 			// to development above, so dev wins; the rest are belt and braces).
 			STAGING_DB_NAME: name,
 			STAGING_DB_USER: user,

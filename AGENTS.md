@@ -22,7 +22,7 @@ Ask only when blocked on a safe or correct choice. Otherwise proceed with a stat
 - **Format values, style UI, fetch client data, or build forms:** read [formatting and presentation](CODING_STANDARDS.md#formatting-and-presentation) and [client data and forms](CODING_STANDARDS.md#client-data-and-forms).
 - **Change API handlers, authorization, or the route-auth ESLint rule:** follow [authentication and security](CODING_STANDARDS.md#authentication-and-security).
 - **Change sessions, rate limits, or uploads:** read [authentication and security](CODING_STANDARDS.md#authentication-and-security).
-- **Change queries, migrations, schemas, pools, or database-backed behavior:** use Drizzle for new queries and migrations. Leave existing SQL queries alone unless the task calls for changing them. Follow [database and data invariants](CODING_STANDARDS.md#database-and-data-invariants) for the frozen Knex history and Zod validation.
+- **Change queries, migrations, schemas, pools, or database-backed behavior:** use Drizzle for new queries and migrations. Leave existing SQL queries alone unless the task calls for changing them. Follow [database and data invariants](CODING_STANDARDS.md#database-and-data-invariants) for translated Drizzle history, prior-ledger adoption, and Zod validation.
 - **Change billing, salary, payroll, timesheets, or employee costs:** read [money and payroll](CODING_STANDARDS.md#money-and-payroll).
 - **Review code, choose checks, add tests, or change build/deployment automation:** read [testing and verification](CODING_STANDARDS.md#testing-and-verification).
 - **Review a diff or verify a change:** follow the [`verify` procedure](.claude/skills/verify/SKILL.md).

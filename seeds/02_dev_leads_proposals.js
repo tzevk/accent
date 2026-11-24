@@ -1,39 +1,35 @@
 /**
  * Dev-only seed — idempotent, never runs in production.
- * Run manually: `npm run seed` (runs both) or `npx knex seed:run --specific 02_dev_leads_proposals.js`
+ * Run manually: `npm run seed` (runs both) or `npm run seed:dev`.
  * Requires companies from 01_dev_dummy_data.js (or existing DB).
  */
-export async function seed(knex) {
-	if (process.env.NODE_ENV === 'production') {
-		console.log('[seed:02_dev_leads_proposals] skipped in production');
-		return;
-	}
-	const leadCnt = await knex('leads')
-		.where({ isDelete: 0 })
-		.count('* as cnt')
-		.first()
-		.catch(() => ({ cnt: 1 }));
-	if (Number(leadCnt?.cnt || 0) === 0) {
-		await seedLeads(knex);
+import {
+	countSeedLeads,
+	countSeedProposals,
+	findSeedProposalId,
+	insertSeedRows,
+	listSeedLeadCompanies,
+	listSeedProposalCompanies,
+	listSeedProposalLeads,
+} from '../scripts/seed-queries.ts';
+
+export async function seed(db) {
+	const leadCnt = await countSeedLeads(db).catch(() => 1);
+	if (leadCnt === 0) {
+		await seedLeads(db);
 	} else {
 		console.log('[seed:02] leads already exist, skipping');
 	}
-	const propCnt = await knex('proposals')
-		.where({ isDelete: 0 })
-		.count('* as cnt')
-		.first()
-		.catch(() => ({ cnt: 1 }));
-	if (Number(propCnt?.cnt || 0) === 0) {
-		await seedProposals(knex);
+	const propCnt = await countSeedProposals(db).catch(() => 1);
+	if (propCnt === 0) {
+		await seedProposals(db);
 	} else {
 		console.log('[seed:02] proposals already exist, skipping');
 	}
 }
 
-async function seedLeads(knex) {
-	const companies = await knex('companies')
-		.where({ isDelete: 0 })
-		.select('id', 'company_name', 'city', 'email', 'phone');
+async function seedLeads(db) {
+	const companies = await listSeedLeadCompanies(db);
 	const byName = Object.fromEntries(companies.map((c) => [c.company_name, c]));
 	const getCompany = (name) =>
 		byName[name] ||
@@ -209,20 +205,15 @@ async function seedLeads(knex) {
 			isDelete: 0,
 		},
 	];
-	for (const l of leads) await knex('leads').insert(l);
+	for (const l of leads) await insertSeedRows(db, 'leads', l);
 	console.log(`[seed:02] inserted ${leads.length} leads`);
 }
 
-async function seedProposals(knex) {
-	const companies = await knex('companies')
-		.where({ isDelete: 0 })
-		.select('id', 'company_name');
+async function seedProposals(db) {
+	const companies = await listSeedProposalCompanies(db);
 	const byName = Object.fromEntries(companies.map((c) => [c.company_name, c]));
 	const getCompanyId = (name) => byName[name]?.id ?? null;
-	const leads = await knex('leads')
-		.where({ isDelete: 0 })
-		.select('id', 'company_name')
-		.limit(10);
+	const leads = await listSeedProposalLeads(db);
 	const leadByCompany = Object.fromEntries(
 		leads.map((l) => [l.company_name, l.id])
 	);
@@ -470,11 +461,9 @@ async function seedProposals(knex) {
 		},
 	];
 	for (const p of proposals) {
-		const exists = await knex('proposals')
-			.where({ proposal_id: p.proposal_id })
-			.first();
-		if (exists) continue;
-		await knex('proposals').insert(p);
+		const exists = await findSeedProposalId(db, p.proposal_id);
+		if (exists !== null) continue;
+		await insertSeedRows(db, 'proposals', p);
 	}
 	console.log(
 		`[seed:02] proposals seeding done (attempted ${proposals.length})`

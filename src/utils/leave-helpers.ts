@@ -2,7 +2,7 @@
  * Leave system server helpers.
  *
  * Shared by /api/leaves routes. The approval side-effects keep three systems
- * in sync (see migrations/20260825120000_create_leave_system.js):
+ * in sync (see drizzle/history/20260825120000_create_leave_system.ts):
  *
  *  1. leave_applications            — status + written_attendance audit JSON
  *  2. employee_attendance           — per-date status codes (PL/CL/SL/EL paid,

@@ -12,12 +12,15 @@ commands, see [Local database operations](../../agents/local-database.md).
 
 ## Migration convention
 
-The harness keeps the historical staged cutovers below pinned to their Knex
-files. Knex history is frozen at
-`migrations/20261115140000_salary_profile_revisions.ts`; it still bootstraps
-and upgrades databases, while Drizzle owns all future migrations. After the
-staged historical cutovers, the harness applies pending Drizzle migrations
-from `drizzle/`. The partial Drizzle schema is not a generation source.
+The harness uses the same Drizzle runtime as `npm run migrate`. All 68 historical
+Knex migrations are translated under `drizzle/history/`;
+`drizzle/history/manifest.json` keeps their original filenames, including old
+extensions, as stable IDs and fixes their order. The staged cutovers below select
+those IDs directly. An existing `knex_migrations` prefix is adopted only when it
+exactly matches the manifest, without replay; this fresh disposable database
+runs the full translated history. Unknown or untracked state fails closed. New
+native migrations remain in `drizzle/`. The partial Drizzle schema is not a
+generation source.
 
 For a new schema change, run
 `npm run migrate:make -- --name descriptive_name`. It creates an empty SQL
@@ -46,10 +49,10 @@ staging, or production, or that match any configured branch database. Set the
 variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
-Expect the first run to build the schema from the frozen Knex history, run the
-staged historical cutovers, and apply pending Drizzle migrations. It then
-starts the server and runs eighty-five scenarios. On MariaDB 10.11 the whole
-run takes a few minutes.
+Expect the first run to build the schema from the translated Drizzle history,
+pause for the staged historical cutovers, and apply any pending native Drizzle
+migrations. It then starts the server and runs eighty-five scenarios. On
+MariaDB 10.11 the whole run takes a few minutes.
 
 For an isolated report scenario, set
 `LEADS_INTEGRATION_SCENARIO=lead-audit-intake` before the command.
@@ -62,19 +65,20 @@ Run without this variable for the complete regression gate.
 1. Validates the disposable target (fails closed on any unsafe name or host).
 2. Creates the database with plain `CREATE DATABASE` — an existing database
    with the same name aborts the run; nothing is ever reused.
-3. Migrates everything before the explicit ticket-369 lead migration.
+3. Applies translated Drizzle history before the explicit ticket-369 lead
+   migration.
 4. Seeds run-namespaced users (`lit369-<timestamp>-creator`, `-assignee`,
    `-readonly`, `-noassign`, `-proposer`, `-superadmin`, `-convertonly`,
    `-updateonly`, `-reportreader`, `-reportonly`, and `-projectreportonly`,
    password `Lit369-pass!`), a
    duplicate-name tie pair, and four representative pre-migration Lead rows.
-5. Applies the real ticket-369 lead migration over that evidence.
+5. Applies the translated ticket-369 lead migration over that evidence.
 6. Seeds the legacy Proposals that link to two of those Leads: two on one
    enquiry (the duplicate case) and one on another (the evidence-backed
    case).
-7. Applies the real ticket-370 legacy review migration over the seeded
-   Proposals, then later frozen Knex migrations and all pending Drizzle
-   migrations.
+7. Applies the translated ticket-370 legacy review migration over the seeded
+   Proposals, then the remaining translated history and any pending native
+   Drizzle migrations.
 8. Starts `next dev` on `LEADS_INTEGRATION_PORT` (default 31369) with all
    database branches pinned to the disposable database.
 9. Logs each fixture user in through `POST /api/login` from its own stable
@@ -212,14 +216,12 @@ Run the command in your own shell against the local instance when working locall
 - `server ... never became healthy`: another process may hold 31369; set
   `LEADS_INTEGRATION_PORT` to a free port.
 - On Windows, the harness starts Next.js with Webpack. Turbopack returned intermittent HTML `404` responses for existing Lead routes. Ubuntu CI keeps the default bundler. The harness still checks the same HTTP responses and database state.
-- `ticket-369 lead migration ... missing from migrations/`: the harness pins
-  `migrations/20261019120000_lead_owner_stable_reference.ts` explicitly. If the
-  backend replaces it, update `LEAD_MIGRATION_FILE` in
-  `scripts/leads-integration/runner.ts`.
-- `ticket-370 legacy review migration ... missing from migrations/`: the
-  harness pins `migrations/20261019130000_lead_legacy_review.ts` the same
-  way. Update `LEGACY_REVIEW_MIGRATION_FILE` in
-  `scripts/leads-integration/runner.ts`.
+- **Staged ticket-369 migration unavailable:** the harness pins the manifest ID
+  `20261019120000_lead_owner_stable_reference.ts`. If that historical ID changes,
+  update `LEAD_MIGRATION_FILE` in `scripts/leads-integration/runner.ts`.
+- **Staged ticket-370 migration unavailable:** the harness pins the manifest ID
+  `20261019130000_lead_legacy_review.ts` the same way. Update
+  `LEGACY_REVIEW_MIGRATION_FILE` in `scripts/leads-integration/runner.ts`.
 - `refusing to reuse existing database ...`: drop the named database manually
   (or pick a fresh `INTEGRATION_DB_NAME`); the harness never reuses one.
 

@@ -4,29 +4,38 @@
  * Covers: roles_master, users (admin + rahul.sharma), employees, companies,
  *         deliverable_categories, projects (5 with all tabs).
  *
- * This was previously a migration (20260819120000_seed_dummy_data.js) — moved
- * to seeds/ so `knex migrate:latest` in prod never seeds dummy data.
+ * This remains an explicit development command. It is never imported by a
+ * migration, and scripts/seed.ts refuses staging and production targets.
  */
 import bcrypt from 'bcrypt';
+import { sql } from 'drizzle-orm';
+import {
+	countSeedCompanies,
+	countSeedDeliverableCategories,
+	countSeedProjects,
+	countSeedRoles,
+	countSeedUsers,
+	findSeedAdminUser,
+	findSeedEmployeeId,
+	findSeedRegularUser,
+	findSeedRoleId,
+	insertSeedRows,
+	listSeedCompanyIds,
+} from '../scripts/seed-queries.ts';
 
-export async function seed(knex) {
-	if (process.env.NODE_ENV === 'production') {
-		console.log('[seed:01_dev_dummy_data] skipped in production');
-		return;
-	}
-
-	const hasUsers = await knex('users').count('* as cnt').first();
-	if (Number(hasUsers?.cnt || 0) > 0) {
+export async function seed(db) {
+	const hasUsers = await countSeedUsers(db);
+	if (hasUsers > 0) {
 		console.log(
 			'[seed:01_dev_dummy_data] users already exist, checking masters/projects'
 		);
 	} else {
-		await ensureRoles(knex);
+		await ensureRoles(db);
 		const { adminId, regularId, adminEmpId, regularEmpId } =
-			await ensureUsers(knex);
-		await ensureCompanies(knex);
-		await ensureDeliverableCategories(knex);
-		await ensureProjects(knex, {
+			await ensureUsers(db);
+		await ensureCompanies(db);
+		await ensureDeliverableCategories(db);
+		await ensureProjects(db, {
 			adminId,
 			regularId,
 			adminEmpId,
@@ -35,18 +44,15 @@ export async function seed(knex) {
 		return;
 	}
 
-	await ensureCompanies(knex);
-	await ensureDeliverableCategories(knex);
-	const hasProjects = await knex('projects')
-		.where({ isDelete: 0 })
-		.count('* as cnt')
-		.first();
-	if (Number(hasProjects?.cnt || 0) === 0) {
-		const adminRow = await knex('users').where({ is_super_admin: 1 }).first();
-		const regularRow = await knex('users').where({ is_super_admin: 0 }).first();
+	await ensureCompanies(db);
+	await ensureDeliverableCategories(db);
+	const hasProjects = await countSeedProjects(db);
+	if (hasProjects === 0) {
+		const adminRow = await findSeedAdminUser(db);
+		const regularRow = await findSeedRegularUser(db);
 		const adminId = adminRow?.id || 1;
 		const regularId = regularRow?.id || 2;
-		await ensureProjects(knex, {
+		await ensureProjects(db, {
 			adminId,
 			regularId,
 			adminEmpId: adminRow?.employee_id || null,
@@ -55,10 +61,10 @@ export async function seed(knex) {
 	}
 }
 
-async function ensureRoles(knex) {
-	const existing = await knex('roles_master').count('* as cnt').first();
-	if (Number(existing?.cnt || 0) > 0) return;
-	await knex('roles_master').insert([
+async function ensureRoles(db) {
+	const existing = await countSeedRoles(db);
+	if (existing > 0) return;
+	await insertSeedRows(db, 'roles_master', [
 		{
 			role_code: 'super_admin',
 			role_name: 'Super Admin',
@@ -123,10 +129,10 @@ async function ensureRoles(knex) {
 	]);
 }
 
-async function ensureUsers(knex) {
+async function ensureUsers(db) {
 	const adminHash = await bcrypt.hash('Admin@123', 10);
 	const userHash = await bcrypt.hash('User@123', 10);
-	const adminEmpId = await getOrCreateEmployee(knex, {
+	const adminEmpId = await getOrCreateEmployee(db, {
 		employee_id: 'EMP-001',
 		first_name: 'Admin',
 		last_name: 'User',
@@ -136,7 +142,7 @@ async function ensureUsers(knex) {
 		phone: '9999999999',
 		status: 'active',
 	});
-	const regularEmpId = await getOrCreateEmployee(knex, {
+	const regularEmpId = await getOrCreateEmployee(db, {
 		employee_id: 'EMP-002',
 		first_name: 'Rahul',
 		last_name: 'Sharma',
@@ -146,32 +152,28 @@ async function ensureUsers(knex) {
 		phone: '8888888888',
 		status: 'active',
 	});
-	const superAdminRole = await knex('roles_master')
-		.where({ role_code: 'super_admin' })
-		.first();
-	const employeeRole = await knex('roles_master')
-		.where({ role_code: 'employee' })
-		.first();
-	const [adminId] = await knex('users').insert({
+	const superAdminRole = await findSeedRoleId(db, 'super_admin');
+	const employeeRole = await findSeedRoleId(db, 'employee');
+	const adminId = await insertSeedRows(db, 'users', {
 		username: 'admin',
 		password_hash: adminHash,
 		email: 'admin@accent.test',
 		full_name: 'Admin User',
 		employee_id: adminEmpId,
-		role_id: superAdminRole?.id || null,
+		role_id: superAdminRole,
 		is_super_admin: 1,
 		is_active: 1,
 		status: 'active',
 		account_type: 'employee',
 		isDelete: 0,
 	});
-	const [regularId] = await knex('users').insert({
+	const regularId = await insertSeedRows(db, 'users', {
 		username: 'rahul.sharma',
 		password_hash: userHash,
 		email: 'rahul.sharma@accent.test',
 		full_name: 'Rahul Sharma',
 		employee_id: regularEmpId,
-		role_id: employeeRole?.id || null,
+		role_id: employeeRole,
 		is_super_admin: 0,
 		is_active: 1,
 		status: 'active',
@@ -181,12 +183,10 @@ async function ensureUsers(knex) {
 	return { adminId, regularId, adminEmpId, regularEmpId };
 }
 
-async function getOrCreateEmployee(knex, data) {
-	const existing = await knex('employees')
-		.where({ employee_id: data.employee_id })
-		.first();
-	if (existing) return existing.id;
-	const [id] = await knex('employees').insert({
+async function getOrCreateEmployee(db, data) {
+	const existingId = await findSeedEmployeeId(db, data.employee_id);
+	if (existingId !== null) return existingId;
+	return insertSeedRows(db, 'employees', {
 		employee_id: data.employee_id,
 		first_name: data.first_name,
 		last_name: data.last_name,
@@ -201,13 +201,12 @@ async function getOrCreateEmployee(knex, data) {
 		country: 'India',
 		present_address: 'Accent Techno Solutions, Mumbai',
 	});
-	return id;
 }
 
-async function ensureCompanies(knex) {
-	const cnt = await knex('companies').count('* as cnt').first();
-	if (Number(cnt?.cnt || 0) > 0) return;
-	await knex('companies').insert([
+async function ensureCompanies(db) {
+	const cnt = await countSeedCompanies(db);
+	if (cnt > 0) return;
+	await insertSeedRows(db, 'companies', [
 		{
 			company_name: 'Mumbai Metro Rail Corporation',
 			industry: 'Infrastructure',
@@ -241,13 +240,10 @@ async function ensureCompanies(knex) {
 	]);
 }
 
-async function ensureDeliverableCategories(knex) {
-	const cnt = await knex('deliverable_categories')
-		.where({ isDelete: 0 })
-		.count('* as cnt')
-		.first();
-	if (Number(cnt?.cnt || 0) > 0) return;
-	await knex('deliverable_categories').insert([
+async function ensureDeliverableCategories(db) {
+	const cnt = await countSeedDeliverableCategories(db);
+	if (cnt > 0) return;
+	await insertSeedRows(db, 'deliverable_categories', [
 		{ category_name: 'Civil & Structural', isDelete: 0 },
 		{ category_name: 'Piping', isDelete: 0 },
 		{ category_name: 'Electrical', isDelete: 0 },
@@ -257,10 +253,10 @@ async function ensureDeliverableCategories(knex) {
 }
 
 async function ensureProjects(
-	knex,
+	db,
 	{ adminId, regularId, adminEmpId, regularEmpId }
 ) {
-	const companies = await knex('companies').where({ isDelete: 0 }).select('id');
+	const companies = await listSeedCompanyIds(db);
 	const companyId = companies[0]?.id || null;
 	const teamJson = (aId, rId) =>
 		JSON.stringify([
@@ -651,8 +647,8 @@ async function ensureProjects(
 			payment_terms: 'Net 30',
 			invoicing_status: 'Partially Invoiced',
 			company_id: companyId,
-			created_at: knex.fn.now(),
-			updated_at: knex.fn.now(),
+			created_at: sql`CURRENT_TIMESTAMP`,
+			updated_at: sql`CURRENT_TIMESTAMP`,
 		},
 		{
 			name: 'Adani Solar Plant - Electrical Package',
@@ -677,8 +673,8 @@ async function ensureProjects(
 			payment_terms: 'Net 45',
 			invoicing_status: 'Uninvoiced',
 			company_id: companyId,
-			created_at: knex.fn.now(),
-			updated_at: knex.fn.now(),
+			created_at: sql`CURRENT_TIMESTAMP`,
+			updated_at: sql`CURRENT_TIMESTAMP`,
 		},
 		{
 			name: 'L&T Highrise - Structural Review',
@@ -702,8 +698,8 @@ async function ensureProjects(
 			payment_terms: 'Advance',
 			invoicing_status: 'Paid',
 			company_id: companyId,
-			created_at: knex.fn.now(),
-			updated_at: knex.fn.now(),
+			created_at: sql`CURRENT_TIMESTAMP`,
+			updated_at: sql`CURRENT_TIMESTAMP`,
 		},
 		{
 			name: 'Internal - BIM Standards Development',
@@ -727,8 +723,8 @@ async function ensureProjects(
 			payment_terms: '',
 			invoicing_status: '',
 			company_id: companyId,
-			created_at: knex.fn.now(),
-			updated_at: knex.fn.now(),
+			created_at: sql`CURRENT_TIMESTAMP`,
+			updated_at: sql`CURRENT_TIMESTAMP`,
 		},
 		{
 			name: 'Gujarat Refinery - Piping Flexibility',
@@ -752,8 +748,8 @@ async function ensureProjects(
 			payment_terms: 'Net 30',
 			invoicing_status: 'Uninvoiced',
 			company_id: companyId,
-			created_at: knex.fn.now(),
-			updated_at: knex.fn.now(),
+			created_at: sql`CURRENT_TIMESTAMP`,
+			updated_at: sql`CURRENT_TIMESTAMP`,
 		},
 	];
 	for (const p of projects) {
@@ -776,6 +772,6 @@ async function ensureProjects(
 			software_items: software,
 			isDelete: 0,
 		};
-		await knex('projects').insert(base);
+		await insertSeedRows(db, 'projects', base);
 	}
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { up } from '../../../migrations/20261105100000_normalize_project_team_roles.js';
+import type { SQL } from 'drizzle-orm';
+import { MySqlDialect } from 'drizzle-orm/mysql-core';
+import { up } from '../../../drizzle/history/20261105100000_normalize_project_team_roles.ts';
+import type { MigrationDb } from '../../../scripts/migration-sql.ts';
 
 type ProjectRow = Record<string, unknown>;
 
@@ -9,59 +12,75 @@ type UpdateCall = {
 };
 
 /**
- * Minimal knex double: one `projects` table, information_schema column
- * lookups, and chainable select/where/update. Updates mutate the rows so a
- * second `up()` run observes the repaired data.
+ * Minimal Drizzle execution double for the projects table, information_schema
+ * column lookups, and role repairs. Updates mutate stored rows so a second
+ * `up()` run observes the repaired data.
  */
-function createKnex(initialRows: ProjectRow[], columns: string[]) {
+function createDb(initialRows: ProjectRow[], columns: string[]) {
 	const rows = initialRows.map((row) => ({ ...row }));
 	const updates: UpdateCall[] = [];
+	const dialect = new MySqlDialect();
 
-	function queryBuilder() {
-		const state: {
-			where?: Record<string, unknown>;
-		} = {};
+	const db = {
+		async execute(query: SQL) {
+			const { sql, params } = dialect.sqlToQuery(query);
+			const statement = sql.replace(/\s+/g, ' ').trim();
 
-		const builder = {
-			select() {
-				return builder;
-			},
-			where(condition: Record<string, unknown>) {
-				state.where = condition;
-				return builder;
-			},
-			update(values: Record<string, unknown>) {
-				updates.push({ where: state.where ?? {}, values });
-				const where = state.where ?? {};
-				for (const row of rows) {
-					const matches = Object.entries(where).every(
-						([key, value]) => row[key] === value
-					);
-					if (matches) Object.assign(row, values);
-				}
-				return Promise.resolve(1);
-			},
-			then(
-				resolve: (value: ProjectRow[]) => unknown,
-				reject?: (reason: unknown) => unknown
+			if (
+				statement ===
+				'SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ? LIMIT 1'
 			) {
-				return Promise.resolve(rows).then(resolve, reject);
-			},
-		};
+				const [tableName, column] = params;
+				if (tableName !== 'projects') {
+					throw new Error(`Unexpected schema lookup: ${String(tableName)}`);
+				}
+				return [columns.includes(String(column)) ? [{ present: 1 }] : [], []];
+			}
 
-		return builder;
-	}
+			const select = statement.match(
+				/^SELECT (project_id|id), project_team FROM projects WHERE isDelete = \?$/
+			);
+			if (select) {
+				if (params[0] !== 0) {
+					throw new Error(`Unexpected project filter: ${String(params[0])}`);
+				}
+				const identifier = select[1];
+				return [
+					rows
+						.filter((row) => (row.isDelete ?? 0) === 0)
+						.map((row) => ({
+							[identifier]: row[identifier],
+							project_team: row.project_team,
+						})),
+					[],
+				];
+			}
 
-	const knex = (table: string) => {
-		expect(table).toBe('projects');
-		return queryBuilder();
-	};
-	knex.raw = async (_sql: string, params: unknown[]) => {
-		const column = String(params?.[1] ?? '');
-		return [columns.includes(column) ? [{ present: 1 }] : [], []];
-	};
+			const update = statement.match(
+				/^UPDATE projects SET project_team = \? WHERE (project_id|id) = \?$/
+			);
+			if (update) {
+				const identifier = update[1];
+				const [projectTeam, id] = params;
+				const matches = rows.filter((row) => row[identifier] === id);
+				if (matches.length === 0) {
+					throw new Error(`No project matches migration update: ${String(id)}`);
+				}
+				for (const row of matches) {
+					Object.assign(row, { project_team: projectTeam });
+				}
+				updates.push({
+					where: { [identifier]: id },
+					values: { project_team: projectTeam },
+				});
+				return [{ affectedRows: matches.length }, []];
+			}
 
-	return { knex, rows, updates };
+			throw new Error(`Unexpected migration SQL: ${statement}`);
+		},
+	} as unknown as MigrationDb;
+
+	return { db, rows, updates };
 }
 
 const canonicalTeam = JSON.stringify([
@@ -95,12 +114,12 @@ describe('normalize project team roles migration', () => {
 				role: 'Engineer',
 			},
 		];
-		const { knex, updates, rows } = createKnex(
+		const { db, updates, rows } = createDb(
 			[{ project_id: 10, project_team: JSON.stringify(team) }],
 			['project_team', 'project_id', 'id']
 		);
 
-		await up(knex);
+		await up(db);
 
 		expect(updates).toHaveLength(1);
 		expect(updates[0].where).toEqual({ project_id: 10 });
@@ -118,7 +137,7 @@ describe('normalize project team roles migration', () => {
 	});
 
 	it('never turns a legacy value into lead authority', async () => {
-		const { knex, rows } = createKnex(
+		const { db, updates, rows } = createDb(
 			[
 				{
 					project_id: 11,
@@ -136,8 +155,9 @@ describe('normalize project team roles migration', () => {
 			['project_team', 'project_id']
 		);
 
-		await up(knex);
+		await up(db);
 
+		expect(updates).toHaveLength(3);
 		for (const row of rows) {
 			const [member] = JSON.parse(String(row.project_team));
 			expect(member.role).toBe('Team Member');
@@ -145,20 +165,22 @@ describe('normalize project team roles migration', () => {
 	});
 
 	it('leaves canonical rows untouched and is idempotent', async () => {
-		const { knex, updates } = createKnex(
+		const { db, updates, rows } = createDb(
 			[{ project_id: 20, project_team: canonicalTeam }],
 			['project_team', 'project_id']
 		);
 
-		await up(knex);
+		await up(db);
 		expect(updates).toHaveLength(0);
+		expect(rows[0].project_team).toBe(canonicalTeam);
 
-		await up(knex);
+		await up(db);
 		expect(updates).toHaveLength(0);
+		expect(rows[0].project_team).toBe(canonicalTeam);
 	});
 
 	it('canonicalises case and whitespace, then does nothing on a second run', async () => {
-		const { knex, updates, rows } = createKnex(
+		const { db, updates, rows } = createDb(
 			[
 				{
 					project_id: 21,
@@ -171,19 +193,19 @@ describe('normalize project team roles migration', () => {
 			['project_team', 'project_id']
 		);
 
-		await up(knex);
+		await up(db);
 		expect(updates).toHaveLength(1);
 		expect(JSON.parse(String(rows[0].project_team))).toEqual([
 			{ role: 'Project Lead' },
 			{ role: 'QA/QC' },
 		]);
 
-		await up(knex);
+		await up(db);
 		expect(updates).toHaveLength(1);
 	});
 
 	it('uses the runtime id column when project_id is absent', async () => {
-		const { knex, updates } = createKnex(
+		const { db, updates, rows } = createDb(
 			[
 				{
 					id: 5,
@@ -195,19 +217,23 @@ describe('normalize project team roles migration', () => {
 			['project_team', 'id']
 		);
 
-		await up(knex);
+		await up(db);
 
 		expect(updates).toHaveLength(1);
 		expect(updates[0].where).toEqual({ id: 5 });
+		expect(JSON.parse(String(rows[0].project_team))).toEqual([
+			{ id: 3, role: 'Team Member', position: 'Coordinator' },
+		]);
 	});
 
 	it('skips malformed team JSON instead of destroying it', async () => {
-		const { knex, updates } = createKnex(
+		const { db, updates, rows } = createDb(
 			[{ project_id: 30, project_team: 'not json' }],
 			['project_team', 'project_id']
 		);
 
-		await up(knex);
+		await up(db);
 		expect(updates).toHaveLength(0);
+		expect(rows[0].project_team).toBe('not json');
 	});
 });

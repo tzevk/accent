@@ -6,7 +6,6 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import knexFactory, { type Knex } from 'knex';
 import type { Connection as MysqlConnection } from 'mysql2/promise';
 import { z } from 'zod';
 import {
@@ -18,7 +17,6 @@ import {
 } from '../leads-integration/support.ts';
 import {
 	applyDrizzleMigrations,
-	legacyKnexMigrations,
 	readDrizzleMigrationStatus,
 } from '../db-migrations.ts';
 import {
@@ -110,25 +108,6 @@ async function migrateDatabase(
 	target: ResolvedSafety,
 	projectRoot: string
 ): Promise<void> {
-	const knex: Knex = knexFactory({
-		client: 'mysql2',
-		connection: {
-			host: target.host,
-			// Pass the resolved port explicitly. INTEGRATION_DB_PORT alone is
-			// never allowed to steer migrations through configuration drift.
-			port: target.port,
-			user: target.user,
-			password: target.password,
-			database: target.name,
-			dateStrings: true,
-		},
-		migrations: legacyKnexMigrations(projectRoot),
-	});
-	try {
-		await knex.migrate.latest();
-	} finally {
-		await knex.destroy();
-	}
 	const connection = await connectReader(target);
 	try {
 		await applyDrizzleMigrations(
@@ -153,13 +132,6 @@ async function verifyMigratedDatabase(
 		fail(
 			`migration reader connected to ${JSON.stringify(databaseRows[0]?.database_name)}, expected ${JSON.stringify(expectedName)}.`
 		);
-	}
-	const [migrationRows] = await reader.execute(
-		'SELECT COUNT(*) AS total FROM knex_migrations',
-		[]
-	);
-	if (Number(migrationRows[0]?.total ?? 0) === 0) {
-		fail('the disposable database has no recorded migrations.');
 	}
 	const drizzleStatus = await readDrizzleMigrationStatus(
 		reader as unknown as MysqlConnection,

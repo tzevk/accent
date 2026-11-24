@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { up as applyScopes } from '../../../migrations/20261104120000_project_permission_scopes.js';
+import type { SQL } from 'drizzle-orm';
+import { MySqlDialect } from 'drizzle-orm/mysql-core';
+import { up as applyScopes } from '../../../drizzle/history/20261104120000_project_permission_scopes.ts';
+import type { MigrationDb } from '../../../scripts/migration-sql.ts';
 
 type UserRow = {
 	id: number;
@@ -11,69 +14,67 @@ type UserRow = {
 type RoleRow = { id: number; permissions?: unknown };
 
 /**
- * Minimal knex double for the migration's select/from and
- * where/update builder calls.
+ * Minimal Drizzle execution double for the migration's user and role reads.
+ * Updates mutate stored rows so a second run observes the seeded scopes.
  */
-function createKnex(users: UserRow[], roles: RoleRow[] = []) {
+function createDb(users: UserRow[], roles: RoleRow[] = []) {
 	const userRows = users.map((user) => ({ ...user }));
+	const roleRows = roles.map((role) => ({ ...role }));
 	const updates: Array<{
 		where: Record<string, unknown>;
 		values: Record<string, unknown>;
 	}> = [];
+	const dialect = new MySqlDialect();
 
-	const table = (rows: Record<string, unknown>[]) => {
-		const state: { where?: Record<string, unknown> } = {};
-		const chain = {
-			where(condition: Record<string, unknown>) {
-				state.where = condition;
-				return chain;
-			},
-			async update(values: Record<string, unknown>) {
-				updates.push({ where: state.where ?? {}, values });
-				for (const row of rows) {
-					if (
-						Object.entries(state.where ?? {}).every(
-							([key, value]) => row[key] === value
-						)
-					) {
-						Object.assign(row, values);
-					}
+	const db = {
+		async execute(query: SQL) {
+			const { sql, params } = dialect.sqlToQuery(query);
+			const statement = sql.replace(/\s+/g, ' ').trim();
+
+			if (
+				statement ===
+				'SELECT id, role_id, permissions, field_permissions FROM users'
+			) {
+				return [userRows, []];
+			}
+			if (statement === 'SELECT id, permissions FROM roles_master') {
+				return [roleRows, []];
+			}
+			if (statement === 'UPDATE users SET field_permissions = ? WHERE id = ?') {
+				const [fieldPermissions, id] = params;
+				const matches = userRows.filter((row) => row.id === id);
+				if (matches.length === 0) {
+					throw new Error(`No user matches migration update: ${String(id)}`);
 				}
-				return 1;
-			},
-		};
-		return chain;
-	};
+				for (const row of matches) {
+					Object.assign(row, { field_permissions: fieldPermissions });
+				}
+				updates.push({
+					where: { id },
+					values: { field_permissions: fieldPermissions },
+				});
+				return [{ affectedRows: matches.length }, []];
+			}
 
-	const rowsFor = (tableName: string) =>
-		tableName === 'users'
-			? (userRows as unknown as Record<string, unknown>[])
-			: (roles as unknown as Record<string, unknown>[]);
+			throw new Error(`Unexpected migration SQL: ${statement}`);
+		},
+	} as unknown as MigrationDb;
 
-	const knex = (tableName: string) => {
-		const rows = rowsFor(tableName);
-		return table(rows);
-	};
-
-	knex.select = () => ({
-		from: async (tableName: string) => rowsFor(tableName),
-	});
-
-	return { knex, userRows, updates };
+	return { db, userRows, updates };
 }
 
-function savedPermissions(row: Record<string, unknown>) {
+function savedPermissions(row: UserRow) {
 	return JSON.parse(String(row.field_permissions));
 }
 
 describe('project permission scope migration', () => {
 	it('seeds all-projects scope for a role-derived project grant', async () => {
-		const { knex, userRows, updates } = createKnex(
+		const { db, userRows, updates } = createDb(
 			[{ id: 1, role_id: 5, permissions: [], field_permissions: {} }],
 			[{ id: 5, permissions: ['projects:read', 'projects:update'] }]
 		);
 
-		await applyScopes(knex);
+		await applyScopes(db);
 
 		expect(updates).toHaveLength(1);
 		expect(savedPermissions(userRows[0]).projectScopes.projects).toEqual({
@@ -83,7 +84,7 @@ describe('project permission scope migration', () => {
 	});
 
 	it('seeds all-projects scope for a nested crud-only grant', async () => {
-		const { knex, userRows, updates } = createKnex([
+		const { db, userRows, updates } = createDb([
 			{
 				id: 2,
 				role_id: null,
@@ -99,7 +100,7 @@ describe('project permission scope migration', () => {
 			},
 		]);
 
-		await applyScopes(knex);
+		await applyScopes(db);
 
 		expect(updates).toHaveLength(1);
 		expect(savedPermissions(userRows[0]).projectScopes.projects).toEqual({
@@ -109,7 +110,7 @@ describe('project permission scope migration', () => {
 	});
 
 	it('ignores nested crud entries when the projects module is disabled', async () => {
-		const { knex, updates } = createKnex([
+		const { db, updates } = createDb([
 			{
 				id: 3,
 				role_id: null,
@@ -125,13 +126,13 @@ describe('project permission scope migration', () => {
 			},
 		]);
 
-		await applyScopes(knex);
+		await applyScopes(db);
 
 		expect(updates).toHaveLength(0);
 	});
 
 	it('preserves existing scopes and never downgrades them', async () => {
-		const { knex, userRows } = createKnex([
+		const { db, userRows } = createDb([
 			{
 				id: 4,
 				role_id: null,
@@ -145,7 +146,7 @@ describe('project permission scope migration', () => {
 			},
 		]);
 
-		await applyScopes(knex);
+		await applyScopes(db);
 
 		expect(savedPermissions(userRows[0]).projectScopes.projects).toEqual({
 			update: 'led',
@@ -154,7 +155,7 @@ describe('project permission scope migration', () => {
 	});
 
 	it('is idempotent on a second run', async () => {
-		const { knex, updates } = createKnex([
+		const { db, userRows, updates } = createDb([
 			{
 				id: 5,
 				role_id: null,
@@ -165,10 +166,12 @@ describe('project permission scope migration', () => {
 			},
 		]);
 
-		await applyScopes(knex);
+		await applyScopes(db);
 		expect(updates).toHaveLength(1);
+		const saved = savedPermissions(userRows[0]);
 
-		await applyScopes(knex);
+		await applyScopes(db);
 		expect(updates).toHaveLength(1);
+		expect(savedPermissions(userRows[0])).toEqual(saved);
 	});
 });

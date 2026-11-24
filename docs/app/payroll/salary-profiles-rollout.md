@@ -33,20 +33,27 @@ never converted into a guessed agreement link.
 
 ## Schema migration
 
-The migration is `migrations/20261115140000_salary_profile_revisions.ts`.
+The live Drizzle migration is `drizzle/history/20261115140000_salary_profile_revisions.ts`.
 
-This is the final Knex migration. That history remains frozen for fresh
-database bootstrap, existing-database upgrades and staged historical test
-cutovers; Drizzle owns all future migrations. Generate a change with
+The original filename, including its `.ts` suffix, remains the stable migration
+ID in `drizzle/history/manifest.json`. The historical callbacks use the Drizzle
+migration runtime; there is no active Knex migration command. On a fresh
+database, `npm run migrate` executes the translated callbacks in manifest
+order. On an existing database, it verifies and imports the exact applied
+`knex_migrations` prefix and records Drizzle hashes without replaying those
+migrations. Unknown or untracked database state fails closed. Preserve the
+existing Knex history tables for audit.
+
+Drizzle owns all future migrations. Generate a change with
 `npm run migrate:make -- --name descriptive_name`, which creates an empty SQL
 file. Write and review the forward MariaDB SQL, then commit it with its
-journal metadata. The partial Drizzle schema
-is not a generation source. Do not use schema push or batch down; correct with
-a forward migration and recover from verified MariaDB backups.
+journal metadata. The partial Drizzle schema is not a generation source. Do
+not use schema push or batch down; correct with a forward migration and
+recover from verified MariaDB backups.
 
-It is idempotent on MariaDB: tables, columns and indexes are checked through
-`information_schema` before each change, so a partially applied target can be
-re-run. It is not a substitute for a backup.
+It remains idempotent on MariaDB: tables, columns and indexes are checked
+through `information_schema` before each change, so a partially applied target
+can be re-run. It is not a substitute for a backup.
 
 What it adds or changes:
 
@@ -211,9 +218,18 @@ or Vercel deployment must never apply a production migration.
    it. Keep this copy isolated with disposable credentials.
 4. **Apply the reviewed migrations to the authorized target** with
    `npm run migrate:prod` and its configured production environment, only
-   after the operator has explicitly selected that target. This applies the
-   frozen Knex history followed by pending Drizzle migrations; do not combine
-   it with a build.
+   after the operator has explicitly selected that target. To stop at this
+   rollout's reviewed historical migration, use its original filename as the
+   stable `--through` ID:
+
+   ```sh
+   npm run migrate:prod -- --through 20261115140000_salary_profile_revisions.ts
+   ```
+
+   The runner verifies and imports the exact applied Knex prefix without
+   replaying it, then applies pending Drizzle history through that ID. Do not
+   combine migration with a build.
+
 5. **Verify schema and migration status** before deploying dependent code:
    `npm run migrate:prod:status`, the new columns/tables/indexes, and the
    conservative evidence counts. Confirm existing agreement, slip, roster and
@@ -281,19 +297,20 @@ change.
 
 ## Rollback limits
 
-`migrations/20261115140000_salary_profile_revisions.ts` retains its historical
-`down()` path, but no batch down command is supported and it is not a safe
-general undo after the feature has been used:
+`drizzle/history/20261115140000_salary_profile_revisions.ts` has no supported
+batch-down path in the Drizzle runner. The original Knex `down()` behavior
+remains historical evidence, not a recovery procedure. After the feature has
+been used, that rollback would:
 
-- It drops `employee_salary_payroll_use` and `employee_salary_timelines`,
+- It would drop `employee_salary_payroll_use` and `employee_salary_timelines`,
   removing the durable use and cancellation protections.
-- It drops slip provenance columns and restores the older audit-action enum,
+- It would drop slip provenance columns and restore the older audit-action enum,
   losing the new provenance and audit vocabulary.
-- It restores `gross_salary` to `NOT NULL DEFAULT 0.00`, converting NULL
+- It would restore `gross_salary` to `NOT NULL DEFAULT 0.00`, converting NULL
   gross amounts created by CTC-first agreements to `0`. That destroys the
   distinction between an unset legacy amount and an explicit zero.
-- It cannot reconstruct prior unique-index behavior for data written under the
-  new model without review.
+- It could not reconstruct prior unique-index behavior for data written under
+  the new model without review.
 - Reverting the salary-write isolation helper or any caller's opt-in reintroduces
   the REPEATABLE READ gap-lock deadlock. Keep every salary writer on the explicit
   READ COMMITTED protocol if the schema is retained.

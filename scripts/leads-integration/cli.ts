@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Repeatable authenticated HTTP integration command for issue #369.
 // Runs the real Next server against a disposable migrated MySQL database:
-// safety gate -> create DB -> migrate to pre-369 -> seed users + legacy rows
-// -> apply the ticket-369 lead migration -> start server -> login over HTTP
-// -> run CLI scenarios -> verify persistence with an independent reader.
+// safety gate -> create DB -> staged Drizzle history with legacy evidence
+// -> full migration -> start server -> login over HTTP -> run CLI scenarios
+// -> verify persistence with an independent reader.
 import { runLeadsIntegration } from './runner.ts';
 import { resolveSafetyTarget } from './support.ts';
 

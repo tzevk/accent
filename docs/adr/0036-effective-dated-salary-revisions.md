@@ -51,7 +51,7 @@ finalization use per Employee, month and source-qualified agreement. It is not
 removed by deleting a draft slip or reopening a run, and unknown-month ambiguity
 blocks timeline writes until reviewed. New Payroll Slips record their agreement
 identity and Salary Type; existing slips keep their snapshot.
-`migrations/20261115140000_salary_profile_revisions.ts` supplies this schema and
+`drizzle/history/20261115140000_salary_profile_revisions.ts` supplies this schema and
 conservatively backfills evidence from recorded slips, frozen rosters and
 Payroll Slip audit rows, leaving unprovable identities ambiguous.
 

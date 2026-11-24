@@ -1,2 +1,3 @@
-# Drizzle records the SHA-256 of each SQL file in the database.
+# The Drizzle migration ledger records SHA-256 hashes of these files.
 drizzle/*.sql text eol=lf
+drizzle/history/*.ts text eol=lf

@@ -27,7 +27,7 @@
  */
 
 /** entity_type values written here. The column's enum is widened by
- *  migrations/20260924150000_extend_payroll_audit_log_entity_types.js. */
+ *  drizzle/history/20260924150000_extend_payroll_audit_log_entity_types.ts. */
 export const PAYROLL_AUDIT_ENTITY = {
 	PAYROLL_RUN: 'payroll_run',
 	PAYROLL_SLIP: 'payroll_slip',
@@ -36,9 +36,9 @@ export const PAYROLL_AUDIT_ENTITY = {
 };
 
 /** action values written here. The column's enum is widened by
- *  migrations/20260924170000_add_payroll_audit_reopen_action.js, and for the
+ *  drizzle/history/20260924170000_add_payroll_audit_reopen_action.ts, and for the
  *  salary lifecycle by the #434 foundation migration,
- *  migrations/20261115140000_salary_profile_revisions.ts. */
+ *  drizzle/history/20261115140000_salary_profile_revisions.ts. */
 export const PAYROLL_AUDIT_ACTION = {
 	CREATE: 'create',
 	UPDATE: 'update',

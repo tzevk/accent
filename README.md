@@ -23,7 +23,7 @@ Open <http://localhost:3000>. For a fresh database, [create a local sign-in acco
 
 ## Database changes
 
-New application queries use Drizzle over the shared `mysql2` connection; existing queries are not rewritten. Knex history is frozen at `migrations/20261115140000_salary_profile_revisions.ts` and remains the bootstrap/upgrade path and the source for staged historical fixture cutovers. Drizzle owns all future migrations. The partial Drizzle schema is not a schema-generation source.
+New application queries use Drizzle over the shared `mysql2` connection; existing queries are not rewritten. All 68 historical Knex migrations now run as Drizzle callbacks from `drizzle/history/`, ordered by a manifest that keeps their original filenames as stable IDs. The runner adopts an exact existing Knex-ledger prefix without replay; a fresh database runs the full translated history. New native migrations live in `drizzle/`; the partial Drizzle schema is not a schema-generation source.
 
 ```sh
 npm run migrate:make -- --name descriptive_name
