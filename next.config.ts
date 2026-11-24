@@ -51,6 +51,9 @@ const nextConfig: NextConfig = {
 	// let the route's 413 check be the gate instead of a silent truncation.
 	experimental: {
 		proxyClientMaxBodySize: '28mb',
+		// The persisted development cache served old Tailwind CSS with new
+		// client code. Recompile it on restart; keep the production cache.
+		turbopackFileSystemCacheForDev: false,
 	},
 
 	// Optimize for production

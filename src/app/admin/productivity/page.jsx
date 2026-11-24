@@ -250,27 +250,45 @@ export default function ProductivityPage() {
 
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
 					{/* Daily Screen Time Chart */}
-					<div className="lg:col-span-2 bg-white rounded-lg shadow-sm p-6">
-						<h3 className="text-lg font-semibold text-gray-900 mb-4">
+					<div className="lg:col-span-2 bg-card rounded-lg shadow-sm p-6">
+						<h3 className="text-lg font-semibold text-foreground mb-4">
 							Daily Screen Time
 						</h3>
 						{loading ? (
 							<div className="h-80 flex items-center justify-center">
-								<ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
+								<ArrowPathIcon className="w-8 h-8 text-muted-foreground animate-spin" />
 							</div>
 						) : (
 							<ResponsiveContainer width="100%" height={320}>
 								<BarChart data={getDailyScreenTimeChart()}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis dataKey="date" />
+									<CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+									<XAxis
+										dataKey="date"
+										tick={{ fill: 'var(--muted-foreground)' }}
+										axisLine={{ stroke: 'var(--border)' }}
+										tickLine={{ stroke: 'var(--border)' }}
+									/>
 									<YAxis
+										tick={{ fill: 'var(--muted-foreground)' }}
+										axisLine={{ stroke: 'var(--border)' }}
+										tickLine={{ stroke: 'var(--border)' }}
 										label={{
 											value: 'Minutes',
 											angle: -90,
 											position: 'insideLeft',
+											fill: 'var(--muted-foreground)',
 										}}
 									/>
-									<Tooltip />
+									<Tooltip
+										cursor={{ fill: 'var(--muted)' }}
+										contentStyle={{
+											backgroundColor: 'var(--popover)',
+											border: '1px solid var(--border)',
+											color: 'var(--popover-foreground)',
+										}}
+										itemStyle={{ color: 'var(--popover-foreground)' }}
+										labelStyle={{ color: 'var(--muted-foreground)' }}
+									/>
 									<Legend />
 									<Bar dataKey="active" fill="#10B981" name="Active Time" />
 									<Bar dataKey="idle" fill="#F59E0B" name="Idle Time" />
@@ -287,28 +305,49 @@ export default function ProductivityPage() {
 
 				<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 					{/* Productivity & Focus Scores */}
-					<div className="bg-white rounded-lg shadow-sm p-6">
-						<h3 className="text-lg font-semibold text-gray-900 mb-4">
-							Productivity & Focus Trends
+					<div className="bg-card rounded-lg shadow-sm p-6">
+						<h3 className="text-lg font-semibold text-foreground mb-4">
+							Productivity &amp; Focus Trends
 						</h3>
 						{loading ? (
 							<div className="h-80 flex items-center justify-center">
-								<ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
+								<ArrowPathIcon className="w-8 h-8 text-muted-foreground animate-spin" />
 							</div>
 						) : (
 							<ResponsiveContainer width="100%" height={320}>
 								<LineChart data={getProductivityScoreData()}>
-									<CartesianGrid strokeDasharray="3 3" />
-									<XAxis dataKey="date" />
+									<CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+									<XAxis
+										dataKey="date"
+										tick={{ fill: 'var(--muted-foreground)' }}
+										axisLine={{ stroke: 'var(--border)' }}
+										tickLine={{ stroke: 'var(--border)' }}
+									/>
 									<YAxis
 										domain={[0, 100]}
+										tick={{ fill: 'var(--muted-foreground)' }}
+										axisLine={{ stroke: 'var(--border)' }}
+										tickLine={{ stroke: 'var(--border)' }}
 										label={{
 											value: 'Score (%)',
 											angle: -90,
 											position: 'insideLeft',
+											fill: 'var(--muted-foreground)',
 										}}
 									/>
-									<Tooltip />
+									<Tooltip
+										cursor={{
+											stroke: 'var(--muted-foreground)',
+											strokeDasharray: '3 3',
+										}}
+										contentStyle={{
+											backgroundColor: 'var(--popover)',
+											border: '1px solid var(--border)',
+											color: 'var(--popover-foreground)',
+										}}
+										itemStyle={{ color: 'var(--popover-foreground)' }}
+										labelStyle={{ color: 'var(--muted-foreground)' }}
+									/>
 									<Legend />
 									<Line
 										type="monotone"
@@ -330,28 +369,48 @@ export default function ProductivityPage() {
 					</div>
 
 					{/* Top Pages by Time */}
-					<div className="bg-white rounded-lg shadow-sm p-6">
-						<h3 className="text-lg font-semibold text-gray-900 mb-4">
+					<div className="bg-card rounded-lg shadow-sm p-6">
+						<h3 className="text-lg font-semibold text-foreground mb-4">
 							Most Visited Pages
 						</h3>
 						{loading ? (
 							<div className="h-80 flex items-center justify-center">
-								<ArrowPathIcon className="w-8 h-8 text-gray-400 animate-spin" />
+								<ArrowPathIcon className="w-8 h-8 text-muted-foreground animate-spin" />
 							</div>
 						) : (
 							<ResponsiveContainer width="100%" height={320}>
 								<BarChart data={getTopPagesData()} layout="vertical">
-									<CartesianGrid strokeDasharray="3 3" />
+									<CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
 									<XAxis
 										type="number"
+										tick={{ fill: 'var(--muted-foreground)' }}
+										axisLine={{ stroke: 'var(--border)' }}
+										tickLine={{ stroke: 'var(--border)' }}
 										label={{
 											value: 'Minutes',
 											position: 'insideBottom',
 											offset: -5,
+											fill: 'var(--muted-foreground)',
 										}}
 									/>
-									<YAxis dataKey="name" type="category" width={100} />
-									<Tooltip />
+									<YAxis
+										dataKey="name"
+										type="category"
+										width={100}
+										tick={{ fill: 'var(--muted-foreground)' }}
+										axisLine={{ stroke: 'var(--border)' }}
+										tickLine={{ stroke: 'var(--border)' }}
+									/>
+									<Tooltip
+										cursor={{ fill: 'var(--muted)' }}
+										contentStyle={{
+											backgroundColor: 'var(--popover)',
+											border: '1px solid var(--border)',
+											color: 'var(--popover-foreground)',
+										}}
+										itemStyle={{ color: 'var(--popover-foreground)' }}
+										labelStyle={{ color: 'var(--muted-foreground)' }}
+									/>
 									<Bar dataKey="minutes" fill="#8B5CF6" name="Time Spent" />
 								</BarChart>
 							</ResponsiveContainer>

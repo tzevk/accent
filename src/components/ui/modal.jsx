@@ -96,24 +96,24 @@ export default function Modal({
 				aria-label={title}
 				tabIndex={-1}
 				className={cn(
-					'anim-modal-panel relative w-full rounded-xl bg-white shadow-2xl ring-1 ring-black/5 my-8 outline-none',
+					'anim-modal-panel relative w-full rounded-xl bg-card text-card-foreground shadow-2xl ring-1 ring-border my-8 outline-none',
 					sizeClass
 				)}
 			>
-				<div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
-					<h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+				<div className="flex items-center justify-between border-b border-border px-5 py-3">
+					<h2 className="text-sm font-semibold text-foreground">{title}</h2>
 					<button
 						type="button"
 						onClick={onClose}
 						aria-label="Close dialog"
-						className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64126D]/40"
+						className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
 					>
 						<XMarkIcon className="h-4 w-4" aria-hidden />
 					</button>
 				</div>
 				<div className="px-5 py-4">{children}</div>
 				{footer ? (
-					<div className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-3 bg-gray-50 rounded-b-xl">
+					<div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3 bg-muted rounded-b-xl">
 						{footer}
 					</div>
 				) : null}

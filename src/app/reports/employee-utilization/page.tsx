@@ -437,13 +437,13 @@ function TeamTrendChart({ trend }: { trend: TrendPoint[] }) {
 		<div
 			data-testid="team-trend-chart"
 			data-points={dataPoints}
-			className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+			className="rounded-2xl border border-border bg-card p-4 shadow-sm"
 		>
 			<div className="mb-3">
-				<h2 className="text-sm font-semibold text-gray-800">
+				<h2 className="text-sm font-semibold text-foreground">
 					Team trend — last 6 months
 				</h2>
-				<p className="text-xs text-gray-500">
+				<p className="text-xs text-muted-foreground">
 					Capacity-weighted Utilization and the priced rows&apos; total Bench
 					Cost per month.
 				</p>
@@ -454,22 +454,55 @@ function TeamTrendChart({ trend }: { trend: TrendPoint[] }) {
 						data={trend}
 						margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
 					>
-						<CartesianGrid strokeDasharray="3 3" vertical={false} />
-						<XAxis dataKey="month" tick={{ fontSize: 12 }} />
+						<CartesianGrid
+							stroke="var(--border)"
+							strokeDasharray="3 3"
+							vertical={false}
+						/>
+						<XAxis
+							dataKey="month"
+							tick={{
+								fontSize: 12,
+								fill: 'var(--muted-foreground)',
+							}}
+							axisLine={{ stroke: 'var(--border)' }}
+							tickLine={{ stroke: 'var(--border)' }}
+						/>
 						<YAxis
 							yAxisId="percent"
 							width={48}
-							tick={{ fontSize: 12 }}
+							tick={{
+								fontSize: 12,
+								fill: 'var(--muted-foreground)',
+							}}
+							axisLine={{ stroke: 'var(--border)' }}
+							tickLine={{ stroke: 'var(--border)' }}
 							tickFormatter={(value: number) => `${value}%`}
 						/>
 						<YAxis
 							yAxisId="money"
 							orientation="right"
 							width={72}
-							tick={{ fontSize: 12 }}
+							tick={{
+								fontSize: 12,
+								fill: 'var(--muted-foreground)',
+							}}
+							axisLine={{ stroke: 'var(--border)' }}
+							tickLine={{ stroke: 'var(--border)' }}
 							tickFormatter={(value: number) => formatNumber(value)}
 						/>
 						<Tooltip
+							cursor={{
+								stroke: 'var(--muted-foreground)',
+								strokeDasharray: '3 3',
+							}}
+							contentStyle={{
+								backgroundColor: 'var(--popover)',
+								border: '1px solid var(--border)',
+								color: 'var(--popover-foreground)',
+							}}
+							itemStyle={{ color: 'var(--popover-foreground)' }}
+							labelStyle={{ color: 'var(--muted-foreground)' }}
 							labelFormatter={(label) => monthLabel(String(label))}
 							formatter={(value, name) => {
 								const numeric =
@@ -493,7 +526,7 @@ function TeamTrendChart({ trend }: { trend: TrendPoint[] }) {
 							type="monotone"
 							dataKey="utilization_percent"
 							name="Utilization"
-							stroke="#64126D"
+							stroke="var(--chart-logged)"
 							strokeWidth={2}
 							dot={{ r: 3 }}
 							connectNulls

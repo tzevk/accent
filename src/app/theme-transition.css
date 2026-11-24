@@ -1,0 +1,120 @@
+/* Circular light/dark reveal, scoped to a temporary root marker so it cannot
+   interfere with Next's directional navigation transitions. theme.ts sets the
+   origin/radius custom properties and applies the theme inside the transition
+   update; the new root snapshot is clipped from the pointer to the farthest
+   viewport corner. The old snapshot stays still beneath it, so no crossfade or
+   blend is involved. */
+
+@keyframes accent-theme-circle-reveal {
+	from {
+		clip-path: circle(
+			0px at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%)
+		);
+	}
+	to {
+		clip-path: circle(
+			var(--theme-reveal-radius, 150vmax) at var(--theme-reveal-x, 50%)
+				var(--theme-reveal-y, 50%)
+		);
+	}
+}
+
+:root[data-theme-transition='reveal']::view-transition-group(root) {
+	animation: none;
+}
+
+:root[data-theme-transition='reveal']::view-transition-old(root) {
+	animation: none;
+	mix-blend-mode: normal;
+}
+
+:root[data-theme-transition='reveal']::view-transition-new(root) {
+	animation: accent-theme-circle-reveal 400ms ease-out both;
+	mix-blend-mode: normal;
+}
+
+/* Sign-in keeps its continuously animated WebGL gradient. Capturing the page
+   root would freeze that canvas into a still snapshot, so the root opts out
+   while a foreground layer exists. Only the layer (scrim + card) is captured;
+   it is transparent elsewhere, which leaves the live canvas and static
+   fallback painting underneath for the whole transition. */
+:root[data-theme-transition='reveal']:has([data-signin-theme-layer]) {
+	view-transition-name: none;
+}
+
+:root[data-theme-transition='reveal'] [data-signin-theme-layer] {
+	view-transition-name: accent-signin;
+}
+
+/* A registered length lets the group drive the shared reveal radius. Because
+   overriding the group animation also replaces the UA's captured-geometry
+   animation, pin the group to the layer's own box: the viewport at the screen
+   origin. The old and new images then line up with the pointer coordinates. */
+@property --accent-signin-reveal-radius {
+	syntax: '<length>';
+	inherits: true;
+	initial-value: 0px;
+}
+
+@keyframes accent-signin-circle-reveal {
+	from {
+		--accent-signin-reveal-radius: 0px;
+	}
+	to {
+		--accent-signin-reveal-radius: var(--theme-reveal-radius, 150vmax);
+	}
+}
+
+:root[data-theme-transition='reveal']::view-transition-group(accent-signin) {
+	inset: 0;
+	animation: accent-signin-circle-reveal 400ms ease-out both;
+}
+
+/* The two snapshots are complementary: the old foreground disappears inside
+   the circle and the new one appears inside it. The 1px feather tucks the old
+   card just under the clip edge instead of leaving a ring of live background.
+   Normal compositing keeps the old and new scrims from adding together. */
+:root[data-theme-transition='reveal']::view-transition-old(accent-signin) {
+	animation: none;
+	mix-blend-mode: normal;
+	mask-image: radial-gradient(
+		circle at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%),
+		transparent 0,
+		transparent max(0px, calc(var(--accent-signin-reveal-radius) - 1px)),
+		#000 var(--accent-signin-reveal-radius)
+	);
+}
+
+:root[data-theme-transition='reveal']::view-transition-new(accent-signin) {
+	animation: none;
+	mix-blend-mode: normal;
+	clip-path: circle(
+		var(--accent-signin-reveal-radius) at var(--theme-reveal-x, 50%)
+			var(--theme-reveal-y, 50%)
+	);
+}
+
+/* Theme colours must be captured at their final values. Leaving transitioned
+   backgrounds/foregrounds running at snapshot time would bake a half-finished
+   local interpolation into the old or new image. theme.ts removes this marker
+   as soon as the snapshots are ready. */
+:root[data-theme-snapshot],
+:root[data-theme-snapshot] *,
+:root[data-theme-snapshot] *::before,
+:root[data-theme-snapshot] *::after {
+	transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root[data-theme-transition='reveal']::view-transition-new(root) {
+		animation: none !important;
+	}
+
+	/* If the preference flips while a reveal is running, drop the animation and
+	   land on the completed radius so the new foreground is shown immediately
+	   instead of staying hidden behind the old one. */
+	:root[data-theme-transition='reveal']::view-transition-group(accent-signin) {
+		--accent-signin-reveal-radius: var(--theme-reveal-radius, 150vmax);
+		animation: none !important;
+	}
+}

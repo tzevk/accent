@@ -7,6 +7,7 @@ import { fetchJSON } from '@/utils/http';
 import { clearSessionCache, setSessionData } from '@/context/SessionContext';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import AnimatedGradient from '@/components/ui/animated-gradient';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { Poppins } from 'next/font/google';
 
 // Font setup
@@ -103,146 +104,157 @@ export default function SignIn() {
 
 	return (
 		<div
-			className={`${poppins.className} fixed inset-0 flex items-center justify-center px-4 overflow-hidden`}
+			className={`${poppins.className} fixed inset-0 overflow-hidden`}
 			style={gradientStyle}
 		>
 			{/* Animated brand gradient; renders a static frame under prefers-reduced-motion */}
 			<AnimatedGradient config={SIGNIN_BACKGROUND} />
 
-			{/* Soft glow overlay */}
-			<div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.15)_0%,transparent_70%)]" />
-
-			{/* Card */}
+			{/* The theme reveal snapshots this foreground layer instead of the
+			    page, so the live gradient behind it keeps animating. */}
 			<div
-				className={`relative bg-white rounded-[28px] text-center shadow-[0_20px_60px_rgba(93,0,132,0.25)] border border-[#f0e6f3] backdrop-blur-sm transition-shadow transition-transform duration-300 hover:-translate-y-[2px] hover:shadow-[0_24px_70px_rgba(93,0,132,0.3)] ${
-					isWindows
-						? 'p-8 w-[380px] sm:w-[400px]'
-						: 'p-10 w-[420px] sm:w-[440px]'
-				}`}
+				data-signin-theme-layer
+				className="absolute inset-0 flex items-center justify-center px-4"
 			>
-				{/* Logo */}
-				<div className={`flex justify-center ${isWindows ? 'mb-5' : 'mb-6'}`}>
-					<Image
-						src="/accent-logo.png"
-						alt="Accent Techno Solutions"
-						width={186}
-						height={116}
-						className={`w-auto object-contain ${
-							isWindows ? 'h-[95px] sm:h-[105px]' : 'h-[110px] sm:h-[120px]'
-						}`}
-						priority
-					/>
-				</div>
+				<div
+					aria-hidden="true"
+					className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.15)_0%,transparent_70%)] dark:bg-black/35 dark:bg-none"
+				/>
 
-				{/* Form */}
-				<form
-					onSubmit={handleSubmit}
-					className={`text-left ${isWindows ? 'space-y-4' : 'space-y-5'}`}
+				<ThemeToggle className="absolute top-4 right-4 z-20 border border-border bg-card text-card-foreground focus-visible:outline-white sm:top-6 sm:right-6" />
+
+				{/* Card */}
+				<div
+					className={`relative rounded-[28px] border border-border bg-card text-center text-card-foreground shadow-xl ${
+						isWindows
+							? 'p-8 w-[380px] sm:w-[400px]'
+							: 'p-10 w-[420px] sm:w-[440px]'
+					}`}
 				>
-					{/* Title */}
-					<h2
-						className={`font-semibold text-[#5F146D] ${
-							isWindows ? 'text-[20px] mb-3' : 'text-[22px] mb-4'
-						}`}
-					>
-						Sign In
-					</h2>
-
-					{/* Email */}
-					<div>
-						<label
-							htmlFor="email"
-							className="block text-sm font-medium text-[#5F146D] mb-2"
-						>
-							Username or Email
-						</label>
-						<input
-							id="email"
-							name="email"
-							type="text"
-							autoComplete="username"
-							required
-							placeholder="username@gmail.com"
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							aria-describedby={error ? 'signin-error' : undefined}
-							className={`w-full rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent transition-colors transition-shadow duration-200 shadow-sm ${
-								isWindows ? 'h-[38px]' : 'h-[42px]'
+					{/* Logo */}
+					<div className={`flex justify-center ${isWindows ? 'mb-5' : 'mb-6'}`}>
+						<Image
+							src="/accent-logo.png"
+							alt="Accent Techno Solutions"
+							width={186}
+							height={116}
+							className={`w-auto rounded-xl object-contain dark:mix-blend-screen dark:invert dark:hue-rotate-180 ${
+								isWindows ? 'h-[95px] sm:h-[105px]' : 'h-[110px] sm:h-[120px]'
 							}`}
+							priority
 						/>
 					</div>
 
-					{/* Password */}
-					<div>
-						<label
-							htmlFor="password"
-							className="block text-sm font-medium text-[#5F146D] mb-2"
+					{/* Form */}
+					<form
+						onSubmit={handleSubmit}
+						className={`text-left ${isWindows ? 'space-y-4' : 'space-y-5'}`}
+					>
+						{/* Title */}
+						<h2
+							className={`font-semibold text-card-foreground ${
+								isWindows ? 'text-[20px] mb-3' : 'text-[22px] mb-4'
+							}`}
 						>
-							Password
-						</label>
-						<div className="relative">
+							Sign In
+						</h2>
+
+						{/* Email */}
+						<div>
+							<label
+								htmlFor="email"
+								className="mb-2 block text-sm font-medium text-card-foreground"
+							>
+								Username or Email
+							</label>
 							<input
-								id="password"
-								name="password"
-								type={showPassword ? 'text' : 'password'}
-								autoComplete="current-password"
+								id="email"
+								name="email"
+								type="text"
+								autoComplete="username"
 								required
-								placeholder="Password"
-								value={password}
-								onChange={(e) => setPassword(e.target.value)}
+								placeholder="username@gmail.com"
+								value={email}
+								onChange={(e) => setEmail(e.target.value)}
 								aria-describedby={error ? 'signin-error' : undefined}
-								className={`w-full rounded-lg border border-[#E2D8E9] px-3 py-2 text-sm placeholder:text-gray-400 text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#7A2B91] focus:border-transparent pr-10 shadow-sm ${
+								className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors transition-shadow duration-200 shadow-sm ${
 									isWindows ? 'h-[38px]' : 'h-[42px]'
 								}`}
 							/>
-							<button
-								type="button"
-								onClick={() => setShowPassword(!showPassword)}
-								aria-label={showPassword ? 'Hide password' : 'Show password'}
-								className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7A2B91] rounded"
+						</div>
+
+						{/* Password */}
+						<div>
+							<label
+								htmlFor="password"
+								className="mb-2 block text-sm font-medium text-card-foreground"
 							>
-								{showPassword ? (
-									<EyeSlashIcon className="h-5 w-5" />
-								) : (
-									<EyeIcon className="h-5 w-5" />
-								)}
-							</button>
+								Password
+							</label>
+							<div className="relative">
+								<input
+									id="password"
+									name="password"
+									type={showPassword ? 'text' : 'password'}
+									autoComplete="current-password"
+									required
+									placeholder="Password"
+									value={password}
+									onChange={(e) => setPassword(e.target.value)}
+									aria-describedby={error ? 'signin-error' : undefined}
+									className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent pr-10 shadow-sm ${
+										isWindows ? 'h-[38px]' : 'h-[42px]'
+									}`}
+								/>
+								<button
+									type="button"
+									onClick={() => setShowPassword(!showPassword)}
+									aria-label={showPassword ? 'Hide password' : 'Show password'}
+									className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring rounded"
+								>
+									{showPassword ? (
+										<EyeSlashIcon className="h-5 w-5" />
+									) : (
+										<EyeIcon className="h-5 w-5" />
+									)}
+								</button>
+							</div>
 						</div>
-					</div>
 
-					{/* Error */}
-					{error && (
-						<div
-							id="signin-error"
-							role="alert"
-							className="bg-red-50 text-red-600 border border-red-200 rounded-md px-3 py-2 text-sm"
+						{/* Error */}
+						{error && (
+							<div
+								id="signin-error"
+								role="alert"
+								className="bg-destructive/10 text-destructive border border-destructive/30 rounded-md px-3 py-2 text-sm"
+							>
+								{error}
+							</div>
+						)}
+
+						{/* Submit */}
+						<button
+							type="submit"
+							disabled={loading}
+							className={`w-full rounded-md bg-primary text-sm font-semibold tracking-wide text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60 ${
+								isWindows ? 'h-[40px]' : 'h-[44px]'
+							}`}
 						>
-							{error}
-						</div>
-					)}
+							{loading ? 'Signing in...' : 'Sign In'}
+						</button>
+					</form>
 
-					{/* Submit */}
-					<button
-						type="submit"
-						disabled={loading}
-						className={`w-full bg-[#5F146D] hover:bg-[#4E0F58] text-white rounded-md font-semibold text-sm tracking-wide transition-colors transition-shadow duration-200 shadow-[0_3px_6px_rgba(95,20,109,0.3)] hover:shadow-[0_4px_10px_rgba(95,20,109,0.4)] disabled:opacity-60 active:scale-[0.96] transition-transform ${
-							isWindows ? 'h-[40px]' : 'h-[44px]'
+					{/* Footer */}
+					<p
+						suppressHydrationWarning
+						className={`text-xs text-muted-foreground text-center ${
+							isWindows ? 'mt-6' : 'mt-8'
 						}`}
 					>
-						{loading ? 'Signing in...' : 'Sign In'}
-					</button>
-				</form>
-
-				{/* Footer */}
-				<p
-					suppressHydrationWarning
-					className={`text-xs text-[#7d6295] text-center ${
-						isWindows ? 'mt-6' : 'mt-8'
-					}`}
-				>
-					© {new Date().getFullYear()} Accent Techno Solutions. All rights
-					reserved.
-				</p>
+						© {new Date().getFullYear()} Accent Techno Solutions. All rights
+						reserved.
+					</p>
+				</div>
 			</div>
 		</div>
 	);

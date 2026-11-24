@@ -36,14 +36,14 @@ function ProjectNameTick({ x, y, payload, projects }) {
 		<Link
 			href={project.href}
 			aria-label={fullName}
-			className="outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#64126D]"
+			className="outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 		>
 			<text
 				x={x}
 				y={y}
 				dy={4}
 				textAnchor="end"
-				className="fill-gray-700"
+				fill="var(--muted-foreground)"
 				fontSize={12}
 			>
 				{label}
@@ -72,22 +72,19 @@ export default function ProjectsChart({ projects = [], loading = false }) {
 		return (
 			<div
 				data-testid="projects-chart-loading"
-				className="rounded-xl border border-purple-200 bg-white p-6"
+				className="rounded-xl border border-border bg-card p-6"
 			>
 				<div className="mb-4 space-y-2">
 					<div
 						data-motion
-						className="h-5 w-48 animate-pulse rounded bg-gray-100"
+						className="h-5 w-48 animate-pulse rounded bg-muted"
 					/>
 					<div
 						data-motion
-						className="h-4 w-64 animate-pulse rounded bg-gray-100"
+						className="h-4 w-64 animate-pulse rounded bg-muted"
 					/>
 				</div>
-				<div
-					data-motion
-					className="h-80 animate-pulse rounded-lg bg-gray-100"
-				/>
+				<div data-motion className="h-80 animate-pulse rounded-lg bg-muted" />
 			</div>
 		);
 	}
@@ -95,13 +92,13 @@ export default function ProjectsChart({ projects = [], loading = false }) {
 	return (
 		<div
 			data-testid="projects-chart"
-			className="rounded-xl border border-purple-200 bg-white p-6"
+			className="rounded-xl border border-border bg-card p-6"
 		>
 			<div className="mb-4">
-				<h3 className="text-lg font-semibold text-gray-900">
+				<h3 className="text-lg font-semibold text-foreground">
 					Top Projects by Logged Hours
 				</h3>
-				<p className="mt-1 text-sm text-gray-500">
+				<p className="mt-1 text-sm text-muted-foreground">
 					The ten projects with the most hours logged.
 				</p>
 			</div>
@@ -109,10 +106,10 @@ export default function ProjectsChart({ projects = [], loading = false }) {
 			<div className="h-80 overflow-hidden">
 				{data.length === 0 ? (
 					<div className="flex h-full flex-col items-center justify-center text-center">
-						<p className="font-medium text-gray-700">
+						<p className="font-medium text-foreground">
 							No project hours in this window
 						</p>
-						<p className="mt-1 text-sm text-gray-500">
+						<p className="mt-1 text-sm text-muted-foreground">
 							Bars appear once timesheets are approved against projects.
 						</p>
 					</div>
@@ -123,11 +120,20 @@ export default function ProjectsChart({ projects = [], loading = false }) {
 							layout="vertical"
 							margin={{ top: 4, right: 12, bottom: 0, left: 0 }}
 						>
-							<CartesianGrid strokeDasharray="3 3" horizontal={false} />
+							<CartesianGrid
+								stroke="var(--border)"
+								strokeDasharray="3 3"
+								horizontal={false}
+							/>
 							<XAxis
 								type="number"
 								dataKey="logged"
-								tick={{ fontSize: 12 }}
+								tick={{
+									fontSize: 12,
+									fill: 'var(--muted-foreground)',
+								}}
+								axisLine={{ stroke: 'var(--border)' }}
+								tickLine={{ stroke: 'var(--border)' }}
 								tickFormatter={(value) => formatNumber(Number(value))}
 							/>
 							<YAxis
@@ -136,8 +142,18 @@ export default function ProjectsChart({ projects = [], loading = false }) {
 								width={168}
 								interval={0}
 								tick={<ProjectNameTick projects={data} />}
+								axisLine={{ stroke: 'var(--border)' }}
+								tickLine={{ stroke: 'var(--border)' }}
 							/>
 							<Tooltip
+								cursor={{ fill: 'var(--muted)' }}
+								contentStyle={{
+									backgroundColor: 'var(--popover)',
+									border: '1px solid var(--border)',
+									color: 'var(--popover-foreground)',
+								}}
+								itemStyle={{ color: 'var(--popover-foreground)' }}
+								labelStyle={{ color: 'var(--muted-foreground)' }}
 								formatter={(value) => [
 									`${formatNumber(Number(value))} h`,
 									'Logged Hours',

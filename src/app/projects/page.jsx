@@ -393,9 +393,9 @@ function ProjectsInner() {
 			case 'cancelled':
 				return 'bg-red-100 text-red-800';
 			case 'active':
-				return 'bg-accent-primary/10 text-accent-primary';
+				return 'bg-accent text-accent-foreground';
 			default:
-				return 'bg-gray-100 text-gray-800';
+				return 'bg-muted text-muted-foreground';
 		}
 	};
 
@@ -408,7 +408,7 @@ function ProjectsInner() {
 			case 'low':
 				return 'text-green-600';
 			default:
-				return 'text-gray-600';
+				return 'text-muted-foreground';
 		}
 	};
 
@@ -505,13 +505,13 @@ function ProjectsInner() {
 				</p>
 			</div>
 			<div className="mx-auto min-h-0 w-full max-w-[1920px] flex-1 px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
-				<div className="@container/projects h-full overflow-y-auto rounded-lg bg-white">
+				<div className="@container/projects h-full overflow-y-auto rounded-lg bg-card">
 					<div className="space-y-6 p-4">
 						{/* Quick Stats */}
 						<div>
 							<div className="grid grid-cols-1 gap-4 @sm/projects:grid-cols-2 @4xl/projects:grid-cols-4">
 								<div
-									className="bg-white border border-purple-200 rounded-lg p-5 cursor-pointer hover:border-purple-400 transition-colors"
+									className="bg-card border border-purple-200 rounded-lg p-5 cursor-pointer hover:border-purple-400 transition-colors"
 									onClick={() => {
 										setStatusFilter('');
 									}}
@@ -527,11 +527,11 @@ function ProjectsInner() {
 											</p>
 										</div>
 										<div className="bg-purple-50 p-3 rounded-lg">
-											<FolderIcon className="h-6 w-6 text-[#64126D]" />
+											<FolderIcon className="h-6 w-6 text-primary" />
 										</div>
 									</div>
 								</div>
-								<div className="bg-white border border-blue-200 rounded-lg p-5">
+								<div className="bg-card border border-blue-200 rounded-lg p-5">
 									<div className="flex items-center justify-between">
 										<div>
 											<p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
@@ -547,7 +547,7 @@ function ProjectsInner() {
 									</div>
 								</div>
 								<div
-									className={`bg-white border rounded-lg p-5 cursor-pointer transition-colors ${
+									className={`bg-card border rounded-lg p-5 cursor-pointer transition-colors ${
 										statusFilter === 'completed'
 											? 'border-green-500 bg-green-50'
 											: 'border-green-200 hover:border-green-400'
@@ -574,7 +574,7 @@ function ProjectsInner() {
 										</div>
 									</div>
 								</div>
-								<div className="bg-white border border-amber-200 rounded-lg p-5">
+								<div className="bg-card border border-amber-200 rounded-lg p-5">
 									<div className="flex items-center justify-between">
 										<div>
 											<p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
@@ -597,7 +597,7 @@ function ProjectsInner() {
 							<div
 								role="tablist"
 								aria-label="Projects views"
-								className="flex flex-wrap items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg"
+								className="flex flex-wrap items-center gap-2 p-2 bg-card border border-gray-200 rounded-lg"
 							>
 								{[
 									{
@@ -653,25 +653,18 @@ function ProjectsInner() {
 											}}
 											className={`py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
 												isActive
-													? 'bg-[#64126D] text-white'
-													: 'text-gray-700 hover:bg-gray-100'
+													? 'bg-primary text-primary-foreground'
+													: 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
 											}`}
 										>
 											<span>{tab.label}</span>
 											{tab.badge && (
 												<span
-													className="ml-2 px-2 py-0.5 text-[10px] rounded-full font-medium"
-													style={
+													className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${
 														isActive
-															? {
-																	background: 'rgba(255, 255, 255, 0.25)',
-																	color: '#ffffff',
-																}
-															: {
-																	background: 'rgba(100, 116, 139, 0.1)',
-																	color: '#64748b',
-																}
-													}
+															? 'bg-primary-foreground/20 text-primary-foreground'
+															: 'bg-muted text-muted-foreground'
+													}`}
 												>
 													{tab.badge}
 												</span>
@@ -687,21 +680,20 @@ function ProjectsInner() {
 							{activeTab === 'list' && (
 								<div className="space-y-6">
 									{/* Action Bar */}
-									<div className="rounded-lg border border-gray-200 p-4">
+									<div className="rounded-lg border border-border bg-card p-4">
 										<div className="flex flex-wrap items-center gap-3">
 											<div className="relative min-w-0 grow basis-64">
 												<input
 													value={query}
 													onChange={(e) => setQuery(e.target.value)}
 													placeholder="Search by project or client name..."
-													className="w-full pl-11 pr-4 py-2.5 text-sm rounded-lg border border-gray-300 focus:outline-none focus:border-[#64126D] focus:ring-1 focus:ring-[#64126D]"
+													className="w-full rounded-lg border border-input bg-background py-2.5 pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
 													spellCheck={true}
 												/>
 												<svg
-													className="absolute left-4 top-3.5 h-5 w-5 transition-colors duration-300"
+													className="absolute left-4 top-3.5 h-5 w-5 text-primary transition-colors duration-300"
 													viewBox="0 0 20 20"
 													fill="currentColor"
-													style={{ color: '#8b5cf6' }}
 												>
 													<path
 														fillRule="evenodd"
@@ -712,12 +704,9 @@ function ProjectsInner() {
 											</div>
 											<button
 												onClick={() => setShowFilters((v) => !v)}
-												className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium border border-gray-300 hover:bg-gray-50 transition-colors text-black"
+												className="inline-flex items-center gap-2 rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
 											>
-												<FunnelIcon
-													className="h-5 w-5"
-													style={{ color: '#8b5cf6' }}
-												/>{' '}
+												<FunnelIcon className="h-5 w-5 text-primary" />{' '}
 												<span>Filters</span>
 											</button>
 											{(statusFilter || priorityFilter || query) && (
@@ -727,12 +716,7 @@ function ProjectsInner() {
 														setStatusFilter('');
 														setPriorityFilter('');
 													}}
-													className="text-sm font-semibold px-4 py-2 rounded-xl transition-all duration-300 hover:scale-105"
-													style={{
-														color: '#ef4444',
-														background: 'rgba(239, 68, 68, 0.1)',
-														border: '1px solid rgba(239, 68, 68, 0.2)',
-													}}
+													className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-2 text-sm font-semibold text-destructive transition-all duration-300 hover:scale-105 hover:bg-destructive/15"
 												>
 													Clear All
 												</button>
@@ -741,16 +725,16 @@ function ProjectsInner() {
 									</div>
 
 									{showFilters && (
-										<div className="rounded-lg border border-gray-200 bg-white p-4">
+										<div className="rounded-lg border border-border bg-card p-4">
 											<div className="grid grid-cols-1 gap-4 @xl/projects:grid-cols-3">
 												<div>
-													<label className="block text-sm font-medium text-gray-700 mb-2">
+													<label className="mb-2 block text-sm font-medium text-foreground">
 														Status
 													</label>
 													<select
 														value={statusFilter}
 														onChange={(e) => setStatusFilter(e.target.value)}
-														className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-black focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+														className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring"
 													>
 														<option value="">All Statuses</option>
 														<option value="NEW">NEW</option>
@@ -762,13 +746,13 @@ function ProjectsInner() {
 													</select>
 												</div>
 												<div>
-													<label className="block text-sm font-medium text-gray-700 mb-2">
+													<label className="mb-2 block text-sm font-medium text-foreground">
 														Priority
 													</label>
 													<select
 														value={priorityFilter}
 														onChange={(e) => setPriorityFilter(e.target.value)}
-														className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-black focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+														className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring"
 													>
 														<option value="">All Priorities</option>
 														<option value="High">High</option>
@@ -779,42 +763,21 @@ function ProjectsInner() {
 												<div className="flex items-end">
 													<button
 														onClick={() => setShowFilters(false)}
-														className="w-full inline-flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+														className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
 													>
 														<CheckIcon className="h-5 w-5" />
 														Apply Filters
 													</button>
 												</div>
 											</div>
-											<div
-												className="mt-5 pt-5 border-t flex flex-wrap items-center gap-3"
-												style={{ borderColor: 'rgba(139, 92, 246, 0.1)' }}
-											>
+											<div className="mt-5 flex flex-wrap items-center gap-3 border-t border-border pt-5">
 												{statusFilter && (
-													<span
-														className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl"
-														style={{
-															background:
-																'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.15) 100%)',
-															color: '#7c3aed',
-															border: '1px solid rgba(139, 92, 246, 0.2)',
-															boxShadow: '0 2px 8px rgba(139, 92, 246, 0.1)',
-														}}
-													>
+													<span className="inline-flex items-center gap-2 rounded-xl border border-border bg-accent px-4 py-2 text-xs font-bold text-accent-foreground shadow-sm">
 														Status: {formatLabel(statusFilter)}
 													</span>
 												)}
 												{priorityFilter && (
-													<span
-														className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl"
-														style={{
-															background:
-																'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(79, 70, 229, 0.15) 100%)',
-															color: '#4f46e5',
-															border: '1px solid rgba(99, 102, 241, 0.2)',
-															boxShadow: '0 2px 8px rgba(99, 102, 241, 0.1)',
-														}}
-													>
+													<span className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary px-4 py-2 text-xs font-bold text-secondary-foreground shadow-sm">
 														Priority: {priorityFilter}
 													</span>
 												)}
@@ -823,7 +786,7 @@ function ProjectsInner() {
 									)}
 
 									{/* Projects Table */}
-									<div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+									<div className="overflow-hidden rounded-lg border border-border bg-card">
 										{loading ? (
 											<div className="p-8">
 												<div className="space-y-3">
@@ -861,69 +824,69 @@ function ProjectsInner() {
 												aria-label="Project results"
 												tabIndex={0}
 											>
-												<table className="min-w-full divide-y divide-gray-200">
-													<thead className="bg-gray-50">
+												<table className="min-w-full divide-y divide-border">
+													<thead className="bg-muted/60">
 														<tr>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																<button
-																	className="inline-flex items-center gap-1 hover:text-purple-600"
+																	className="inline-flex items-center gap-1 hover:text-primary"
 																	onClick={() => toggleSort('project_id')}
 																>
 																	Project No.
 																	<ChevronUpDownIcon className="h-4 w-4" />
 																</button>
 															</th>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																<button
-																	className="inline-flex items-center gap-1 hover:text-purple-600"
+																	className="inline-flex items-center gap-1 hover:text-primary"
 																	onClick={() => toggleSort('name')}
 																>
 																	Project
 																	<ChevronUpDownIcon className="h-4 w-4" />
 																</button>
 															</th>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																<button
-																	className="inline-flex items-center gap-1 hover:text-purple-600"
+																	className="inline-flex items-center gap-1 hover:text-primary"
 																	onClick={() => toggleSort('company_name')}
 																>
 																	Client
 																	<ChevronUpDownIcon className="h-4 w-4" />
 																</button>
 															</th>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																<button
-																	className="inline-flex items-center gap-1 hover:text-purple-600"
+																	className="inline-flex items-center gap-1 hover:text-primary"
 																	onClick={() => toggleSort('start_date')}
 																>
 																	Timeline
 																	<ChevronUpDownIcon className="h-4 w-4" />
 																</button>
 															</th>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																Status
 															</th>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																Estimated Cost
 															</th>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																<button
-																	className="inline-flex items-center gap-1 hover:text-purple-600"
+																	className="inline-flex items-center gap-1 hover:text-primary"
 																	onClick={() => toggleSort('budget')}
 																>
 																	Budget
 																	<ChevronUpDownIcon className="h-4 w-4" />
 																</button>
 															</th>
-															<th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																Progress
 															</th>
-															<th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">
+															<th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
 																Actions
 															</th>
 														</tr>
 													</thead>
-													<tbody className="bg-white divide-y divide-gray-200">
+													<tbody className="divide-y divide-border bg-card">
 														{projects
 															.filter((p) => {
 																if (
@@ -996,13 +959,13 @@ function ProjectsInner() {
 															.map((project, _idx) => (
 																<tr
 																	key={`${project.id ?? project.project_id ?? project.project_code ?? _idx}`}
-																	className="hover:bg-gray-50 transition-colors"
+																	className="transition-colors hover:bg-muted/50"
 																>
 																	<td className="px-4 py-3 whitespace-nowrap">
 																		{editingCodeKey === projKey(project) ? (
 																			<input
 																				type="text"
-																				className="w-28 px-2 py-1 text-sm font-mono border border-purple-400 rounded focus:outline-none focus:ring-2 focus:ring-purple-300"
+																				className="w-28 rounded border border-input bg-background px-2 py-1 text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
 																				value={editingCodeValue}
 																				onChange={(e) =>
 																					setEditingCodeValue(e.target.value)
@@ -1021,7 +984,7 @@ function ProjectsInner() {
 																		) : canEditProjectDetails(project) ? (
 																			<button
 																				type="button"
-																				className="text-sm font-mono text-gray-900 hover:text-purple-600 hover:underline cursor-pointer"
+																				className="text-sm font-mono text-foreground hover:text-primary hover:underline cursor-pointer"
 																				onClick={() =>
 																					handleStartEditCode(project)
 																				}
@@ -1032,7 +995,7 @@ function ProjectsInner() {
 																					'-'}
 																			</button>
 																		) : (
-																			<span className="text-sm font-mono text-gray-900">
+																			<span className="text-sm font-mono text-foreground">
 																				{project.project_code ||
 																					project.project_id ||
 																					'-'}
@@ -1041,15 +1004,15 @@ function ProjectsInner() {
 																	</td>
 																	<td className="px-4 py-3 wrap-anywhere">
 																		<div>
-																			<div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-																				<span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-purple-100 text-xs font-bold text-purple-700">
+																			<div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+																				<span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-xs font-bold text-accent-foreground">
 																					{(project.name || '?')
 																						.slice(0, 1)
 																						.toUpperCase()}
 																				</span>
 																				{project.name}
 																			</div>
-																			<div className="text-xs text-gray-600 mt-1 max-w-xs truncate">
+																			<div className="mt-1 max-w-xs truncate text-xs text-muted-foreground">
 																				{project.description}
 																			</div>
 																			<div
@@ -1063,25 +1026,25 @@ function ProjectsInner() {
 																		</div>
 																	</td>
 																	<td className="px-4 py-3 wrap-anywhere">
-																		<div className="text-sm font-medium text-gray-900">
+																		<div className="text-sm font-medium text-foreground">
 																			{project.client_name ||
 																				project.company_name ||
 																				'-'}
 																		</div>
-																		<div className="text-xs text-gray-600 mt-1">
+																		<div className="mt-1 text-xs text-muted-foreground">
 																			PM:{' '}
 																			{project.project_manager ||
 																				'Not assigned'}
 																		</div>
 																	</td>
 																	<td className="px-4 py-3 whitespace-nowrap">
-																		<div className="text-sm text-gray-900">
+																		<div className="text-sm text-foreground">
 																			<div className="flex items-center gap-1.5">
-																				<CalendarIcon className="h-4 w-4 text-gray-400" />
+																				<CalendarIcon className="h-4 w-4 text-muted-foreground" />
 																				{formatDate(project.start_date)}
 																			</div>
 																			{project.end_date && (
-																				<div className="text-xs text-gray-600 mt-1">
+																				<div className="mt-1 text-xs text-muted-foreground">
 																					to {formatDate(project.end_date)}
 																				</div>
 																			)}
@@ -1098,7 +1061,7 @@ function ProjectsInner() {
 																			{formatLabel(project.status)}
 																		</span>
 																	</td>
-																	<td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+																	<td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-foreground">
 																		{(() => {
 																			try {
 																				if (project.cost_breakup) {
@@ -1122,20 +1085,20 @@ function ProjectsInner() {
 																			return '-';
 																		})()}
 																	</td>
-																	<td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+																	<td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-foreground">
 																		{formatCurrency(project.budget)}
 																	</td>
 																	<td className="px-4 py-3 whitespace-nowrap">
 																		<div className="flex items-center gap-2">
-																			<div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+																			<div className="w-24 h-2 overflow-hidden rounded-full bg-muted">
 																				<div
-																					className="h-full bg-purple-600 rounded-full transition-all"
+																					className="h-full rounded-full bg-primary transition-all"
 																					style={{
 																						width: `${project.progress || 0}%`,
 																					}}
 																				/>
 																			</div>
-																			<span className="text-xs font-medium text-gray-600 min-w-[35px]">
+																			<span className="min-w-[35px] text-xs font-medium text-muted-foreground">
 																				{project.progress || 0}%
 																			</span>
 																		</div>
@@ -1186,7 +1149,7 @@ function ProjectsInner() {
 																							`/projects/${project.project_id ?? project.id ?? project.project_code ?? ''}`
 																						)
 																					}
-																					className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+																					className="rounded-lg p-2 text-primary transition-colors hover:bg-accent"
 																					title="View Details"
 																				>
 																					<EyeIcon className="h-4 w-4" />
@@ -1209,7 +1172,7 @@ function ProjectsInner() {
 																			{canRowPerform(project, 'delete') && (
 																				<button
 																					onClick={() => handleDelete(project)}
-																					className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+																					className="rounded-lg p-2 text-destructive transition-colors hover:bg-destructive/10"
 																					title="Delete Project"
 																				>
 																					<TrashIcon className="h-4 w-4" />
@@ -1232,7 +1195,7 @@ function ProjectsInner() {
 									<div className="glass-panel rounded-lg p-4">
 										<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 											<div>
-												<h2 className="text-lg font-semibold text-black">
+												<h2 className="text-lg font-semibold text-foreground">
 													Plan by Calendar
 												</h2>
 												<p className="text-xs text-gray-500">
@@ -1243,7 +1206,7 @@ function ProjectsInner() {
 												<button
 													type="button"
 													onClick={handleGoToToday}
-													className="px-3 py-1.5 text-xs font-medium text-black border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
+													className="px-3 py-1.5 text-xs font-medium text-foreground border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
 												>
 													Today
 												</button>
@@ -1256,7 +1219,7 @@ function ProjectsInner() {
 													>
 														<ArrowLeftIcon className="h-4 w-4" />
 													</button>
-													<div className="px-4 text-sm font-semibold text-black whitespace-nowrap">
+													<div className="px-4 text-sm font-semibold text-foreground whitespace-nowrap">
 														{format(calendarDate, 'MMMM yyyy')}
 													</div>
 													<button
@@ -1298,13 +1261,15 @@ function ProjectsInner() {
 												return (
 													<div
 														key={key}
-														className={`min-h-[128px] bg-white p-2 flex flex-col border-b border-r border-gray-200 transition-colors hover:bg-accent-primary/5 ${
-															muted ? 'bg-gray-50 text-gray-400' : 'text-black'
-														} ${isSelected ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-white' : ''}`}
+														className={`min-h-[128px] bg-card p-2 flex flex-col border-b border-r border-gray-200 transition-colors hover:bg-accent-primary/5 ${
+															muted
+																? 'bg-gray-50 text-gray-400'
+																: 'text-foreground'
+														} ${isSelected ? 'ring-2 ring-accent-primary ring-offset-2 ring-offset-background' : ''}`}
 													>
 														<div className="flex flex-wrap items-start justify-between gap-1">
 															<div
-																className={`text-sm font-semibold ${muted ? 'text-gray-400' : 'text-black'}`}
+																className={`text-sm font-semibold ${muted ? 'text-gray-400' : 'text-foreground'}`}
 															>
 																{format(day, 'd')}
 															</div>
@@ -1331,7 +1296,7 @@ function ProjectsInner() {
 																	className="border border-accent-primary/40 bg-accent-primary/10 rounded-md px-2 py-1"
 																>
 																	<p
-																		className="text-xs font-semibold text-black truncate"
+																		className="text-xs font-semibold text-foreground truncate"
 																		title={project.name}
 																	>
 																		{project.name}
@@ -1377,7 +1342,7 @@ function ProjectsInner() {
 													<CalendarIcon className="h-5 w-5 text-blue-600" />
 												</div>
 												<div>
-													<h3 className="font-bold text-black">
+													<h3 className="font-bold text-foreground">
 														Project Planning
 													</h3>
 													<p className="text-sm text-gray-600 mt-1">
@@ -1488,7 +1453,7 @@ function ProjectsInner() {
 													<FolderIcon className="h-5 w-5 text-purple-600" />
 												</div>
 												<div>
-													<h3 className="font-bold text-black">
+													<h3 className="font-bold text-foreground">
 														Documentation
 													</h3>
 													<p className="text-sm text-gray-600 mt-1">
@@ -1518,7 +1483,7 @@ function ProjectsInner() {
 													<CalendarIcon className="h-5 w-5 text-green-600" />
 												</div>
 												<div>
-													<h3 className="font-bold text-black">
+													<h3 className="font-bold text-foreground">
 														Meetings & Communications
 													</h3>
 													<p className="text-sm text-gray-600 mt-1">
@@ -1545,12 +1510,14 @@ function ProjectsInner() {
 									<div className="glass-panel rounded-lg p-4 sm:p-6 hover:shadow-lg transition-shadow">
 										<div className="flex items-start justify-between mb-4">
 											<div>
-												<h3 className="font-bold text-black">Board View</h3>
+												<h3 className="font-bold text-foreground">
+													Board View
+												</h3>
 												<p className="text-sm text-gray-600 mt-1">
 													Drag projects across columns to update status.
 												</p>
 											</div>
-											<span className="px-3 py-1 bg-purple-50 text-[#64126D] text-xs font-medium rounded-full">
+											<span className="px-3 py-1 bg-purple-50 text-primary text-xs font-medium rounded-full">
 												Interactive
 											</span>
 										</div>
@@ -1750,13 +1717,13 @@ function ProjectsInner() {
 															}
 														}
 													}}
-													className={`rounded-xl p-3 transition-colors glass-soft ${dragOverCol === col.id ? 'ring-1 ring-purple-300 bg-white/70' : ''}`}
+													className={`rounded-xl p-3 transition-colors glass-soft ${dragOverCol === col.id ? 'ring-1 ring-ring/40 bg-card/70' : ''}`}
 												>
 													<div className="flex items-center justify-between">
-														<h4 className="text-sm font-semibold text-black">
+														<h4 className="text-sm font-semibold text-foreground">
 															{col.label}
 														</h4>
-														<span className="text-[10px] px-2 py-0.5 rounded-full bg-white text-gray-700 border border-gray-200">
+														<span className="text-[10px] px-2 py-0.5 rounded-full bg-card text-gray-700 border border-gray-200">
 															{(boardOrder[col.id] || []).length}
 														</span>
 													</div>
@@ -1794,7 +1761,7 @@ function ProjectsInner() {
 																			before ? 'before' : 'after'
 																		);
 																	}}
-																	className={`bg-white/85 backdrop-blur rounded-md border border-white/70 px-3 py-2 shadow-sm transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-md ${canEditProjectDetails(project) ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-[#64126D] cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-purple-300' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
+																	className={`bg-card/85 backdrop-blur rounded-md border border-border/70 px-3 py-2 shadow-sm transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-md ${canEditProjectDetails(project) ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingKey === key ? 'scale-[1.05] rotate-2 shadow-xl ring-2 ring-ring cursor-grabbing' : ''} ${dragOverKey === key ? 'ring-1 ring-ring/40' : ''} ${justDroppedKey === key ? 'animate-bounce-gentle' : ''}`}
 																>
 																	{dragOverKey === key &&
 																		dragInsertPos === 'before' && (
@@ -1802,7 +1769,7 @@ function ProjectsInner() {
 																		)}
 																	<div className="flex items-center justify-between">
 																		<div
-																			className="text-sm font-semibold text-black truncate"
+																			className="text-sm font-semibold text-foreground truncate"
 																			title={project.name}
 																		>
 																			{project.name || project.project_id}

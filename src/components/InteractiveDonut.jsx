@@ -100,9 +100,13 @@ function InteractiveDonutBase({
 						formatter={(value, name) => [fmt(value), name]}
 						contentStyle={{
 							borderRadius: 12,
-							borderColor: '#E5E7EB',
+							backgroundColor: 'var(--popover)',
+							border: '1px solid var(--border)',
+							color: 'var(--popover-foreground)',
 							boxShadow: '0 8px 20px rgba(0,0,0,0.08)',
 						}}
+						itemStyle={{ color: 'var(--popover-foreground)' }}
+						labelStyle={{ color: 'var(--muted-foreground)' }}
 					/>
 					{showLegend && <Legend verticalAlign="bottom" height={24} />}
 				</PieChart>
@@ -113,17 +117,19 @@ function InteractiveDonutBase({
 					<div className="px-2 text-center">
 						{/* text-lg, not text-2xl: a crore-scale rupee total overflows
 						    the hole at 24px, and the label must stay readable. */}
-						<div className="text-lg font-bold whitespace-nowrap text-gray-900">
+						<div className="text-lg font-bold whitespace-nowrap text-foreground">
 							{centre}
 						</div>
-						<div className="text-xs text-gray-500 -mt-0.5">{totalLabel}</div>
+						<div className="text-xs text-muted-foreground -mt-0.5">
+							{totalLabel}
+						</div>
 					</div>
 				</div>
 			)}
 			{showTotalBelow && (
 				<div className="text-center -mt-6">
-					<span className="text-sm text-gray-600">{totalLabel}: </span>
-					<span className="text-sm font-semibold text-[#64126D]">{centre}</span>
+					<span className="text-sm text-muted-foreground">{totalLabel}: </span>
+					<span className="text-sm font-semibold text-primary">{centre}</span>
 				</div>
 			)}
 		</div>

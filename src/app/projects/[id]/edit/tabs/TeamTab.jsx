@@ -12,46 +12,17 @@ export default function TeamTab({
 	removeActivityTeamMember,
 }) {
 	return (
-		<section
-			className="rounded-2xl overflow-hidden"
-			style={{
-				background:
-					'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 250, 251, 0.95) 100%)',
-				border: '1.5px solid rgba(139, 92, 246, 0.1)',
-				boxShadow:
-					'0 4px 16px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
-			}}
-		>
-			<div
-				className="px-6 py-4 flex items-center justify-between"
-				style={{
-					background:
-						'linear-gradient(135deg, rgba(139, 92, 246, 0.03) 0%, rgba(124, 58, 237, 0.02) 100%)',
-					borderBottom: '1.5px solid rgba(139, 92, 246, 0.08)',
-				}}
-			>
+		<section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+			<div className="flex items-center justify-between border-b border-border bg-muted/60 px-6 py-4">
 				<div className="flex items-center gap-3">
-					<div
-						className="p-2 rounded-xl"
-						style={{
-							background:
-								'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.08) 100%)',
-							border: '1px solid rgba(139, 92, 246, 0.2)',
-						}}
-					>
-						<DocumentIcon className="h-4 w-4" style={{ color: '#8b5cf6' }} />
+					<div className="rounded-xl border border-border bg-accent p-2">
+						<DocumentIcon className="h-4 w-4 text-primary" />
 					</div>
 					<div>
-						<h2
-							className="text-base font-bold"
-							style={{
-								color: '#0f172a',
-								letterSpacing: '-0.01em',
-							}}
-						>
+						<h2 className="text-base font-bold tracking-tight text-foreground">
 							Project Team
 						</h2>
-						<p className="text-xs font-medium" style={{ color: '#64748b' }}>
+						<p className="text-xs font-medium text-muted-foreground">
 							Assign employees to activities with hours and costs
 						</p>
 					</div>
@@ -59,24 +30,7 @@ export default function TeamTab({
 				<button
 					type="button"
 					onClick={addActivityTeamMember}
-					className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition-all duration-300"
-					style={{
-						background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-						color: '#ffffff',
-						boxShadow:
-							'0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-						letterSpacing: '0.01em',
-					}}
-					onMouseEnter={(e) => {
-						e.currentTarget.style.transform = 'translateY(-2px)';
-						e.currentTarget.style.boxShadow =
-							'0 8px 20px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-					}}
-					onMouseLeave={(e) => {
-						e.currentTarget.style.transform = 'translateY(0)';
-						e.currentTarget.style.boxShadow =
-							'0 4px 12px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-					}}
+					className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold tracking-[0.01em] text-primary-foreground shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
 				>
 					<PlusIcon className="h-4 w-4" />
 					Add Team Member
@@ -85,35 +39,19 @@ export default function TeamTab({
 			<div className="px-6 py-6">
 				{/* Enhanced Summary Cards */}
 				<div className="mb-6 grid grid-cols-2 gap-4">
-					<div
-						className="p-4 rounded-xl"
-						style={{
-							background:
-								'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.05) 100%)',
-							border: '1.5px solid rgba(59, 130, 246, 0.2)',
-							boxShadow: '0 2px 8px rgba(59, 130, 246, 0.08)',
-						}}
-					>
-						<p className="text-xs font-bold mb-1" style={{ color: '#64748b' }}>
+					<div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+						<p className="mb-1 text-xs font-bold text-muted-foreground">
 							Total Manhours
 						</p>
-						<p className="text-xl font-bold" style={{ color: '#3b82f6' }}>
+						<p className="text-xl font-bold text-blue-600">
 							{totalManhours.toFixed(2)}
 						</p>
 					</div>
-					<div
-						className="p-4 rounded-xl"
-						style={{
-							background:
-								'linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(22, 163, 74, 0.05) 100%)',
-							border: '1.5px solid rgba(34, 197, 94, 0.2)',
-							boxShadow: '0 2px 8px rgba(34, 197, 94, 0.08)',
-						}}
-					>
-						<p className="text-xs font-bold mb-1" style={{ color: '#64748b' }}>
+					<div className="rounded-xl border border-green-200 bg-green-50/60 p-4">
+						<p className="mb-1 text-xs font-bold text-muted-foreground">
 							Total Cost
 						</p>
-						<p className="text-xl font-bold" style={{ color: '#22c55e' }}>
+						<p className="text-xl font-bold text-green-600">
 							{new Intl.NumberFormat('en-IN', {
 								style: 'currency',
 								currency: 'INR',
@@ -123,151 +61,57 @@ export default function TeamTab({
 				</div>
 
 				{teamMembers.length === 0 ? (
-					<div className="text-center py-16 px-4">
-						<div
-							className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
-							style={{
-								background:
-									'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.08) 100%)',
-								border: '2px solid rgba(139, 92, 246, 0.2)',
-							}}
-						>
-							<DocumentIcon className="w-8 h-8" style={{ color: '#8b5cf6' }} />
+					<div className="px-4 py-16 text-center">
+						<div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full border border-border bg-accent">
+							<DocumentIcon className="size-8 text-primary" />
 						</div>
-						<p
-							className="text-sm font-semibold mb-2"
-							style={{ color: '#0f172a' }}
-						>
+						<p className="mb-2 text-sm font-semibold text-foreground">
 							No Team Members Yet
 						</p>
-						<p className="text-xs" style={{ color: '#64748b' }}>
+						<p className="text-xs text-muted-foreground">
 							Click &quot;Add Team Member&quot; to start building your project
 							team
 						</p>
 					</div>
 				) : (
-					<div
-						className="overflow-x-auto rounded-xl"
-						style={{
-							border: '1.5px solid rgba(139, 92, 246, 0.1)',
-							boxShadow: '0 2px 8px rgba(15, 23, 42, 0.02)',
-						}}
-					>
-						<table className="w-full text-xs border-collapse">
+					<div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+						<table className="w-full border-collapse text-xs">
 							<thead>
-								<tr
-									style={{
-										background:
-											'linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(124, 58, 237, 0.03) 100%)',
-										borderBottom: '2px solid rgba(139, 92, 246, 0.15)',
-									}}
-								>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+								<tr className="border-b border-border bg-muted/60">
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Name
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Discipline
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Activity
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Sub-Activity
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Required Hours
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Actual Hours
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Start Date
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										End Date
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Actual Date
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Manhours
 									</th>
-									<th
-										className="text-left py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-left font-bold tracking-[0.01em] text-foreground">
 										Cost
 									</th>
-									<th
-										className="text-center py-3 px-4 font-bold"
-										style={{
-											color: '#0f172a',
-											letterSpacing: '0.01em',
-										}}
-									>
+									<th className="px-4 py-3 text-center font-bold tracking-[0.01em] text-foreground">
 										Actions
 									</th>
 								</tr>
@@ -276,17 +120,7 @@ export default function TeamTab({
 								{teamMembers.map((member) => (
 									<tr
 										key={member.id}
-										className="transition-all duration-200"
-										style={{
-											borderBottom: '1px solid rgba(139, 92, 246, 0.06)',
-										}}
-										onMouseEnter={(e) => {
-											e.currentTarget.style.background =
-												'linear-gradient(135deg, rgba(139, 92, 246, 0.03) 0%, rgba(124, 58, 237, 0.02) 100%)';
-										}}
-										onMouseLeave={(e) => {
-											e.currentTarget.style.background = 'transparent';
-										}}
+										className="border-b border-border transition-colors duration-200 hover:bg-muted/50"
 									>
 										<td className="py-3 px-4">
 											<select
@@ -298,24 +132,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-full px-3 py-2 text-xs font-medium rounded-lg transition-all duration-300"
-												style={{
-													background: 'rgba(255, 255, 255, 0.95)',
-													border: '1.5px solid rgba(139, 92, 246, 0.15)',
-													color: '#0f172a',
-													boxShadow: '0 1px 2px rgba(15, 23, 42, 0.02)',
-												}}
-												onFocus={(e) => {
-													e.target.style.borderColor = '#8b5cf6';
-													e.target.style.boxShadow =
-														'0 0 0 3px rgba(139, 92, 246, 0.1)';
-												}}
-												onBlur={(e) => {
-													e.target.style.borderColor =
-														'rgba(139, 92, 246, 0.15)';
-													e.target.style.boxShadow =
-														'0 1px 2px rgba(15, 23, 42, 0.02)';
-												}}
+												className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs font-medium text-foreground transition-all duration-300 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
 											>
 												<option value="">Select Team Member</option>
 												{getProjectTeamForDropdown().map((emp) => (
@@ -336,7 +153,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-full px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											>
 												<option value="">Select Discipline</option>
 												{functions.map((f) => (
@@ -356,7 +173,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-full px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											>
 												<option value="">Select Activity</option>
 												{projectActivities
@@ -384,7 +201,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-full px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											>
 												<option value="">Select Sub-Activity</option>
 												{projectActivities
@@ -414,7 +231,7 @@ export default function TeamTab({
 												}
 												min="0"
 												step="0.1"
-												className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-20 px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											/>
 										</td>
 										<td className="py-2 px-3">
@@ -430,7 +247,7 @@ export default function TeamTab({
 												}
 												min="0"
 												step="0.1"
-												className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-20 px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											/>
 										</td>
 										<td className="py-2 px-3">
@@ -444,7 +261,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-32 px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											/>
 										</td>
 										<td className="py-2 px-3">
@@ -458,7 +275,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-32 px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											/>
 										</td>
 										<td className="py-2 px-3">
@@ -472,7 +289,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-32 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-32 px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											/>
 										</td>
 										<td className="py-2 px-3">
@@ -486,7 +303,7 @@ export default function TeamTab({
 														e.target.value
 													)
 												}
-												className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-20 px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											/>
 										</td>
 										<td className="py-2 px-3">
@@ -502,35 +319,14 @@ export default function TeamTab({
 												}
 												min="0"
 												step="0.01"
-												className="w-24 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-[#7F2487]"
+												className="w-24 px-2 py-1 text-xs border border-input bg-background text-foreground rounded focus:ring-1 focus:ring-ring"
 											/>
 										</td>
 										<td className="py-3 px-4 text-center">
 											<button
 												type="button"
 												onClick={() => removeActivityTeamMember(member.id)}
-												className="inline-flex items-center gap-1 px-3 py-2 text-xs font-bold rounded-lg transition-all duration-300"
-												style={{
-													background:
-														'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.08) 100%)',
-													color: '#ef4444',
-													border: '1.5px solid rgba(239, 68, 68, 0.2)',
-													boxShadow: '0 2px 4px rgba(239, 68, 68, 0.08)',
-												}}
-												onMouseEnter={(e) => {
-													e.currentTarget.style.transform = 'scale(1.05)';
-													e.currentTarget.style.background =
-														'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.12) 100%)';
-													e.currentTarget.style.boxShadow =
-														'0 4px 8px rgba(239, 68, 68, 0.15)';
-												}}
-												onMouseLeave={(e) => {
-													e.currentTarget.style.transform = 'scale(1)';
-													e.currentTarget.style.background =
-														'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.08) 100%)';
-													e.currentTarget.style.boxShadow =
-														'0 2px 4px rgba(239, 68, 68, 0.08)';
-												}}
+												className="inline-flex items-center gap-1 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-bold text-destructive transition-all duration-300 hover:scale-105 hover:bg-destructive/15 hover:shadow-sm"
 											>
 												<TrashIcon className="h-3.5 w-3.5" />
 											</button>

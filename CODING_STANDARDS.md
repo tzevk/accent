@@ -16,9 +16,9 @@ This file owns coding, security, data, and testing requirements. Read only secti
 - Use `formatCurrency`, `formatNumber`, `formatDate`, `formatDateTime`, `formatDateInput`, `formatDateNumeric`, and `formatMonth` from `src/lib/format.js`. They use `en-IN` conventions.
 - Formatting helpers return `"—"` for null or NaN, except `formatDateInput`, which returns `''` for falsy or invalid input.
 - Use `cn()` from `src/lib/cn.js` to combine conditional classes.
-- Use the existing palette and status conventions. The sidebar uses `var(--sidebar-bg)`; primary buttons use `bg-[#64126D]` and `hover:bg-[#52105a]`; accents include `#7F2487` and `#86288F`.
+- Use the existing palette and status conventions. The sidebar uses `var(--sidebar-bg)`; primary buttons use `bg-[#64126D]` and `hover:bg-[#52105a]`; accents include `#7F2487` and `#86288F`. For app surfaces and text that must follow the theme, use the semantic roles (`bg-background`, `bg-card`, `bg-popover`, `text-foreground`, `text-muted-foreground`, `border-border`, `text-primary`) instead of hardcoded light hexes. The brand values above remain the light-theme source for brand and interaction marks.
 - Check the canonical badge map in `src/components/EmployeeHub.tsx` before adding status colors. Individual pages may intentionally vary.
-- `src/app/globals.css` forces black text on `input`, `textarea`, and `select`; do not override it with gray text.
+- `src/app/globals.css` sets form field text to the theme foreground role on `input`, `textarea`, and `select` — black in the established light theme, and the theme's light foreground in dark; do not override it with a hardcoded gray or black text color.
 - The root layout wraps every page in `.content-with-sidebar`, which already reserves the 64px band for the fixed navigation bar. Do not render a second `Sidebar` or a nested `.content-with-sidebar` in a page, and do not add an 80–96px top offset. Start page content with `pt-6` — the 24px offset used by the Projects and Leads pages — so the title sits directly under the navigation bar.
 
 ## Client data and forms
@@ -85,6 +85,7 @@ Use the [verification map](docs/agents/verification-map.md) to find existing pro
 
 - Before editing, name the result a person or API caller must observe. Pick the fastest check that can fail when that result is wrong. Follow [verification ownership](#verification-ownership) before starting broad checks.
 - Match the Node version declared in `package.json` and CI. Check installed CLI help before using unfamiliar test flags.
+- `next dev` does not reuse the Turbopack disk cache. It served an old stylesheet with new theme controls. Production build caching stays enabled.
 - While editing, run an explicit Vitest file or named test. Use `npm test -- <test-file> --watch` interactively, or `npm run test:unit -- <test-file>` for one-shot feedback. Run installed ESLint on changed source files rather than repeatedly linting the repository.
 - Use `npm test -- related <source-file> --run` or `npm test -- --changed origin/main --run` as selection aids. Confirm the Git reference exists and is current. Import graphs do not prove effects through HTTP, migrations, computed imports, or runtime configuration; select those integration checks explicitly.
 - Run ESLint on the changed route files, or `npm run lint` for the whole covered tree, for fast feedback while changing API routes or authorization rules. Authorization is part of lint, not a separate command.
