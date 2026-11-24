@@ -1,0 +1,2 @@
+# Drizzle records the SHA-256 of each SQL file in the database.
+drizzle/*.sql text eol=lf

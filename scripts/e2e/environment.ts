@@ -17,6 +17,11 @@ import {
 	type ResolvedSafety,
 } from '../leads-integration/support.ts';
 import {
+	applyDrizzleMigrations,
+	legacyKnexMigrations,
+	readDrizzleMigrationStatus,
+} from '../db-migrations.ts';
+import {
 	buildRunTag,
 	createRunId,
 	fitIdentifier,
@@ -117,18 +122,28 @@ async function migrateDatabase(
 			database: target.name,
 			dateStrings: true,
 		},
-		migrations: { directory: path.join(projectRoot, 'migrations') },
+		migrations: legacyKnexMigrations(projectRoot),
 	});
 	try {
 		await knex.migrate.latest();
 	} finally {
 		await knex.destroy();
 	}
+	const connection = await connectReader(target);
+	try {
+		await applyDrizzleMigrations(
+			connection as unknown as MysqlConnection,
+			projectRoot
+		);
+	} finally {
+		await connection.end();
+	}
 }
 
 async function verifyMigratedDatabase(
 	reader: Connection,
-	expectedName: string
+	expectedName: string,
+	projectRoot: string
 ): Promise<void> {
 	const [databaseRows] = await reader.execute(
 		'SELECT DATABASE() AS database_name',
@@ -145,6 +160,18 @@ async function verifyMigratedDatabase(
 	);
 	if (Number(migrationRows[0]?.total ?? 0) === 0) {
 		fail('the disposable database has no recorded migrations.');
+	}
+	const drizzleStatus = await readDrizzleMigrationStatus(
+		reader as unknown as MysqlConnection,
+		projectRoot
+	);
+	if (!drizzleStatus.ledgerExists) {
+		fail('the disposable database has no Drizzle migration ledger.');
+	}
+	if (drizzleStatus.pending !== 0) {
+		fail(
+			`the disposable database has ${String(drizzleStatus.pending)} pending Drizzle migrations.`
+		);
 	}
 }
 
@@ -516,7 +543,7 @@ export async function startE2EHarness(
 		await migrateDatabase(target, projectRoot);
 
 		reader = await connectReader(target);
-		await verifyMigratedDatabase(reader, target.name);
+		await verifyMigratedDatabase(reader, target.name, projectRoot);
 
 		loadedHooks = await loadFixtureHooks(projectRoot);
 		if (loadedHooks === null) {

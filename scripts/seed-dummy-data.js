@@ -52,7 +52,7 @@ async function main() {
 			return;
 		}
 		console.log(
-			'Empty DB detected — seeding via knex migration is preferred. Running: npx knex migrate:latest'
+			'Empty DB detected — seeding via the migration command is preferred. Running: npm run migrate'
 		);
 		console.log(
 			'If you want this standalone seeder to insert, set ALLOW_STANDALONE_SEED=1'
@@ -67,7 +67,7 @@ async function main() {
 
 		// Force seed (same logic as migration but direct)
 		const { execSync } = await import('child_process');
-		execSync('npx knex migrate:latest', { stdio: 'inherit' });
+		execSync('npm run migrate', { stdio: 'inherit' });
 		console.log('Seed complete via migration');
 		await conn.end();
 	} catch (e) {

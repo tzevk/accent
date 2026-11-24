@@ -49,11 +49,14 @@ This file owns coding, security, data, and testing requirements. Read only secti
 **Trigger: changing queries, migrations, schemas, pools, or database-backed behavior.**
 
 - Use shared `globalThis.__dbPool` from `src/utils/database.js`: `query()` for one query, `withDb(cb)` for multiple queries or transactions, or `dbConnect()` with `finally` to release a connection. Do not create route-local connections.
-- Do not run `CREATE`, `ALTER`, or `SHOW` in route handlers. Use Knex migrations or `hasColumn(db, table, col)` from `src/utils/schema-cache.js` (10-minute cache).
-- The upcoming Lead work read uses Drizzle only to map the existing schema and query through the borrowed app `mysql2` connection; Knex remains the sole schema-migration tool.
+- Do not run `CREATE`, `ALTER`, or `SHOW` in route handlers. Use migrations for schema changes or `hasColumn(db, table, col)` from `src/utils/schema-cache.js` (10-minute cache).
+- Write new application queries with Drizzle over the shared app `mysql2` connection. Keep existing queries unchanged unless their behavior must change; `query()`, `withDb(cb)`, and `dbConnect()` remain the connection owners.
+- Knex migration history is frozen at `migrations/20261115140000_salary_profile_revisions.ts`. It still bootstraps fresh databases, upgrades existing ones, and supplies the historical cutovers used by staged Leads fixture tests. Drizzle owns every future migration in `drizzle/`; the partial Drizzle schema is not a schema-generation source.
+- Author a change with `npm run migrate:make -- --name descriptive_name`, which creates an empty SQL file. Write and review the forward MariaDB SQL, then commit it with its journal metadata. Never use schema push or add batch down migrations. Correct mistakes with another forward migration and recover from verified MariaDB backups.
+- Apply and inspect local changes with `npm run migrate` and `npm run migrate:status`. The runner Zod-validates `drizzle/meta/_journal.json` before status or apply. Use `npm run migrate:prod` and `npm run migrate:prod:status` only for an explicitly approved, configured production target.
 - Keep production pool `connectionLimit` at 5, below MySQL `max_user_connections`.
 - Keep each MySQL pool's `maxIdle` below its connection limit. Otherwise mysql2 does not run its idle timer.
-- Knex selects `DEV_DB_*`, `STAGING_DB_*`, or `PROD_DB_*` by `NODE_ENV` and shares `DB_HOST`. `knexfile.js` reads `DB_PORT` for every branch. The Playwright harness still passes its resolved port directly to the programmatic migration client.
+- The frozen Knex configuration selects `DEV_DB_*`, `STAGING_DB_*`, or `PROD_DB_*` by `NODE_ENV` and shares `DB_HOST`. `knexfile.js` reads `DB_PORT` for every branch. The Playwright harness still passes its resolved port directly to the programmatic migration client.
 - Operational tables generally use `isDelete TINYINT(1) DEFAULT 0`; exceptions are listed in `docs/explanations/DDL_AND_SOFT_DELETE_AUDIT.md`. Include `isDelete = 0` in every applicable `SELECT`, `JOIN`, and `UPDATE`.
 - Invoice, document, expense, and voucher numbers use a generated column based on `IF(isDelete=0, col, NULL) STORED` with a unique index. `outgoing_quotations` instead uses `UNIQUE(quotation_number, isDelete)`.
 - Production is MariaDB 10.11.15. Check database-specific SQL behavior against MariaDB, not only MySQL.

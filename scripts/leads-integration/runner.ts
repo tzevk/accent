@@ -3,6 +3,7 @@ import type { ChildProcess } from 'node:child_process';
 import { strict as assert } from 'node:assert';
 import { z } from 'zod';
 import { readdirSync } from 'node:fs';
+import type { Connection as MysqlConnection } from 'mysql2/promise';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import type { Connection, ResolvedSafety } from './support.ts';
@@ -12,6 +13,11 @@ import {
 	hashFixturePassword,
 	runIdFromDate,
 } from './support.ts';
+import {
+	applyDrizzleMigrations,
+	legacyKnexMigrations,
+	readDrizzleMigrationStatus,
+} from '../db-migrations.ts';
 import type {
 	DbActivityRow,
 	DbConversionRow,
@@ -769,7 +775,7 @@ function createKnex(resolved: ResolvedSafety): KnexInstance {
 			password: resolved.password,
 			database: resolved.name,
 		},
-		migrations: { directory: MIGRATIONS_DIR },
+		migrations: legacyKnexMigrations(process.cwd()),
 	});
 }
 
@@ -2036,6 +2042,15 @@ export async function runLeadsIntegration(
 			await knex.migrate.up({ name: LEAD_ACTIVITIES_MIGRATION_FILE });
 			transferredWorkSeed = await seedTransferredWork(seeder, runTag);
 			await knex.migrate.latest();
+			const migrationConnection = await connectReader(resolved);
+			try {
+				await applyDrizzleMigrations(
+					migrationConnection as unknown as MysqlConnection,
+					process.cwd()
+				);
+			} finally {
+				await migrationConnection.end();
+			}
 			lifecycleSeeds = await seedLifecycleFixtures(
 				seeder,
 				runTag,
@@ -2078,6 +2093,21 @@ export async function runLeadsIntegration(
 			if (Number(applied?.total ?? 0) !== 1)
 				fail(`migration ${migration} not recorded applied`);
 		}
+
+		const drizzleStatus = await readDrizzleMigrationStatus(
+			reader as unknown as MysqlConnection,
+			process.cwd()
+		);
+		assert.equal(
+			drizzleStatus.ledgerExists,
+			true,
+			'Drizzle migration ledger missing from disposable database'
+		);
+		assert.equal(
+			drizzleStatus.pending,
+			0,
+			'disposable database has pending Drizzle migrations'
+		);
 
 		// Each scenario is a separate local client. Keep production rate limits
 		// active without unrelated scenarios sharing one IP bucket.

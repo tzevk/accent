@@ -21,6 +21,18 @@ npm run dev
 
 Open <http://localhost:3000>. For a fresh database, [create a local sign-in account](docs/explanations/SUPER_ADMIN_SETUP.md#method-2-create-new-super-admin-user-via-database). See [local database operations](docs/agents/local-database.md) for the Windows MariaDB helper and disposable test databases.
 
+## Database changes
+
+New application queries use Drizzle over the shared `mysql2` connection; existing queries are not rewritten. Knex history is frozen at `migrations/20261115140000_salary_profile_revisions.ts` and remains the bootstrap/upgrade path and the source for staged historical fixture cutovers. Drizzle owns all future migrations. The partial Drizzle schema is not a schema-generation source.
+
+```sh
+npm run migrate:make -- --name descriptive_name
+npm run migrate
+npm run migrate:status
+```
+
+The generator creates an empty SQL migration. Write and review the forward MariaDB SQL, then commit it with its journal metadata. Use no schema push or batch down; correct errors with a forward migration and recover from verified MariaDB backups. Only explicitly approved production work may use the configured `npm run migrate:prod` and `npm run migrate:prod:status` commands.
+
 ## Verify changes
 
 | Check                                                     | Command or guide                                                  |

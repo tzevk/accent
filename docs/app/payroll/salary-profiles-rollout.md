@@ -35,6 +35,15 @@ never converted into a guessed agreement link.
 
 The migration is `migrations/20261115140000_salary_profile_revisions.ts`.
 
+This is the final Knex migration. That history remains frozen for fresh
+database bootstrap, existing-database upgrades and staged historical test
+cutovers; Drizzle owns all future migrations. Generate a change with
+`npm run migrate:make -- --name descriptive_name`, which creates an empty SQL
+file. Write and review the forward MariaDB SQL, then commit it with its
+journal metadata. The partial Drizzle schema
+is not a generation source. Do not use schema push or batch down; correct with
+a forward migration and recover from verified MariaDB backups.
+
 It is idempotent on MariaDB: tables, columns and indexes are checked through
 `information_schema` before each change, so a partially applied target can be
 re-run. It is not a substitute for a backup.
@@ -61,8 +70,8 @@ What it adds or changes:
 - **Audit vocabulary** — `payroll_audit_logs.action` gains `correct`, `revise`
   and `cancel` while retaining the existing actions.
 
-The CLI's disposable-name guard does not cover `npm run migrate`; the migration
-uses whatever target the environment configuration selects. Confirm the host
+The CLI's disposable-name guard does not cover the migration commands; they
+use whatever target the environment configuration selects. Confirm the host
 and database identity, the backup and the migration version before running.
 Never rely on a database name alone to identify a production target.
 
@@ -200,14 +209,14 @@ or Vercel deployment must never apply a production migration.
    loopback database, apply migrations there first, run the CLI dry-run, review
    every overlap, CTC finding and ambiguity, then exercise `--apply` and repeat
    it. Keep this copy isolated with disposable credentials.
-4. **Apply the reviewed schema migration to the authorized target** using the
-   environment's normal Knex command (`npm run migrate` with that environment's
-   configuration, or the production wrapper only when the operator has
-   explicitly selected that target). Do not combine it with a build.
+4. **Apply the reviewed migrations to the authorized target** with
+   `npm run migrate:prod` and its configured production environment, only
+   after the operator has explicitly selected that target. This applies the
+   frozen Knex history followed by pending Drizzle migrations; do not combine
+   it with a build.
 5. **Verify schema and migration status** before deploying dependent code:
-   `npm run migrate:status` (or the production status wrapper that selects the
-   production config), the new columns/tables/indexes, and the conservative
-   evidence counts. Confirm existing agreement, slip, roster and
+   `npm run migrate:prod:status`, the new columns/tables/indexes, and the
+   conservative evidence counts. Confirm existing agreement, slip, roster and
    audit rows were not rewritten.
 6. **Deploy the application code that reads and writes the new schema.** The
    new code must not run before its columns and tables exist.
@@ -221,8 +230,9 @@ or Vercel deployment must never apply a production migration.
    the reviewed maintenance window closes.
 
 If step 4 fails, do not deploy the application code and do not attempt to
-"fix" salary history in place. Restore from the verified backup or roll back
-with the limits below.
+"fix" salary history in place. Restore from the verified backup and correct
+the cause in a new forward migration rather than editing applied SQL or
+attempting a batch down.
 
 ## Salary-write isolation
 
@@ -252,7 +262,7 @@ conflicts and atomic audit/use writes. It deliberately adds no retry or backoff,
 no global or session-wide isolation change, no worker serialization and no
 queue.
 
-**Rollback consequence:** reverting the helper or a caller's opt-in reintroduces
+**Isolation consequence:** reverting the helper or a caller's opt-in reintroduces
 the eligible-start/use-index gap locks and the cross-Employee deadlock. Partial
 rollback is worse than leaving the isolation explicit: every salary writer must
 use the same protocol. Do not switch the database or session default as a
@@ -271,8 +281,9 @@ change.
 
 ## Rollback limits
 
-`migrations/20261115140000_salary_profile_revisions.ts` has a `down()` path, but
-it is not a safe general undo after the feature has been used:
+`migrations/20261115140000_salary_profile_revisions.ts` retains its historical
+`down()` path, but no batch down command is supported and it is not a safe
+general undo after the feature has been used:
 
 - It drops `employee_salary_payroll_use` and `employee_salary_timelines`,
   removing the durable use and cancellation protections.
@@ -287,9 +298,8 @@ it is not a safe general undo after the feature has been used:
   the REPEATABLE READ gap-lock deadlock. Keep every salary writer on the explicit
   READ COMMITTED protocol if the schema is retained.
 
-Rollback is only appropriate before new CTC-first agreements or post-migration
-payroll/use evidence exist, or with a verified backup that predates them. Never
-use rollback, deletion or mass normalization to clear an ambiguity you have not
+Recovery requires a verified backup that predates the change. Never use a down
+migration, deletion or mass normalization to clear an ambiguity you have not
 resolved.
 
 ## Verification state

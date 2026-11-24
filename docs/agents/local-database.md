@@ -12,6 +12,31 @@ Production uses MariaDB 10.11.15. Test database-specific behavior against MariaD
 - Point the app at the local instance with explicit environment variables, never by editing `.env`: `DB_HOST=127.0.0.1 DB_PORT=33369 DEV_DB_NAME=<local db> DEV_DB_USER=root DEV_DB_PASSWORD=`.
 - Never point tests at development, staging, or production databases.
 
+## Database authoring and migrations
+
+New application queries use Drizzle over the shared app `mysql2` connection;
+existing queries stay unchanged unless their behavior must change. Knex
+history is frozen at
+`migrations/20261115140000_salary_profile_revisions.ts` and still bootstraps
+fresh databases, upgrades existing ones, and supplies staged historical test
+cutovers. Drizzle owns all future migrations in `drizzle/`; its partial schema
+is not a generation source.
+
+Generate a custom migration with an empty SQL file. Write and review the
+forward MariaDB SQL, then commit both the SQL file and journal metadata:
+
+```sh
+npm run migrate:make -- --name descriptive_name
+npm run migrate
+npm run migrate:status
+```
+
+Never use schema push or batch down. Correct a mistake with another forward
+migration and recover from verified MariaDB backups. The configured
+`npm run migrate:prod` and `npm run migrate:prod:status` commands are only for
+explicitly approved production work; local commands must stay on loopback
+development or disposable databases.
+
 ## Leads integration harness
 
 Before running the harness:

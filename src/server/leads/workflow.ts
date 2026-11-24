@@ -1,12 +1,6 @@
 import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
-import {
-	date,
-	int,
-	mysqlTable,
-	tinyint,
-	varchar,
-} from 'drizzle-orm/mysql-core';
 import { drizzle } from 'drizzle-orm/mysql2';
+import { leadWorkActivities, leadWorkLeads } from '@/server/leads/db-schema';
 import type { PoolConnection } from 'mysql2/promise';
 
 import { dbConnect } from '@/utils/database';
@@ -1338,23 +1332,6 @@ export async function getLeadDetail(
 		db.release?.();
 	}
 }
-
-const leadWorkLeads = mysqlTable('leads', {
-	id: int('id').primaryKey(),
-	companyName: varchar('company_name', { length: 255 }).notNull(),
-	isDelete: tinyint('isDelete'),
-});
-
-const leadWorkActivities = mysqlTable('lead_activities', {
-	id: int('id').primaryKey(),
-	leadId: int('lead_id').notNull(),
-	activityType: varchar('activity_type', { length: 16 }),
-	status: varchar('status', { length: 16 }).notNull(),
-	scheduledFor: date('scheduled_for', { mode: 'string' }),
-	nextAction: varchar('next_action', { length: 255 }),
-	isDelete: tinyint('isDelete').notNull(),
-	transferredFollowupId: int('transferred_followup_id'),
-});
 
 /**
  * The outstanding Lead work across Leads, soonest first: the scheduled

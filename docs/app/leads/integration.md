@@ -10,6 +10,24 @@ reader. No test-only routes, no bypasses, no mocked database proof.
 MySQL accepts and rejects different SQL. For local instance details and
 commands, see [Local database operations](../../agents/local-database.md).
 
+## Migration convention
+
+The harness keeps the historical staged cutovers below pinned to their Knex
+files. Knex history is frozen at
+`migrations/20261115140000_salary_profile_revisions.ts`; it still bootstraps
+and upgrades databases, while Drizzle owns all future migrations. After the
+staged historical cutovers, the harness applies pending Drizzle migrations
+from `drizzle/`. The partial Drizzle schema is not a generation source.
+
+For a new schema change, run
+`npm run migrate:make -- --name descriptive_name`. It creates an empty SQL
+file; write and review the forward MariaDB SQL, then commit it with its
+journal metadata. Check it locally with
+`npm run migrate` and `npm run migrate:status`. Production uses
+`npm run migrate:prod` and `npm run migrate:prod:status` only for an explicitly
+approved configured target. Do not use schema push or batch down; correct with
+a forward migration and recover from verified MariaDB backups.
+
 ## Command
 
 ```sh
@@ -28,9 +46,10 @@ staging, or production, or that match any configured branch database. Set the
 variables in your shell only; never add them to `.env`. See the
 `INTEGRATION_DB_*` block in `.env.example`.
 
-Expect the first run to build the full schema from the baseline migration, then
-start the server and run eighty-five scenarios. On MariaDB 10.11 the whole run
-takes a few minutes.
+Expect the first run to build the schema from the frozen Knex history, run the
+staged historical cutovers, and apply pending Drizzle migrations. It then
+starts the server and runs eighty-five scenarios. On MariaDB 10.11 the whole
+run takes a few minutes.
 
 For an isolated report scenario, set
 `LEADS_INTEGRATION_SCENARIO=lead-audit-intake` before the command.
@@ -54,7 +73,8 @@ Run without this variable for the complete regression gate.
    enquiry (the duplicate case) and one on another (the evidence-backed
    case).
 7. Applies the real ticket-370 legacy review migration over the seeded
-   Proposals, then any later migrations.
+   Proposals, then later frozen Knex migrations and all pending Drizzle
+   migrations.
 8. Starts `next dev` on `LEADS_INTEGRATION_PORT` (default 31369) with all
    database branches pinned to the disposable database.
 9. Logs each fixture user in through `POST /api/login` from its own stable
