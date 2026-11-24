@@ -80,10 +80,12 @@ test('saves a new email on My Profile and keeps it after reopening', async ({
 });
 
 // Actor: a signed-in employee with no permission grants, linked to an owned Employee record.
-// Starting state: 3 current-month app-entry days (today at midnight), 6 of 20 leave days used, and 3 'P' attendance days.
+// Starting state: one app-entry day at DB midnight, 6 of 20 leave days used,
+// and three 'P' attendance days with 2.5 authored Payable OT hours.
 // Action: sign in, read the Today's Attendance card, then press Timesheet.
-// Proof: Present 3/<days in month>, Leaves 6.0/20.0 with 14 remaining, Log In 12:00 AM; the linked employee's Timesheet header shows their code and its caption their name and month, with the same seeded 3 days as 24:00:00.
-test('shows the linked employee’s seeded attendance and opens their Timesheet', async ({
+// Proof: Present 3/<days in month>, Payable OT 2.5h, Leaves 6.0/20.0 with 14 remaining,
+// and Log In 12:00 AM. The linked Timesheet keeps 24 status-based hours.
+test('shows recorded attendance separately from app entry and opens their Timesheet', async ({
 	page,
 	db,
 	namespace,
@@ -100,6 +102,14 @@ test('shows the linked employee’s seeded attendance and opens their Timesheet'
 			password: fixture.journey.password,
 		});
 
+		const [activityRows] = await db.execute<RowDataPacket[]>(
+			`SELECT COUNT(DISTINCT DATE(created_at)) AS days
+       FROM user_activity_logs
+      WHERE user_id = ? AND DATE_FORMAT(created_at, '%Y-%m') = ?`,
+			[fixture.journey.userId, fixture.monthKey]
+		);
+		expect(Number(activityRows[0]?.days)).toBe(fixture.appEntryDays);
+
 		const attendanceCard = page.getByTestId('attendance-card');
 		await expect(attendanceCard).toBeVisible();
 		await expect(page.getByTestId('present-figure')).toHaveText(
@@ -107,6 +117,9 @@ test('shows the linked employee’s seeded attendance and opens their Timesheet'
 		);
 		await expect(page.getByTestId('present-denominator')).toHaveText(
 			`/ ${fixture.daysInMonth}`
+		);
+		await expect(page.getByTestId('overtime-figure')).toHaveText(
+			`${fixture.payableOvertimeHours}h`
 		);
 		await expect(page.getByTestId('leave-figure')).toContainText(
 			fixture.leaveUsed

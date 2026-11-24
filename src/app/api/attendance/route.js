@@ -6,37 +6,10 @@ import {
 	PERMISSIONS,
 } from '@/utils/api-permissions';
 import { getSandwichConversions } from '@/utils/sandwich';
-import { deriveDayTimes, deriveOvertime } from '@/lib/punch';
-
-/**
- * Group mapped punches for the month into per-employee per-day derived
- * cells: { [employee_id]: { 'YYYY-MM-DD': { in_time, out_time,
- * overtime_hours } } }. Directions are inferred inside deriveDayTimes.
- */
-function buildPunchDays(rows) {
-	const groups = new Map();
-	for (const row of rows || []) {
-		if (row.employee_id == null || !row.log_date) continue;
-		const date = String(row.log_date).slice(0, 10);
-		const key = `${row.employee_id}|${date}`;
-		const group = groups.get(key);
-		if (group) group.push(row);
-		else groups.set(key, [row]);
-	}
-
-	const punchDays = {};
-	for (const [key, dayPunches] of groups) {
-		const [empId, date] = key.split('|');
-		const times = deriveDayTimes(dayPunches);
-		if (times.in_time == null && times.out_time == null) continue;
-		if (!punchDays[empId]) punchDays[empId] = {};
-		punchDays[empId][date] = {
-			...times,
-			overtime_hours: deriveOvertime(times.in_time, times.out_time),
-		};
-	}
-	return punchDays;
-}
+import {
+	buildAttendancePunchDays,
+	overlayAttendanceRecordPunch,
+} from '@/lib/attendance-record-punches';
 
 // GET - Fetch attendance records
 export async function GET(request) {
@@ -122,7 +95,7 @@ export async function GET(request) {
           ORDER BY al.log_date`,
 					punchParams
 				);
-				punchDays = buildPunchDays(punchRows);
+				punchDays = buildAttendancePunchDays(punchRows);
 			} catch (punchError) {
 				// attendance_logs may be empty/missing — grid stays manual.
 				console.error('Error deriving punch days:', punchError);
@@ -151,27 +124,20 @@ export async function GET(request) {
 			const dateKey = new Date(record.attendance_date)
 				.toISOString()
 				.split('T')[0];
-			const day = {
-				status: record.status,
-				overtime_hours: record.overtime_hours,
-				is_weekly_off: record.is_weekly_off,
-				is_holiday: record.is_holiday,
-				remarks: record.remarks,
-				in_time: record.in_time,
-				out_time: record.out_time,
-				idle_time: record.idle_time || 0,
-			};
-			// Punches always win on times (ADR-0007) and re-derive OT on
-			// every punch-day — one precedence rule — except Half Day,
-			// where HR's authored intent defeats device evidence.
 			const punch = punchDays[record.employee_id]?.[dateKey];
-			if (punch) {
-				day.in_time = punch.in_time;
-				day.out_time = punch.out_time;
-				if (String(record.status || '').toUpperCase() !== 'HD') {
-					day.overtime_hours = punch.overtime_hours;
-				}
-			}
+			const day = overlayAttendanceRecordPunch(
+				{
+					status: record.status,
+					overtime_hours: record.overtime_hours,
+					is_weekly_off: record.is_weekly_off,
+					is_holiday: record.is_holiday,
+					remarks: record.remarks,
+					in_time: record.in_time,
+					out_time: record.out_time,
+					idle_time: record.idle_time || 0,
+				},
+				punch
+			);
 			employeeSummary[record.employee_id].days[dateKey] = day;
 
 			// Update totals

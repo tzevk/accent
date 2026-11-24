@@ -283,9 +283,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		[]
 	);
 
-	// Attendance reads share a per-user cache. Its two-minute poll runs only
-	// while the document is visible. Log In shows the first app entry;
-	// Log Out stays a dash.
+	// Attendance reads share a per-user cache. Refetch on mount and when
+	// returning to the page, without a background timer. Log In shows the
+	// first app entry; Log Out stays a dash.
 	const currentUserId = verifiedUser?.id || user?.id;
 	const queryClient = useQueryClient();
 	const attendanceQueryKey = useMemo(
@@ -296,8 +296,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		queryKey: attendanceQueryKey,
 		queryFn: () => apiGet(`/api/users/${currentUserId}/attendance`),
 		enabled: !!currentUserId,
-		refetchInterval: 120000, // Matches heartbeat interval
-		refetchIntervalInBackground: false,
+		refetchOnMount: 'always',
 		// Override the provider default so returning to a fresh page still reads now.
 		refetchOnWindowFocus: 'always',
 	});
@@ -308,18 +307,15 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		logoutTime: null,
 		accessStatus: 'ok',
 		accessDate: null,
-		currentMonth: '',
-		daysInMonth: 0,
-		daysPresent: 0,
-		weeklyOff: 0,
-		holidays: 0,
-		overtimeHours: 0,
-		leaves: { total: 24, used: 0, balance: 24 },
+		daysInMonth: null,
+		daysPresent: null,
+		overtimeHours: null,
+		leaves: null,
 		...(attendanceDay || {}),
 	};
 	// A failed fetch and a day that recorded nothing are different facts
 	// (#340): the query state decides which one the tiles see, and a
-	// successful poll clears either back to the day's own state. The access
+	// successful refetch clears either back to the day's own state. The access
 	// source names its own failure, so the clocks never read stale or
 	// fabricated times.
 	const accessSourceError = attendance.accessStatus === 'error';
@@ -468,7 +464,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	// The shell clears once both tier-1 reads settled: the assignments
 	// effect above and the attendance query. Either may fail — the tiles
 	// name their own failure — but neither may leave the loader spinning.
-	// A later poll refetches behind the painted shell, never through it.
+	// A later refetch updates behind the painted shell, never through it.
 	useEffect(() => {
 		if (
 			assignmentsLoad !== LOAD_PENDING &&
@@ -484,8 +480,8 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 		attendanceQuery.isError,
 	]);
 
-	// Polling replaces the day's payload, including null clears.
-	// The per-user query key isolates reads across viewer changes.
+	// Mount and focus refetches replace the day's payload, including null
+	// clears. The per-user query key isolates reads across viewer changes.
 
 	// Saved-activity reminder: two quiet hours without a logged save, even
 	// while browsing. Only the viewed user's own dashboard enables it — an
@@ -533,6 +529,13 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 	// Log In stays fixed across later logins, refreshes, and tabs.
 	const loginValue = attendance.loginTime;
+	const presentAvailable = attendance.daysPresent !== null;
+	const presentDenominatorAvailable =
+		presentAvailable && attendance.daysInMonth !== null;
+	const presentProgressAvailable =
+		presentDenominatorAvailable && attendance.daysInMonth > 0;
+	const leaveAvailable = attendance.leaves !== null;
+	const overtimeAvailable = attendance.overtimeHours !== null;
 
 	// ── Loading state ──
 	if (loading) {
@@ -924,7 +927,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.daysPresent > 0 ? 'bg-gradient-to-br from-blue-500 to-sky-600 text-white shadow-blue-200 group-hover:shadow-blue-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${presentAvailable && attendance.daysPresent > 0 ? 'bg-gradient-to-br from-blue-500 to-sky-600 text-white shadow-blue-200 group-hover:shadow-blue-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<CalendarDaysIcon className="h-4 w-4" />
 												</div>
@@ -934,18 +937,23 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											</p>
 											<p
 												data-testid="present-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-500'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${presentAvailable && attendance.daysPresent > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{attendance.daysPresent}
-												<span
-													data-testid="present-denominator"
-													className="text-sm font-semibold text-gray-500 ml-0.5"
-												>
-													/ {attendance.daysInMonth}
-												</span>
+												{presentAvailable ? attendance.daysPresent : NO_VALUE}
+												{presentDenominatorAvailable && (
+													<span
+														data-testid="present-denominator"
+														className="text-sm font-semibold text-gray-500 ml-0.5"
+													>
+														/ {attendance.daysInMonth}
+													</span>
+												)}
 											</p>
-											{attendance.daysInMonth > 0 && (
-												<div className="mt-2 h-1.5 rounded-full bg-blue-100 overflow-hidden">
+											{presentProgressAvailable && (
+												<div
+													data-testid="present-progress"
+													className="mt-2 h-1.5 rounded-full bg-blue-100 overflow-hidden"
+												>
 													<div
 														className="h-full rounded-full bg-gradient-to-r from-blue-500 to-sky-500 transition-all duration-700 ease-out"
 														style={{
@@ -969,7 +977,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.leaves.used > 0 ? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200 group-hover:shadow-amber-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${leaveAvailable && attendance.leaves.used > 0 ? 'bg-gradient-to-br from-amber-500 to-yellow-600 text-white shadow-amber-200 group-hover:shadow-amber-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<CalendarIcon className="h-4 w-4" />
 												</div>
@@ -979,23 +987,29 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 											</p>
 											<p
 												data-testid="leave-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-500'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${leaveAvailable && attendance.leaves.used > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{attendance.leaves.used}
-												<span
-													data-testid="leave-denominator"
-													className="text-sm font-semibold text-gray-500 ml-0.5"
+												{leaveAvailable
+													? Number(attendance.leaves.used).toFixed(1)
+													: NO_VALUE}
+												{leaveAvailable && (
+													<span
+														data-testid="leave-denominator"
+														className="text-sm font-semibold text-gray-500 ml-0.5"
+													>
+														/ {Number(attendance.leaves.total).toFixed(1)}
+													</span>
+												)}
+											</p>
+											{leaveAvailable && (
+												<p
+													data-testid="leave-balance"
+													className="text-xs text-amber-700 font-semibold mt-1.5 flex items-center gap-1 tabular-nums"
 												>
-													/ {attendance.leaves.total}
-												</span>
-											</p>
-											<p
-												data-testid="leave-balance"
-												className="text-xs text-amber-700 font-semibold mt-1.5 flex items-center gap-1 tabular-nums"
-											>
-												<span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />{' '}
-												{attendance.leaves.balance} remaining
-											</p>
+													<span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />{' '}
+													{attendance.leaves.balance} remaining
+												</p>
+											)}
 											<p className="mt-1.5 pt-1.5 border-t border-amber-200/60 -mx-px flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#64126D] transition-colors duration-150 group-hover:text-[#4a0d52]">
 												View &amp; apply
 												<ArrowRightIcon className="h-2.5 w-2.5 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none" />
@@ -1008,22 +1022,26 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 										<div className="relative">
 											<div className="flex items-center justify-between mb-2">
 												<div
-													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${attendance.overtimeHours > 0 ? 'bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-orange-200 group-hover:shadow-orange-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
+													className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 shadow-sm ${overtimeAvailable && attendance.overtimeHours > 0 ? 'bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-orange-200 group-hover:shadow-orange-300 group-hover:shadow-md' : 'bg-gray-200 text-gray-500'}`}
 												>
 													<FireIcon className="h-4 w-4" />
 												</div>
 											</div>
 											<p className="text-xs font-bold text-gray-500 uppercase tracking-widest leading-none mb-1">
-												Overtime
+												Payable OT
 											</p>
 											<p
 												data-testid="overtime-figure"
-												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-500'}`}
+												className={`text-base font-extrabold leading-tight tracking-tight tabular-nums ${overtimeAvailable && attendance.overtimeHours > 0 ? 'text-gray-900' : 'text-gray-500'}`}
 											>
-												{attendance.overtimeHours}
-												<span className="text-sm font-semibold text-gray-500 ml-0.5">
-													h
-												</span>
+												{overtimeAvailable
+													? attendance.overtimeHours
+													: NO_VALUE}
+												{overtimeAvailable && (
+													<span className="text-sm font-semibold text-gray-500 ml-0.5">
+														h
+													</span>
+												)}
 											</p>
 											<p className="text-xs text-gray-500 mt-1.5 font-medium">
 												this month
