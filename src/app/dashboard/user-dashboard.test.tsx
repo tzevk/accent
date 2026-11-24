@@ -122,11 +122,6 @@ function mockTierFetches(): void {
 				}),
 			});
 		}
-		if (url.includes('/api/messages/unread-count')) {
-			return Promise.resolve({
-				json: async () => ({ success: true, data: { unread_count: 0 } }),
-			});
-		}
 		if (url.includes('/api/todos')) {
 			return Promise.resolve({
 				json: async () => ({ success: true, data: [] }),
@@ -212,6 +207,23 @@ describe('user dashboard attendance sources', () => {
 			within(card).queryByTestId('total-time-remaining')
 		).not.toBeInTheDocument();
 		expect(within(card).queryByText(/m remaining/)).not.toBeInTheDocument();
+
+		// Tier 2 still loads todos and work logs without requesting messages.
+		await waitFor(() => {
+			expect(
+				fetchMock.mock.calls.some((call: unknown[]) => call[0] === '/api/todos')
+			).toBe(true);
+			expect(
+				fetchMock.mock.calls.some((call: unknown[]) =>
+					String(call[0]).startsWith('/api/work-logs?')
+				)
+			).toBe(true);
+		});
+		expect(
+			fetchMock.mock.calls.some(
+				(call: unknown[]) => call[0] === '/api/messages/unread-count'
+			)
+		).toBe(false);
 	});
 
 	it('keeps first entry fixed while a later poll refreshes attendance', async () => {

@@ -355,7 +355,6 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 
 	// Module data
 	const [moduleAssignments, setModuleAssignments] = useState({
-		unreadMessages: 0,
 		pendingTodos: 0,
 		highPriorityTodos: 0,
 		upcomingDeadlines: [],
@@ -398,7 +397,6 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 	});
 
 	const [moduleAccess, setModuleAccess] = useState({
-		messages: true,
 		todos: true,
 		workLogs: true,
 		dashboard: true,
@@ -486,17 +484,9 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 				// and the tiles read it, so an early shell would flash empty.
 				// Tier 2 stays non-blocking below.
 
-				// ── Tier 2 (non-blocking): messages, todos, work-logs ──
+				// ── Tier 2 (non-blocking): todos, work-logs ──
 				// Fetched after shell renders so user sees content sooner
 				const tier2 = await Promise.allSettled([
-					fetch('/api/messages/unread-count', { signal })
-						.then((r) => {
-							if (r.status === 401 || r.status === 403)
-								return { _denied: 'messages' };
-							return r.json();
-						})
-						.catch(() => ({ _denied: 'messages' })),
-
 					fetch('/api/todos', { signal })
 						.then((r) => {
 							if (r.status === 401 || r.status === 403)
@@ -522,12 +512,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 				const accessPatch = {};
 				const dataPatch = {};
 
-				const msgVal = tier2[0].status === 'fulfilled' ? tier2[0].value : null;
-				if (msgVal?._denied) accessPatch.messages = false;
-				else if (msgVal?.success)
-					dataPatch.unreadMessages = msgVal.data.unread_count || 0;
-
-				const todoVal = tier2[1].status === 'fulfilled' ? tier2[1].value : null;
+				const todoVal = tier2[0].status === 'fulfilled' ? tier2[0].value : null;
 				if (todoVal?._denied) accessPatch.todos = false;
 				else if (todoVal?.success && todoVal.data) {
 					const pending = todoVal.data.filter((t) => t.status !== 'completed');
@@ -537,7 +522,7 @@ export default function UserDashboard({ verifiedUser, backTo }) {
 					).length;
 				}
 
-				const wlVal = tier2[2].status === 'fulfilled' ? tier2[2].value : null;
+				const wlVal = tier2[1].status === 'fulfilled' ? tier2[1].value : null;
 				if (wlVal?._denied) accessPatch.workLogs = false;
 				else if (wlVal?.success && wlVal.data) {
 					const totalHours = wlVal.data.reduce(

@@ -46,7 +46,6 @@ const RESOURCE_LABELS: Record<string, string> = {
 	dashboard: 'Dashboard',
 	reports: 'Reports',
 	work_logs: 'Work Logs',
-	messages: 'Messages',
 	profile: 'Profile',
 	tickets: 'Tickets',
 	followups: 'Follow-ups',
@@ -124,9 +123,8 @@ export function parseRolePermissions(value: unknown): string[] {
  * Build the editor/display groups for a permission set.
  *
  * Every known resource is listed with its described actions; resources
- * without a description fall back to the standard CRUD actions. Any stored
- * action missing from the catalogue is still shown, so an old grant cannot
- * become invisible and unremovable.
+ * action missing from the catalogue is still shown unless its feature was
+ * retired. This keeps other old grants visible and removable.
  */
 export function getRolePermissionGroups(
 	grantedPermissions: readonly string[]
@@ -138,6 +136,7 @@ export function getRolePermissionGroups(
 
 	for (const key of grantedSet) {
 		const [resource] = key.split(':');
+		if (resource === 'messages') continue;
 		if (resource && !resourceSet.has(resource)) {
 			resourceSet.add(resource);
 			extraResources.push(resource);

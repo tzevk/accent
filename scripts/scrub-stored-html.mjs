@@ -24,7 +24,7 @@
  *                                                    # record the run summary
  *
  * Columns — enumerated from the code on 2026-09-28 (rich text only):
- *   messages.body                        rendered at messages/page.jsx:1488
+ *   messages.body                        retained data from the retired Messages feature
  *   proposals.description                proposals/[id]/edit/page.jsx:1244 (RichTextEditor)
  *   proposals.discipline_descriptions    JSON map { discipline: html } (proposals/route.js:244)
  *   projects.description                 projects/[id]/route.js:813

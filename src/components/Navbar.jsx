@@ -18,7 +18,6 @@ import {
 	ClipboardDocumentCheckIcon,
 	ClipboardDocumentListIcon,
 	FingerPrintIcon,
-	ChatBubbleLeftRightIcon,
 	TicketIcon,
 	BuildingOfficeIcon,
 	BuildingLibraryIcon,
@@ -52,7 +51,6 @@ const navigationConfig = [
 
 // Sidebar pages surfaced in the mobile menu (the sidebar is hidden below 640px)
 const mobilePagesConfig = [
-	{ name: 'Messages', href: '/messages', icon: ChatBubbleLeftRightIcon },
 	{ name: 'Support Tickets', href: '/tickets', icon: TicketIcon },
 	{
 		name: 'Employees',

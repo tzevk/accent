@@ -16,7 +16,6 @@ export const RESOURCES = {
 	DASHBOARD: 'dashboard',
 	REPORTS: 'reports',
 	WORK_LOGS: 'work_logs',
-	MESSAGES: 'messages',
 	PROFILE: 'profile',
 	TICKETS: 'tickets',
 	FOLLOWUPS: 'followups',

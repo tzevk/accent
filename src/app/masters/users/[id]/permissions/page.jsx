@@ -764,22 +764,6 @@ const MODULE_FIELDS = {
 			},
 		},
 	},
-	messages: {
-		name: 'Messages',
-		description: 'Internal messaging system',
-		category: 'module',
-		sections: {
-			messaging: {
-				name: 'Messaging',
-				fields: {
-					send_message: { label: 'Send Messages', type: 'action' },
-					view_messages: { label: 'View Messages', type: 'view' },
-					attachments: { label: 'Attachments', type: 'file' },
-					group_messages: { label: 'Group Messages', type: 'action' },
-				},
-			},
-		},
-	},
 	profile: {
 		name: 'Profile',
 		description: 'User profile management',

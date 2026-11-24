@@ -16,7 +16,6 @@ import {
 	LibraryBig,
 	LogOut,
 	ListTodo,
-	MessageSquare,
 	ShieldCheck,
 	Tags,
 	Ticket,
@@ -31,7 +30,6 @@ import {
 	SidebarGroupContent,
 	SidebarHeader,
 	SidebarMenu,
-	SidebarMenuBadge,
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarMenuSub,
@@ -49,7 +47,7 @@ import {
 import { useSessionRBAC } from '@/utils/client-rbac';
 import { logout } from '@/lib/logout';
 
-function NavButton({ icon: Icon, label, href, active, badge }) {
+function NavButton({ icon: Icon, label, href, active }) {
 	return (
 		<SidebarMenuItem>
 			<SidebarMenuButton
@@ -59,7 +57,6 @@ function NavButton({ icon: Icon, label, href, active, badge }) {
 			>
 				<Icon />
 				<span>{label}</span>
-				{badge ? <SidebarMenuBadge>{badge}</SidebarMenuBadge> : null}
 			</SidebarMenuButton>
 		</SidebarMenuItem>
 	);
@@ -93,7 +90,6 @@ export default function Sidebar() {
 	const displayEmail = user?.email || '';
 	const isSignin = pathname.startsWith('/signin');
 	const [mounted, setMounted] = useState(false);
-	const [unreadMessages, setUnreadMessages] = useState(0);
 	const [todoPanelOpen, setTodoPanelOpen] = useState(false);
 
 	const isMasterRoute = ['/employees', '/masters', '/company', '/vendors'].some(
@@ -122,26 +118,6 @@ export default function Sidebar() {
 		window.addEventListener('todoPanelChanged', handler);
 		return () => window.removeEventListener('todoPanelChanged', handler);
 	}, []);
-
-	useEffect(() => {
-		if (!mounted || isSignin || !user) return;
-
-		const fetchUnreadCount = async () => {
-			try {
-				const res = await fetch('/api/messages/unread-count');
-				const data = await res.json();
-				if (data.success) {
-					setUnreadMessages(data.data.unread_count);
-				}
-			} catch (error) {
-				console.error('Failed to fetch unread messages:', error);
-			}
-		};
-
-		fetchUnreadCount();
-		const interval = setInterval(fetchUnreadCount, 60000);
-		return () => clearInterval(interval);
-	}, [mounted, isSignin, user]);
 
 	const isOnUserDashboard = pathname.startsWith('/user/dashboard');
 	const isOnAdminRoute = pathname.startsWith('/admin/');
@@ -321,13 +297,6 @@ export default function Sidebar() {
 									pathname === '/admin/dashboard' ||
 									pathname === '/user/dashboard'
 								}
-							/>
-							<NavButton
-								icon={MessageSquare}
-								label="Messages"
-								href="/messages"
-								active={pathname.startsWith('/messages')}
-								badge={unreadMessages > 0 ? unreadMessages : null}
 							/>
 							<SidebarMenuItem>
 								<SidebarMenuButton
