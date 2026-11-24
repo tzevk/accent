@@ -50,6 +50,7 @@ This file owns coding, security, data, and testing requirements. Read only secti
 
 - Use shared `globalThis.__dbPool` from `src/utils/database.js`: `query()` for one query, `withDb(cb)` for multiple queries or transactions, or `dbConnect()` with `finally` to release a connection. Do not create route-local connections.
 - Do not run `CREATE`, `ALTER`, or `SHOW` in route handlers. Use Knex migrations or `hasColumn(db, table, col)` from `src/utils/schema-cache.js` (10-minute cache).
+- The upcoming Lead work read uses Drizzle only to map the existing schema and query through the borrowed app `mysql2` connection; Knex remains the sole schema-migration tool.
 - Keep production pool `connectionLimit` at 5, below MySQL `max_user_connections`.
 - Keep each MySQL pool's `maxIdle` below its connection limit. Otherwise mysql2 does not run its idle timer.
 - Knex selects `DEV_DB_*`, `STAGING_DB_*`, or `PROD_DB_*` by `NODE_ENV` and shares `DB_HOST`. `knexfile.js` reads `DB_PORT` for every branch. The Playwright harness still passes its resolved port directly to the programmatic migration client.

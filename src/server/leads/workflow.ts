@@ -1,3 +1,14 @@
+import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
+import {
+	date,
+	int,
+	mysqlTable,
+	tinyint,
+	varchar,
+} from 'drizzle-orm/mysql-core';
+import { drizzle } from 'drizzle-orm/mysql2';
+import type { PoolConnection } from 'mysql2/promise';
+
 import { dbConnect } from '@/utils/database';
 import { isActiveLeadStage, type LeadStage } from '@/lib/lead-stages';
 import { openLegacyReviewItems } from '@/lib/lead-review';
@@ -1328,6 +1339,23 @@ export async function getLeadDetail(
 	}
 }
 
+const leadWorkLeads = mysqlTable('leads', {
+	id: int('id').primaryKey(),
+	companyName: varchar('company_name', { length: 255 }).notNull(),
+	isDelete: tinyint('isDelete'),
+});
+
+const leadWorkActivities = mysqlTable('lead_activities', {
+	id: int('id').primaryKey(),
+	leadId: int('lead_id').notNull(),
+	activityType: varchar('activity_type', { length: 16 }),
+	status: varchar('status', { length: 16 }).notNull(),
+	scheduledFor: date('scheduled_for', { mode: 'string' }),
+	nextAction: varchar('next_action', { length: 255 }),
+	isDelete: tinyint('isDelete').notNull(),
+	transferredFollowupId: int('transferred_followup_id'),
+});
+
 /**
  * The outstanding Lead work across Leads, soonest first: the scheduled
  * rows that were neither completed, cancelled, nor transferred away. The
@@ -1344,32 +1372,40 @@ export async function listUpcomingLeadWork(limit: number): Promise<
 		status: string | null;
 	}>
 > {
-	const db = (await dbConnect()) as unknown as DbConnection;
+	const db = (await dbConnect()) as unknown as PoolConnection;
 	try {
-		const [rows] = (await db.execute(
-			`SELECT a.id, a.lead_id, l.company_name, a.activity_type,
-              a.scheduled_for, a.next_action, a.status
-        FROM lead_activities a
-        JOIN leads l ON l.id = a.lead_id AND ${LEAD_ACTIVE_FILTER}
-        WHERE a.status = 'Scheduled'
-          AND a.transferred_followup_id IS NULL
-          AND a.scheduled_for IS NOT NULL
-          AND (a.isDelete = 0 OR a.isDelete IS NULL)
-        ORDER BY a.scheduled_for ASC, a.id ASC
-        LIMIT ?`,
-			[limit]
-		)) as unknown as [
-			{
-				id: number;
-				lead_id: number;
-				company_name: string | null;
-				activity_type: string | null;
-				scheduled_for: string | null;
-				next_action: string | null;
-				status: string | null;
-			}[],
-			unknown,
-		];
+		const drizzleDb = drizzle({ client: db });
+		const rows = await drizzleDb
+			.select({
+				id: leadWorkActivities.id,
+				lead_id: leadWorkActivities.leadId,
+				company_name: leadWorkLeads.companyName,
+				activity_type: leadWorkActivities.activityType,
+				scheduled_for: leadWorkActivities.scheduledFor,
+				next_action: leadWorkActivities.nextAction,
+				status: leadWorkActivities.status,
+			})
+			.from(leadWorkActivities)
+			.innerJoin(
+				leadWorkLeads,
+				and(
+					eq(leadWorkLeads.id, leadWorkActivities.leadId),
+					or(eq(leadWorkLeads.isDelete, 0), isNull(leadWorkLeads.isDelete))
+				)
+			)
+			.where(
+				and(
+					eq(leadWorkActivities.status, 'Scheduled'),
+					isNull(leadWorkActivities.transferredFollowupId),
+					isNotNull(leadWorkActivities.scheduledFor),
+					or(
+						eq(leadWorkActivities.isDelete, 0),
+						isNull(leadWorkActivities.isDelete)
+					)
+				)
+			)
+			.orderBy(asc(leadWorkActivities.scheduledFor), asc(leadWorkActivities.id))
+			.limit(limit);
 		return rows.map((row) => ({
 			id: row.id,
 			lead_id: row.lead_id,

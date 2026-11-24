@@ -71,6 +71,7 @@
 		"docxtemplater": "^3.29.0",
 		"dompurify": "^3.4.16",
 		"dotenv": "^17.2.3",
+		"drizzle-orm": "0.45.4",
 		"exceljs": "^4.4.0",
 		"html2canvas": "^1.4.1",
 		"jspdf": "^4.0.0",
