@@ -23,9 +23,9 @@ native migrations remain in `drizzle/`. The partial Drizzle schema is not a
 generation source.
 
 For a new schema change, run
-`npm run migrate:make -- --name descriptive_name`. It creates an empty SQL
-file; write and review the forward MariaDB SQL, then commit it with its
-journal metadata. Check it locally with
+`npm run migrate:make -- --name descriptive_name`. It creates a migration
+folder in `drizzle/`. Write and review the forward MariaDB SQL in
+`migration.sql`, then commit it with `snapshot.json`. Check it locally with
 `npm run migrate` and `npm run migrate:status`. Production uses
 `npm run migrate:prod` and `npm run migrate:prod:status` only for an explicitly
 approved configured target. Do not use schema push or batch down; correct with

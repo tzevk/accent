@@ -45,11 +45,11 @@ migrations. Unknown or untracked database state fails closed. Preserve the
 existing Knex history tables for audit.
 
 Drizzle owns all future migrations. Generate a change with
-`npm run migrate:make -- --name descriptive_name`, which creates an empty SQL
-file. Write and review the forward MariaDB SQL, then commit it with its
-journal metadata. The partial Drizzle schema is not a generation source. Do
-not use schema push or batch down; correct with a forward migration and
-recover from verified MariaDB backups.
+`npm run migrate:make -- --name descriptive_name`, which creates a migration
+folder in `drizzle/`. Write and review the forward MariaDB SQL in
+`migration.sql`, then commit it with `snapshot.json`. The partial Drizzle
+schema is not a generation source. Do not use schema push or batch down.
+Correct mistakes with a forward migration and recover from verified MariaDB backups.
 
 It remains idempotent on MariaDB: tables, columns and indexes are checked
 through `information_schema` before each change, so a partially applied target

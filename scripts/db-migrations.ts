@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/mysql2';
-import { migrate } from 'drizzle-orm/mysql2/migrator';
-import { readMigrationFiles } from 'drizzle-orm/migrator';
+import { readMigrationFiles, type MigrationMeta } from 'drizzle-orm/migrator';
 import type { Connection, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
 import { executeMigrationSql, type MigrationDb } from './migration-sql.ts';
@@ -50,8 +50,14 @@ interface HistoricalMigration extends Migration {
 	sourcePath: string;
 }
 
+interface NativeMigration extends Migration {
+	name: string;
+	sql: string[];
+}
+
 interface MigrationCatalog {
 	historical: HistoricalMigration[];
+	native: NativeMigration[];
 	all: Migration[];
 }
 
@@ -83,69 +89,158 @@ const HISTORICAL_MIGRATION_MANIFEST_SCHEMA = z
 		}
 	);
 
-const DRIZZLE_MIGRATION_TAG = /^[A-Za-z0-9_-]+$/;
-const DRIZZLE_JOURNAL_SCHEMA = z.strictObject({
-	version: z.literal('7'),
-	dialect: z.literal('mysql'),
-	entries: z
-		.array(
-			z.strictObject({
-				idx: z.int().nonnegative(),
-				version: z.literal('5'),
-				when: z.int().positive(),
-				tag: z.string().min(1).max(251).regex(DRIZZLE_MIGRATION_TAG),
-				breakpoints: z.boolean(),
-			})
-		)
-		.refine(
-			(entries) =>
-				entries.every(
-					(entry, index) =>
-						entry.idx === index && entry.when > HISTORICAL_MIGRATION_COUNT
-				),
-			{
-				message:
-					'Entry indexes must be sequential and timestamps must follow historical migrations',
+const DRIZZLE_MIGRATION_FOLDER_NAME = /^(\d{14})_(.+)$/;
+
+function utcMillisFromMigrationFolder(name: string): number | null {
+	const match = DRIZZLE_MIGRATION_FOLDER_NAME.exec(name);
+	if (match === null) {
+		return null;
+	}
+
+	const timestamp = match[1]!;
+	const iso = `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)}T${timestamp.slice(8, 10)}:${timestamp.slice(10, 12)}:${timestamp.slice(12, 14)}.000Z`;
+	const millis = Date.parse(iso);
+	return Number.isFinite(millis) && new Date(millis).toISOString() === iso
+		? millis
+		: null;
+}
+
+const DRIZZLE_MIGRATION_FOLDER_SCHEMA = z
+	.string()
+	.regex(DRIZZLE_MIGRATION_FOLDER_NAME)
+	.refine((name) => utcMillisFromMigrationFolder(name) !== null, {
+		message: 'Migration folders must start with a valid UTC timestamp',
+	})
+	.refine((name) => !name.includes('/') && !name.includes('\\'), {
+		message: 'Migration folder names must not contain path separators',
+	});
+
+const DRIZZLE_NATIVE_MIGRATION_SCHEMA = z
+	.strictObject({
+		sql: z.array(z.string()).min(1),
+		bps: z.literal(true),
+		folderMillis: z.int().positive(),
+		hash: z.string().regex(/^[a-f0-9]{64}$/),
+		name: DRIZZLE_MIGRATION_FOLDER_SCHEMA,
+	})
+	.refine(
+		(migration) =>
+			migration.folderMillis === utcMillisFromMigrationFolder(migration.name) &&
+			migration.folderMillis > HISTORICAL_MIGRATION_COUNT,
+		{
+			message:
+				'Migration metadata must match its UTC folder timestamp and follow historical migrations',
+		}
+	);
+
+function readNativeMigrationFolders(migrationsFolder: string): string[] {
+	const entries = readdirSync(migrationsFolder, { withFileTypes: true });
+	const names: string[] = [];
+	for (const entry of entries) {
+		if (entry.name === 'history') {
+			if (!entry.isDirectory()) {
+				throw new Error(
+					`Drizzle history path must be a directory: ${entry.name}`
+				);
 			}
-		)
-		.refine(
-			(entries) =>
-				entries.every(
-					(entry, index) => index === 0 || entry.when > entries[index - 1].when
-				),
-			{ message: 'Entry timestamps must be strictly increasing' }
-		)
-		.refine(
-			(entries) =>
-				new Set(entries.map((entry) => entry.tag)).size === entries.length,
-			{ message: 'Entry tags must be unique' }
-		),
-});
+			continue;
+		}
+
+		if (entry.name === 'meta') {
+			const metaPath = path.join(migrationsFolder, entry.name);
+			// Deleting the old journal can leave an empty local directory.
+			if (!entry.isDirectory() || readdirSync(metaPath).length > 0) {
+				throw new Error(
+					`Unsupported Drizzle metadata at ${metaPath}; only an empty legacy directory is allowed.`
+				);
+			}
+			continue;
+		}
+
+		if (!entry.isDirectory()) {
+			throw new Error(
+				`Unexpected file in Drizzle migration folder: ${entry.name}. ` +
+					'v3 migrations use <UTC timestamp>_<name>/migration.sql.'
+			);
+		}
+
+		const result = DRIZZLE_MIGRATION_FOLDER_SCHEMA.safeParse(entry.name);
+		if (!result.success) {
+			throw new Error(
+				`Invalid Drizzle v3 migration folder ${entry.name}: ${result.error.message}`
+			);
+		}
+
+		names.push(entry.name);
+	}
+
+	return names;
+}
+
+function hashNativeMigration(name: string, sqlHash: string): string {
+	return createHash('sha256')
+		.update(name)
+		.update('\0')
+		.update(sqlHash)
+		.digest('hex');
+}
+
+function readNativeMigrations(migrationsFolder: string): NativeMigration[] {
+	const folderNames = readNativeMigrationFolders(migrationsFolder);
+	let migrationFiles: MigrationMeta[];
+	try {
+		migrationFiles = readMigrationFiles({ migrationsFolder });
+	} catch (error) {
+		throw new Error(
+			`Could not read Drizzle v3 migrations at ${migrationsFolder}: ` +
+				(error instanceof Error ? error.message : String(error)),
+			{ cause: error }
+		);
+	}
+
+	const result = z
+		.array(DRIZZLE_NATIVE_MIGRATION_SCHEMA)
+		.safeParse(migrationFiles);
+	if (!result.success) {
+		throw new Error(
+			`Invalid Drizzle v3 migration metadata at ${migrationsFolder}: ` +
+				result.error.message
+		);
+	}
+
+	const metadataNames = new Set(result.data.map((migration) => migration.name));
+	const missingSql = folderNames.filter((name) => !metadataNames.has(name));
+	if (missingSql.length > 0) {
+		throw new Error(
+			`Drizzle migration folders have no migration.sql: ${missingSql.join(', ')}.`
+		);
+	}
+
+	const folderNameSet = new Set(folderNames);
+	if (
+		result.data.length !== folderNames.length ||
+		metadataNames.size !== result.data.length ||
+		result.data.some((migration) => !folderNameSet.has(migration.name))
+	) {
+		throw new Error(
+			'Drizzle migration folders do not match readMigrationFiles metadata.'
+		);
+	}
+
+	// Keep every folder in reader order, including distinct names in one UTC second.
+	return result.data.map((migration) => ({
+		name: migration.name,
+		sql: migration.sql,
+		hash: hashNativeMigration(migration.name, migration.hash),
+		createdAt: migration.folderMillis,
+	}));
+}
 
 function readDrizzleMigrations(projectRoot: string): MigrationCatalog {
 	const migrationsFolder = path.resolve(projectRoot, 'drizzle');
 	const historyFolder = path.join(migrationsFolder, 'history');
-	const journalPath = path.join(migrationsFolder, 'meta', '_journal.json');
 	const manifestPath = path.join(historyFolder, 'manifest.json');
 	let manifest: unknown;
-	let journal: unknown;
-
-	try {
-		journal = JSON.parse(readFileSync(journalPath, 'utf8'));
-	} catch (error) {
-		throw new Error(
-			`Could not read Drizzle migration journal at ${journalPath}: ` +
-				(error instanceof Error ? error.message : String(error))
-		);
-	}
-
-	const result = DRIZZLE_JOURNAL_SCHEMA.safeParse(journal);
-	if (!result.success) {
-		throw new Error(
-			`Invalid Drizzle migration journal at ${journalPath}: ` +
-				result.error.message
-		);
-	}
 
 	try {
 		manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
@@ -187,22 +282,9 @@ function readDrizzleMigrations(projectRoot: string): MigrationCatalog {
 			};
 		}
 	);
-	const nativeFiles = readMigrationFiles({ migrationsFolder });
-	const native = result.data.entries.map((entry, index): Migration => {
-		const migration = nativeFiles[index];
-		if (migration === undefined) {
-			throw new Error(
-				`Drizzle journal entry ${entry.tag} has no migration metadata.`
-			);
-		}
+	const native = readNativeMigrations(migrationsFolder);
 
-		return {
-			hash: migration.hash,
-			createdAt: migration.folderMillis,
-		};
-	});
-
-	return { historical, all: [...historical, ...native] };
+	return { historical, native, all: [...historical, ...native] };
 }
 
 async function readMigrationState(
@@ -259,7 +341,7 @@ async function readMigrationState(
 	if (ledgerRows.length > catalog.all.length) {
 		throw new Error(
 			`Drizzle ledger has ${ledgerRows.length} rows; ` +
-				`journal and history have ${catalog.all.length}.`
+				`native migrations and history have ${catalog.all.length}.`
 		);
 	}
 
@@ -450,6 +532,23 @@ async function runHistoricalMigration(
 	}
 }
 
+async function runNativeMigration(
+	db: MigrationDb,
+	migration: NativeMigration
+): Promise<void> {
+	try {
+		for (const statement of migration.sql) {
+			await db.execute(sql.raw(statement));
+		}
+	} catch (error) {
+		throw new Error(
+			`Drizzle migration ${migration.name} failed: ` +
+				(error instanceof Error ? error.message : String(error)),
+			{ cause: error }
+		);
+	}
+}
+
 export async function applyDrizzleMigrations(
 	connection: Connection,
 	projectRoot: string,
@@ -457,7 +556,6 @@ export async function applyDrizzleMigrations(
 ): Promise<void> {
 	const catalog = readDrizzleMigrations(projectRoot);
 	const historyTarget = historicalLimit(catalog, options);
-	const migrationsFolder = path.resolve(projectRoot, 'drizzle');
 
 	await acquireDrizzleMigrationLock(connection);
 	let applySucceeded = false;
@@ -480,7 +578,17 @@ export async function applyDrizzleMigrations(
 		}
 
 		if (options.before === undefined && options.through === undefined) {
-			await migrate(db, { migrationsFolder });
+			for (let index = applied; index < catalog.all.length; index += 1) {
+				const migration = catalog.native[index - catalog.historical.length];
+				if (migration === undefined) {
+					throw new Error('Native migration execution exceeds catalog.');
+				}
+				await db.transaction(async (tx) => {
+					await runNativeMigration(tx, migration);
+					await recordMigration(tx, migration);
+				});
+				applied += 1;
+			}
 		}
 
 		const expectedApplied =
