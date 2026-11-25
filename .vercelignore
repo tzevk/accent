@@ -1,5 +1,7 @@
 # Reduce deployment payload
 scripts/
+# Migration history depends on scripts and runs outside Vercel.
+drizzle/history/
 # Browser-test tooling depends on scripts and is not part of the deployed app.
 e2e/
 playwright.config.ts

@@ -21,6 +21,20 @@ npm run dev
 
 Open <http://localhost:3000>. For a fresh database, [create a local sign-in account](docs/explanations/SUPER_ADMIN_SETUP.md#method-2-create-new-super-admin-user-via-database). See [local database operations](docs/agents/local-database.md) for the Windows MariaDB helper and disposable test databases.
 
+## Database changes
+
+New application queries use Drizzle over the shared `mysql2` connection; existing queries are not rewritten. All 68 historical Knex migrations now run as Drizzle callbacks from `drizzle/history/`, ordered by a manifest that keeps their original filenames as stable IDs. The runner adopts an exact existing Knex-ledger prefix without replay; a fresh database runs the full translated history. New native migrations use Drizzle v1 Kit v3 folders in `drizzle/<YYYYMMDDHHMMSS>_<name>/`, with `migration.sql` and the generated `snapshot.json`. The partial Drizzle schema is not a schema-generation source.
+
+```sh
+npm run migrate:make -- --name descriptive_name
+npm run migrate
+npm run migrate:status
+```
+
+The generator creates a migration folder with an empty SQL file and a snapshot. Write and review the forward MariaDB SQL, then commit the whole folder. The runner validates v3 folder metadata and rejects a missing `migration.sql`. Use no schema push or batch down; correct errors with a forward migration and recover from verified MariaDB backups.
+
+`npm run migrate` is the only apply route. Do not use `drizzle-kit migrate` or the ORM migrator: Drizzle v1 tries to add `name` and `applied_at` to Accent's unchanged ledger and cannot match the synthetic historical IDs. Native ledger hashes combine the full folder name with the SQL SHA-256, so same-second folders stay ordered but an applied folder cannot be renamed. Only explicitly approved production work may use the configured `npm run migrate:prod` and `npm run migrate:prod:status` commands.
+
 ## Verify changes
 
 | Check                                                     | Command or guide                                                  |

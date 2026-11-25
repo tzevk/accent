@@ -3,7 +3,7 @@
 > Operator guide — last verified 2026-11-04 against
 > `src/lib/tickets/email-outbox.ts`, `src/app/api/cron/ticket-emails/route.ts`,
 > `vercel.json`, `.env.example`, and migration
-> `migrations/20261104100000_ticket_department_email_routing.ts`.
+> `drizzle/history/20261104100000_ticket_department_email_routing.ts`.
 > Behaviour reference: [Ticket system](../../explanations/TICKET_SYSTEM.md).
 >
 > **No production action has been taken for you.** This repository change did
@@ -41,7 +41,7 @@ ticket. A provider failure never rolls back a saved ticket.
   create that team.
 - Edit access to the `accent.net.in` zone at its DNS host (Cloudflare, per
   §1.1). No mailbox password or Microsoft 365 tenant changes are needed.
-- Production database credentials for the knex migration.
+- Production database credentials for the Drizzle migration.
 - Super-admin access to Accent for department/role mapping.
 
 ## 1. Verify the sending domain in Resend (manual)
@@ -376,7 +376,15 @@ new `support_tickets` columns/index. It seeds **IT**, **HR**, and **Admin** with
 no responsible role. It is additive, re-run safe, and does not change the
 status, category, or priority enums, existing tickets, roles, or users.
 
-Check state, then migrate:
+The live migration is `drizzle/history/20261104100000_ticket_department_email_routing.ts`.
+Its original filename remains the stable migration ID. On a fresh database,
+the runner executes all translated historical callbacks. On an existing
+database, it verifies and imports the exact applied `knex_migrations` prefix,
+records Drizzle hashes without replaying that prefix, and fails closed on
+unknown or untracked state. Preserve the existing Knex history tables for
+audit.
+
+Check state, then run the reviewed migration:
 
 ```bash
 npm run migrate:status          # current NODE_ENV target (development by default)

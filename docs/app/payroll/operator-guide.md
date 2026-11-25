@@ -421,38 +421,44 @@ Review it with the payroll owner; paid runs cannot reopen, so pay corrections be
 
 ## Where the code lives
 
-| Concern                                                     | File                                                                                   |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Pay formula, earnings split, statutory math                 | `src/utils/payroll-calculation.js`                                                     |
-| Server orchestration: hours fetch, batch/insert, generation | `src/utils/payroll-calculator.js`                                                      |
-| Run lock, completeness gates, paid derivation               | `src/app/api/payroll/_lib/payroll-run.js`, `runs/{finalize,reopen,mark-paid}/route.js` |
-| Monthly employment eligibility and saved Payroll Run Roster | `src/lib/payroll-run-roster.ts`, `migrations/20261109120000_payroll_run_rosters.ts`    |
-| Generate / preview API                                      | `src/app/api/payroll/generate/route.js`                                                |
-| Slips listing + payment update                              | `src/app/api/payroll/slips/route.js`                                                   |
-| Company-sheet pure read model                               | `src/lib/payroll-company-sheet.ts`                                                     |
-| Company-sheet listing projection                            | `src/app/api/payroll/_lib/company-sheet-projection.ts`                                 |
-| Company-sheet grid (Payroll stream)                         | `src/components/payroll/PayrollCompanySheetGrid.tsx`                                   |
-| Slip figures shared by every reader                         | `src/lib/payroll.js`                                                                   |
-| Slip document (screen) / PDF                                | `src/components/payroll/PayrollSlipDocument.jsx`, `src/lib/slip-pdf.js`                |
-| Salary directory, batch and resolve reads                   | `src/lib/salary-profile-directory.ts`                                                  |
-| Salary command core (create/correct/revise/cancel)          | `src/lib/salary-profile-commands/`                                                     |
-| Timeline/use store and serialization                        | `src/lib/salary-profile-store.ts`, `src/lib/salary-profile-timeline.ts`                |
-| CTC resolution shared by payroll and reports                | `src/lib/salary-ctc.ts`                                                                |
-| Workspace UI                                                | `src/components/salary-profiles/`                                                      |
-| Salary Profile route                                        | `src/app/api/payroll/salary-profile/route.ts`                                          |
-| Salary schema, use ledger and conservative backfill         | `migrations/20261115140000_salary_profile_revisions.ts`                                |
-| Salary-use rollout audit CLI                                | `scripts/payroll/salary-use-backfill.ts`                                               |
-| Hours-basis slip columns (ADR-0010)                         | `migrations/20260925120000_add_slip_hours_basis_columns.js`                            |
+| Concern                                                     | File                                                                                     |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Pay formula, earnings split, statutory math                 | `src/utils/payroll-calculation.js`                                                       |
+| Server orchestration: hours fetch, batch/insert, generation | `src/utils/payroll-calculator.js`                                                        |
+| Run lock, completeness gates, paid derivation               | `src/app/api/payroll/_lib/payroll-run.js`, `runs/{finalize,reopen,mark-paid}/route.js`   |
+| Monthly employment eligibility and saved Payroll Run Roster | `src/lib/payroll-run-roster.ts`, `drizzle/history/20261109120000_payroll_run_rosters.ts` |
+| Generate / preview API                                      | `src/app/api/payroll/generate/route.js`                                                  |
+| Slips listing + payment update                              | `src/app/api/payroll/slips/route.js`                                                     |
+| Company-sheet pure read model                               | `src/lib/payroll-company-sheet.ts`                                                       |
+| Company-sheet listing projection                            | `src/app/api/payroll/_lib/company-sheet-projection.ts`                                   |
+| Company-sheet grid (Payroll stream)                         | `src/components/payroll/PayrollCompanySheetGrid.tsx`                                     |
+| Slip figures shared by every reader                         | `src/lib/payroll.js`                                                                     |
+| Slip document (screen) / PDF                                | `src/components/payroll/PayrollSlipDocument.jsx`, `src/lib/slip-pdf.js`                  |
+| Salary directory, batch and resolve reads                   | `src/lib/salary-profile-directory.ts`                                                    |
+| Salary command core (create/correct/revise/cancel)          | `src/lib/salary-profile-commands/`                                                       |
+| Timeline/use store and serialization                        | `src/lib/salary-profile-store.ts`, `src/lib/salary-profile-timeline.ts`                  |
+| CTC resolution shared by payroll and reports                | `src/lib/salary-ctc.ts`                                                                  |
+| Workspace UI                                                | `src/components/salary-profiles/`                                                        |
+| Salary Profile route                                        | `src/app/api/payroll/salary-profile/route.ts`                                            |
+| Salary schema, use ledger and conservative backfill         | `drizzle/history/20261115140000_salary_profile_revisions.ts`                             |
+| Salary-use rollout audit CLI                                | `scripts/payroll/salary-use-backfill.ts`                                                 |
+| Hours-basis slip columns (ADR-0010)                         | `drizzle/history/20260925120000_add_slip_hours_basis_columns.ts`                         |
 
-Apply both `20261109120000_payroll_run_rosters.ts` and
-`20261115140000_salary_profile_revisions.ts` before starting application code
-that depends on them. Use the normal migration command for the target
-environment (`npm run migrate` for development) and verify
-`npm run migrate:status`, separately from any application deployment. Never put
-a migration in a build or Vercel deployment. The salary migration adds the
-timeline/use tables, agreement cancellation state, slip provenance and audit
-actions, and backfills conservative use evidence; it does not rewrite existing
-agreements, slips, rosters or salary audit rows. See
+The historical manifest orders `20261109120000_payroll_run_rosters.ts`
+before `20261115140000_salary_profile_revisions.ts`. On a fresh database,
+`npm run migrate` runs the translated callbacks in that order. On an existing
+database, it verifies and imports the exact applied Knex prefix, records
+Drizzle hashes without replaying that prefix, then applies pending migrations.
+Unknown or untracked state stops the run. Ensure both migrations are applied
+before starting application code that depends on them. Use `npm run migrate`
+for development and verify `npm run migrate:status`, separately from any
+application deployment. For a staged production cutover, use the reviewed
+`--through` command in
+[Salary Profiles migration and rollout](salary-profiles-rollout.md#cutover-order).
+Never put a migration in a build or Vercel deployment. The salary migration
+adds the timeline/use tables, agreement cancellation state, slip provenance
+and audit actions, and backfills conservative use evidence; it does not rewrite
+existing agreements, slips, rosters or salary audit rows. See
 [Salary Profiles migration and rollout](salary-profiles-rollout.md) for the
 cutover order and rollback limitations.
 

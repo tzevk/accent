@@ -356,16 +356,27 @@ An exceptional correction is separate from ordinary editing. A super-admin can r
 
 ## User Account link migration
 
-Use a staged, reviewed rollout. The audit is read-only. It does not repair records.
+Use a staged, reviewed rollout. The audit is read-only. It does not repair
+records.
+
+The live translations are `drizzle/history/20261028110000_user_account_link_repairs.ts`
+and `drizzle/history/20261028120000_user_account_employee_links.ts`.
+`--through` uses each original Knex filename, including its suffix, as the
+stable migration ID. Keep the two production stages separate. On an existing
+database, the runner verifies and imports the exact applied Knex prefix without
+replaying it, and fails closed on unknown or untracked state. The commands
+below are instructions for an authorized operator; this documentation change
+does not execute them.
 
 1. Run `npm run audit:account-links -- --environment production`. Review the reported records and counts.
 2. Stop if `canMigrate` is false. Blockers include duplicate connections, missing or deleted Employees, and conflicting legacy usernames.
 3. Review informational access-flag conflicts and unresolved historical attribution. These findings do not block the schema migration automatically.
 4. Back up the database and preserve the audit output.
+
 5. Apply the audit-ledger schema:
 
    ```sh
-   npx cross-env NODE_ENV=production knex migrate:up 20261028110000_user_account_link_repairs.ts --env production
+   npm run migrate:prod -- --through 20261028110000_user_account_link_repairs.ts
    ```
 
 6. Deploy the corrected application while the old schema remains. It no longer depends on `employees.username`.
@@ -374,7 +385,7 @@ Use a staged, reviewed rollout. The audit is read-only. It does not repair recor
 8. Run the audit again. When blocking findings are clear, apply the constraints and remove the legacy column:
 
    ```sh
-   npx cross-env NODE_ENV=production knex migrate:up 20261028120000_user_account_employee_links.ts --env production
+   npm run migrate:prod -- --through 20261028120000_user_account_employee_links.ts
    ```
 
 Do not infer ownership from names, emails, or usernames.

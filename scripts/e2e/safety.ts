@@ -22,7 +22,7 @@ function errorMessage(error: unknown): string {
 
 /**
  * Reuse the leads safety resolver, then swap in a per-invocation database name.
- * The returned `serverEnv` pins every branch the app, proxy, or Knex could use.
+ * The returned `serverEnv` pins every app and migration environment.
  */
 export function resolveE2ETarget(
 	env: NodeJS.ProcessEnv,

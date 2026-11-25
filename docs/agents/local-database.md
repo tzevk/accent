@@ -12,6 +12,49 @@ Production uses MariaDB 10.11.15. Test database-specific behavior against MariaD
 - Point the app at the local instance with explicit environment variables, never by editing `.env`: `DB_HOST=127.0.0.1 DB_PORT=33369 DEV_DB_NAME=<local db> DEV_DB_USER=root DEV_DB_PASSWORD=`.
 - Never point tests at development, staging, or production databases.
 
+## Database authoring and migrations
+
+All active migrations use Accent's custom Drizzle runner. The 68 translated Knex
+migrations live in `drizzle/history/`; `drizzle/history/manifest.json` preserves
+their original filenames as stable IDs and fixes their order. `npm run migrate`
+adopts an exact existing `knex_migrations` prefix without replay and runs every
+translated callback on a fresh database. Unknown names, gaps, or other untracked
+state fail closed. New application queries use Drizzle over the shared app
+`mysql2` connection; existing queries stay unchanged unless their behavior must
+change. The deployed `knex_migrations` table remains historical evidence.
+
+New native migrations use Drizzle v1 Kit v3 folders in
+`drizzle/<YYYYMMDDHHMMSS>_<name>/`. Each folder contains `migration.sql` and the
+generated `snapshot.json`. `drizzle/history/` remains a non-migration callback
+folder; the partial Drizzle schema is not a generation source.
+
+Generate a custom migration with an empty SQL file. Write and review the
+forward MariaDB SQL, then commit the whole migration folder:
+
+```sh
+npm run migrate:make -- --name descriptive_name
+npm run migrate
+npm run migrate:status
+```
+
+Do not recreate `drizzle/meta/_journal.json`. Kit v3 stores snapshots beside the
+SQL in each migration folder.
+
+Never use schema push, batch down, `drizzle-kit migrate`, or the ORM migrator.
+`npm run migrate` is the only apply route. Drizzle v1 tries to upgrade Accent's
+unchanged ledger with `name` and `applied_at` columns and cannot match the
+synthetic historical IDs. The runner Zod-validates v3 folder metadata, rejects
+missing SQL, and records native migrations in the same ordered ledger under the
+same advisory lock and transactions as history. A native ledger hash is SHA-256
+of the full folder name, a NUL separator, and Kit's SQL SHA-256; historical
+hashes remain unchanged. Same-second folders stay ordered, but renaming an
+applied folder fails even when its SQL and second are unchanged. Correct
+mistakes with another forward migration and recover from verified MariaDB
+backups. The configured
+`npm run migrate:prod` and `npm run migrate:prod:status` commands are only for
+explicitly approved production work; local commands must stay on loopback
+development or disposable databases.
+
 ## Leads integration harness
 
 Before running the harness:

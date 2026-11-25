@@ -128,7 +128,7 @@ const USE_COLUMNS = `id, employee_id, month, agreement_id, agreement_source,
 /**
  * `month_key` generated-column sentinel for unknown-month (NULL) evidence;
  * mirrors `IFNULL(month, '1000-01-01')` in
- * `migrations/20261115140000_salary_profile_revisions.ts`.
+ * `drizzle/history/20261115140000_salary_profile_revisions.ts`.
  */
 const UNKNOWN_MONTH_KEY = '1000-01-01';
 

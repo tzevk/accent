@@ -1,0 +1,3 @@
+# Line endings stabilize Accent migration ledger hashes.
+drizzle/*/migration.sql text eol=lf
+drizzle/history/*.ts text eol=lf

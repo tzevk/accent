@@ -33,7 +33,7 @@ test.setTimeout(180_000);
  * missing `result.data.id` (src/app/projects/new/page.jsx:159) while this
  * schema returns the saved row keyed by `project_id`
  * (src/app/api/projects/route.js:332 and the baseline
- * migrations/20260722080106_baseline_schema.js:1980), so it leaves the form at
+ * drizzle/history/20260722080106_baseline_schema.ts), so it leaves the form at
  * `/projects/undefined/edit`. The list path above is the reachable user
  * journey for the saved Project.
  *

@@ -277,7 +277,7 @@ const connection = await mysql.createConnection({
 	// hands back as parsed objects/arrays. This script compares and writes the
 	// stored *text*, so ask the driver for the raw string.
 	jsonStrings: true,
-	// Same TLS source of truth as `knexfile.js` / the app pool (SEC-20).
+	// Same TLS source as the Drizzle migration runner and app pool (SEC-20).
 	...(ssl ? { ssl } : {}),
 });
 

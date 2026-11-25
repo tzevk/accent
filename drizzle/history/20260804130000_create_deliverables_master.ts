@@ -1,0 +1,24 @@
+import {
+	executeMigrationSql,
+	type MigrationDb,
+} from '../../scripts/migration-sql.ts';
+
+export async function up(db: MigrationDb): Promise<void> {
+	await executeMigrationSql(
+		db,
+		`
+    CREATE TABLE deliverables_master (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      deliverable_name VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      isDelete TINYINT(1) NOT NULL DEFAULT 0,
+      deleted_at TIMESTAMP NULL DEFAULT NULL,
+      deleted_by INT NULL DEFAULT NULL,
+      active_deliverable_name VARCHAR(255)
+        GENERATED ALWAYS AS (IF(isDelete = 0, deliverable_name, NULL)) STORED,
+      UNIQUE KEY uq_active_deliverable_name (active_deliverable_name),
+      KEY idx_isDelete (isDelete)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `
+	);
+}

@@ -6,7 +6,6 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import knexFactory, { type Knex } from 'knex';
 import type { Connection as MysqlConnection } from 'mysql2/promise';
 import { z } from 'zod';
 import {
@@ -16,6 +15,10 @@ import {
 	type Connection,
 	type ResolvedSafety,
 } from '../leads-integration/support.ts';
+import {
+	applyDrizzleMigrations,
+	readDrizzleMigrationStatus,
+} from '../db-migrations.ts';
 import {
 	buildRunTag,
 	createRunId,
@@ -105,30 +108,21 @@ async function migrateDatabase(
 	target: ResolvedSafety,
 	projectRoot: string
 ): Promise<void> {
-	const knex: Knex = knexFactory({
-		client: 'mysql2',
-		connection: {
-			host: target.host,
-			// Pass the resolved port explicitly. INTEGRATION_DB_PORT alone is
-			// never allowed to steer migrations through configuration drift.
-			port: target.port,
-			user: target.user,
-			password: target.password,
-			database: target.name,
-			dateStrings: true,
-		},
-		migrations: { directory: path.join(projectRoot, 'migrations') },
-	});
+	const connection = await connectReader(target);
 	try {
-		await knex.migrate.latest();
+		await applyDrizzleMigrations(
+			connection as unknown as MysqlConnection,
+			projectRoot
+		);
 	} finally {
-		await knex.destroy();
+		await connection.end();
 	}
 }
 
 async function verifyMigratedDatabase(
 	reader: Connection,
-	expectedName: string
+	expectedName: string,
+	projectRoot: string
 ): Promise<void> {
 	const [databaseRows] = await reader.execute(
 		'SELECT DATABASE() AS database_name',
@@ -139,12 +133,17 @@ async function verifyMigratedDatabase(
 			`migration reader connected to ${JSON.stringify(databaseRows[0]?.database_name)}, expected ${JSON.stringify(expectedName)}.`
 		);
 	}
-	const [migrationRows] = await reader.execute(
-		'SELECT COUNT(*) AS total FROM knex_migrations',
-		[]
+	const drizzleStatus = await readDrizzleMigrationStatus(
+		reader as unknown as MysqlConnection,
+		projectRoot
 	);
-	if (Number(migrationRows[0]?.total ?? 0) === 0) {
-		fail('the disposable database has no recorded migrations.');
+	if (!drizzleStatus.ledgerExists) {
+		fail('the disposable database has no Drizzle migration ledger.');
+	}
+	if (drizzleStatus.pending !== 0) {
+		fail(
+			`the disposable database has ${String(drizzleStatus.pending)} pending Drizzle migrations.`
+		);
 	}
 }
 
@@ -516,7 +515,7 @@ export async function startE2EHarness(
 		await migrateDatabase(target, projectRoot);
 
 		reader = await connectReader(target);
-		await verifyMigratedDatabase(reader, target.name);
+		await verifyMigratedDatabase(reader, target.name, projectRoot);
 
 		loadedHooks = await loadFixtureHooks(projectRoot);
 		if (loadedHooks === null) {

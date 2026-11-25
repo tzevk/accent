@@ -2,9 +2,8 @@ import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { strict as assert } from 'node:assert';
 import { z } from 'zod';
-import { readdirSync } from 'node:fs';
+import type { Connection as MysqlConnection } from 'mysql2/promise';
 import { join } from 'node:path';
-import { createRequire } from 'node:module';
 import type { Connection, ResolvedSafety } from './support.ts';
 import {
 	connectReader,
@@ -12,6 +11,10 @@ import {
 	hashFixturePassword,
 	runIdFromDate,
 } from './support.ts';
+import {
+	applyDrizzleMigrations,
+	readDrizzleMigrationStatus,
+} from '../db-migrations.ts';
 import type {
 	DbActivityRow,
 	DbConversionRow,
@@ -157,28 +160,9 @@ import { reportAuditScenario } from './scenarios/report-audit.ts';
 import { leadAuditPrintScenario } from './scenarios/report-print.ts';
 import { leadAuditExportScenario } from './scenarios/report-export.ts';
 
-const require = createRequire(import.meta.url);
-
-interface KnexMigrateApi {
-	up: (config?: { name?: string }) => Promise<unknown>;
-	latest: () => Promise<unknown>;
-}
-
-interface KnexInstance {
-	migrate: KnexMigrateApi;
-	destroy: () => Promise<void>;
-}
-
-type KnexFactory = (config: Record<string, unknown>) => KnexInstance;
-
-// knex is CommonJS; require keeps the in-process migration driver loading
-// identically under type-stripping with no loader indirection.
-const knexFactory = require('knex') as KnexFactory;
-
 const FIXTURE_PASSWORD = 'Lit369-pass!';
 const IBAND = '='.repeat(72);
 const NEXT_PORT = Number(process.env.LEADS_INTEGRATION_PORT ?? 31369);
-const MIGRATIONS_DIR = join(process.cwd(), 'migrations');
 // Explicit ticket-369 cutover point: every earlier file migrates first, legacy
 // evidence is seeded, then this file maps it. Never rediscovered by pattern.
 const LEAD_MIGRATION_FILE = '20261019120000_lead_owner_stable_reference.ts';
@@ -757,34 +741,6 @@ async function seedFixtureUser(
 	const [created] = rows;
 	if (!created) fail(`fixture user ${username} missing after insert`);
 	return { id: requiredNumber(created.id, 'users.id'), username, email };
-}
-
-function createKnex(resolved: ResolvedSafety): KnexInstance {
-	return knexFactory({
-		client: 'mysql2',
-		connection: {
-			host: resolved.host,
-			port: resolved.port,
-			user: resolved.user,
-			password: resolved.password,
-			database: resolved.name,
-		},
-		migrations: { directory: MIGRATIONS_DIR },
-	});
-}
-
-/** Every migration file ordered before the explicit ticket-369 cutover. */
-function preLeadMigrationFiles(): string[] {
-	const files = readdirSync(MIGRATIONS_DIR)
-		.filter((file) => /\.(js|mjs|cjs|ts)$/.test(file))
-		.sort();
-	const leadIndex = files.indexOf(LEAD_MIGRATION_FILE);
-	if (leadIndex < 0) {
-		fail(
-			`ticket-369 lead migration ${LEAD_MIGRATION_FILE} missing from migrations/`
-		);
-	}
-	return files.slice(0, leadIndex);
 }
 
 function isDatabaseExistsError(error: unknown): boolean {
@@ -1931,7 +1887,7 @@ export async function runLeadsIntegration(
 
 	let reader: Connection | null = null;
 	let server: ChildProcess | null = null;
-	let knex: KnexInstance | null = null;
+	let migrationConnection: Connection | null = null;
 	let identities: FixtureIdentities | null = null;
 	let databaseCreated = false;
 	let scenariosPassed = false;
@@ -1958,14 +1914,15 @@ export async function runLeadsIntegration(
 			await serverConnection.end();
 		}
 
-		knex = createKnex(resolved);
-		const preLead = preLeadMigrationFiles();
+		migrationConnection = await connectReader(resolved);
 		log(
-			`migrating disposable database ${database} to pre-369 (${preLead.length} files; expect ~2 minutes)`
+			`migrating disposable database ${database} to pre-369 via Drizzle history (expect ~2 minutes)`
 		);
-		for (const file of preLead) {
-			await knex.migrate.up({ name: file });
-		}
+		await applyDrizzleMigrations(
+			migrationConnection as unknown as MysqlConnection,
+			process.cwd(),
+			{ before: LEAD_MIGRATION_FILE }
+		);
 
 		const seeder = await connectReader(resolved);
 		let legacySeeds: LegacySeedRow[] = [];
@@ -2018,7 +1975,11 @@ export async function runLeadsIntegration(
 			log(
 				`applying ticket-369 lead migration ${LEAD_MIGRATION_FILE} over seeded legacy evidence`
 			);
-			await knex.migrate.up({ name: LEAD_MIGRATION_FILE });
+			await applyDrizzleMigrations(
+				migrationConnection as unknown as MysqlConnection,
+				process.cwd(),
+				{ through: LEAD_MIGRATION_FILE }
+			);
 
 			// The legacy Proposals exist before the review migration runs, so
 			// the cutover sees the duplicate links it has to keep visible.
@@ -2026,16 +1987,27 @@ export async function runLeadsIntegration(
 			log(
 				`applying legacy review migration ${LEGACY_REVIEW_MIGRATION_FILE} over the seeded legacy Proposals`
 			);
-			await knex.migrate.up({ name: LEGACY_REVIEW_MIGRATION_FILE });
+			await applyDrizzleMigrations(
+				migrationConnection as unknown as MysqlConnection,
+				process.cwd(),
+				{ through: LEGACY_REVIEW_MIGRATION_FILE }
+			);
 
 			// The activity log exists before the transferred work is seeded,
 			// so the source-link migration has a row to backfill.
 			log(
 				`applying the Lead activity migration ${LEAD_ACTIVITIES_MIGRATION_FILE}`
 			);
-			await knex.migrate.up({ name: LEAD_ACTIVITIES_MIGRATION_FILE });
+			await applyDrizzleMigrations(
+				migrationConnection as unknown as MysqlConnection,
+				process.cwd(),
+				{ through: LEAD_ACTIVITIES_MIGRATION_FILE }
+			);
 			transferredWorkSeed = await seedTransferredWork(seeder, runTag);
-			await knex.migrate.latest();
+			await applyDrizzleMigrations(
+				migrationConnection as unknown as MysqlConnection,
+				process.cwd()
+			);
 			lifecycleSeeds = await seedLifecycleFixtures(
 				seeder,
 				runTag,
@@ -2062,22 +2034,30 @@ export async function runLeadsIntegration(
 				projectLeadId: downstream.projectLeadId,
 			};
 		} finally {
-			await seeder.end();
+			try {
+				await seeder.end();
+			} finally {
+				await migrationConnection.end();
+				migrationConnection = null;
+			}
 		}
 
 		reader = await connectReader(resolved);
-		for (const migration of [
-			LEAD_MIGRATION_FILE,
-			LEGACY_REVIEW_MIGRATION_FILE,
-		]) {
-			const [appliedRows] = await reader.execute(
-				'SELECT COUNT(*) AS total FROM knex_migrations WHERE name = ?',
-				[migration]
-			);
-			const [applied] = appliedRows;
-			if (Number(applied?.total ?? 0) !== 1)
-				fail(`migration ${migration} not recorded applied`);
-		}
+
+		const drizzleStatus = await readDrizzleMigrationStatus(
+			reader as unknown as MysqlConnection,
+			process.cwd()
+		);
+		assert.equal(
+			drizzleStatus.ledgerExists,
+			true,
+			'Drizzle migration ledger missing from disposable database'
+		);
+		assert.equal(
+			drizzleStatus.pending,
+			0,
+			'disposable database has pending Drizzle migrations'
+		);
 
 		// Each scenario is a separate local client. Keep production rate limits
 		// active without unrelated scenarios sharing one IP bucket.
@@ -2496,16 +2476,16 @@ export async function runLeadsIntegration(
 		);
 		scenariosPassed = true;
 	} finally {
+		if (migrationConnection !== null) {
+			try {
+				await migrationConnection.end();
+			} catch {}
+		}
 		// --keep retains the database only after a full pass; every other
 		// path stops the server and drops the disposable database. A failed
 		// drop is fatal: the run must never PASS while leaving data behind.
 		if (!(keep && scenariosPassed)) {
 			await stopAppServer(server);
-			if (knex !== null) {
-				try {
-					await knex.destroy();
-				} catch {}
-			}
 			if (reader !== null) {
 				try {
 					await reader.end();
