@@ -271,7 +271,7 @@ export async function listCurrentProjectIds(
 ): Promise<Set<number>> {
 	const ddb = drizzle({ client: db });
 	const result = await ddb.execute(sql`
-		SELECT project_id, id, project_team
+		SELECT project_id, project_team
 		FROM projects
 		WHERE isDelete = 0
 		  AND project_team IS NOT NULL
@@ -280,7 +280,7 @@ export async function listCurrentProjectIds(
 	const projectIds = new Set<number>();
 	for (const row of rowsOf(result)) {
 		if (!isUserInProjectTeam(row.project_team, userId, email)) continue;
-		const projectId = Number(row.project_id ?? row.id);
+		const projectId = Number(row.project_id);
 		if (Number.isSafeInteger(projectId) && projectId > 0)
 			projectIds.add(projectId);
 	}
