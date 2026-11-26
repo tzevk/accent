@@ -5,11 +5,10 @@
  * an independently owned InnoDB Employee row lock and observed lock waits, not
  * by sleeps or by hoping two promises overlap.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { APIRequestContext, APIResponse } from '@playwright/test';
 import type { Connection, RowDataPacket } from 'mysql2/promise';
 import { expect, test } from '../support/test.ts';
-import { fitIdentifier } from '../../scripts/e2e/contracts.ts';
 import { connectFixtureReader } from '../support/runtime.ts';
 import {
 	AUTHORED_OVERNIGHT_PERIOD,
@@ -77,7 +76,8 @@ async function installSaveMarkerFailure(
 	db: Connection,
 	fixture: EmployeeWorkPeriodFixture
 ): Promise<string> {
-	const name = fitIdentifier(`WP468-${fixture.namespace}-marker`, 64);
+	const hash = createHash('sha256').update(fixture.namespace).digest('hex');
+	const name = `WP468_${hash.slice(0, 20)}_marker`;
 	if (!TRIGGER_NAME_PATTERN.test(name)) {
 		throw new Error(`[work-period-contention] unsafe trigger name ${name}`);
 	}
@@ -128,29 +128,46 @@ function blockThreadId(block: string): number | null {
 	return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function holderLocksEmployee(status: unknown, threadId: number): boolean {
-	const holder = transactionBlocks(status).find(
-		(block) => blockThreadId(block) === threadId
+function employeeLockWaitThreads(
+	status: unknown,
+	employeeId: number
+): number[] {
+	const employeePredicate = new RegExp(
+		`\\bWHERE\\s+\`?id\`?\\s*=\\s*${employeeId}(?:\\D|$)`,
+		'i'
 	);
-	return Boolean(holder && /RECORD LOCKS[\s\S]*`?employees`?/i.test(holder));
-}
-
-function employeeLockWaitThreads(status: unknown): number[] {
 	const threads: number[] = [];
 	for (const block of transactionBlocks(status)) {
 		const threadId = blockThreadId(block);
 		if (threadId === null) continue;
 		if (!/(^|\n)LOCK WAIT\b/.test(block)) continue;
 		if (!/\bFROM\s+`?employees`?\b/i.test(block)) continue;
+		if (!employeePredicate.test(block)) continue;
 		if (!/\bFOR\s+UPDATE\b/i.test(block)) continue;
 		threads.push(threadId);
 	}
 	return threads;
 }
 
+async function holderTransaction(
+	observer: Connection,
+	holderThreadId: number
+): Promise<RowDataPacket | null> {
+	const [rows] = await observer.query<RowDataPacket[]>(
+		`SELECT trx_id
+		   FROM information_schema.INNODB_TRX
+		  WHERE trx_mysql_thread_id = ?
+		  LIMIT 1`,
+		[holderThreadId]
+	);
+	const row = rows[0];
+	return row && Number(row.trx_id) > 0 ? row : null;
+}
+
 async function waitForEmployeeLockWaits(
 	observer: Connection,
 	holderThreadId: number,
+	employeeId: number,
 	expectedWaiters: number,
 	label: string
 ): Promise<void> {
@@ -160,18 +177,23 @@ async function waitForEmployeeLockWaits(
 			'SHOW ENGINE INNODB STATUS'
 		);
 		const status = rows[0]?.Status;
-		if (holderLocksEmployee(status, holderThreadId)) {
-			const waiters = employeeLockWaitThreads(status);
-			if (waiters.length >= expectedWaiters) {
+		const waiters = employeeLockWaitThreads(status, employeeId);
+		if (waiters.length >= expectedWaiters) {
+			// The fixture locker executed this exact Employee FOR UPDATE and keeps
+			// its transaction open. A live holder transaction plus waiters whose
+			// statements name the same fixture Employee proves the row ownership
+			// without relying on optional RECORD LOCKS monitor detail.
+			const holder = await holderTransaction(observer, holderThreadId);
+			if (holder) {
 				console.log(
-					`[work-period-contention] ${label}: holder ${holderThreadId}; Employee FOR UPDATE waiters ${waiters.join(', ')}`
+					`[work-period-contention] ${label}: holder ${holderThreadId} transaction ${String(holder.trx_id)}; Employee ${employeeId} FOR UPDATE waiters ${waiters.join(', ')}`
 				);
 				return;
 			}
 		}
 		if (Date.now() >= deadline) {
 			throw new Error(
-				`[work-period-contention] ${label}: did not observe ${expectedWaiters} Employee lock wait(s)`
+				`[work-period-contention] ${label}: did not observe ${expectedWaiters} Employee ${employeeId} lock wait(s) held by transaction ${holderThreadId}`
 			);
 		}
 		const tick = Promise.withResolvers<void>();
@@ -241,6 +263,7 @@ test('concurrent cross-project overlap leaves exactly one persisted Work Period'
 		await waitForEmployeeLockWaits(
 			observer,
 			holderThreadId,
+			fixture.employee.id,
 			1,
 			'first cross-project save'
 		);
@@ -248,6 +271,7 @@ test('concurrent cross-project overlap leaves exactly one persisted Work Period'
 		await waitForEmployeeLockWaits(
 			observer,
 			holderThreadId,
+			fixture.employee.id,
 			2,
 			'second cross-project save'
 		);

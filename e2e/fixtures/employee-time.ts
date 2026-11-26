@@ -27,7 +27,10 @@ export const AUTHORED_OVERNIGHT_PERIOD = {
 	remarks: 'Authored Sunday-to-Monday overnight Work Period',
 } as const;
 
-const TARGET_LOG_SPEC = [{ day: 10, hours: 2.5 }] as const;
+const TARGET_LOG_SPEC = [
+	{ day: 3, hours: 4 },
+	{ day: 10, hours: 2.5 },
+] as const;
 
 const CURRENT_LOG_SPEC = [{ day: 5, hours: 1.5 }] as const;
 

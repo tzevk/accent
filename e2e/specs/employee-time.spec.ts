@@ -200,6 +200,13 @@ test('work period reaches My Timesheet across IST midnight', async ({
 	await expect(
 		page.getByRole('heading', { name: 'My Project Activities', exact: true })
 	).toBeVisible();
+	const reminder = page.getByRole('dialog', {
+		name: 'Activity Update Required',
+	});
+	await expect(reminder).toBeVisible();
+	await reminder
+		.getByRole('button', { name: 'Update Now', exact: true })
+		.click();
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
 
 	const project = page.getByLabel('Project', { exact: true });
@@ -214,7 +221,8 @@ test('work period reaches My Timesheet across IST midnight', async ({
 	await activity.selectOption(seeded.primary.id);
 	const subActivity = page.getByLabel('Sub Activity', { exact: true });
 	await expect(subActivity).toHaveText('No sub-activity');
-	await subActivity.selectOption({ label: 'No sub-activity' });
+	await expect(subActivity).toBeDisabled();
+	await expect(subActivity).toHaveValue('');
 	await page.getByLabel('Start (IST)', { exact: true }).fill(seeded.self.start);
 	await page.getByLabel('End (IST)', { exact: true }).fill(seeded.self.end);
 	await page.getByLabel('Quantity', { exact: true }).fill('2.5');
