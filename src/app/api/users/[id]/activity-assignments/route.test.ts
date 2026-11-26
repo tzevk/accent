@@ -15,8 +15,9 @@ vi.mock('@/utils/api-permissions', () => ({
 	getCurrentUser: mocks.mockGetCurrentUser,
 }));
 
-const { GET, PUT, PATCH, DELETE } =
+const activityAssignmentsRoute =
 	await import('@/app/api/users/[id]/activity-assignments/route');
+const { GET } = activityAssignmentsRoute;
 
 const db = {
 	execute: mocks.mockExecute,
@@ -34,26 +35,9 @@ function params() {
 	return { params: Promise.resolve({ id: '42' }) };
 }
 
-function team(memberIds = [42]) {
-	return JSON.stringify(
-		memberIds.map((id) => ({
-			user_id: id,
-			email: id === 42 ? 'member@example.com' : 'admin@example.com',
-		}))
-	);
-}
-
-function projectLookup(memberIds = [42]) {
-	return [[{ project_id: 1, project_team: team(memberIds) }]];
-}
-
-function targetIdentity(id: number, email: string) {
-	return [[{ id, email, full_name: `User ${id}` }]];
-}
-
 describe('user activity assignments project discovery', () => {
 	beforeEach(() => {
-		vi.clearAllMocks();
+		vi.resetAllMocks();
 		mocks.mockDbConnect.mockResolvedValue(db);
 		mocks.mockGetCurrentUser.mockResolvedValue({
 			id: 42,
@@ -135,11 +119,33 @@ describe('user activity assignments project discovery', () => {
 		]);
 		expect(body.data.emptyProjects).toEqual([]);
 	});
+
+	it('returns 401 before opening a database connection without a session', async () => {
+		mocks.mockGetCurrentUser.mockResolvedValueOnce(null);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(401);
+		expect(body).toEqual({ success: false, error: 'Unauthorized' });
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+	});
+
+	it('refuses a non-admin viewer another user assignments', async () => {
+		const response = await GET(request(), {
+			params: Promise.resolve({ id: '7' }),
+		});
+		const body = await response.json();
+
+		expect(response.status).toBe(403);
+		expect(body).toEqual({ success: false, error: 'Forbidden' });
+		expect(mocks.mockDbConnect).not.toHaveBeenCalled();
+	});
 });
 
 describe('user activity assignments lastActivityLoggedAt', () => {
 	beforeEach(() => {
-		vi.clearAllMocks();
+		vi.resetAllMocks();
 		mocks.mockDbConnect.mockResolvedValue(db);
 		mocks.mockGetCurrentUser.mockResolvedValue({
 			id: 42,
@@ -258,696 +264,159 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 		expect(body.success).toBe(false);
 		expect(mocks.mockRelease).toHaveBeenCalled();
 	});
-});
 
-describe('user activity assignments PUT', () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mocks.mockDbConnect.mockResolvedValue(db);
-		mocks.mockGetCurrentUser.mockResolvedValue({
-			id: 42,
-			email: 'member@example.com',
-			is_super_admin: 0,
-		});
-	});
-
-	function putRequest(body: Record<string, unknown>) {
-		return new Request('http://localhost/api/users/42/activity-assignments', {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-		});
-	}
-
-	function markerInsert() {
-		return mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).includes('INSERT INTO user_activity_logs')
-		);
-	}
-
-	it('preserves extra daily_entries fields (isLocked) when updating', async () => {
+	it('returns effective Work Period entries beside independently parsed legacy entries', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([[{ id: 'row-1' }]]) // existing assignment
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE
-			.mockResolvedValueOnce([{ insertId: 7 }]); // save marker
-
-		const response = await PUT(
-			putRequest({
-				project_id: '1',
-				activity_id: 'a1',
-				daily_entries: [
-					{ date: '2026-08-10', qty_done: '2', hours: '8', isLocked: true },
+			.mockResolvedValueOnce([
+				[
+					assignmentRow({
+						daily_entries: JSON.stringify([
+							{ date: '2026-10-26', qty_done: 1, hours: 2 },
+							{ date: '2026-10-27', qty_done: 2, hours: '3' },
+						]),
+						legacy_daily_entries: JSON.stringify([
+							{
+								date: '2026-10-25',
+								qty_done: 4,
+								hours: 7,
+								remarks: 'Historical duration',
+								isLocked: true,
+							},
+						]),
+						work_period_entries: JSON.stringify([
+							{ date: '2026-10-26', qty_done: 1, hours: 2 },
+							{ date: '2026-10-27', qty_done: 2, hours: 3 },
+						]),
+						actual_hours: 99,
+					}),
 				],
-			}),
-			params()
-		);
+			])
+			.mockResolvedValueOnce(evidenceRows(null))
+			.mockResolvedValueOnce([[]]);
+
+		const response = await GET(request(), params());
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-
-		const updateCall = mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).startsWith('UPDATE user_activity_assignments')
-		);
-		expect(updateCall).toBeDefined();
-		const stored = JSON.parse(updateCall[1][0]);
-		expect(stored).toEqual([
+		expect(body.data.assignments[0].daily_entries).toEqual([
+			{ date: '2026-10-26', qty_done: 1, hours: 2 },
+			{ date: '2026-10-27', qty_done: 2, hours: '3' },
+		]);
+		expect(body.data.assignments[0].legacy_daily_entries).toEqual([
 			{
-				date: '2026-08-10',
-				qty_done: 2,
-				hours: 8,
+				date: '2026-10-25',
+				qty_done: 4,
+				hours: 7,
+				remarks: 'Historical duration',
 				isLocked: true,
-				remarks: '',
 			},
 		]);
-
-		// Self save commits assignment + evidence atomically.
-		expect(mocks.mockBeginTransaction).toHaveBeenCalledTimes(1);
-		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
-		expect(mocks.mockRollback).not.toHaveBeenCalled();
+		expect(body.data.assignments[0].actual_hours).toBe(5);
+		expect(body.data.stats.totalActualHours).toBe(5);
 	});
 
-	it('records a self-save marker when the user updates their own assignment', async () => {
+	it('does not let malformed legacy JSON hide effective entries or totals', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([[{ id: 'row-1' }]])
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockResolvedValueOnce([{ insertId: 9 }]);
+			.mockResolvedValueOnce([
+				[
+					assignmentRow({
+						daily_entries: JSON.stringify([
+							{ date: '2026-10-26', qty_done: 1, hours: 2 },
+						]),
+						work_period_entries: JSON.stringify([
+							{ date: '2026-10-26', qty_done: 1, hours: 2 },
+						]),
+						actual_hours: 99,
+					}),
+				],
+			])
+			.mockResolvedValueOnce(evidenceRows(null))
+			.mockResolvedValueOnce([[]]);
 
-		const response = await PUT(
-			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
-			params()
-		);
+		const response = await GET(request(), params());
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-
-		const marker = markerInsert();
-		expect(marker).toBeDefined();
-		const markerParams = marker[1];
-		expect(markerParams[0]).toBe(42); // actor, not the row owner
-		expect(markerParams[1]).toBe('update');
-		expect(markerParams[2]).toBe('project_activity_save');
-		expect(markerParams[5]).toBe('success');
-		expect(JSON.parse(markerParams[4])).toEqual({
-			projectId: '1',
-			activityId: 'a1',
-		});
-		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
-		expect(mocks.mockRollback).not.toHaveBeenCalled();
+		expect(body.data.assignments[0].daily_entries).toEqual([
+			{ date: '2026-10-26', qty_done: 1, hours: 2 },
+		]);
+		expect(body.data.assignments[0].legacy_daily_entries).toEqual([]);
+		expect(body.data.assignments[0].actual_hours).toBe(2);
+		expect(body.data.stats.totalActualHours).toBe(2);
 	});
 
-	it('records no marker when a super-admin edits another user', async () => {
-		mocks.mockGetCurrentUser.mockResolvedValue({
-			id: 1,
-			email: 'admin@example.com',
-			is_super_admin: 1,
-		});
+	it('keeps valid legacy history readable when effective JSON is malformed', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup([1, 42]))
-			.mockResolvedValueOnce(targetIdentity(42, 'member@example.com'))
-			.mockResolvedValueOnce([[{ id: 'row-1' }]])
-			.mockResolvedValueOnce([{ affectedRows: 1 }]);
+			.mockResolvedValueOnce([
+				[
+					assignmentRow({
+						daily_entries: '{invalid json',
+						legacy_daily_entries: JSON.stringify([
+							{ date: '2026-10-25', qty_done: 4, hours: 7 },
+						]),
+						work_period_entries: '[]',
+						actual_hours: 99,
+					}),
+				],
+			])
+			.mockResolvedValueOnce(evidenceRows(null))
+			.mockResolvedValueOnce([[]]);
 
-		const response = await PUT(
-			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
-			params()
-		);
+		const response = await GET(request(), params());
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-		expect(body.affected_rows).toBe(1);
-		expect(markerInsert()).toBeUndefined();
-		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
-		expect(mocks.mockRollback).not.toHaveBeenCalled();
+		expect(body.data.assignments[0].daily_entries).toEqual([]);
+		expect(body.data.assignments[0].legacy_daily_entries).toEqual([
+			{ date: '2026-10-25', qty_done: 4, hours: 7 },
+		]);
+		expect(body.data.assignments[0].actual_hours).toBe(0);
+		expect(body.data.stats.totalActualHours).toBe(0);
 	});
 
-	it('writes no marker on a no-op update', async () => {
+	it('preserves the legacy aggregate display when no Work Period projection exists', async () => {
 		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([[{ id: 'row-1' }]]);
+			.mockResolvedValueOnce([
+				[
+					assignmentRow({
+						daily_entries: '[]',
+						legacy_daily_entries: '[]',
+						work_period_entries: null,
+						actual_hours: 7,
+					}),
+				],
+			])
+			.mockResolvedValueOnce(evidenceRows(null))
+			.mockResolvedValueOnce([[]]);
 
-		const response = await PUT(
-			putRequest({ project_id: '1', activity_id: 'a1' }),
-			params()
-		);
+		const response = await GET(request(), params());
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(body.affected_rows).toBe(0);
-		expect(markerInsert()).toBeUndefined();
-		expect(mocks.mockBeginTransaction).not.toHaveBeenCalled();
-		expect(mocks.mockRollback).not.toHaveBeenCalled();
-	});
-
-	it('writes no marker when the update touches no rows', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([[{ id: 'row-1' }]])
-			.mockResolvedValueOnce([{ affectedRows: 0 }]);
-
-		const response = await PUT(
-			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(200);
-		expect(body.affected_rows).toBe(0);
-		expect(markerInsert()).toBeUndefined();
-		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
-	});
-
-	it('rolls back the assignment write when the marker insert fails', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([[{ id: 'row-1' }]])
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockRejectedValueOnce(new Error('marker insert down'));
-
-		const response = await PUT(
-			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(500);
-		expect(body.success).toBe(false);
-		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
-		expect(mocks.mockCommit).not.toHaveBeenCalled();
-		expect(mocks.mockRelease).toHaveBeenCalled();
-	});
-
-	it('rolls back when the commit fails', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([[{ id: 'row-1' }]])
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockResolvedValueOnce([{ insertId: 9 }]);
-		mocks.mockCommit.mockRejectedValueOnce(new Error('commit down'));
-
-		const response = await PUT(
-			putRequest({ project_id: '1', activity_id: 'a1', status: 'In Progress' }),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(500);
-		expect(body.success).toBe(false);
-		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
-		expect(mocks.mockRelease).toHaveBeenCalled();
+		expect(body.data.assignments[0].daily_entries).toEqual([]);
+		expect(body.data.assignments[0].legacy_daily_entries).toEqual([]);
+		expect(body.data.assignments[0].actual_hours).toBe(7);
+		expect(body.data.stats.totalActualHours).toBe(7);
 	});
 });
 
-describe('user activity assignments PATCH (self-service add)', () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mocks.mockDbConnect.mockResolvedValue(db);
-		mocks.mockGetCurrentUser.mockResolvedValue({
-			id: 42,
-			email: 'member@example.com',
-			is_super_admin: 0,
-		});
-	});
-
-	function patchRequest(body: Record<string, unknown>) {
-		return new Request('http://localhost/api/users/42/activity-assignments', {
-			method: 'PATCH',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-		});
-	}
-
-	function patchBody() {
-		return {
-			project_id: '1',
-			discipline_name: 'Structural',
-			activity_name: 'RCC Check',
-			manhours_assigned: '8',
-			qty_completed: '1',
-			due_date: '2026-08-20',
-			status: 'Not Started',
-		};
-	}
-
-	function markerInsert() {
-		return mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).includes('INSERT INTO user_activity_logs')
-		);
-	}
-
-	it('logs the entered manhours as the day entry and links employee_id', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_team: team(), project_activities_list: '[]' }],
-			]) // project lookup
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
-			.mockResolvedValueOnce([[{ employee_id: 87 }]]) // login link
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
-			.mockResolvedValueOnce([{ insertId: 11 }]); // save marker
-
-		const response = await PATCH(patchRequest(patchBody()), params());
-		const body = await response.json();
-
-		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-
-		// Blob: planned_hours set and the day entry logged.
-		const blobUpdate = mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).startsWith('UPDATE projects SET project_activities_list')
-		);
-		expect(blobUpdate).toBeDefined();
-		const blob = JSON.parse(blobUpdate[1][0]);
-		expect(blob[0].assigned_users[0].planned_hours).toBe(8);
-		expect(blob[0].assigned_users[0].daily_entries).toEqual([
-			{ date: '2026-08-20', qty_done: 1, hours: 8, remarks: '' },
-		]);
-
-		// Normalized row: employee_id linked, estimated_hours set, the
-		// day entry stored.
-		const insert = mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).includes('INSERT INTO user_activity_assignments')
-		);
-		expect(insert).toBeDefined();
-		const insertParams = insert[1];
-		expect(insertParams[2]).toBe(87); // employee_id
-		expect(insertParams[12]).toBe(8); // estimated_hours
-		expect(JSON.parse(insertParams[20])).toEqual([
-			{ date: '2026-08-20', qty_done: 1, hours: 8, remarks: '' },
-		]);
-
-		// Self-service add records a create marker and commits atomically.
-		const marker = markerInsert();
-		expect(marker).toBeDefined();
-		expect(marker[1][0]).toBe(42);
-		expect(marker[1][1]).toBe('create');
-		expect(marker[1][2]).toBe('project_activity_save');
-		expect(JSON.parse(marker[1][4])).toMatchObject({ projectId: '1' });
-		expect(mocks.mockBeginTransaction).toHaveBeenCalledTimes(1);
-		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
-		expect(mocks.mockRollback).not.toHaveBeenCalled();
-	});
-
-	it('keeps the daily entry date when no due date is given', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_team: team(), project_activities_list: '[]' }],
-			]) // project lookup
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
-			.mockResolvedValueOnce([[{ employee_id: null }]]) // no login link
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
-			.mockResolvedValueOnce([{ insertId: 12 }]); // save marker
-
-		const response = await PATCH(
-			patchRequest({
-				project_id: '1',
-				discipline_name: 'Structural',
-				activity_name: 'RCC Check',
-				manhours_assigned: '6',
-				qty_completed: '2',
-				status: 'Not Started',
-			}),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-
-		const insert = mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).includes('INSERT INTO user_activity_assignments')
-		);
-		const entry = JSON.parse(insert[1][20])[0];
-		expect(entry.hours).toBe(6);
-		expect(entry.qty_done).toBe(2);
-		expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/); // today fallback
-		expect(insert[1][2]).toBeNull(); // employee_id null when unlinked
-	});
-
-	it('allows planned hours for a multi-day activity', async () => {
-		// The self-service add records PLANNED manhours for a whole activity;
-		// multi-day tasks routinely exceed a single day's hours.
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_team: team(), project_activities_list: '[]' }],
-			]) // project lookup
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // blob UPDATE
-			.mockResolvedValueOnce([[{ employee_id: null }]]) // login link
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // normalized INSERT
-			.mockResolvedValueOnce([{ insertId: 13 }]); // save marker
-
-		const response = await PATCH(
-			patchRequest({
-				project_id: '1',
-				discipline_name: 'Structural',
-				activity_name: 'RCC Check',
-				manhours_assigned: '24',
-				qty_completed: '1',
-				due_date: '2026-08-20',
-				status: 'Not Started',
-			}),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-
-		const insert = mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).includes('INSERT INTO user_activity_assignments')
-		);
-		expect(insert).toBeDefined();
-		expect(JSON.parse(insert[1][20])).toEqual([
-			{ date: '2026-08-20', qty_done: 1, hours: 24, remarks: '' },
-		]);
-		// No per-date hours SELECT was issued.
-		expect(
-			mocks.mockExecute.mock.calls.some(([sql]) =>
-				String(sql).includes('FROM user_activity_assignments')
-			)
-		).toBe(false);
-	});
-
-	it('records no marker when a super-admin adds for another user', async () => {
-		mocks.mockGetCurrentUser.mockResolvedValue({
-			id: 1,
-			email: 'admin@example.com',
-			is_super_admin: 1,
-		});
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_team: team([1, 42]), project_activities_list: '[]' }],
-			])
-			.mockResolvedValueOnce(targetIdentity(42, 'member@example.com'))
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockResolvedValueOnce([[{ employee_id: 87 }]])
-			.mockResolvedValueOnce([{ affectedRows: 1 }]);
-
-		const response = await PATCH(patchRequest(patchBody()), params());
-		const body = await response.json();
-
-		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-		expect(markerInsert()).toBeUndefined();
-		expect(mocks.mockCommit).toHaveBeenCalledTimes(1);
-		expect(mocks.mockRollback).not.toHaveBeenCalled();
-	});
-
-	it('rolls back the save when the marker insert fails', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_team: team(), project_activities_list: '[]' }],
-			])
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockResolvedValueOnce([[{ employee_id: 87 }]])
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockRejectedValueOnce(new Error('marker insert down'));
-
-		const response = await PATCH(patchRequest(patchBody()), params());
-		const body = await response.json();
-
-		expect(response.status).toBe(500);
-		expect(body.success).toBe(false);
-		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
-		expect(mocks.mockCommit).not.toHaveBeenCalled();
-		expect(mocks.mockRelease).toHaveBeenCalled();
-	});
-
-	it('rolls back when the commit fails after a save', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[{ project_id: 1, project_team: team(), project_activities_list: '[]' }],
-			])
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockResolvedValueOnce([[{ employee_id: 87 }]])
-			.mockResolvedValueOnce([{ affectedRows: 1 }])
-			.mockResolvedValueOnce([{ insertId: 14 }]);
-		mocks.mockCommit.mockRejectedValueOnce(new Error('commit down'));
-
-		const response = await PATCH(patchRequest(patchBody()), params());
-		const body = await response.json();
-
-		expect(response.status).toBe(500);
-		expect(body.success).toBe(false);
-		expect(mocks.mockRollback).toHaveBeenCalledTimes(1);
-		expect(mocks.mockRelease).toHaveBeenCalled();
-	});
-});
-
-describe('user activity assignments DELETE', () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mocks.mockDbConnect.mockResolvedValue(db);
-		mocks.mockGetCurrentUser.mockResolvedValue({
-			id: 42,
-			email: 'member@example.com',
-			is_super_admin: 0,
-		});
-	});
-
-	function deleteRequest(body: Record<string, unknown>) {
-		return new Request('http://localhost/api/users/42/activity-assignments', {
-			method: 'DELETE',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-		});
-	}
-
-	it('removes the user from the project blob so saves do not resurrect it', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // DELETE row
-			.mockResolvedValueOnce([
-				[
-					{
-						project_activities_list: JSON.stringify([
-							{
-								id: 'a1',
-								activity_name: 'RCC Check',
-								assigned_users: [{ user_id: 42 }, { user_id: 7 }],
-							},
-						]),
-					},
-				],
-			]) // blob SELECT
-			.mockResolvedValueOnce([{ affectedRows: 1 }]); // blob UPDATE
-
-		const response = await DELETE(
-			deleteRequest({ project_id: '1', activity_id: 'a1' }),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(200);
-		expect(body.success).toBe(true);
-
-		const blobUpdate = mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).startsWith('UPDATE projects SET project_activities_list')
-		);
-		expect(blobUpdate).toBeDefined();
-		const blob = JSON.parse(blobUpdate[1][0]);
-		expect(blob[0].assigned_users).toEqual([{ user_id: 7 }]);
-	});
-
-	it('drops an activity whose last assignee is deleted', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([{ affectedRows: 1 }]) // DELETE row
-			.mockResolvedValueOnce([
-				[
-					{
-						project_activities_list: JSON.stringify([
-							{
-								id: 'a1',
-								activity_name: 'RCC Check',
-								assigned_users: [{ user_id: 42 }],
-							},
-						]),
-					},
-				],
-			]) // blob SELECT
-			.mockResolvedValueOnce([{ affectedRows: 1 }]); // blob UPDATE
-
-		const response = await DELETE(
-			deleteRequest({ project_id: '1', activity_id: 'a1' }),
-			params()
-		);
-
-		expect(response.status).toBe(200);
-
-		const blobUpdate = mocks.mockExecute.mock.calls.find(([sql]) =>
-			String(sql).startsWith('UPDATE projects SET project_activities_list')
-		);
-		const blob = JSON.parse(blobUpdate[1][0]);
-		expect(blob).toEqual([]);
-	});
-
-	it('returns 404 and leaves the blob untouched when no row exists', async () => {
-		mocks.mockExecute
-			.mockResolvedValueOnce(projectLookup())
-			.mockResolvedValueOnce([{ affectedRows: 0 }]);
-
-		const response = await DELETE(
-			deleteRequest({ project_id: '1', activity_id: 'a1' }),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(404);
-		expect(body.success).toBe(false);
-		// Project lookup + DELETE only — no blob SELECT/UPDATE.
-		expect(mocks.mockExecute.mock.calls).toHaveLength(2);
+describe('legacy self-service assignment writes', () => {
+	it('does not expose PUT, PATCH, or DELETE bypasses', () => {
+		expect('PUT' in activityAssignmentsRoute).toBe(false);
+		expect('PATCH' in activityAssignmentsRoute).toBe(false);
+		expect('DELETE' in activityAssignmentsRoute).toBe(false);
 	});
 });
 
 describe('activity assignment requires project team membership', () => {
 	beforeEach(() => {
-		vi.clearAllMocks();
+		vi.resetAllMocks();
 		mocks.mockDbConnect.mockResolvedValue(db);
 		mocks.mockGetCurrentUser.mockResolvedValue({
 			id: 42,
 			email: 'member@example.com',
 			is_super_admin: 0,
 		});
-	});
-
-	function mutationRequest(method: string, body: Record<string, unknown>) {
-		return new Request('http://localhost/api/users/42/activity-assignments', {
-			method,
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-		});
-	}
-
-	function nonMemberProject() {
-		return [
-			[
-				{
-					project_id: 1,
-					project_team: JSON.stringify([{ user_id: 7 }]),
-					project_activities_list: '[]',
-				},
-			],
-		];
-	}
-
-	const refusal = {
-		success: false,
-		code: 'ASSIGNEE_NOT_PROJECT_MEMBER',
-		error:
-			'Add member@example.com to the Project Team before assigning this activity.',
-	};
-
-	it('refuses a self-service PATCH from an actor outside the team', async () => {
-		mocks.mockExecute.mockResolvedValueOnce(nonMemberProject());
-
-		const response = await PATCH(
-			mutationRequest('PATCH', {
-				project_id: '1',
-				discipline_name: 'Structural',
-				activity_name: 'RCC Check',
-			}),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(409);
-		expect(body).toEqual(refusal);
-		// No blob update, assignment insert, or team write happened.
-		expect(mocks.mockExecute.mock.calls).toHaveLength(1);
-		expect(mocks.mockBeginTransaction).not.toHaveBeenCalled();
-	});
-
-	it('refuses a self-service PUT from an actor outside the team', async () => {
-		mocks.mockExecute.mockResolvedValueOnce([
-			[
-				{
-					project_id: 1,
-					project_team: JSON.stringify([{ user_id: 7 }]),
-				},
-			],
-		]);
-
-		const response = await PUT(
-			mutationRequest('PUT', {
-				project_id: '1',
-				activity_id: 'a1',
-				status: 'In Progress',
-			}),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(409);
-		expect(body).toEqual(refusal);
-		expect(mocks.mockExecute.mock.calls).toHaveLength(1);
-	});
-
-	it('refuses a self-service DELETE from an actor outside the team', async () => {
-		mocks.mockExecute.mockResolvedValueOnce([
-			[
-				{
-					project_id: 1,
-					project_team: JSON.stringify([{ user_id: 7 }]),
-				},
-			],
-		]);
-
-		const response = await DELETE(
-			mutationRequest('DELETE', { project_id: '1', activity_id: 'a1' }),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(409);
-		expect(body).toEqual(refusal);
-		expect(mocks.mockExecute.mock.calls).toHaveLength(1);
-	});
-
-	it('names a non-member target when a manager moves an assignment', async () => {
-		mocks.mockGetCurrentUser.mockResolvedValue({
-			id: 1,
-			email: 'admin@example.com',
-			is_super_admin: 1,
-		});
-		mocks.mockExecute
-			.mockResolvedValueOnce([
-				[
-					{
-						project_id: 1,
-						project_team: JSON.stringify([{ user_id: 1 }]),
-					},
-				],
-			])
-			.mockResolvedValueOnce(targetIdentity(42, 'member@example.com'));
-
-		const response = await PUT(
-			new Request('http://localhost/api/users/42/activity-assignments', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					project_id: '1',
-					activity_id: 'a1',
-					user_id: 42,
-					status: 'In Progress',
-				}),
-			}),
-			params()
-		);
-		const body = await response.json();
-
-		expect(response.status).toBe(409);
-		expect(body).toEqual({
-			success: false,
-			code: 'ASSIGNEE_NOT_PROJECT_MEMBER',
-			error:
-				'Add User 42 to the Project Team before assigning this activity.',
-		});
-		// Project + identity lookups only; no assignment update.
-		expect(mocks.mockExecute.mock.calls).toHaveLength(2);
 	});
 
 	it('keeps an existing assignment readable after membership is removed', async () => {
@@ -976,70 +445,4 @@ describe('activity assignment requires project team membership', () => {
 		expect(body.data.assignments).toHaveLength(1);
 		expect(body.data.assignments[0].activity_name).toBe('Legacy work');
 	});
-});
-
-describe('user activity assignments after team removal', () => {
-	// The actor still owns the assignment rows, but the stored team no
-	// longer contains them. Removal wins on the next request.
-	const REMOVED_TEAM = JSON.stringify([
-		{ id: 7, email: 'lead@example.com', role: 'Project Lead' },
-	]);
-
-	beforeEach(() => {
-		vi.clearAllMocks();
-		mocks.mockDbConnect.mockResolvedValue(db);
-		mocks.mockGetCurrentUser.mockResolvedValue({
-			id: 42,
-			email: 'member@example.com',
-			is_super_admin: 0,
-		});
-	});
-
-	it.each(['PATCH', 'PUT', 'DELETE'] as const)(
-		'denies %s without touching assignment or project rows',
-		async (method) => {
-			mocks.mockExecute.mockResolvedValueOnce([
-				[
-					{
-						project_id: 1,
-						project_team: REMOVED_TEAM,
-						project_activities_list: '[]',
-					},
-				],
-			]);
-
-			const writeBody = {
-				project_id: '1',
-				activity_id: 'a1',
-				discipline_name: 'Structural',
-				activity_name: 'RCC Check',
-				status: 'In Progress',
-			};
-			const response = await (
-				method === 'PATCH' ? PATCH : method === 'PUT' ? PUT : DELETE
-			)(
-				new Request('http://localhost/api/users/42/activity-assignments', {
-					method,
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(writeBody),
-				}),
-				params()
-			);
-			const body = await response.json();
-
-			expect(response.status).toBe(409);
-			expect(body).toEqual({
-				success: false,
-				code: 'ASSIGNEE_NOT_PROJECT_MEMBER',
-				error:
-					'Add member@example.com to the Project Team before assigning this activity.',
-			});
-			expect(
-				mocks.mockExecute.mock.calls.some(([sql]) =>
-					/^(UPDATE|INSERT|DELETE)/i.test(String(sql))
-				)
-			).toBe(false);
-			expect(mocks.mockBeginTransaction).not.toHaveBeenCalled();
-		}
-	);
 });

@@ -6,6 +6,22 @@ import {
 	loadLeadPolicy,
 	resolveProjectRights,
 } from '@/lib/project-rights';
+import { parseDailyEntries } from '@/lib/logged-hours';
+
+function effectiveLoggedHours({
+	daily_entries,
+	work_period_entries,
+	actual_hours,
+}) {
+	const derivedHours = parseDailyEntries(daily_entries).reduce(
+		(sum, entry) => sum + entry.hours,
+		0
+	);
+	if (work_period_entries !== null && work_period_entries !== undefined) {
+		return derivedHours;
+	}
+	return parseFloat(actual_hours) || derivedHours;
+}
 
 /**
  * GET /api/users/[id]/projects
@@ -99,22 +115,21 @@ export async function GET(request, { params }) {
         `);
 
 				// Filter projects where user is in the project_team JSON
-				projects = allProjects
-					.filter((project) => {
-						try {
-							const team =
-								typeof project.project_team === 'string'
-									? JSON.parse(project.project_team)
-									: project.project_team;
-							if (Array.isArray(team)) {
-								// Check if user id matches any team member's id
-								return team.some((member) => member.id === requestedUserId);
-							}
-							return false;
-						} catch {
-							return false;
+				projects = allProjects.filter((project) => {
+					try {
+						const team =
+							typeof project.project_team === 'string'
+								? JSON.parse(project.project_team)
+								: project.project_team;
+						if (Array.isArray(team)) {
+							// Check if user id matches any team member's id
+							return team.some((member) => member.id === requestedUserId);
 						}
-					});
+						return false;
+					} catch {
+						return false;
+					}
+				});
 			} catch (err) {
 				console.log('project_team JSON query failed:', err.message);
 			}
@@ -144,7 +159,7 @@ export async function GET(request, { params }) {
 			projects.map(async (project) => {
 				let activities = [];
 
-				// Try user_activity_assignments first
+				// Try the read-only Logged Hours projection first
 				if (useActivityAssignments) {
 					try {
 						const [assignedActivities] = await db.execute(
@@ -158,18 +173,34 @@ export async function GET(request, { params }) {
               uaa.due_date as end_date,
               uaa.actual_completion_date,
               uaa.estimated_hours as assigned_manhours,
-              uaa.actual_hours as actual_manhours,
-              uaa.created_at
-            FROM user_activity_assignments uaa
+              uaa.daily_entries,
+              uaa.work_period_entries,
+              uaa.actual_hours,
+            FROM logged_activity_assignments uaa
             WHERE uaa.user_id = ? AND uaa.project_id = ?
             ORDER BY uaa.created_at ASC
           `,
 							[requestedUserId, project.project_id]
 						);
-						activities = assignedActivities;
+						activities = assignedActivities.map((row) => {
+							const {
+								daily_entries,
+								work_period_entries,
+								actual_hours,
+								...activity
+							} = row;
+							return {
+								...activity,
+								actual_manhours: effectiveLoggedHours({
+									daily_entries,
+									work_period_entries,
+									actual_hours,
+								}),
+							};
+						});
 					} catch (err) {
 						console.log(
-							'user_activity_assignments activities query failed:',
+							'logged_activity_assignments activities query failed:',
 							err.message
 						);
 					}
