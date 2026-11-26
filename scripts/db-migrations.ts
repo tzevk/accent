@@ -13,6 +13,12 @@ const HISTORICAL_MIGRATION_COUNT = 68;
 const LEGACY_MIGRATIONS_TABLE = 'knex_migrations';
 const LEGACY_MIGRATIONS_LOCK_TABLE = 'knex_migrations_lock';
 const HISTORICAL_MIGRATION_NAME = /^\d{14}_.+\.(?:js|ts)$/;
+const LEGACY_ORDER_EXCEPTION_START = 58;
+const LEGACY_ORDER_EXCEPTION_FILENAMES = [
+	'20261028110000_user_account_link_repairs.ts',
+	'20261028120000_user_account_employee_links.ts',
+	'20261027120000_user_presence_last_active_seen.js',
+] as const;
 
 const DRIZZLE_MIGRATIONS_TABLE = '__drizzle_migrations';
 const DRIZZLE_MIGRATION_LOCK_NAME_SQL =
@@ -88,6 +94,44 @@ const HISTORICAL_MIGRATION_MANIFEST_SCHEMA = z
 				'Historical migration filenames must not contain path separators',
 		}
 	);
+
+function isKnownCompleteLegacyOrder(
+	legacyNames: readonly string[],
+	historical: readonly HistoricalMigration[]
+): boolean {
+	if (
+		legacyNames.length !== HISTORICAL_MIGRATION_COUNT ||
+		historical.length !== HISTORICAL_MIGRATION_COUNT
+	) {
+		return false;
+	}
+	const canonicalException = historical
+		.slice(LEGACY_ORDER_EXCEPTION_START, LEGACY_ORDER_EXCEPTION_START + 3)
+		.map((migration) => migration.originalFilename);
+	const expectedCanonicalException = [
+		'20261027120000_user_presence_last_active_seen.js',
+		'20261028110000_user_account_link_repairs.ts',
+		'20261028120000_user_account_employee_links.ts',
+	] as const;
+	if (
+		canonicalException.length !== 3 ||
+		canonicalException.some(
+			(filename, index) => filename !== expectedCanonicalException[index]
+		)
+	) {
+		return false;
+	}
+	const expected = [
+		...historical
+			.slice(0, LEGACY_ORDER_EXCEPTION_START)
+			.map((migration) => migration.originalFilename),
+		...LEGACY_ORDER_EXCEPTION_FILENAMES,
+		...historical
+			.slice(LEGACY_ORDER_EXCEPTION_START + 3)
+			.map((migration) => migration.originalFilename),
+	];
+	return legacyNames.every((name, index) => name === expected[index]);
+}
 
 const DRIZZLE_MIGRATION_FOLDER_NAME = /^(\d{14})_(.+)$/;
 
@@ -328,14 +372,22 @@ async function readMigrationState(
 		);
 	}
 
-	for (const [index, name] of legacyNames.entries()) {
-		const expected = catalog.historical[index]?.originalFilename;
-		if (name !== expected) {
-			throw new Error(
-				`Legacy Knex ledger row ${index + 1} mismatch: expected ` +
-					`${String(expected)}, received ${name}.`
-			);
-		}
+	const canonicalPrefixMatches = legacyNames.every(
+		(name, index) => name === catalog.historical[index]?.originalFilename
+	);
+	if (
+		!canonicalPrefixMatches &&
+		!isKnownCompleteLegacyOrder(legacyNames, catalog.historical)
+	) {
+		const mismatchIndex = legacyNames.findIndex(
+			(name, index) => name !== catalog.historical[index]?.originalFilename
+		);
+		const row = mismatchIndex >= 0 ? mismatchIndex + 1 : 1;
+		const expected = catalog.historical[mismatchIndex]?.originalFilename;
+		throw new Error(
+			`Legacy Knex ledger row ${row} mismatch: expected ` +
+				`${String(expected)}, received ${String(legacyNames[mismatchIndex])}.`
+		);
 	}
 
 	if (ledgerRows.length > catalog.all.length) {

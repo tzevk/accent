@@ -19,7 +19,13 @@ migrations live in `drizzle/history/`; `drizzle/history/manifest.json` preserves
 their original filenames as stable IDs and fixes their order. `npm run migrate`
 adopts an exact existing `knex_migrations` prefix without replay and runs every
 translated callback on a fresh database. Unknown names, gaps, or other untracked
-state fail closed. New application queries use Drizzle over the shared app
+state fail closed. One narrow compatibility exception accepts only the complete
+68-row production ledger with positions 59–61 ordered as manifest entries 60, 61,
+59 (`user_account_link_repairs`, `user_account_employee_links`, then
+`user_presence_last_active_seen`); all other 65 positions must match exactly.
+Partial ledgers and every other permutation remain rejected. Adoption records
+the canonical Drizzle hashes, never mutates the Knex ledger, and never replays
+historical code. New application queries use Drizzle over the shared app
 `mysql2` connection; existing queries stay unchanged unless their behavior must
 change. The deployed `knex_migrations` table remains historical evidence.
 
