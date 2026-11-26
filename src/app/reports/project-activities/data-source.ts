@@ -101,7 +101,7 @@ export async function fetchProjectActivitiesData(
 		/* table may not exist */
 	}
 
-	// Bulk-fetch user_activity_assignments
+	// Bulk-fetch assignments through the effective logged-hours view.
 	const allProjectIds = projectRows
 		.map((p) => s(p, 'project_id'))
 		.filter((id): id is string => !!id);
@@ -110,7 +110,7 @@ export async function fetchProjectActivitiesData(
 		try {
 			const placeholders = allProjectIds.map(() => '?').join(',');
 			const [assignRows] = (await query(
-				`SELECT * FROM user_activity_assignments WHERE project_id IN (${placeholders})`,
+				`SELECT * FROM logged_activity_assignments WHERE project_id IN (${placeholders})`,
 				allProjectIds
 			)) as [DbRow[], unknown];
 			for (const row of assignRows) {
@@ -120,7 +120,7 @@ export async function fetchProjectActivitiesData(
 				uaaByProject[pid].push(row);
 			}
 		} catch {
-			/* table may not exist */
+			/* view may not exist */
 		}
 	}
 
@@ -146,9 +146,9 @@ export async function fetchProjectActivitiesData(
 				});
 			}
 			const activityEntry = activityMap.get(actId)!;
-			// Parse daily_entries JSON. The full member is kept (the client
-			// filters and re-aggregates it); the fallbacks below stay as they
-			// were for rows whose stored totals are zero.
+			// Parse effective daily_entries. Legacy rows keep the stored-total
+			// fallback; Work Period rows derive totals so stale aggregates
+			// cannot hide recorded work.
 			const dailyEntries = parseDailyEntryRecords(row.daily_entries).map(
 				(record) => record.entry
 			) as Exclude<ApiMember['daily_entries'], undefined>;
@@ -157,6 +157,7 @@ export async function fetchProjectActivitiesData(
 				(sum, e) => sum + (parseFloat(String(e.qty_done ?? '')) || 0),
 				0
 			);
+			const hasWorkPeriodEntries = row.work_period_entries != null;
 			const totalHours = dailyEntries.reduce(
 				(sum, e) => sum + (parseFloat(String(e.hours ?? '')) || 0),
 				0
@@ -168,9 +169,13 @@ export async function fetchProjectActivitiesData(
 				user_name: userMap[userId] || `User ${userId}`,
 				description: s(row, 'description'),
 				qty_assigned: n(row, 'qty_assigned'),
-				qty_completed: n(row, 'qty_completed') || totalQtyDone,
+				qty_completed: hasWorkPeriodEntries
+					? totalQtyDone
+					: n(row, 'qty_completed') || totalQtyDone,
 				planned_hours: n(row, 'estimated_hours'),
-				actual_hours: n(row, 'actual_hours') || totalHours,
+				actual_hours: hasWorkPeriodEntries
+					? totalHours
+					: n(row, 'actual_hours') || totalHours,
 				start_date: row.start_date as string | null,
 				due_date: row.due_date as string | null,
 				status: s(row, 'status', 'Not Started'),

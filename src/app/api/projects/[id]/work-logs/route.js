@@ -8,7 +8,7 @@ import {
 /**
  * GET /api/projects/[id]/work-logs
  *
- * Returns user_activity_assignments for a given project, grouped by user
+ * Returns effective logged activity assignments for a given project, grouped by user
  * then by date — exploded from the daily_entries JSON column.
  *
  * Query params:
@@ -40,7 +40,7 @@ export async function GET(request, { params }) {
 			new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
 		const filterUserId = searchParams.get('user_id');
 
-		// Query user_activity_assignments joined with users
+		// Query effective logged activity assignments joined with users
 		let query = `
       SELECT
         uaa.id,
@@ -56,9 +56,8 @@ export async function GET(request, { params }) {
         uaa.qty_assigned,
         uaa.qty_completed,
         u.full_name,
-        u.username,
         u.email
-      FROM user_activity_assignments uaa
+      FROM logged_activity_assignments uaa
       LEFT JOIN users u ON uaa.user_id = u.id
       WHERE uaa.project_id = ?
     `;
