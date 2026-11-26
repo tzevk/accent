@@ -186,6 +186,10 @@ _Avoid_: Concurrent Leave
 Net available working hours for an Employee in a period — 8h per working day (excluding Sundays, 2nd/4th Saturdays, and active non-optional `holiday_master` dates — an optional holiday is a working day), minus approved leave (8h per full day, 4h per half-day).
 _Avoid_: Expected hours, Standard hours (ambiguous), Bandwidth
 
+**Work Period**:
+One continuous span of work an Employee logs against a Project Activity, with a recorded start and end. A Work Period can cross midnight and contribute Logged Hours to more than one date.
+_Avoid_: Work Session, Shift, Daily Activity Entry
+
 **Logged Hours**:
 Sum of `user_activity_assignments.daily_entries.hours` (`actual_hours`) entered via Project Activity Assignments, including overtime. The billed-effort truth for utilization, and the payroll numerator: Gross = Hourly Rate × Logged Hours (ADR-0010); never `planned_hours`/`estimated_hours`.
 _Avoid_: Manhours (ambiguous), Planned hours, Assigned hours

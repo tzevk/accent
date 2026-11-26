@@ -78,6 +78,8 @@ Read the relevant record before changing its behavior.
 | Proposal pricing           | [Reviewed cost assumptions and confidentiality](adr/0035-proposal-pricing-uses-reviewed-cost-assumptions.md) — agreed design boundaries; not implemented.                                                                                                                                                                                                                                                                                                                                                                |
 | Salary agreement revisions | [Dated revisions and unused-entry corrections](adr/0036-effective-dated-salary-revisions.md) — implemented in #434.                                                                                                                                                                                                                                                                                                                                                                                                      |
 
+Project time logging: [Recorded Work Periods](adr/0038-timesheets-use-recorded-work-periods.md) is an accepted design, not implemented.
+
 ## Audit records and change history
 
 These records preserve findings at the time of review. Check their dates and status notes.
