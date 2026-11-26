@@ -1,17 +1,37 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+	fireEvent,
 	render,
 	screen,
-	within,
 	waitFor,
-	fireEvent,
+	within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { apiGet, apiPost, apiPut, apiDelete } = vi.hoisted(() => ({
+	apiGet: vi.fn(),
+	apiPost: vi.fn(),
+	apiPut: vi.fn(),
+	apiDelete: vi.fn(),
+}));
+
+vi.mock('@/lib/api-client', () => ({ apiGet, apiPost, apiPut, apiDelete }));
+vi.mock('next/link', () => ({
+	default: ({ href, children, ...props }) => (
+		<a href={href} {...props}>
+			{children}
+		</a>
+	),
+}));
 
 import ProjectActivityAssignments from '@/components/ProjectActivityAssignments';
+import { WorkPeriodFields } from '@/components/WorkPeriodFields';
 
-const currentDate = new Date().toISOString().split('T')[0];
-const currentMonthDate = `${currentDate.slice(0, 7)}-01`;
+const FIXED_NOW = new Date('2026-12-02T12:00:00Z');
+const TODAY = '2026-12-02';
+const CURRENT_WEEK = '2026-11-30';
+const PREVIOUS_WEEK = '2026-11-23';
 
 const DISCIPLINE_OPTIONS = [
 	{
@@ -21,746 +41,635 @@ const DISCIPLINE_OPTIONS = [
 			{
 				id: 'a1',
 				activity_name: 'Fabrication',
-				subActivities: [
-					{ id: 's1', name: 'Welding', default_manhours: 8 },
-					{ id: 's2', name: 'Cutting', default_manhours: 4 },
-				],
+				subActivities: [{ id: 's1', name: 'Welding', default_manhours: 8 }],
 			},
-			{
-				id: 'a2',
-				activity_name: 'Assembly',
-				subActivities: [],
-			},
-		],
-	},
-	{
-		id: 'd2',
-		function_name: 'Electrical',
-		activities: [
-			{
-				id: 'a3',
-				activity_name: 'Wiring',
-				subActivities: [{ id: 's3', name: 'Cabling', default_manhours: 6 }],
-			},
+			{ id: 'a2', activity_name: 'Assembly', subActivities: [] },
 		],
 	},
 ];
 
-const ASSIGNMENTS = [
-	{
-		project_id: 1,
-		project_name: 'Alpha Plant',
-		project_code: 'P-001',
-		project_status: 'Active',
-		project_start_date: '2026-01-01',
-		project_end_date: '2026-06-30',
-		activity_id: 'act-1',
-		activity_name: 'Foundation Work',
-		discipline: 'Civil',
-		sub_activity_name: 'Excavation',
-		default_manhours: 12,
-		planned_hours: 8,
-		actual_hours: 4,
-		due_date: currentMonthDate,
-		status: 'In Progress',
-	},
-	{
-		project_id: 1,
-		project_name: 'Alpha Plant',
-		project_code: 'P-001',
-		project_status: 'Active',
-		project_start_date: '2026-01-01',
-		project_end_date: '2026-06-30',
-		activity_id: 'act-2',
-		activity_name: 'Steel Erection',
-		discipline: 'Structural',
-		sub_activity_name: '',
-		default_manhours: 0,
-		planned_hours: 5,
-		actual_hours: 0,
-		due_date: currentMonthDate,
-		status: 'Not Started',
-	},
-	{
-		project_id: 2,
-		project_name: 'Beta Tower',
-		project_code: 'P-002',
-		project_status: 'Active',
-		project_start_date: '2026-02-01',
-		project_end_date: '2026-12-31',
-		activity_id: 'act-3',
-		activity_name: 'HVAC Install',
-		discipline: 'Mechanical',
-		sub_activity_name: 'Ducting',
-		default_manhours: 10,
-		planned_hours: 16,
-		actual_hours: 8,
-		due_date: currentMonthDate,
-		status: 'On Hold',
-	},
-];
-
-const EMPTY_PROJECTS = [
-	{
-		project_id: 3,
-		project_name: 'Gamma Bridge',
-		project_code: 'P-003',
-		project_status: 'Active',
-		project_start_date: '2026-04-01',
-		project_end_date: '2026-09-30',
-	},
-];
-const OLD_ASSIGNMENT = {
-	...ASSIGNMENTS[0],
-	activity_id: 'act-old',
-	activity_name: 'Old Activity',
-	due_date: '2000-01-01',
+const PRELOADED_DATA = {
+	assignments: [
+		{
+			project_id: 1,
+			project_name: 'Alpha Plant',
+			project_code: 'P-001',
+			activity_id: 'act-1',
+			activity_name: 'Foundation Work',
+			discipline: 'Civil',
+			sub_activity_name: 'Excavation',
+			status: 'In Progress',
+			remarks: 'Assignment remark',
+			daily_entries: [
+				{
+					date: '2026-12-01',
+					hours: 2.5,
+					qty_done: 4,
+					remarks: 'Recorded duration',
+				},
+			],
+		},
+	],
+	emptyProjects: [
+		{ project_id: 3, project_name: 'Gamma Bridge', project_code: 'P-003' },
+	],
+	accessibleProjects: [],
+	documentCounts: { 1: 2 },
 };
 
-const buildFetch = ({
-	assignments = ASSIGNMENTS,
-	empty = EMPTY_PROJECTS,
-	accessible = [],
-} = {}) => {
-	const mock = vi.fn(async (url, options) => {
-		if (
-			typeof url === 'string' &&
-			url.startsWith('/api/activity-master/options')
-		) {
-			return {
-				ok: true,
-				headers: { get: () => 'application/json' },
-				json: async () => ({ success: true, data: DISCIPLINE_OPTIONS }),
-			};
-		}
-		if (typeof url === 'string' && url.includes('/activity-assignments')) {
-			const method = (options?.method || 'GET').toUpperCase();
-			if (method === 'PATCH') {
-				return {
-					ok: true,
-					headers: { get: () => 'application/json' },
-					json: async () => ({
-						success: true,
-						data: { activity_id: 'new-id' },
-					}),
-				};
-			}
-			return {
-				ok: true,
-				headers: { get: () => 'application/json' },
-				json: async () => ({
-					success: true,
-					data: {
-						assignments,
-						emptyProjects: empty,
-						accessibleProjects: accessible,
-						stats: {},
-					},
-				}),
-			};
-		}
-		return {
-			ok: true,
-			headers: { get: () => 'application/json' },
-			json: async () => ({ success: true }),
-		};
+const OVERNIGHT_PERIOD = {
+	id: 'wp-overnight',
+	assignmentId: 'assignment-1',
+	projectId: 1,
+	activityId: 'act-1',
+	employeeId: 7,
+	userId: 42,
+	projectCode: 'P-001',
+	projectName: 'Alpha Plant',
+	discipline: 'Civil',
+	activityName: 'Foundation Work',
+	subActivityName: 'Excavation',
+	employeeName: 'Test Employee',
+	start: '2026-11-30T22:00',
+	end: '2026-12-01T02:00',
+	quantity: 3,
+	dateCompleted: '2026-12-01',
+	remarks: 'Overnight work',
+	durationSeconds: 14400,
+	weekSeconds: 14400,
+	weekQuantity: 3,
+	editable: false,
+};
+
+const BOUNDARY_PERIOD = {
+	...OVERNIGHT_PERIOD,
+	id: 'wp-boundary',
+	assignmentId: 'assignment-2',
+	projectId: 2,
+	projectCode: 'P-002',
+	projectName: 'Beta Tower',
+	activityId: 'act-2',
+	activityName: 'Steel Erection',
+	subActivityName: '',
+	start: '2026-11-29T22:00',
+	end: '2026-11-30T02:00',
+	quantity: 8,
+	dateCompleted: '2026-11-30',
+	remarks: 'Sunday to Monday',
+	durationSeconds: 14400,
+	weekSeconds: 7200,
+	weekQuantity: 0,
+	editable: false,
+};
+
+const EDITABLE_PERIOD = {
+	...OVERNIGHT_PERIOD,
+	id: 'wp-editable',
+	start: '2026-12-01T22:00',
+	end: `${TODAY}T02:00`,
+	quantity: 1.5,
+	dateCompleted: TODAY,
+	remarks: 'Today’s work',
+	durationSeconds: 14400,
+	weekSeconds: 14400,
+	weekQuantity: 1.5,
+	editable: true,
+};
+
+function periodPayload(
+	week = CURRENT_WEEK,
+	periods = [OVERNIGHT_PERIOD, BOUNDARY_PERIOD]
+) {
+	return {
+		success: true,
+		data: {
+			canLog: true,
+			today: TODAY,
+			weekStart: week,
+			periods,
+		},
+	};
+}
+
+function renderAssignments({ preloadedData = PRELOADED_DATA, ...props } = {}) {
+	const client = new QueryClient({
+		defaultOptions: {
+			queries: { retry: false, gcTime: 0, refetchOnWindowFocus: false },
+			mutations: { retry: false },
+		},
 	});
-	return mock;
-};
+	return render(
+		<QueryClientProvider client={client}>
+			<ProjectActivityAssignments
+				userId={42}
+				preloadedData={preloadedData}
+				{...props}
+			/>
+		</QueryClientProvider>
+	);
+}
 
-describe('ProjectActivityAssignments', () => {
-	let alertSpy;
+async function openAddForm() {
+	const user = userEvent.setup();
+	await user.click(await screen.findByRole('button', { name: 'Add' }));
+	await screen.findByRole('form', { name: 'Log a Work Period' });
+	await waitFor(() =>
+		expect(screen.getByLabelText('Discipline')).not.toBeDisabled()
+	);
+	return user;
+}
 
+async function chooseAssembly(user) {
+	await user.selectOptions(screen.getByLabelText('Project'), '1');
+	await user.selectOptions(screen.getByLabelText('Discipline'), 'd1');
+	await user.selectOptions(screen.getByLabelText('Activity'), 'a2');
+}
+
+describe('ProjectActivityAssignments Work Periods', () => {
 	beforeEach(() => {
-		alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-		vi.stubGlobal('fetch', buildFetch());
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(FIXED_NOW);
+		apiGet.mockReset();
+		apiPost.mockReset();
+		apiPut.mockReset();
+		apiDelete.mockReset();
+		apiGet.mockImplementation(async (url, params) => {
+			if (url === '/api/work-periods') {
+				if (params?.week === PREVIOUS_WEEK) {
+					return periodPayload(PREVIOUS_WEEK, [
+						{
+							...BOUNDARY_PERIOD,
+							weekSeconds: 7200,
+							weekQuantity: 0,
+						},
+					]);
+				}
+				return periodPayload(params?.week || CURRENT_WEEK);
+			}
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			if (url === '/api/users/42/activity-assignments') {
+				return { success: true, data: PRELOADED_DATA };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		apiPost.mockResolvedValue({
+			success: true,
+			data: { id: 'wp-new' },
+			affected_rows: 1,
+		});
+		apiPut.mockResolvedValue({
+			success: true,
+			data: { id: EDITABLE_PERIOD.id },
+			affected_rows: 1,
+		});
+		apiDelete.mockResolvedValue({
+			success: true,
+			data: { id: EDITABLE_PERIOD.id },
+			affected_rows: 1,
+		});
 	});
 
 	afterEach(() => {
-		alertSpy.mockRestore();
+		vi.useRealTimers();
 		vi.restoreAllMocks();
-		vi.unstubAllGlobals();
 	});
 
-	it('renders flat rows from preloaded data with project code and name columns', () => {
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{
-					assignments: ASSIGNMENTS,
-					emptyProjects: EMPTY_PROJECTS,
-				}}
-			/>
-		);
+	it('opens on the IST Monday and clips weekly totals from API fields', async () => {
+		renderAssignments();
 
-		// Header columns present
-		expect(screen.getByText('Project Number')).toBeInTheDocument();
-		expect(screen.queryByText('Code')).not.toBeInTheDocument();
-		// Project Name column is hidden
-		expect(screen.queryByText('Project')).not.toBeInTheDocument();
-		expect(screen.getByText('Discipline')).toBeInTheDocument();
-		expect(screen.getByText('Activity')).toBeInTheDocument();
-		expect(screen.getByText('Sub Activity')).toBeInTheDocument();
-		expect(screen.getByText('Default MH')).toBeInTheDocument();
-		expect(screen.getByText('Manhours')).toBeInTheDocument();
-		expect(screen.getByText('Date Completed')).toBeInTheDocument();
-		expect(screen.getByText('Status')).toBeInTheDocument();
+		expect(await screen.findByText('30 Nov – 6 Dec 2026')).toBeInTheDocument();
+		expect(apiGet).toHaveBeenCalledWith('/api/work-periods', {
+			week: CURRENT_WEEK,
+			userId: 42,
+		});
+		expect(await screen.findByText('Week total: 6h')).toBeInTheDocument();
+		expect(screen.getByText('Week quantity: 3')).toBeInTheDocument();
 
-		// Each activity appears as a flat row with project code + name
-		expect(screen.getByText('Foundation Work')).toBeInTheDocument();
+		const table = screen.getByRole('table', { name: 'Work Periods' });
+		expect(within(table).getAllByRole('row')).toHaveLength(4);
+		const overnightRow = screen.getByText('Overnight work').closest('tr');
+		expect(within(overnightRow).getByText('4h')).toBeInTheDocument();
+		expect(
+			within(overnightRow).getByText('30 Nov 2026, 22:00')
+		).toBeInTheDocument();
+		expect(
+			within(overnightRow).getByText('01 Dec 2026, 02:00')
+		).toBeInTheDocument();
+		expect(screen.queryByPlaceholderText('Hrs')).not.toBeInTheDocument();
+		expect(screen.queryByLabelText('Manhours')).not.toBeInTheDocument();
+	});
+
+	it('shows a boundary period in both weeks with only each API-clipped share', async () => {
+		const user = userEvent.setup();
+		renderAssignments();
+
+		await screen.findByText('Steel Erection');
+		await user.click(screen.getByRole('button', { name: 'Previous week' }));
+
+		expect(await screen.findByText('23 Nov – 29 Nov 2026')).toBeInTheDocument();
+		expect(apiGet).toHaveBeenCalledWith('/api/work-periods', {
+			week: PREVIOUS_WEEK,
+			userId: 42,
+		});
+		expect(await screen.findByText('Week total: 2h')).toBeInTheDocument();
+		expect(screen.getByText('Week quantity: 0')).toBeInTheDocument();
 		expect(screen.getByText('Steel Erection')).toBeInTheDocument();
-		expect(screen.getByText('HVAC Install')).toBeInTheDocument();
-
-		// Project codes (rendered multiple times across rows)
-		expect(screen.getAllByText('P-001').length).toBe(2);
-		expect(screen.getAllByText('P-002').length).toBe(1);
-
-		// Project Name column is hidden — names should not appear as table cells
-		expect(screen.queryByText('Alpha Plant')).not.toBeInTheDocument();
-		expect(screen.queryByText('Beta Tower')).not.toBeInTheDocument();
-	});
-	it('defaults to the current month and filters by the selected range', () => {
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{
-					assignments: [ASSIGNMENTS[0], OLD_ASSIGNMENT],
-					emptyProjects: [],
-				}}
-			/>
-		);
-
-		expect(screen.getByLabelText('From')).toHaveValue(currentMonthDate);
-		expect(screen.getByLabelText('To')).toHaveValue(currentDate);
-		expect(screen.getByText('Foundation Work')).toBeInTheDocument();
-		expect(screen.queryByText('Old Activity')).not.toBeInTheDocument();
-
-		fireEvent.change(screen.getByLabelText('From'), {
-			target: { value: '2000-01-01' },
-		});
-		fireEvent.change(screen.getByLabelText('To'), {
-			target: { value: '2000-01-31' },
-		});
-
-		expect(screen.getByText('Old Activity')).toBeInTheDocument();
 		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole('button', { name: 'Next week' }));
+		expect(await screen.findByText('30 Nov – 6 Dec 2026')).toBeInTheDocument();
+		expect(await screen.findByText('Week total: 6h')).toBeInTheDocument();
 	});
 
-	it('shows Total Manhours as the sum of planned_hours across all rows', () => {
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
+	it('preserves Project document links and searches Work Periods and history', async () => {
+		const user = userEvent.setup();
+		renderAssignments();
 
-		// 8 + 5 + 16 = 29
-		expect(screen.getByText('29')).toBeInTheDocument();
-	});
-
-	it('shows the empty-state message when no projects are assigned', () => {
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: [], emptyProjects: [] }}
-			/>
-		);
-
-		expect(screen.getByText('No projects assigned yet')).toBeInTheDocument();
-		expect(
-			screen.getByText('Contact your project manager to be added to a project.')
-		).toBeInTheDocument();
-		// No Add button when there are zero projects
-		expect(screen.queryByTitle('Add a new activity')).not.toBeInTheDocument();
-	});
-
-	it('shows the "No activities yet" row when only empty projects exist', () => {
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: [], emptyProjects: EMPTY_PROJECTS }}
-			/>
-		);
-
-		// Table is rendered (with the Add button), but there is at least one project
-		expect(screen.getByTitle('Add a new activity')).toBeInTheDocument();
-		expect(screen.getByText(/No activities yet\. Click/i)).toBeInTheDocument();
-		expect(screen.getByText('P-003 – Gamma Bridge')).toBeInTheDocument();
-	});
-	it('shows accessible projects when no activity rows exist', () => {
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{
-					assignments: [],
-					emptyProjects: [],
-					accessibleProjects: [
-						{
-							project_id: 4,
-							project_name: 'Delta Warehouse',
-							project_code: 'P-004',
-						},
-					],
-				}}
-			/>
-		);
-
-		expect(screen.getByText('P-004 – Delta Warehouse')).toBeInTheDocument();
-	});
-
-	it('names every project navigation link with one pattern on both surfaces', () => {
-		// One activity row per project keeps one Project Number link per project
-		// in the table. The same projects then reach the empty state's
-		// assigned-projects picker through `accessibleProjects`.
-		const linkProjects = [
-			{ project_id: 11, project_name: 'Harbour Depot', project_code: 'P-010' },
-			{ project_id: 12, project_name: 'Ion Mill', project_code: 'P-011' },
-		];
-		const linkRows = linkProjects.map((project, index) => ({
-			project_status: 'Active',
-			project_start_date: '2026-01-01',
-			project_end_date: '2026-12-31',
-			activity_id: `act-link-${index}`,
-			activity_name: `Link Activity ${index}`,
-			discipline: 'Mechanical',
-			sub_activity_name: '',
-			default_manhours: 0,
-			planned_hours: 4,
-			actual_hours: 0,
-			due_date: currentMonthDate,
-			status: 'Not Started',
-			...project,
-		}));
-
-		// Reads the accessible name of every link the rendered surface carries.
-		// The name comes from the rendered DOM — the link's own label or its
-		// title — and reading the link back by that name has to find the same
-		// element, so the accessible name really is what the DOM carries.
-		const readLinkNames = () =>
-			screen.getAllByRole('link').map((link) => {
-				const name =
-					link.getAttribute('aria-label') || link.getAttribute('title');
-				expect(name).toMatch(/^Open documents for \S/);
-				expect(screen.getByRole('link', { name })).toBe(link);
-				return name;
-			});
-
-		const rows = render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: linkRows, emptyProjects: [] }}
-			/>
-		);
-
-		const rowNames = readLinkNames();
-		// The label names the destination and carries the project it opens, so
-		// the link list stays distinguishable project by project.
-		for (const project of linkProjects) {
-			expect(rowNames).toContain(`Open documents for ${project.project_name}`);
+		const alphaLinks = await screen.findAllByRole('link', {
+			name: 'Open documents for Alpha Plant',
+		});
+		expect(alphaLinks.length).toBeGreaterThan(0);
+		for (const link of alphaLinks) {
+			expect(link).toHaveAttribute('href', '/projects/1?tab=upload_documents');
 		}
-		// The click wording alone is never the accessible name.
 		expect(
-			screen.queryByRole('link', { name: 'Open documents' })
-		).not.toBeInTheDocument();
-		rows.unmount();
+			await screen.findByRole('link', { name: 'Open documents for Beta Tower' })
+		).toHaveAttribute('href', '/projects/2?tab=upload_documents');
 
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{
-					assignments: [],
-					emptyProjects: [],
-					accessibleProjects: linkProjects,
-				}}
-			/>
+		await user.type(
+			screen.getByRole('searchbox', {
+				name: 'Search Work Periods and history',
+			}),
+			'Beta'
 		);
-
-		const pickerNames = readLinkNames();
-		expect(pickerNames).toEqual(rowNames);
-		expect(
-			screen.queryByRole('link', { name: 'Open documents' })
-		).not.toBeInTheDocument();
+		expect(screen.getByText('Steel Erection')).toBeInTheDocument();
+		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
+		expect(screen.queryByText('Recorded duration')).not.toBeInTheDocument();
 	});
 
-	it('renders nothing when API returns 401/403 (no access)', async () => {
-		const noAccessFetch = vi.fn().mockResolvedValue({
-			status: 403,
-			ok: false,
-			headers: { get: () => 'application/json' },
-			json: async () => ({ success: false }),
-		});
-		vi.unstubAllGlobals();
-		vi.stubGlobal('fetch', noAccessFetch);
-
-		const { container } = render(<ProjectActivityAssignments userId={42} />);
-
-		await waitFor(() => {
-			expect(container).toBeEmptyDOMElement();
-		});
-	});
-
-	it('fetches assignments and activity options when no preloaded data is given', async () => {
-		render(<ProjectActivityAssignments userId={42} />);
-
-		await waitFor(() => {
-			expect(screen.getByText('Foundation Work')).toBeInTheDocument();
-		});
-
-		// Two GET endpoints hit (assignments + options); no PATCH yet
-		const fetchMock = globalThis.fetch;
-		const calledUrls = fetchMock.mock.calls.map(([u]) => u);
-		expect(
-			calledUrls.some(
-				(u) =>
-					typeof u === 'string' &&
-					u.includes('/api/users/42/activity-assignments')
-			)
-		).toBe(true);
-		expect(
-			calledUrls.some(
-				(u) => typeof u === 'string' && u === '/api/activity-master/options'
-			)
-		).toBe(true);
-		expect(
-			fetchMock.mock.calls.every(
-				([, options]) => (options?.method || 'GET').toUpperCase() !== 'PATCH'
-			)
-		).toBe(true);
-	});
-
-	it('opens the inline add row when Add is clicked and populates the project picker', async () => {
-		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{
-					assignments: ASSIGNMENTS,
-					emptyProjects: EMPTY_PROJECTS,
-				}}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
-
-		const projectSelect = screen.getByTitle(
-			'Select a project you are assigned to'
-		);
-		expect(projectSelect).toBeInTheDocument();
-
-		// assignableProjects = assignments ∪ emptyProjects (deduped by project_id).
-		// P-001 (twice in assignments) and P-002 + P-003 from empty projects → 3 unique options.
-		const options = within(projectSelect).getAllByRole('option');
-		expect(options).toHaveLength(4); // 1 placeholder + 3 projects
-		expect(options[1].textContent).toContain('P-001');
-		expect(options[2].textContent).toContain('P-002');
-		expect(options[3].textContent).toContain('P-003');
-	});
-
-	it('cancels the inline add row without making a PATCH request', async () => {
-		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
-		expect(
-			screen.getByTitle('Select a project you are assigned to')
-		).toBeInTheDocument();
-
-		await user.click(screen.getByTitle('Cancel'));
-
-		expect(
-			screen.queryByTitle('Select a project you are assigned to')
-		).not.toBeInTheDocument();
-
-		const fetchMock = globalThis.fetch;
-		expect(
-			fetchMock.mock.calls.every(
-				([, options]) => (options?.method || 'GET').toUpperCase() !== 'PATCH'
-			)
-		).toBe(true);
-	});
-
-	it('alerts and skips the PATCH when no project is selected', async () => {
-		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
-		// Select discipline + activity so the only missing piece is the project
-		const disciplineSelect = screen.getAllByRole('combobox')[2];
-		await user.selectOptions(disciplineSelect, 'd1');
-		const activitySelect = screen.getAllByRole('combobox')[3];
-		await user.selectOptions(activitySelect, 'a1');
-
-		await user.click(screen.getByTitle('Save'));
-
-		expect(alertSpy).toHaveBeenCalledWith('Please select a project.');
-		const fetchMock = globalThis.fetch;
-		expect(
-			fetchMock.mock.calls.every(
-				([, options]) => (options?.method || 'GET').toUpperCase() !== 'PATCH'
-			)
-		).toBe(true);
-	});
-
-	it('alerts and skips the PATCH when discipline/activity are missing', async () => {
-		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
-		const projectSelect = screen.getByTitle(
-			'Select a project you are assigned to'
-		);
-		await user.selectOptions(projectSelect, '1');
-
-		await user.click(screen.getByTitle('Save'));
-
-		expect(alertSpy).toHaveBeenCalledWith(
-			'Please select a Discipline and Activity.'
-		);
-	});
-
-	it('cascades activity and sub-activity dropdowns and fills default manhours', async () => {
-		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
-
-		// Activity select is disabled until a discipline is picked
-		const disciplineSelect = screen.getAllByRole('combobox')[2];
-		const activitySelect = screen.getAllByRole('combobox')[3];
-		const subActivitySelect = screen.getAllByRole('combobox')[4];
-
-		expect(activitySelect).toBeDisabled();
-		expect(subActivitySelect).toBeDisabled();
-
-		await user.selectOptions(disciplineSelect, 'd1');
-		expect(activitySelect).not.toBeDisabled();
-		expect(within(activitySelect).getAllByRole('option')).toHaveLength(3); // 1 placeholder + 2 activities
-
-		// Sub-activity disabled until an activity with sub-activities is chosen
-		await user.selectOptions(activitySelect, 'a1');
-		expect(subActivitySelect).not.toBeDisabled();
-		expect(within(subActivitySelect).getAllByRole('option')).toHaveLength(3); // 1 placeholder + 2 subs
-
-		// Default manhours read-only input reflects the selected sub-activity
-		const defaultMhInput = screen.getByDisplayValue('–');
-		expect(defaultMhInput).toBeInTheDocument();
-		await user.selectOptions(subActivitySelect, 's1');
-		expect(screen.getByDisplayValue('8')).toBeInTheDocument();
-
-		// Picking a2 (no sub-activities) re-disables sub-activity
-		await user.selectOptions(activitySelect, 'a2');
-		expect(subActivitySelect).toBeDisabled();
-	});
-
-	it('sends a PATCH with the right payload and refreshes the table on success', async () => {
-		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
-
-		const projectSelect = screen.getByTitle(
-			'Select a project you are assigned to'
-		);
-		const disciplineSelect = screen.getAllByRole('combobox')[2];
-		const activitySelect = screen.getAllByRole('combobox')[3];
-		const subActivitySelect = screen.getAllByRole('combobox')[4];
-		const manhoursInput = screen.getByPlaceholderText('Hrs');
-		const dateInput = document.querySelectorAll('input[type="date"]')[2];
-
-		await user.selectOptions(projectSelect, '1');
-		await user.selectOptions(disciplineSelect, 'd1');
-		await user.selectOptions(activitySelect, 'a1');
-		await user.selectOptions(subActivitySelect, 's1');
-		await user.clear(manhoursInput);
-		await user.type(manhoursInput, '6');
-		await user.clear(dateInput);
-		await user.type(dateInput, '2026-03-15');
-
-		await user.click(screen.getByTitle('Save'));
-
-		await waitFor(() => {
-			const fetchMock = globalThis.fetch;
-			const patchCall = fetchMock.mock.calls.find(
-				([, options]) => (options?.method || '').toUpperCase() === 'PATCH'
-			);
-			expect(patchCall).toBeDefined();
-		});
-
-		const fetchMock = globalThis.fetch;
-		const [calledUrl, calledOptions] = fetchMock.mock.calls.find(
-			([, options]) => (options?.method || '').toUpperCase() === 'PATCH'
-		);
-		expect(calledUrl).toBe('/api/users/42/activity-assignments');
-		const body = JSON.parse(calledOptions.body);
-		expect(body).toEqual({
-			project_id: '1',
-			discipline_name: 'Mechanical',
-			activity_name: 'Fabrication',
-			sub_activity_name: 'Welding',
-			default_manhours: 8,
-			manhours_assigned: '6',
-			qty_completed: '',
-			due_date: '2026-03-15',
-			status: 'Not Started',
-			remarks: '',
-		});
-
-		// After success, the inline add row is closed
-		await waitFor(() => {
-			expect(
-				screen.queryByTitle('Select a project you are assigned to')
-			).not.toBeInTheDocument();
-		});
-
-		// And the GET is re-issued for refresh (it was already called once on mount
-		// via preloadedData path? — actually preloadedData short-circuits, so the
-		// first GET is the post-save refetch)
-		await waitFor(() => {
-			const getCalls = fetchMock.mock.calls.filter(
-				([, options]) => (options?.method || 'GET').toUpperCase() === 'GET'
-			);
-			expect(
-				getCalls.some(
-					([u]) =>
-						typeof u === 'string' &&
-						u.includes('/api/users/42/activity-assignments')
-				)
-			).toBe(true);
-		});
-	});
-
-	it('alerts with the server membership message when the PATCH is refused', async () => {
-		const failingFetch = vi.fn(async (url, options) => {
-			if (typeof url === 'string' && url.includes('/activity-assignments')) {
-				const method = (options?.method || 'GET').toUpperCase();
-				if (method === 'PATCH') {
-					return {
-						ok: false,
-						status: 400,
-						headers: { get: () => 'application/json' },
-						json: async () => ({
-							success: false,
-							code: 'ASSIGNEE_NOT_PROJECT_MEMBER',
-							error:
-								'Add member@example.com to the Project Team before assigning this activity.',
-						}),
-					};
-				}
+	it('keeps project discovery and explains a missing Employee link when no period exists', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') {
 				return {
-					ok: true,
-					headers: { get: () => 'application/json' },
-					json: async () => ({
-						success: true,
-						data: { assignments: ASSIGNMENTS, emptyProjects: [], stats: {} },
-					}),
+					success: true,
+					data: {
+						canLog: false,
+						today: TODAY,
+						weekStart: CURRENT_WEEK,
+						periods: [],
+					},
 				};
 			}
-			return {
-				ok: true,
-				headers: { get: () => 'application/json' },
-				json: async () => ({ success: true, data: DISCIPLINE_OPTIONS }),
-			};
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
 		});
-		vi.unstubAllGlobals();
-		vi.stubGlobal('fetch', failingFetch);
+		renderAssignments({
+			preloadedData: {
+				assignments: [],
+				emptyProjects: PRELOADED_DATA.emptyProjects,
+				accessibleProjects: [],
+				documentCounts: {},
+			},
+		});
+
+		expect(
+			await screen.findByText('No Work Periods for this week')
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/Ask your manager or support to link your User Account to an Employee/
+			)
+		).toBeInTheDocument();
+		expect(screen.getByText('Assigned projects')).toBeInTheDocument();
+		expect(
+			screen.getByRole('link', { name: 'Open documents for Gamma Bridge' })
+		).toHaveAttribute('href', '/projects/3?tab=upload_documents');
+		expect(
+			screen.queryByRole('button', { name: 'Add' })
+		).not.toBeInTheDocument();
+	});
+
+	it('renders raw legacy daily entries without inferred timestamps or edit controls', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') {
+				return periodPayload(CURRENT_WEEK, []);
+			}
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		renderAssignments({
+			preloadedData: {
+				...PRELOADED_DATA,
+				assignments: [
+					{
+						...PRELOADED_DATA.assignments[0],
+						daily_entries: [{ date: '2026-12-01', hours: 99, qty_done: 99 }],
+						legacy_daily_entries: PRELOADED_DATA.assignments[0].daily_entries,
+					},
+				],
+			},
+		});
+
+		const legacyTable = await screen.findByRole('table', {
+			name: 'Historical duration-only logs',
+		});
+		expect(within(legacyTable).getByText('2.5h')).toBeInTheDocument();
+		expect(
+			within(legacyTable).getByText('Recorded duration')
+		).toBeInTheDocument();
+		expect(within(legacyTable).queryByText('99h')).not.toBeInTheDocument();
+		expect(
+			screen.getByText(/Start and End were not recorded/)
+		).toBeInTheDocument();
+		expect(screen.queryByLabelText('From')).not.toBeInTheDocument();
+		expect(screen.queryByLabelText('To')).not.toBeInTheDocument();
+		expect(
+			within(legacyTable).queryByRole('button', { name: /Edit|Delete/ })
+		).not.toBeInTheDocument();
 
 		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
 		await user.selectOptions(
-			screen.getByTitle('Select a project you are assigned to'),
-			'1'
+			screen.getByLabelText('Legacy status'),
+			'In Progress'
 		);
-		await user.selectOptions(screen.getAllByRole('combobox')[2], 'd1');
-		await user.selectOptions(screen.getAllByRole('combobox')[3], 'a1');
-		await user.click(screen.getByTitle('Save'));
+		expect(
+			within(legacyTable).getByText('Foundation Work')
+		).toBeInTheDocument();
+	});
+
+	it('falls back to daily_entries only when the legacy projection is absent', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		renderAssignments();
+
+		const legacyTable = await screen.findByRole('table', {
+			name: 'Historical duration-only logs',
+		});
+		expect(within(legacyTable).getByText('2.5h')).toBeInTheDocument();
+	});
+
+	it('requires a real sub-activity only when the selected Activity has children', async () => {
+		renderAssignments();
+		const user = await openAddForm();
+		await user.selectOptions(screen.getByLabelText('Project'), '1');
+		await user.selectOptions(screen.getByLabelText('Discipline'), 'd1');
+		await user.selectOptions(screen.getByLabelText('Activity'), 'a1');
+		expect(screen.getByLabelText('Sub Activity')).toBeRequired();
+		expect(
+			within(screen.getByLabelText('Sub Activity')).queryByRole('option', {
+				name: 'No sub-activity',
+			})
+		).not.toBeInTheDocument();
+
+		await user.selectOptions(screen.getByLabelText('Activity'), 'a2');
+		expect(screen.getByDisplayValue('No sub-activity')).toBeInTheDocument();
+	});
+
+	it('posts a self-service Work Period, defaults Date Completed, and emits save evidence', async () => {
+		const onSaved = vi.fn();
+		window.addEventListener('activity-log-saved', onSaved);
+		renderAssignments();
+		const user = await openAddForm();
+		await chooseAssembly(user);
+		fireEvent.change(screen.getByLabelText(/Start \(IST\)/), {
+			target: { value: `${TODAY}T09:00` },
+		});
+		fireEvent.change(screen.getByLabelText(/End \(IST\)/), {
+			target: { value: `${TODAY}T11:30` },
+		});
+		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
+		fireEvent.change(screen.getByLabelText('Quantity'), {
+			target: { value: '2.5' },
+		});
+		fireEvent.change(screen.getByLabelText('Remarks'), {
+			target: { value: 'Completed assembly' },
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
 
 		await waitFor(() => {
-			expect(alertSpy).toHaveBeenCalledWith(
-				'Add member@example.com to the Project Team before assigning this activity.'
-			);
+			expect(apiPost).toHaveBeenCalledWith('/api/work-periods', {
+				projectId: '1',
+				disciplineId: 'd1',
+				activityId: 'a2',
+				subActivityId: null,
+				start: `${TODAY}T09:00`,
+				end: `${TODAY}T11:30`,
+				quantity: 2.5,
+				dateCompleted: TODAY,
+				remarks: 'Completed assembly',
+			});
+		});
+		await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+		expect(onSaved.mock.calls[0][0].detail).toMatchObject({ userId: 42 });
+		expect(
+			screen.queryByRole('button', { name: 'Save Work Period' })
+		).not.toBeInTheDocument();
+		window.removeEventListener('activity-log-saved', onSaved);
+	});
+
+	it('keeps every entered value and shows the server error when a save is rejected', async () => {
+		apiPost.mockRejectedValue(
+			new Error('This Work Period overlaps an existing Work Period.')
+		);
+		const onSaved = vi.fn();
+		window.addEventListener('activity-log-saved', onSaved);
+		renderAssignments();
+		const user = await openAddForm();
+		await chooseAssembly(user);
+		fireEvent.change(screen.getByLabelText(/Start \(IST\)/), {
+			target: { value: `${TODAY}T09:00` },
+		});
+		fireEvent.change(screen.getByLabelText(/End \(IST\)/), {
+			target: { value: `${TODAY}T10:00` },
+		});
+		fireEvent.change(screen.getByLabelText('Quantity'), {
+			target: { value: '4' },
+		});
+		fireEvent.change(screen.getByLabelText('Remarks'), {
+			target: { value: 'Keep this remark' },
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'This Work Period overlaps an existing Work Period.'
+		);
+		expect(screen.getByLabelText(/Start \(IST\)/)).toHaveValue(
+			`${TODAY}T09:00`
+		);
+		expect(screen.getByLabelText(/End \(IST\)/)).toHaveValue(`${TODAY}T10:00`);
+		expect(screen.getByLabelText('Quantity')).toHaveValue(4);
+		expect(screen.getByLabelText('Remarks')).toHaveValue('Keep this remark');
+		expect(onSaved).not.toHaveBeenCalled();
+		window.removeEventListener('activity-log-saved', onSaved);
+	});
+
+	it('edits one eligible overnight row without splitting it or changing its Project', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods')
+				return periodPayload(CURRENT_WEEK, [EDITABLE_PERIOD]);
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		const onSaved = vi.fn();
+		window.addEventListener('activity-log-saved', onSaved);
+		const user = userEvent.setup();
+		renderAssignments();
+
+		await user.click(
+			await screen.findByRole('button', {
+				name: 'Edit Work Period for Foundation Work',
+			})
+		);
+		expect(
+			screen.getByRole('form', { name: 'Edit Work Period' })
+		).toBeInTheDocument();
+		fireEvent.change(screen.getByLabelText(/End \(IST\)/), {
+			target: { value: `${TODAY}T03:00` },
+		});
+		fireEvent.change(screen.getByLabelText('Quantity'), {
+			target: { value: '2' },
+		});
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		await waitFor(() => {
+			expect(apiPut).toHaveBeenCalledWith('/api/work-periods', {
+				id: EDITABLE_PERIOD.id,
+				projectId: 1,
+				start: '2026-12-01T22:00',
+				end: `${TODAY}T03:00`,
+				quantity: 2,
+				dateCompleted: TODAY,
+				remarks: 'Today’s work',
+			});
+		});
+		await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+		window.removeEventListener('activity-log-saved', onSaved);
+	});
+
+	it('makes older Work Periods visibly read-only', async () => {
+		renderAssignments();
+
+		const row = (await screen.findByText('Overnight work')).closest('tr');
+		expect(within(row).getByText('Locked')).toBeInTheDocument();
+		expect(
+			within(row).queryByRole('button', {
+				name: /Edit Work Period|Delete Work Period/,
+			})
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByText(/Both endpoints must fall on today or yesterday in IST/)
+		).toBeInTheDocument();
+	});
+
+	it('deletes only the selected Work Period after confirmation', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods')
+				return periodPayload(CURRENT_WEEK, [EDITABLE_PERIOD]);
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		vi.spyOn(window, 'confirm').mockReturnValue(true);
+		const user = userEvent.setup();
+		renderAssignments();
+
+		await user.click(
+			await screen.findByRole('button', {
+				name: 'Delete Work Period for Foundation Work',
+			})
+		);
+
+		await waitFor(() => {
+			expect(apiDelete).toHaveBeenCalledWith('/api/work-periods', {
+				id: EDITABLE_PERIOD.id,
+				projectId: 1,
+			});
 		});
 	});
 
-	it('keeps the inline add row open when the PATCH throws (catch branch)', async () => {
-		const throwingFetch = vi.fn(async (url, options) => {
-			if (typeof url === 'string' && url.includes('/activity-assignments')) {
-				const method = (options?.method || 'GET').toUpperCase();
-				if (method === 'PATCH') {
-					throw new Error('Network down');
-				}
-				return {
-					ok: true,
-					headers: { get: () => 'application/json' },
-					json: async () => ({
-						success: true,
-						data: { assignments: ASSIGNMENTS, emptyProjects: [], stats: {} },
-					}),
-				};
+	it('keeps preloaded Project discovery visible when the Work Period read fails', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods')
+				throw new Error('Work Periods could not load.');
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
 			}
-			return {
-				ok: true,
-				headers: { get: () => 'application/json' },
-				json: async () => ({ success: true, data: DISCIPLINE_OPTIONS }),
-			};
+			throw new Error(`Unexpected request: ${url}`);
 		});
-		vi.unstubAllGlobals();
-		vi.stubGlobal('fetch', throwingFetch);
-
-		const user = userEvent.setup();
-		render(
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={{ assignments: ASSIGNMENTS, emptyProjects: [] }}
-			/>
-		);
-
-		await user.click(screen.getByTitle('Add a new activity'));
-		await user.selectOptions(
-			screen.getByTitle('Select a project you are assigned to'),
-			'1'
-		);
-		await user.selectOptions(screen.getAllByRole('combobox')[2], 'd1');
-		await user.selectOptions(screen.getAllByRole('combobox')[3], 'a1');
-		await user.click(screen.getByTitle('Save'));
-
-		await waitFor(() => {
-			expect(alertSpy).toHaveBeenCalledWith('Network down');
+		renderAssignments({
+			preloadedData: {
+				assignments: [],
+				emptyProjects: PRELOADED_DATA.emptyProjects,
+				accessibleProjects: [],
+				documentCounts: {},
+			},
 		});
-		// Row is still open (Save failed, didn't close)
+
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'Work Periods could not load.'
+		);
 		expect(
-			screen.getByTitle('Select a project you are assigned to')
+			screen.getByRole('link', { name: 'Open documents for Gamma Bridge' })
 		).toBeInTheDocument();
+		expect(
+			screen.getByRole('button', { name: 'Try again' })
+		).toBeInTheDocument();
+	});
+});
+
+describe('WorkPeriodFields', () => {
+	const value = {
+		start: `${TODAY}T09:00`,
+		end: `${TODAY}T10:00`,
+		quantity: '2.5',
+		dateCompleted: TODAY,
+		remarks: 'A remark',
+	};
+
+	it('emits the complete controlled value when any shared field changes', () => {
+		const onChange = vi.fn();
+		render(<WorkPeriodFields value={value} onChange={onChange} />);
+
+		fireEvent.change(screen.getByLabelText('Quantity'), {
+			target: { value: '3' },
+		});
+		expect(onChange).toHaveBeenCalledWith({ ...value, quantity: '3' });
+		fireEvent.change(screen.getByLabelText('Remarks'), {
+			target: { value: 'Updated remark' },
+		});
+		expect(onChange).toHaveBeenLastCalledWith({
+			...value,
+			remarks: 'Updated remark',
+		});
+	});
+
+	it('disables every shared field while a mutation is pending', () => {
+		render(<WorkPeriodFields value={value} onChange={vi.fn()} disabled />);
+
+		for (const label of [
+			/Start \(IST\)/,
+			/End \(IST\)/,
+			'Quantity',
+			'Date Completed',
+			'Remarks',
+		]) {
+			expect(screen.getByLabelText(label)).toBeDisabled();
+		}
 	});
 });
