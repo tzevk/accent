@@ -550,10 +550,11 @@ async function fetchMonthHolidays(
  * Canonical Logged Hours per roster employee, keyed `${employee_id}` → date →
  * hours (ADR-0010, uncapped).
  *
- * Assignment rows use the recorded assignment Employee id first, then the
- * linked account's canonical `employee_id`. Login and display identifiers
- * never establish ownership. The same rule is used by the payroll calculator,
- * so both readers consume payroll's own numerator without attribution drift.
+ * Effective `logged_activity_assignments` rows use the recorded assignment
+ * Employee id first, then the linked account's canonical `employee_id`. Login
+ * and display identifiers never establish ownership. The same rule is used by
+ * the payroll calculator, so both readers consume payroll's own numerator
+ * without attribution drift.
  */
 async function fetchLoggedHoursByEmployee(
 	members: readonly RosterMember[],
@@ -567,7 +568,7 @@ async function fetchLoggedHoursByEmployee(
 	const [assignmentRows] = (await query(
 		`SELECT uaa.employee_id, uaa.daily_entries,
 		        u.employee_id AS user_employee_id
-		 FROM user_activity_assignments uaa
+		 FROM logged_activity_assignments uaa
 		 LEFT JOIN users u ON u.id = uaa.user_id
 		 WHERE uaa.status <> 'Cancelled'
 		   AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`

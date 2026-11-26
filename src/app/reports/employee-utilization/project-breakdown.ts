@@ -2,7 +2,7 @@
  * Per-employee project breakdown for the Employee Utilization report (#299).
  *
  * The month's Logged Hours bucketed by the assignment's project:
- * - Every non-cancelled `user_activity_assignments` row is resolved to its
+ * - Every non-cancelled `logged_activity_assignments` row is resolved to its
  *   employee through the shared Logged Hours resolver
  *   (`@/lib/logged-hours-source`) — the one rule the payroll and attendance
  *   readers use, never a second fallback.
@@ -288,7 +288,7 @@ export async function fetchProjectBreakdown(
 		        u.employee_id AS user_employee_id,
 		        p.project_id AS resolved_project_id, p.project_code,
 		        p.project_title, p.name AS project_name, p.client_name
-		 FROM user_activity_assignments uaa
+		 FROM logged_activity_assignments uaa
 		 LEFT JOIN users u ON u.id = uaa.user_id
 		 LEFT JOIN projects p ON p.project_id = uaa.project_id AND p.isDelete = 0
 		 WHERE uaa.status <> 'Cancelled'

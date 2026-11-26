@@ -15,8 +15,8 @@
  * The employee-specific FY reader uses the same recorded allocations and estimates.
  *
  * Financial interpretation:
- * - Hours: `user_activity_assignments.daily_entries` timesheet logs (the same
- *   source behind ProjectActivityAssignments.jsx), bucketed into calendar months.
+ * - Hours: effective `logged_activity_assignments.daily_entries` — legacy
+ *   duration entries plus Work Period attribution — bucketed into months.
  * - Employee cost comes from the shared financial interpretation
  *   (`@/lib/company-expenditure`, #307/ADR-0016): recorded employer-cost
  *   allocations frozen at Payroll Finalize where they exist, the corrected
@@ -483,7 +483,7 @@ export async function fetchEmployeeCostMeta(): Promise<CostMeta> {
 	yearsSet.add(currentFy - 1);
 	try {
 		const [asgRows] = (await query(
-			`SELECT daily_entries FROM user_activity_assignments
+			`SELECT daily_entries FROM logged_activity_assignments
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
@@ -494,7 +494,7 @@ export async function fetchEmployeeCostMeta(): Promise<CostMeta> {
 			}
 		}
 	} catch {
-		/* user_activity_assignments may not exist */
+		/* logged_activity_assignments may not exist */
 	}
 
 	const financial_years: FinancialYearOption[] = Array.from(yearsSet)
@@ -1097,7 +1097,7 @@ export async function fetchCompanyCostMeta(): Promise<CompanyCostMeta> {
 
 	try {
 		const [asgRows] = (await query(
-			`SELECT daily_entries FROM user_activity_assignments
+			`SELECT daily_entries FROM logged_activity_assignments
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
@@ -1111,7 +1111,7 @@ export async function fetchCompanyCostMeta(): Promise<CompanyCostMeta> {
 			}
 		}
 	} catch {
-		/* table may not exist */
+		/* logged_activity_assignments may not exist */
 	}
 
 	// Also include project_manhours_list months? Not needed for cost, but keep for completeness

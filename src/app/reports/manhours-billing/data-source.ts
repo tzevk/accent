@@ -18,7 +18,8 @@
  * Smart Data Resolution:
  * - Pulls hours from `projects.project_manhours_list` (Project Manhours tab,
  *   including external/vendor members and deputation resources) AND
- *   `user_activity_assignments.daily_entries` (timesheet daily task logs).
+ *   `logged_activity_assignments.daily_entries` (effective legacy + Work
+ *   Period logs).
  */
 
 import type Decimal from 'decimal.js';
@@ -1261,7 +1262,7 @@ export async function fetchBillingMeta(): Promise<BillingMeta> {
 
 	try {
 		const [asgRows] = (await query(
-			`SELECT daily_entries FROM user_activity_assignments
+			`SELECT daily_entries FROM logged_activity_assignments
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
@@ -1277,7 +1278,7 @@ export async function fetchBillingMeta(): Promise<BillingMeta> {
 			}
 		}
 	} catch {
-		/* user_activity_assignments may not exist */
+		/* logged_activity_assignments may not exist */
 	}
 
 	months = Array.from(monthSet).sort().reverse();
@@ -1402,7 +1403,7 @@ export async function fetchBillingData(
 		const [rows] = (await query(
 			`SELECT uaa.id, uaa.user_id, uaa.employee_id, uaa.daily_entries,
 			        u.employee_id AS user_employee_id
-			 FROM user_activity_assignments uaa
+			 FROM logged_activity_assignments uaa
 			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.project_id = ?
 			   AND uaa.status <> 'Cancelled'
@@ -1527,7 +1528,7 @@ export async function fetchAnnualBillingData(
 		const [rows] = (await query(
 			`SELECT uaa.id, uaa.user_id, uaa.employee_id, uaa.daily_entries,
 			        u.employee_id AS user_employee_id
-			 FROM user_activity_assignments uaa
+			 FROM logged_activity_assignments uaa
 			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.project_id = ?
 			   AND uaa.status <> 'Cancelled'

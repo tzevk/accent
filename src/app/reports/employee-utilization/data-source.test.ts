@@ -157,7 +157,7 @@ function mockRangeDb(salaryRows: unknown[] = []) {
 		if (sql.includes('FROM holiday_master'))
 			return Promise.resolve([rangeHolidays]);
 		if (sql.includes('FROM employee_attendance')) return Promise.resolve([[]]);
-		if (sql.includes('FROM user_activity_assignments'))
+		if (sql.includes('FROM logged_activity_assignments'))
 			return Promise.resolve([rangeAssignments]);
 		if (sql.includes('FROM users')) return Promise.resolve([[]]);
 		return Promise.resolve([[]]);
@@ -1416,7 +1416,7 @@ describe('project breakdown', () => {
 					[{ id: 1, employee_id: 'E-1', name: 'Alex Smith' }],
 				]);
 			}
-			if (sql.includes('FROM user_activity_assignments')) {
+			if (sql.includes('FROM logged_activity_assignments')) {
 				return Promise.resolve([
 					[
 						{
