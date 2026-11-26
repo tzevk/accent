@@ -51,6 +51,15 @@ The full harness run satisfies `npm run test:e2e` only when every selected test
 reports passed and the owned cleanup exits cleanly. Failure artifacts belong in
 ignored `e2e/artifacts/`; open them with `npm run test:e2e:report`.
 
+## Work Period timesheet outcome (#468)
+
+This row records the agreed #468 journey and its intended selector in the
+existing CI-owned Employee time spec. It is not evidence of a completed run.
+
+| User/domain outcome                                                                                                                                                 | Selector                                                                                                                           | Expected result                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An Employee logs one finished overnight Work Period and sees its hours on the dates worked in My Timesheet, while historical duration-only history stays unchanged. | [`employee-time.spec.ts`](../../e2e/specs/employee-time.spec.ts) — `--grep "work period reaches My Timesheet across IST midnight"` | After real sign-in and form save/reopen, fixed IST endpoints produce the authored daily and monthly totals across midnight. One row retains both endpoints and appears in both overlapped weeks with only each week's elapsed share; quantity is credited once on Date Completed, and the legacy duration is unchanged. |
+
 ## Money, salary, and calendar invariants
 
 Property tests state the rule independently of the implementation. A failure

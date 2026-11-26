@@ -2,7 +2,7 @@
 
 ## Overview
 
-`/reports/timesheet-report` — a per-employee monthly timesheet rendered in the same shape as the company's Excel monthly-timesheet template: a workbook header (employee code/name/designation/department, month/year), a day-column matrix with per-project hour rows, a "Daily Man Hours" (normal) row, an "Over Time Hours" row, and totals. Day-level values come from `employee_attendance` (status, overtime), holiday names from `holiday_master`, and the project/activity rows from `user_activity_assignments` (`daily_entries` JSON — the actual daily time log employees fill in, same source as Manhours Billing and the Project Status person×day matrix).
+`/reports/timesheet-report` — a per-employee monthly timesheet rendered in the same shape as the company's Excel monthly-timesheet template: a workbook header (employee code/name/designation/department, month/year), a day-column matrix with per-project hour rows, a "Daily Man Hours" (normal) row, an "Over Time Hours" row, and totals. Day-level status and attendance overtime come from `employee_attendance`; holiday names come from `holiday_master`. Project/activity hours come from the shared effective daily attribution: historical duration-only Daily Activity Entries plus elapsed slices of canonical Work Periods (#468, ADR-0038).
 
 The reference workbook, `docs/extras/05-shantanu_sonawane_TIMESHEET_MAY_2026.xlsx`, is a gitignored local asset.
 The published implementation is [excel-template.ts](../../../src/app/reports/timesheet-report/excel-template.ts).
@@ -24,9 +24,8 @@ Browser (filters: employee → month)
   │  GET /api/reports/timesheet-report               (meta: employees, months)
   │  GET /api/reports/timesheet-report?employee_id=&month=   (full matrix)
   ▼
-data-source.ts
-  ├─ fetchTimesheetMeta()  → active employees + months with data
-  └─ fetchTimesheetData()  → employee, day matrix, holidays, project rows,
+  ├─ fetchTimesheetMeta()  → active employees + months with effective daily entries
+  └─ fetchTimesheetData()  → employee, day matrix, holidays, effective project rows,
   │                          summary, normal/OT hours
   ▼
 page.tsx (grid) / excel-template.ts (export) — same transforms
@@ -34,16 +33,35 @@ page.tsx (grid) / excel-template.ts (export) — same transforms
 
 ### Data sources
 
-| Section                     | Source table                | How it is derived                                                                             |
-| --------------------------- | --------------------------- | --------------------------------------------------------------------------------------------- |
-| **Employee header**         | `employees`                 | `CONCAT_WS(' ', first_name, last_name)`; designation = `position`/`designation`; `department` |
-| **Day matrix / statuses**   | `employee_attendance`       | `status` (P/HD/PL/WO/H/A/…), `overtime_hours`, `is_weekly_off`, `is_holiday` for the month    |
-| **Holidays**                | `holiday_master`            | `is_active = 1` rows in the month; name + date                                                |
-| **Weekly-off policy**       | computed                    | Sundays + **2nd and 4th Saturdays** only (see below) when no attendance row exists            |
-| **Project/activity rows**   | `user_activity_assignments` | Sum of `hours` in the assignment's `daily_entries` JSON array where `date` falls in the month |
-| **Standard day / half day** | `attendance_settings`       | `standard_working_hours` (default 8), `half_day_hours` (default 4)                            |
+| Section                     | Source table                  | How it is derived                                                                                                                    |
+| --------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Employee header**         | `employees`                   | `CONCAT_WS(' ', first_name, last_name)`; designation = `position`/`designation`; `department`                                        |
+| **Day matrix / statuses**   | `employee_attendance`         | `status` (P/HD/PL/WO/H/A/…), `overtime_hours`, `is_weekly_off`, `is_holiday` for the month                                           |
+| **Holidays**                | `holiday_master`              | `is_active = 1` rows in the month; name + date                                                                                       |
+| **Weekly-off policy**       | computed                      | Sundays + **2nd and 4th Saturdays** only (see below) when no attendance row exists                                                   |
+| **Project/activity rows**   | `logged_activity_assignments` | Read-only view combining legacy `daily_entries` with the transactional `work_period_entries` projection as effective `daily_entries` |
+| **Standard day / half day** | `attendance_settings`         | `standard_working_hours` (default 8), `half_day_hours` (default 4)                                                                   |
 
 ---
+
+## Work Period attribution
+
+Canonical Work Periods live in `work_periods`, separate from Project Activity
+assignments and estimates. The report reads their daily projection through
+`logged_activity_assignments`; it does not create a second duration-only record
+when a period is saved.
+
+- Split elapsed time at every IST midnight, including month boundaries. A period
+  crossing midnight contributes only each date's share to the monthly grid.
+- Keep one quantity on Date Completed and count it once. Quantity is not used to
+  infer hours.
+- Keep historical duration-only entries on their recorded dates. Never invent
+  Start or End for them.
+- Discover report months from effective daily entries, so a Work Period crossing
+  a month boundary makes both affected months available.
+
+My Timesheet, this report, and the Excel export use the same effective daily
+attribution, so their daily and monthly Logged Hours reconcile.
 
 ## Day matrix
 
@@ -58,28 +76,54 @@ page.tsx (grid) / excel-template.ts (export) — same transforms
 
 `computeMonthlyHours(projects, days, settings)` resolves the two rows the matrix totals use:
 
-- **Source = `project`** when the employee logged any project hours in the month (from `daily_entries`). The raw per-day total across all assignments is split:
+- **Source = `project`** when the employee logged any project hours in the month (from effective `daily_entries`: legacy durations plus Work Period slices). The raw per-day total across all assignments is split:
   - `daily[date] = min(logged, standard_working_hours)` — the **Daily Man Hours** row credits at most a standard day;
   - `overtime_daily[date] = max(0, logged − standard)` — the excess goes to the **Over Time Hours** row.
 - **Source = `attendance`** otherwise: `daily` = attendance status hours, `overtime_daily` = the attendance `overtime_hours` column.
 
 `normal` = Σ daily (capped), `overtime` = Σ overtime_daily, `total` = normal + overtime. Everything reconciles: Σ logged = normal + overtime.
 
-## Project rows (`daily_entries`)
+## Project rows (effective `daily_entries`)
 
-`buildProjectRows(rawRows, month)` parses each assignment's `daily_entries` JSON blob (`[{ date, qty_done, hours, remarks }]`):
+`buildProjectRows(rawRows, month)` parses each assignment's effective
+`daily_entries` (`[{ date, qty_done, hours, remarks }]`) from
+`logged_activity_assignments`:
 
-- Entries outside the month are dropped; entries with `hours <= 0` are ignored; duplicate dates within one assignment are summed.
-- Each project row carries `days` (per-day hours) and `total_hours` (monthly sum, 2dp).
-- The assignment query matches the employee via `uaa.employee_id`, or any linked login account (`users` email/username/employee_id match), excluding `status = 'Cancelled'`.
+- Entries outside the month are dropped; entries with `hours <= 0` are ignored;
+  duplicate dates within one assignment are summed.
+- Each Project row carries `days` (per-day hours) and `total_hours` (monthly sum,
+  2dp).
+- The assignment query still matches the Employee via `uaa.employee_id`, or any
+  linked login account (`users` email/username/employee_id match), excluding
+  `status = 'Cancelled'`.
+- A Work Period crossing a month boundary stays one canonical record but adds
+  only its elapsed share to each month. A legacy duration remains on its
+  recorded date and is not converted into guessed endpoints.
 
-**The per-project cells and the "Monthly Man Hours" total column render hours capped at the standard working day per day** — `capProjectDays` splits an over-8h day across its projects proportionally so the top section never sums above the standard day, and the daily excess is surfaced in the Over Time Hours row. The cap exists to keep the top section honest; it never invents hours, and the raw log is preserved in the OT row and the grand total.
+**The per-project cells and the "Monthly Man Hours" total column render hours
+capped at the standard working day per day.** `capProjectDays` splits an over-8h
+day across its Projects proportionally so the top section never sums above the
+standard day; the daily excess is surfaced in the Over Time Hours row. The cap
+preserves the raw log in the OT row and grand total.
 
-The physically impossible days that used to reach the report (18h/20h/32h — the same actual hours entered against several assignments) were for a time **blocked at entry** by a `MAX_DAY_HOURS` (12h) per-user-per-date cap in `src/utils/activity-daily-hours.ts` (that module has since been deleted); the entry-side enforcement was removed on 2026-08-13 (`1202303`) because it rejected legitimate bulk updates. The report's own per-day display cap (standard working day) and the OT split are unchanged.
+Rows with zero hours still appear when their `start_date`/`due_date` falls in the
+month. The report's display cap and normal/OT split are unchanged by Work Period
+support.
 
-Rows with zero hours still appear when their `start_date`/`due_date` falls in the month (empty row, keeps the reference layout).
+## Inputs stay separate
 
-The report itself still caps the man-hours grid at the standard working day per day and moves the excess to overtime, regardless of what was logged.
+- **Estimates:** Work Periods never write `planned_hours`, `estimated_hours`, or
+  another Project estimate. Elapsed actual effort and planned effort retain
+  separate editing paths.
+- **Attendance:** Work Periods do not create Attendance Records, Punches, or
+  Payable OT. Attendance status, attendance overtime, weekly-off and holiday
+  policy, and the attendance fallback when no Project hours are logged remain
+  unchanged.
+- **Payroll:** Logged Hours remain the current payroll numerator under ADR-0010;
+  the formula and recorded Payroll Slip snapshots are unchanged. A Work Period
+  is evidence of work, not approval of Payable Hours.
+
+---
 
 ## Auth
 
@@ -166,7 +210,7 @@ Filename: `Timesheet_<EMPLOYEE_NAME>_<MONTH_LABEL>.xlsx` (e.g. `Timesheet_ROSHAN
 
 ---
 
-## Files changed
+## Original Timesheet implementation files
 
 | File                                                     | Change                                                                              |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
