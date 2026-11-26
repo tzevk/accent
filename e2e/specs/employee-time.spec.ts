@@ -200,6 +200,10 @@ test('work period reaches My Timesheet across IST midnight', async ({
 	await expect(
 		page.getByRole('heading', { name: 'My Project Activities', exact: true })
 	).toBeVisible();
+	const activityTable = page.getByRole('table', {
+		name: 'Project activity table',
+	});
+	await expect(activityTable).toBeVisible();
 	const reminder = page.getByRole('dialog', {
 		name: 'Activity Update Required',
 	});
@@ -208,6 +212,11 @@ test('work period reaches My Timesheet across IST midnight', async ({
 		.getByRole('button', { name: 'Update Now', exact: true })
 		.click();
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	const editor = page.getByRole('form', { name: 'Work Period editor' });
+	await expect(editor).toBeVisible();
+	await expect(
+		activityTable.getByLabel('Project', { exact: true })
+	).toBeVisible();
 
 	const project = page.getByLabel('Project', { exact: true });
 	await project.selectOption({
@@ -223,13 +232,17 @@ test('work period reaches My Timesheet across IST midnight', async ({
 	await expect(subActivity).toHaveText('No sub-activity');
 	await expect(subActivity).toBeDisabled();
 	await expect(subActivity).toHaveValue('');
-	await page.getByLabel('Start (IST)', { exact: true }).fill(seeded.self.start);
-	await page.getByLabel('End (IST)', { exact: true }).fill(seeded.self.end);
+	const startTime = seeded.self.start.slice(11);
+	const endTime = seeded.self.end.slice(11);
+	await page
+		.getByLabel('Date Completed', { exact: true })
+		.fill(seeded.self.dateCompleted);
+	await page.getByLabel('Start Period', { exact: true }).fill(startTime);
+	await page.getByLabel('End Period', { exact: true }).fill(endTime);
 	await page.getByLabel('Quantity', { exact: true }).fill('2.5');
-	await expect(page.getByLabel('Date Completed', { exact: true })).toHaveValue(
-		seeded.self.dateCompleted
-	);
-	await page.getByLabel('Remarks', { exact: true }).fill(seeded.self.remarks);
+	await page
+		.getByRole('textbox', { name: 'Remarks', exact: true })
+		.fill(seeded.self.remarks);
 
 	const saved = page.waitForResponse(
 		(response) =>
@@ -268,7 +281,7 @@ test('work period reaches My Timesheet across IST midnight', async ({
 			.getByRole('button', { name: 'Previous week', exact: true })
 			.click();
 	}
-	const reopened = page
+	const reopened = activityTable
 		.getByRole('row')
 		.filter({ hasText: seeded.self.remarks });
 	await expect(reopened).toHaveCount(1);

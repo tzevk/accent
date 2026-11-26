@@ -41,6 +41,8 @@ export interface WorkPeriodListingRecord extends WorkPeriodRecord {
 	activityName: string;
 	subActivityName: string | null;
 	employeeName: string | null;
+	defaultManhours: number | null;
+	status: string | null;
 }
 
 export interface WorkPeriodWriteData {
@@ -108,6 +110,13 @@ function optionalText(value: unknown): string | null {
 	return value === null || value === undefined ? null : String(value);
 }
 
+function optionalNumber(value: unknown): number | null {
+	if (value === null || value === undefined) return null;
+	if (typeof value === 'string' && value.trim() === '') return null;
+	const number = Number(value);
+	return Number.isFinite(number) ? number : null;
+}
+
 /** mysql2 parses DATE in the session's local zone; local getters recover it. */
 function requiredDateText(value: unknown): string {
 	if (typeof value === 'string') {
@@ -161,6 +170,8 @@ function listingRecord(row: SqlRow): WorkPeriodListingRecord {
 		activityName: requiredText(row.activity_name, 'activity_name'),
 		subActivityName: optionalText(row.sub_activity_name),
 		employeeName,
+		defaultManhours: optionalNumber(row.default_manhours),
+		status: optionalText(row.status),
 	};
 }
 
@@ -265,7 +276,8 @@ export async function readWorkPeriods(
 		   p.project_code, p.project_title AS project_name,
 		   uaa.discipline_name AS discipline, uaa.activity_name,
 		   uaa.sub_activity_name,
-		   TRIM(CONCAT(COALESCE(e.first_name, ''), ' ', COALESCE(e.last_name, ''))) AS employee_name
+		   uaa.default_manhours, uaa.status,
+ 		   TRIM(CONCAT(COALESCE(e.first_name, ''), ' ', COALESCE(e.last_name, ''))) AS employee_name
 		 FROM work_periods AS wp
 		 INNER JOIN user_activity_assignments AS uaa ON uaa.id = wp.assignment_id
 		 INNER JOIN projects AS p

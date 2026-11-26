@@ -30,8 +30,9 @@ import { WorkPeriodFields } from '@/components/WorkPeriodFields';
 
 const FIXED_NOW = new Date('2026-12-02T12:00:00Z');
 const TODAY = '2026-12-02';
-const CURRENT_WEEK = '2026-11-30';
 const PREVIOUS_WEEK = '2026-11-23';
+const CURRENT_WEEK = '2026-11-30';
+const WEEK_END = '2026-12-06';
 
 const DISCIPLINE_OPTIONS = [
 	{
@@ -52,12 +53,15 @@ const PRELOADED_DATA = {
 	assignments: [
 		{
 			project_id: 1,
+			id: 'assignment-1',
 			project_name: 'Alpha Plant',
 			project_code: 'P-001',
 			activity_id: 'act-1',
 			activity_name: 'Foundation Work',
 			discipline: 'Civil',
-			sub_activity_name: 'Excavation',
+			default_manhours: 12,
+			planned_hours: 8,
+			actual_hours: 4,
 			status: 'In Progress',
 			remarks: 'Assignment remark',
 			daily_entries: [
@@ -118,7 +122,7 @@ const BOUNDARY_PERIOD = {
 	remarks: 'Sunday to Monday',
 	durationSeconds: 14400,
 	weekSeconds: 7200,
-	weekQuantity: 0,
+	weekQuantity: 8,
 	editable: false,
 };
 
@@ -172,7 +176,27 @@ function renderAssignments({ preloadedData = PRELOADED_DATA, ...props } = {}) {
 async function openAddForm() {
 	const user = userEvent.setup();
 	await user.click(await screen.findByRole('button', { name: 'Add' }));
-	await screen.findByRole('form', { name: 'Log a Work Period' });
+	const table = await screen.findByRole('table', {
+		name: 'Project activity table',
+	});
+	const editor = screen.getByRole('form', { name: 'Work Period editor' });
+	expect(editor).toContainElement(table);
+	const addRow = within(table).getByLabelText('Project').closest('tr');
+	expect(addRow).not.toBeNull();
+	for (const label of [
+		'Project',
+		'Discipline',
+		'Activity',
+		'Sub Activity',
+		'Start Period',
+		'End Period',
+		'Quantity',
+		'Date Completed',
+		'Remarks',
+		'Save Work Period',
+	]) {
+		expect(within(addRow).getByLabelText(label)).toBeVisible();
+	}
 	await waitFor(() =>
 		expect(screen.getByLabelText('Discipline')).not.toBeDisabled()
 	);
@@ -183,6 +207,34 @@ async function chooseAssembly(user) {
 	await user.selectOptions(screen.getByLabelText('Project'), '1');
 	await user.selectOptions(screen.getByLabelText('Discipline'), 'd1');
 	await user.selectOptions(screen.getByLabelText('Activity'), 'a2');
+}
+
+function activityTable() {
+	return screen.getByRole('table', { name: 'Project activity table' });
+}
+
+async function expectTotals(manhours, quantity) {
+	const label = await screen.findByText('Total Manhours');
+	const cells = within(label.closest('tr')).getAllByRole('cell');
+	await waitFor(() => {
+		expect(cells[1].textContent.trim()).toBe(manhours);
+		expect(cells[2].textContent.trim()).toBe(quantity);
+	});
+}
+
+async function rowContaining(text) {
+	const table = await screen.findByRole('table', {
+		name: 'Project activity table',
+	});
+	const row = (await within(table).findByText(text)).closest('tr');
+	expect(row).not.toBeNull();
+	return row;
+}
+
+function setEndpoint(label, time) {
+	fireEvent.change(screen.getByLabelText(label), {
+		target: { value: time },
+	});
 }
 
 describe('ProjectActivityAssignments Work Periods', () => {
@@ -249,7 +301,7 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		}
 	);
 
-	it('opens on the IST Monday and clips weekly totals from API fields', async () => {
+	it('opens on the IST Monday in one dense table with derived Manhours', async () => {
 		renderAssignments();
 
 		expect(await screen.findByText('30 Nov – 6 Dec 2026')).toBeInTheDocument();
@@ -257,24 +309,61 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			week: CURRENT_WEEK,
 			userId: 42,
 		});
-		expect(await screen.findByText('Week total: 6h')).toBeInTheDocument();
-		expect(screen.getByText('Week quantity: 3')).toBeInTheDocument();
+		await expectTotals('8.5', '15');
 
-		const table = screen.getByRole('table', { name: 'Work Periods' });
-		expect(within(table).getAllByRole('row')).toHaveLength(4);
-		const overnightRow = screen.getByText('Overnight work').closest('tr');
-		expect(within(overnightRow).getByText('4h')).toBeInTheDocument();
+		const table = activityTable();
 		expect(
-			within(overnightRow).getByText('30 Nov 2026, 22:00')
-		).toBeInTheDocument();
+			within(table)
+				.getAllByRole('columnheader')
+				.map((heading) => heading.textContent.trim())
+		).toEqual([
+			'Project Number',
+			'Discipline',
+			'Activity',
+			'Sub Activity',
+			'Default MH',
+			'Start Period',
+			'End Period',
+			'Manhours',
+			'Quantity',
+			'Date Completed',
+			'Status',
+			'Remark',
+			'Actions',
+		]);
+		expect(screen.getByLabelText('From')).toHaveValue(CURRENT_WEEK);
+		expect(screen.getByLabelText('To')).toHaveValue(WEEK_END);
 		expect(
-			within(overnightRow).getByText('01 Dec 2026, 02:00')
+			screen.getByRole('textbox', { name: 'Search activities' })
 		).toBeInTheDocument();
+		expect(screen.getByLabelText('Filter by status')).toBeInTheDocument();
+
+		const overnightRow = await rowContaining('Overnight work');
+		const overnightCells = within(overnightRow).getAllByRole('cell');
+		expect(overnightCells).toHaveLength(13);
+		expect(overnightCells[5]).toHaveTextContent('Previous day');
+		expect(overnightCells[5]).toHaveTextContent('22:00');
+		expect(overnightCells[6]).toHaveTextContent('02:00');
+		expect(overnightCells[7].textContent.trim()).toBe('4');
+		expect(overnightCells[8]).toHaveTextContent('3');
+		expect(overnightCells[9]).toHaveTextContent('01 Dec 2026');
+
+		const boundaryRow = await rowContaining('Sunday to Monday');
+		const boundaryCells = within(boundaryRow).getAllByRole('cell');
+		expect(boundaryCells[7].textContent).toContain('4');
+		expect(boundaryCells[7]).toHaveTextContent('Week: 2');
+		expect(boundaryCells[8].textContent.trim()).toBe('8');
+
+		const legacyRow = await rowContaining('Recorded duration');
+		const legacyCells = within(legacyRow).getAllByRole('cell');
+		expect(legacyCells[4]).toHaveTextContent('12');
+		expect(legacyCells[7].textContent.trim()).toBe('2.5');
+		expect(legacyCells[8]).toHaveTextContent('4');
 		expect(screen.queryByPlaceholderText('Hrs')).not.toBeInTheDocument();
 		expect(screen.queryByLabelText('Manhours')).not.toBeInTheDocument();
 	});
 
-	it('shows a boundary period in both weeks with only each API-clipped share', async () => {
+	it('shows a boundary period in both weeks with only each clipped share', async () => {
 		const user = userEvent.setup();
 		renderAssignments();
 
@@ -286,14 +375,20 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			week: PREVIOUS_WEEK,
 			userId: 42,
 		});
-		expect(await screen.findByText('Week total: 2h')).toBeInTheDocument();
-		expect(screen.getByText('Week quantity: 0')).toBeInTheDocument();
-		expect(screen.getByText('Steel Erection')).toBeInTheDocument();
-		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
+		expect(screen.getByLabelText('From')).toHaveValue(PREVIOUS_WEEK);
+		await expectTotals('2', '0');
+		const boundary = await rowContaining('Sunday to Monday');
+		expect(within(boundary).getByText('Week: 0')).toBeInTheDocument();
+		const placeholder = await rowContaining('Foundation Work');
+		expect(
+			within(placeholder).getByRole('button', {
+				name: 'No Work Period recorded for Foundation Work',
+			})
+		).toBeDisabled();
 
 		await user.click(screen.getByRole('button', { name: 'Next week' }));
 		expect(await screen.findByText('30 Nov – 6 Dec 2026')).toBeInTheDocument();
-		expect(await screen.findByText('Week total: 6h')).toBeInTheDocument();
+		await expectTotals('8.5', '15');
 	});
 
 	it('preserves Project document links and searches Work Periods and history', async () => {
@@ -312,9 +407,7 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		).toHaveAttribute('href', '/projects/2?tab=upload_documents');
 
 		await user.type(
-			screen.getByRole('searchbox', {
-				name: 'Search Work Periods and history',
-			}),
+			screen.getByRole('textbox', { name: 'Search activities' }),
 			'Beta'
 		);
 		expect(screen.getByText('Steel Erection')).toBeInTheDocument();
@@ -348,10 +441,7 @@ describe('ProjectActivityAssignments Work Periods', () => {
 				documentCounts: {},
 			},
 		});
-
-		expect(
-			await screen.findByText('No Work Periods for this week')
-		).toBeInTheDocument();
+		expect(await screen.findByText(/No activities yet/)).toBeInTheDocument();
 		expect(
 			screen.getByText(
 				/Ask your manager or support to link your User Account to an Employee/
@@ -366,11 +456,9 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		).not.toBeInTheDocument();
 	});
 
-	it('renders raw legacy daily entries without inferred timestamps or edit controls', async () => {
+	it('renders raw legacy daily entries read-only in the same activity table', async () => {
 		apiGet.mockImplementation(async (url) => {
-			if (url === '/api/work-periods') {
-				return periodPayload(CURRENT_WEEK, []);
-			}
+			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
 			if (url === '/api/activity-master/options') {
 				return { success: true, data: DISCIPLINE_OPTIONS };
 			}
@@ -389,31 +477,38 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			},
 		});
 
-		const legacyTable = await screen.findByRole('table', {
-			name: 'Historical duration-only logs',
+		const table = await screen.findByRole('table', {
+			name: 'Project activity table',
 		});
-		expect(within(legacyTable).getByText('2.5h')).toBeInTheDocument();
+		const legacyRow = within(table)
+			.getByText('Recorded duration')
+			.closest('tr');
+		const cells = within(legacyRow).getAllByRole('cell');
+		expect(cells[5].textContent).toBe('');
+		expect(cells[6].textContent).toBe('');
+		expect(cells[7].textContent.trim()).toBe('2.5');
+		expect(cells[8]).toHaveTextContent('4');
+		expect(within(legacyRow).queryByText('99')).not.toBeInTheDocument();
 		expect(
-			within(legacyTable).getByText('Recorded duration')
+			screen.getByText(/Older entries may have no recorded times/)
 		).toBeInTheDocument();
-		expect(within(legacyTable).queryByText('99h')).not.toBeInTheDocument();
+		expect(screen.getByLabelText('From')).toHaveValue(CURRENT_WEEK);
+		expect(screen.getByLabelText('To')).toHaveValue(WEEK_END);
 		expect(
-			screen.getByText(/Start and End were not recorded/)
-		).toBeInTheDocument();
-		expect(screen.queryByLabelText('From')).not.toBeInTheDocument();
-		expect(screen.queryByLabelText('To')).not.toBeInTheDocument();
+			within(legacyRow).getByRole('button', {
+				name: 'Historical duration-only log for Foundation Work',
+			})
+		).toBeDisabled();
 		expect(
-			within(legacyTable).queryByRole('button', { name: /Edit|Delete/ })
+			screen.queryByRole('table', { name: 'Historical duration-only logs' })
 		).not.toBeInTheDocument();
 
 		const user = userEvent.setup();
 		await user.selectOptions(
-			screen.getByLabelText('Legacy status'),
+			screen.getByLabelText('Filter by status'),
 			'In Progress'
 		);
-		expect(
-			within(legacyTable).getByText('Foundation Work')
-		).toBeInTheDocument();
+		expect(within(table).getByText('Foundation Work')).toBeInTheDocument();
 	});
 
 	it('falls back to daily_entries only when the legacy projection is absent', async () => {
@@ -426,12 +521,102 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		});
 		renderAssignments();
 
-		const legacyTable = await screen.findByRole('table', {
-			name: 'Historical duration-only logs',
-		});
-		expect(within(legacyTable).getByText('2.5h')).toBeInTheDocument();
+		const row = await rowContaining('Recorded duration');
+		expect(within(row).getByText('2.5')).toBeInTheDocument();
 	});
 
+	it('keeps empty assignments as read-only placeholders only for the full week', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		renderAssignments({
+			preloadedData: {
+				...PRELOADED_DATA,
+				assignments: [
+					{
+						...PRELOADED_DATA.assignments[0],
+						daily_entries: [],
+						legacy_daily_entries: [],
+						qty_completed: 0,
+					},
+				],
+			},
+		});
+
+		const row = await rowContaining('Foundation Work');
+		const cells = within(row).getAllByRole('cell');
+		expect(cells[4]).toHaveTextContent('12');
+		expect(cells[4]).toHaveTextContent('Estimate: 8');
+		expect(cells[5].textContent).toBe('');
+		expect(cells[6].textContent).toBe('');
+		expect(cells[7].textContent).toBe('');
+		expect(cells[8].textContent).toBe('');
+		expect(cells[9].textContent).toBe('');
+		expect(cells[10]).toHaveTextContent('In Progress');
+		expect(cells[11]).toHaveTextContent('Assignment remark');
+		expect(
+			within(row).getByRole('link', { name: 'Open documents for Alpha Plant' })
+		).toHaveAttribute('href', '/projects/1?tab=upload_documents');
+		expect(
+			within(row).getByRole('button', {
+				name: 'No Work Period recorded for Foundation Work',
+			})
+		).toBeDisabled();
+		await expectTotals('0', '0');
+
+		fireEvent.change(screen.getByLabelText('From'), {
+			target: { value: TODAY },
+		});
+		fireEvent.change(screen.getByLabelText('To'), {
+			target: { value: TODAY },
+		});
+		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
+	});
+
+	it('defaults From and To to the selected IST week and filters adjacent dates', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		renderAssignments({
+			preloadedData: {
+				...PRELOADED_DATA,
+				assignments: [
+					PRELOADED_DATA.assignments[0],
+					{
+						...PRELOADED_DATA.assignments[0],
+						id: 'assignment-adjacent',
+						activity_id: 'act-adjacent',
+						activity_name: 'Adjacent Activity',
+						daily_entries: [
+							{ date: TODAY, hours: 1, qty_done: 1, remarks: 'Adjacent date' },
+						],
+					},
+				],
+			},
+		});
+
+		expect(screen.getByLabelText('From')).toHaveValue(CURRENT_WEEK);
+		expect(screen.getByLabelText('To')).toHaveValue(WEEK_END);
+		expect(await screen.findByText('Foundation Work')).toBeInTheDocument();
+		expect(screen.getByText('Adjacent Activity')).toBeInTheDocument();
+
+		fireEvent.change(screen.getByLabelText('From'), {
+			target: { value: TODAY },
+		});
+		fireEvent.change(screen.getByLabelText('To'), {
+			target: { value: TODAY },
+		});
+		expect(await screen.findByText('Adjacent Activity')).toBeInTheDocument();
+		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
+	});
 	it('requires a real sub-activity only when the selected Activity has children', async () => {
 		renderAssignments();
 		const user = await openAddForm();
@@ -444,23 +629,21 @@ describe('ProjectActivityAssignments Work Periods', () => {
 				name: 'No sub-activity',
 			})
 		).not.toBeInTheDocument();
+		await user.selectOptions(screen.getByLabelText('Sub Activity'), 's1');
+		expect(screen.getByLabelText('Default MH')).toHaveValue('8');
 
 		await user.selectOptions(screen.getByLabelText('Activity'), 'a2');
 		expect(screen.getByDisplayValue('No sub-activity')).toBeInTheDocument();
 	});
 
-	it('posts a self-service Work Period, defaults Date Completed, and emits save evidence', async () => {
+	it('posts a self-service overnight Work Period and emits save evidence', async () => {
 		const onSaved = vi.fn();
 		window.addEventListener('activity-log-saved', onSaved);
 		renderAssignments();
 		const user = await openAddForm();
 		await chooseAssembly(user);
-		fireEvent.change(screen.getByLabelText(/Start \(IST\)/), {
-			target: { value: `${TODAY}T09:00` },
-		});
-		fireEvent.change(screen.getByLabelText(/End \(IST\)/), {
-			target: { value: `${TODAY}T11:30` },
-		});
+		setEndpoint('Start Period', '22:00');
+		setEndpoint('End Period', '01:00');
 		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
 		fireEvent.change(screen.getByLabelText('Quantity'), {
 			target: { value: '2.5' },
@@ -477,8 +660,8 @@ describe('ProjectActivityAssignments Work Periods', () => {
 				disciplineId: 'd1',
 				activityId: 'a2',
 				subActivityId: null,
-				start: `${TODAY}T09:00`,
-				end: `${TODAY}T11:30`,
+				start: '2026-12-01T22:00',
+				end: `${TODAY}T01:00`,
 				quantity: 2.5,
 				dateCompleted: TODAY,
 				remarks: 'Completed assembly',
@@ -492,7 +675,22 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		window.removeEventListener('activity-log-saved', onSaved);
 	});
 
-	it('keeps every entered value and shows the server error when a save is rejected', async () => {
+	it('rejects equal clocks for a new Work Period without calling the API', async () => {
+		renderAssignments();
+		const user = await openAddForm();
+		await chooseAssembly(user);
+		setEndpoint('Start Period', '09:00');
+		setEndpoint('End Period', '09:00');
+
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'End must be after Start.'
+		);
+		expect(apiPost).not.toHaveBeenCalled();
+	});
+
+	it('keeps every entered time and shared value when a save is rejected', async () => {
 		apiPost.mockRejectedValue(
 			new Error('This Work Period overlaps an existing Work Period.')
 		);
@@ -501,12 +699,8 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		renderAssignments();
 		const user = await openAddForm();
 		await chooseAssembly(user);
-		fireEvent.change(screen.getByLabelText(/Start \(IST\)/), {
-			target: { value: `${TODAY}T09:00` },
-		});
-		fireEvent.change(screen.getByLabelText(/End \(IST\)/), {
-			target: { value: `${TODAY}T10:00` },
-		});
+		setEndpoint('Start Period', '22:00');
+		setEndpoint('End Period', '01:00');
 		fireEvent.change(screen.getByLabelText('Quantity'), {
 			target: { value: '4' },
 		});
@@ -519,17 +713,20 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		expect(await screen.findByRole('alert')).toHaveTextContent(
 			'This Work Period overlaps an existing Work Period.'
 		);
-		expect(screen.getByLabelText(/Start \(IST\)/)).toHaveValue(
-			`${TODAY}T09:00`
-		);
-		expect(screen.getByLabelText(/End \(IST\)/)).toHaveValue(`${TODAY}T10:00`);
+		expect(screen.getByLabelText('Project')).toHaveValue('1');
+		expect(screen.getByLabelText('Discipline')).toHaveValue('d1');
+		expect(screen.getByLabelText('Activity')).toHaveValue('a2');
+		expect(screen.getByLabelText('Sub Activity')).toHaveValue('');
+		expect(screen.getByLabelText('Start Period')).toHaveValue('22:00');
+		expect(screen.getByLabelText('End Period')).toHaveValue('01:00');
+		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
 		expect(screen.getByLabelText('Quantity')).toHaveValue(4);
 		expect(screen.getByLabelText('Remarks')).toHaveValue('Keep this remark');
 		expect(onSaved).not.toHaveBeenCalled();
 		window.removeEventListener('activity-log-saved', onSaved);
 	});
 
-	it('edits one eligible overnight row without splitting it or changing its Project', async () => {
+	it('edits one eligible overnight row in place without moving its saved dates', async () => {
 		apiGet.mockImplementation(async (url) => {
 			if (url === '/api/work-periods')
 				return periodPayload(CURRENT_WEEK, [EDITABLE_PERIOD]);
@@ -548,12 +745,13 @@ describe('ProjectActivityAssignments Work Periods', () => {
 				name: 'Edit Work Period for Foundation Work',
 			})
 		);
-		expect(
-			screen.getByRole('form', { name: 'Edit Work Period' })
-		).toBeInTheDocument();
-		fireEvent.change(screen.getByLabelText(/End \(IST\)/), {
-			target: { value: `${TODAY}T03:00` },
-		});
+		const table = activityTable();
+		const editor = screen.getByRole('form', { name: 'Work Period editor' });
+		expect(editor).toContainElement(table);
+		const editRow = within(table).getByLabelText('Start Period').closest('tr');
+		expect(within(editRow).getByLabelText('Start Period')).toHaveValue('22:00');
+		expect(within(editRow).getByLabelText('End Period')).toHaveValue('02:00');
+		setEndpoint('End Period', '03:00');
 		fireEvent.change(screen.getByLabelText('Quantity'), {
 			target: { value: '2' },
 		});
@@ -574,19 +772,54 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		window.removeEventListener('activity-log-saved', onSaved);
 	});
 
+	it('changes only quantity attribution when an existing Date Completed changes', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods')
+				return periodPayload(CURRENT_WEEK, [EDITABLE_PERIOD]);
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		const user = userEvent.setup();
+		renderAssignments();
+		await user.click(
+			await screen.findByRole('button', {
+				name: 'Edit Work Period for Foundation Work',
+			})
+		);
+		fireEvent.change(screen.getByLabelText('Date Completed'), {
+			target: { value: '2026-12-01' },
+		});
+		fireEvent.change(screen.getByLabelText('Quantity'), {
+			target: { value: '2' },
+		});
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		await waitFor(() => {
+			expect(apiPut).toHaveBeenCalledWith('/api/work-periods', {
+				id: EDITABLE_PERIOD.id,
+				projectId: 1,
+				start: '2026-12-01T22:00',
+				end: `${TODAY}T02:00`,
+				quantity: 2,
+				dateCompleted: '2026-12-01',
+				remarks: 'Today’s work',
+			});
+		});
+	});
+
 	it('makes older Work Periods visibly read-only', async () => {
 		renderAssignments();
 
-		const row = (await screen.findByText('Overnight work')).closest('tr');
-		expect(within(row).getByText('Locked')).toBeInTheDocument();
-		expect(
-			within(row).queryByRole('button', {
-				name: /Edit Work Period|Delete Work Period/,
-			})
-		).not.toBeInTheDocument();
-		expect(
-			screen.getByText(/Both endpoints must fall on today or yesterday in IST/)
-		).toBeInTheDocument();
+		const row = await rowContaining('Overnight work');
+		const lock = within(row).getByRole('button', {
+			name: 'Locked for Foundation Work',
+		});
+		expect(lock).toBeDisabled();
+		expect(lock).toHaveAccessibleDescription(
+			'Both work dates must be today or yesterday to edit.'
+		);
 	});
 
 	it('deletes only the selected Work Period after confirmation', async () => {
@@ -655,10 +888,40 @@ describe('WorkPeriodFields', () => {
 		remarks: 'A remark',
 	};
 
+	it('keeps explicit calendar dates for the manager editor', () => {
+		render(<WorkPeriodFields value={value} onChange={vi.fn()} />);
+
+		expect(screen.getByLabelText('Start (IST)')).toHaveAttribute(
+			'type',
+			'datetime-local'
+		);
+		expect(screen.getByLabelText('Start (IST)')).toHaveValue(value.start);
+		expect(screen.getByLabelText('End (IST)')).toHaveAttribute(
+			'type',
+			'datetime-local'
+		);
+		expect(screen.getByLabelText('End (IST)')).toHaveValue(value.end);
+		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
+	});
+
 	it('emits the complete controlled value when any shared field changes', () => {
 		const onChange = vi.fn();
 		render(<WorkPeriodFields value={value} onChange={onChange} />);
 
+		fireEvent.change(screen.getByLabelText('Start (IST)'), {
+			target: { value: '2026-12-01T22:00' },
+		});
+		expect(onChange).toHaveBeenCalledWith({
+			...value,
+			start: '2026-12-01T22:00',
+		});
+		fireEvent.change(screen.getByLabelText('End (IST)'), {
+			target: { value: `${TODAY}T03:00` },
+		});
+		expect(onChange).toHaveBeenLastCalledWith({
+			...value,
+			end: `${TODAY}T03:00`,
+		});
 		fireEvent.change(screen.getByLabelText('Quantity'), {
 			target: { value: '3' },
 		});
@@ -676,8 +939,8 @@ describe('WorkPeriodFields', () => {
 		render(<WorkPeriodFields value={value} onChange={vi.fn()} disabled />);
 
 		for (const label of [
-			/Start \(IST\)/,
-			/End \(IST\)/,
+			'Start (IST)',
+			'End (IST)',
 			'Quantity',
 			'Date Completed',
 			'Remarks',

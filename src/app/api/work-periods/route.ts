@@ -160,6 +160,8 @@ function periodRow(
 		activityName: record.activityName,
 		subActivityName: record.subActivityName ?? '',
 		employeeName: record.employeeName ?? '',
+		defaultManhours: record.defaultManhours,
+		status: record.status,
 		start: formatIstLocal(record.startMs),
 		end: formatIstLocal(record.endMs),
 		quantity: Number.isFinite(quantity) ? quantity : 0,

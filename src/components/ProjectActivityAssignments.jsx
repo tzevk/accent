@@ -9,14 +9,14 @@ import {
 	shiftIstDate,
 	weekStartFor,
 } from '@/lib/work-periods';
-import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
+import { formatDate, formatNumber } from '@/lib/format';
 import Link from 'next/link';
-import { WorkPeriodFields } from '@/components/WorkPeriodFields';
 import {
 	ClipboardDocumentListIcon,
 	DocumentIcon,
 	PlusIcon,
 	CheckIcon,
+	XMarkIcon,
 	MagnifyingGlassIcon,
 	ArrowsUpDownIcon,
 	PencilSquareIcon,
@@ -109,6 +109,28 @@ function projectLinkName(project) {
 		project?.project_code ||
 		project?.projectId ||
 		project?.project_id
+	);
+}
+
+/** Compact incumbent textarea: one row initially, growing with its content. */
+function AutoGrowTextarea({ value, className = '', ...props }) {
+	const ref = useRef(null);
+
+	useLayoutEffect(() => {
+		const element = ref.current;
+		if (!element) return;
+		element.style.height = 'auto';
+		element.style.height = `${element.scrollHeight + 2}px`;
+	}, [value]);
+
+	return (
+		<textarea
+			ref={ref}
+			rows={1}
+			value={value}
+			{...props}
+			className={`w-full resize-none overflow-y-auto rounded border leading-5 transition-[border-color,box-shadow] duration-150 focus:outline-none ${className}`}
+		/>
 	);
 }
 
@@ -261,7 +283,7 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 	return (
 		<th
 			scope="col"
-			className="px-2 py-2 text-center font-bold text-[#64126D] uppercase tracking-wide text-xs leading-tight"
+			className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
 			aria-sort={
 				isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined
 			}
@@ -269,9 +291,7 @@ function SortHeader({ label, sortKey, sort, onSort }) {
 			<button
 				type="button"
 				onClick={() => onSort(sortKey)}
-				className={`inline-flex min-h-6 w-full items-center justify-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500 ${
-					isActive ? 'text-[#64126D]' : 'text-[#64126D]/80'
-				} hover:text-[#7F2487]`}
+				className="inline-flex min-h-6 w-full items-center justify-center gap-1 rounded hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 			>
 				<span>{label}</span>
 				<ArrowsUpDownIcon
@@ -307,18 +327,6 @@ const textCollator = new Intl.Collator(undefined, {
 	sensitivity: 'base',
 });
 
-const selectClass =
-	'min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 sm:text-sm';
-
-const primaryButtonClass =
-	'inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-[#64126D] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#7F2487] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500 disabled:cursor-not-allowed disabled:opacity-50';
-
-const secondaryButtonClass =
-	'inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500 disabled:cursor-not-allowed disabled:opacity-50';
-
-const iconButtonClass =
-	'inline-flex h-8 min-w-8 items-center justify-center rounded-md text-[#64126D] transition-colors hover:bg-purple-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500 disabled:cursor-not-allowed disabled:opacity-50';
-
 function numberValue(value) {
 	const number = Number(value);
 	return Number.isFinite(number) ? number : 0;
@@ -328,14 +336,6 @@ function formatQuantity(value) {
 	return formatNumber(value).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
 }
 
-function formatHours(seconds) {
-	const minutes = Math.max(0, Math.round(numberValue(seconds) / 60));
-	const hours = Math.floor(minutes / 60);
-	const remainder = minutes % 60;
-	if (!hours) return `${remainder}m`;
-	return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
-}
-
 function formatDateLabel(value) {
 	if (!value) return '–';
 	return formatDate(`${value.slice(0, 10)}T00:00:00+05:30`, {
@@ -343,12 +343,54 @@ function formatDateLabel(value) {
 	});
 }
 
-function formatDateTimeLabel(value) {
-	if (!value) return '–';
-	return formatDateTime(`${value}+05:30`, {
-		timeZone: 'Asia/Kolkata',
-		hourCycle: 'h23',
-	});
+function periodClock(endpoint) {
+	return endpoint?.slice(11, 16) ?? '';
+}
+
+function startsPreviousDay({ start, end }) {
+	return Boolean(start && end && end < start);
+}
+
+function addEndpoints(fields) {
+	const endDate = fields.dateCompleted;
+	const startDate = startsPreviousDay(fields)
+		? shiftIstDate(endDate, -1)
+		: endDate;
+	return {
+		start: `${startDate}T${fields.start}`,
+		end: `${endDate}T${fields.end}`,
+	};
+}
+
+function editEndpoint(saved, time) {
+	// A clock edit must not move hours to a different date.
+	if (!saved || !time) return '';
+	return time === periodClock(saved) ? saved : `${saved.slice(0, 10)}T${time}`;
+}
+
+function periodDateHint(endpoint, dateCompleted) {
+	const date = endpoint?.slice(0, 10);
+	if (!date || date === dateCompleted) return '';
+	if (
+		dateCompleted &&
+		date < dateCompleted &&
+		shiftIstDate(date, 1) === dateCompleted
+	)
+		return 'Previous day';
+	return formatDateLabel(date);
+}
+
+function PeriodTime({ endpoint, dateCompleted }) {
+	if (!endpoint) return null;
+	const hint = periodDateHint(endpoint, dateCompleted);
+	return (
+		<>
+			<time className="tabular-nums" dateTime={`${endpoint}+05:30`}>
+				{periodClock(endpoint)}
+			</time>
+			{hint && <span className="block text-[11px] text-gray-600">{hint}</span>}
+		</>
+	);
 }
 
 function formatWeekRange(weekStart) {
@@ -433,14 +475,15 @@ function ProjectActivityAssignmentsForUser({
 	const queryClient = useQueryClient();
 	const errorRef = useRef(null);
 	const formId = useId();
-	const addTitleId = `${formId}-add-title`;
-	const editTitleId = `${formId}-edit-title`;
 	const periodsCaptionId = `${formId}-periods-caption`;
-	const legacyCaptionId = `${formId}-legacy-caption`;
 	const [week, setWeek] = useState(currentWeekStart);
+	const [fromDate, setFromDate] = useState(currentWeekStart);
+	const [toDate, setToDate] = useState(() =>
+		shiftIstDate(currentWeekStart(), 6)
+	);
 	const [search, setSearch] = useState('');
-	const [legacyStatus, setLegacyStatus] = useState('all');
-	const [sort, setSort] = useState({ key: 'start', dir: 'desc' });
+	const [statusFilter, setStatusFilter] = useState('all');
+	const [sort, setSort] = useState({ key: 'due_date', dir: 'desc' });
 	const [isAdding, setIsAdding] = useState(false);
 	const [addForm, setAddForm] = useState({ ...EMPTY_ADD_FORM });
 	const [editing, setEditing] = useState(null);
@@ -563,6 +606,7 @@ function ProjectActivityAssignmentsForUser({
 	const periods = Array.isArray(periodData?.periods) ? periodData.periods : [];
 	const canLog = periodData?.canLog === true;
 	const today = periodData?.today || currentIstDate();
+	const yesterday = shiftIstDate(today, -1);
 	const currentWeek = periodData?.today
 		? weekStartFor(periodData.today)
 		: currentWeekStart();
@@ -609,6 +653,7 @@ function ProjectActivityAssignmentsForUser({
 				activityId: assignment.activity_id,
 				activityName: assignment.activity_name || 'Unnamed Activity',
 				subActivityName: assignment.sub_activity_name || '',
+				defaultManhours: numberValue(assignment.default_manhours),
 				date: String(entry?.date || '').slice(0, 10),
 				hours: numberValue(entry?.hours),
 				quantity: numberValue(entry?.qty_done),
@@ -618,97 +663,209 @@ function ProjectActivityAssignmentsForUser({
 			.filter((row) => row.date >= activeWeek && row.date <= weekEnd)
 	);
 
+	const workRows = periods.map((period) => {
+		const assignment = assignments.find(
+			(candidate) =>
+				String(candidate.project_id) === String(period.projectId) &&
+				String(candidate.activity_id) === String(period.activityId)
+		);
+		return {
+			kind: 'period',
+			key: `period-${period.id}`,
+			period,
+			projectId: period.projectId,
+			projectCode: period.projectCode || assignment?.project_code || '',
+			projectName: period.projectName || assignment?.project_name || '',
+			discipline: period.discipline || assignment?.discipline || '',
+			activityId: period.activityId,
+			activityName:
+				period.activityName || assignment?.activity_name || 'Unnamed Activity',
+			subActivityName:
+				period.subActivityName ?? assignment?.sub_activity_name ?? '',
+			defaultManhours: numberValue(
+				period.defaultManhours ?? assignment?.default_manhours
+			),
+			estimate: numberValue(assignment?.planned_hours),
+			start: period.start || '',
+			end: period.end || '',
+			manhours: numberValue(period.durationSeconds) / 3600,
+			weekManhours: numberValue(period.weekSeconds) / 3600,
+			quantity: numberValue(period.quantity),
+			weekQuantity: numberValue(period.weekQuantity),
+			dateCompleted: period.dateCompleted || '',
+			status: period.status || assignment?.status || 'Not Started',
+			remarks: period.remarks || '',
+		};
+	});
+
+	const legacyRows = legacyWeekRows.map((row) => ({
+		...row,
+		kind: 'legacy',
+		key: `legacy-${row.key}`,
+		period: null,
+		start: '',
+		end: '',
+		manhours: row.hours,
+		weekManhours: row.hours,
+		dateCompleted: row.date,
+		weekQuantity: row.quantity,
+		estimate: 0,
+	}));
+
+	const loggedAssignments = new Set(
+		[...workRows, ...legacyRows].map(
+			(row) => `${row.projectId}:${row.activityId}`
+		)
+	);
+	const assignmentRows = assignments
+		.filter(
+			(assignment) =>
+				!loggedAssignments.has(
+					`${assignment.project_id}:${assignment.activity_id}`
+				)
+		)
+		.map((assignment) => ({
+			kind: 'assignment',
+			key: `assignment-${assignment.project_id}-${assignment.activity_id}`,
+			period: null,
+			projectId: assignment.project_id,
+			projectCode: assignment.project_code || '',
+			projectName: assignment.project_name || '',
+			discipline: assignment.discipline || '',
+			activityId: assignment.activity_id,
+			activityName: assignment.activity_name || 'Unnamed Activity',
+			subActivityName: assignment.sub_activity_name || '',
+			defaultManhours: numberValue(assignment.default_manhours),
+			estimate: numberValue(assignment.planned_hours),
+			start: '',
+			end: '',
+			manhours: 0,
+			weekManhours: 0,
+			quantity: 0,
+			weekQuantity: 0,
+			dateCompleted: '',
+			status: assignment.status || 'Not Started',
+			remarks: assignment.remarks || '',
+		}));
+
+	const baseRows = [...workRows, ...legacyRows, ...assignmentRows];
 	const statusOptions = Array.from(
-		new Set(assignments.map((assignment) => assignment.status).filter(Boolean))
+		new Set(baseRows.map((row) => row.status).filter(Boolean))
 	).sort(textCollator.compare);
 
 	const normalizedSearch = search.trim().toLowerCase();
-	let periodRows = periods.filter(
-		(period) =>
-			!normalizedSearch || periodSearchText(period).includes(normalizedSearch)
-	);
+	const rangeStart = fromDate || activeWeek;
+	const rangeEnd = toDate || weekEnd;
+	const fullWeekSelected = rangeStart === activeWeek && rangeEnd === weekEnd;
+	let flatRows = baseRows.filter((row) => {
+		const matchesSearch =
+			!normalizedSearch ||
+			(row.kind === 'period'
+				? periodSearchText(row.period)
+				: legacySearchText(row)
+			).includes(normalizedSearch);
+		const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
+		const matchesDate =
+			row.kind === 'assignment'
+				? fullWeekSelected
+				: row.kind === 'period'
+					? row.start.slice(0, 10) <= rangeEnd &&
+						row.end.slice(0, 10) >= rangeStart
+					: row.dateCompleted >= rangeStart && row.dateCompleted <= rangeEnd;
+		return matchesSearch && matchesStatus && matchesDate;
+	});
+
 	if (sort.key) {
 		const direction = sort.dir === 'asc' ? 1 : -1;
-		const valueFor = (period) => {
+		const valueFor = (row) => {
 			switch (sort.key) {
-				case 'project':
-					return `${period.projectCode || ''} ${period.projectName || ''}`.toLowerCase();
-				case 'activity':
-					return (period.activityName || '').toLowerCase();
-				case 'duration':
-					return numberValue(period.durationSeconds);
-				case 'start':
+				case 'project_code':
+					return `${row.projectCode || ''} ${row.projectName || ''}`.toLowerCase();
+				case 'discipline':
+					return (row.discipline || '').toLowerCase();
+				case 'activity_name':
+					return (row.activityName || '').toLowerCase();
+				case 'sub_activity_name':
+					return (row.subActivityName || '').toLowerCase();
+				case 'default_manhours':
+					return numberValue(row.defaultManhours);
+				case 'planned_hours':
+					return numberValue(row.manhours);
+				case 'qty_completed':
+					return numberValue(row.quantity);
+				case 'due_date':
+					return row.dateCompleted || '';
+				case 'status':
+					return (row.status || 'Not Started').toLowerCase();
 				default:
-					return period.start || '';
+					return '';
 			}
 		};
-		periodRows = [...periodRows].sort((left, right) => {
+		flatRows = [...flatRows].sort((left, right) => {
 			const leftValue = valueFor(left);
 			const rightValue = valueFor(right);
 			if (typeof leftValue === 'number' && typeof rightValue === 'number') {
 				return (leftValue - rightValue) * direction;
 			}
-			return textCollator.compare(leftValue, rightValue) * direction;
+			if (leftValue < rightValue) return -1 * direction;
+			if (leftValue > rightValue) return 1 * direction;
+			return 0;
 		});
 	}
 
-	const legacyRows = legacyWeekRows.filter((row) => {
-		const matchesSearch =
-			!normalizedSearch || legacySearchText(row).includes(normalizedSearch);
-		const matchesStatus = legacyStatus === 'all' || row.status === legacyStatus;
-		return matchesSearch && matchesStatus;
-	});
-
-	const weekSeconds = periods.reduce(
-		(total, period) => total + numberValue(period.weekSeconds),
+	const totalManhours = flatRows.reduce(
+		(total, row) => total + numberValue(row.weekManhours),
 		0
 	);
-	const weekQuantity = periods.reduce(
-		(total, period) => total + numberValue(period.weekQuantity),
+	const totalQuantity = flatRows.reduce(
+		(total, row) => total + numberValue(row.weekQuantity),
 		0
 	);
-	const filteredWeekSeconds = periodRows.reduce(
-		(total, period) => total + numberValue(period.weekSeconds),
-		0
-	);
-	const filteredWeekQuantity = periodRows.reduce(
-		(total, period) => total + numberValue(period.weekQuantity),
-		0
-	);
-	const noProjectsAtAll =
-		projects.length === 0 &&
-		periods.length === 0 &&
-		legacyWeekRows.length === 0 &&
-		!periodsQuery.isPending &&
-		(preloadedData || !legacyQuery.isPending);
+	const assignableProjects = projects.map((project) => ({
+		project_id: project.projectId,
+		project_code: project.projectCode,
+		project_name: project.projectName,
+	}));
+	const hasAnyData = projects.length > 0;
+	const COLS = 13;
 
 	const toggleSort = (key) => {
 		setSort((previous) => {
 			if (previous.key !== key) return { key, dir: 'asc' };
 			if (previous.dir === 'asc') return { key, dir: 'desc' };
-			return { key, dir: 'asc' };
+			return { key: null, dir: 'asc' };
 		});
 	};
 
 	const clearFilters = () => {
 		setSearch('');
-		setLegacyStatus('all');
-		setSort({ key: 'start', dir: 'desc' });
+		setStatusFilter('all');
+		setFromDate(activeWeek);
+		setToDate(weekEnd);
+		setSort({ key: 'due_date', dir: 'desc' });
 	};
 
 	const changeWeek = (offset) => {
-		setWeek((previous) => shiftIstDate(previous, offset));
+		const nextWeek = shiftIstDate(week, offset);
+		setWeek(nextWeek);
+		setFromDate(nextWeek);
+		setToDate(shiftIstDate(nextWeek, 6));
 	};
 
 	const showCurrentWeek = () => {
 		setWeek(currentWeek);
+		setFromDate(currentWeek);
+		setToDate(shiftIstDate(currentWeek, 6));
 	};
 
 	const openAddRow = () => {
 		if (!canLog || projects.length === 0 || mutation.isPending) return;
 		setEditing(null);
 		setIsAdding(true);
-		setAddForm({ ...EMPTY_ADD_FORM });
+		setAddForm({
+			...EMPTY_ADD_FORM,
+			dateCompleted: today,
+		});
 		setActionError('');
 	};
 
@@ -725,8 +882,8 @@ function ProjectActivityAssignmentsForUser({
 		setEditing({
 			row: period,
 			fields: {
-				start: period.start || '',
-				end: period.end || '',
+				start: periodClock(period.start),
+				end: periodClock(period.end),
 				quantity: period.quantity ?? 0,
 				dateCompleted: period.dateCompleted || '',
 				remarks: period.remarks || '',
@@ -747,59 +904,41 @@ function ProjectActivityAssignmentsForUser({
 		setActionError('');
 	};
 
-	const updateSharedFields = (mode, next) => {
+	const updatePeriodField = (mode, field, value) => {
 		setActionError('');
+		const apply = (current) => ({ ...current, [field]: value });
 		if (mode === 'add') {
-			setAddForm((previous) => {
-				const previousEndDate = previous.end.slice(0, 10);
-				const nextEndDate = next.end.slice(0, 10);
-				const hasCustomDate =
-					Boolean(next.dateCompleted) && next.dateCompleted !== previousEndDate;
-				return {
-					...previous,
-					...next,
-					dateCompleted: hasCustomDate ? next.dateCompleted : nextEndDate,
-				};
-			});
+			setAddForm(apply);
 			return;
 		}
-		setEditing((previous) => {
-			if (!previous) return previous;
-			const previousEndDate = previous.fields.end.slice(0, 10);
-			const nextEndDate = next.end.slice(0, 10);
-			const hasCustomDate =
-				Boolean(next.dateCompleted) && next.dateCompleted !== previousEndDate;
-			return {
-				...previous,
-				fields: {
-					...next,
-					dateCompleted: hasCustomDate ? next.dateCompleted : nextEndDate,
-				},
-			};
-		});
+		setEditing((previous) =>
+			previous ? { ...previous, fields: apply(previous.fields) } : previous
+		);
 	};
 
-	const validatePeriodFields = (fields) => {
+	const dateWindowError =
+		'You can log or edit Work Periods only when both endpoints fall on today or yesterday in IST. Contact an authorized manager for older work.';
+	const validatePeriodFields = (fields, endpoints) => {
 		if (!fields.start || !fields.end) return 'Enter both Start and End.';
-		const startMs = parseIstLocal(fields.start);
-		const endMs = parseIstLocal(fields.end);
-		if (startMs === null || endMs === null) {
-			return 'Enter valid Start and End values as YYYY-MM-DD HH:MM.';
-		}
-		if (endMs <= startMs) return 'End must be after Start.';
 		if (!fields.dateCompleted) return 'Enter Date Completed.';
 		if (fields.dateCompleted > today)
 			return 'Date Completed cannot be in the future.';
+		if (!endpoints) return dateWindowError;
+		const { start, end } = endpoints;
+		const startMs = parseIstLocal(start);
+		const endMs = parseIstLocal(end);
+		if (startMs === null || endMs === null)
+			return 'Enter valid Start and End times.';
+		if (endMs <= startMs) return 'End must be after Start.';
 		const quantity = Number(fields.quantity);
 		if (!Number.isFinite(quantity) || quantity < 0) {
 			return 'Quantity cannot be negative.';
 		}
-		const yesterday = shiftIstDate(today, -1);
 		if (
 			![today, yesterday].includes(istDate(startMs)) ||
 			![today, yesterday].includes(istDate(endMs))
 		) {
-			return 'You can log or edit Work Periods only when both endpoints fall on today or yesterday in IST. Contact an authorized manager for older work.';
+			return dateWindowError;
 		}
 		return '';
 	};
@@ -822,7 +961,10 @@ function ProjectActivityAssignmentsForUser({
 			rejectForm('Please select a Sub Activity.');
 			return;
 		}
-		const validationError = validatePeriodFields(addForm);
+		const endpoints = [today, yesterday].includes(addForm.dateCompleted)
+			? addEndpoints(addForm)
+			: null;
+		const validationError = validatePeriodFields(addForm, endpoints);
 		if (validationError) {
 			rejectForm(validationError);
 			return;
@@ -835,8 +977,7 @@ function ProjectActivityAssignmentsForUser({
 				disciplineId: addForm.disciplineId,
 				activityId: addForm.activityId,
 				subActivityId: addForm.subActivityId || null,
-				start: addForm.start,
-				end: addForm.end,
+				...endpoints,
 				quantity: numberValue(addForm.quantity),
 				dateCompleted: addForm.dateCompleted,
 				remarks: addForm.remarks,
@@ -847,7 +988,11 @@ function ProjectActivityAssignmentsForUser({
 	const submitEdit = (event) => {
 		event.preventDefault();
 		if (!editing) return;
-		const validationError = validatePeriodFields(editing.fields);
+		const endpoints = {
+			start: editEndpoint(editing.row.start, editing.fields.start),
+			end: editEndpoint(editing.row.end, editing.fields.end),
+		};
+		const validationError = validatePeriodFields(editing.fields, endpoints);
 		if (validationError) {
 			rejectForm(validationError);
 			return;
@@ -858,8 +1003,7 @@ function ProjectActivityAssignmentsForUser({
 			body: {
 				id: editing.row.id,
 				projectId: editing.row.projectId,
-				start: editing.fields.start,
-				end: editing.fields.end,
+				...endpoints,
 				quantity: numberValue(editing.fields.quantity),
 				dateCompleted: editing.fields.dateCompleted,
 				remarks: editing.fields.remarks,
@@ -895,160 +1039,566 @@ function ProjectActivityAssignmentsForUser({
 			ref={errorRef}
 			role="alert"
 			tabIndex={-1}
-			className="mb-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+			className="mt-2 flex items-start gap-1.5 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs leading-snug text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
 		>
 			<ExclamationCircleIcon
-				className="mt-0.5 h-4 w-4 shrink-0"
+				className="mt-0.5 h-3.5 w-3.5 shrink-0"
 				aria-hidden="true"
 			/>
 			<p>{actionError}</p>
 		</div>
 	) : null;
 
+	const compactControlClass =
+		'w-full min-w-0 px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100';
+
+	const renderTimePicker = (mode, endpoint, time, hint = '') => {
+		const label = endpoint === 'start' ? 'Start Period' : 'End Period';
+		const id = `${formId}-${mode}-${endpoint}`;
+		return (
+			<>
+				<label htmlFor={id} className="sr-only">
+					{label}
+				</label>
+				<input
+					id={id}
+					name={endpoint}
+					type="time"
+					required
+					aria-describedby={hint ? `${id}-hint` : undefined}
+					disabled={mutation.isPending}
+					value={time}
+					onChange={(event) =>
+						updatePeriodField(mode, endpoint, event.target.value)
+					}
+					className={compactControlClass}
+				/>
+				{hint && (
+					<span id={`${id}-hint`} className="block text-[11px] text-gray-600">
+						{hint}
+					</span>
+				)}
+			</>
+		);
+	};
+
+	const renderEditorActions = (disabled) => (
+		<div className="flex items-center justify-center gap-1">
+			<button
+				type="submit"
+				disabled={disabled}
+				className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+				title="Save Work Period"
+				aria-label="Save Work Period"
+			>
+				<CheckIcon className="w-3.5 h-3.5" aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				onClick={closeEditor}
+				disabled={disabled}
+				className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+				title="Cancel"
+				aria-label="Cancel"
+			>
+				<XMarkIcon className="w-3.5 h-3.5" aria-hidden="true" />
+			</button>
+		</div>
+	);
+
 	const renderAddForm = () => (
-		<tr className="bg-purple-50/60">
-			<td colSpan={11} className="px-4 py-4 align-top">
-				<form
-					aria-labelledby={addTitleId}
-					onSubmit={submitAdd}
-					noValidate
-					className="space-y-5"
+		<tr className="bg-purple-50/50 divide-x divide-gray-300">
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required
+					aria-label="Project"
+					title="Select a project you are assigned to"
+					value={addForm.projectId}
+					onChange={(event) =>
+						updateAddSelection({ projectId: event.target.value })
+					}
+					className={compactControlClass}
 				>
-					<div>
-						<h4 id={addTitleId} className="text-base font-bold text-[#4A1254]">
-							Log a Work Period
-						</h4>
-						<p className="mt-1 text-sm text-gray-600">
-							Record one continuous stretch of finished work. Accent calculates
-							Logged Hours from Start and End.
-						</p>
+					<option value="">Select project…</option>
+					{assignableProjects.map((project) => (
+						<option key={project.project_id} value={project.project_id}>
+							{project.project_code
+								? `${project.project_code} – ${project.project_name}`
+								: project.project_name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required
+					aria-label="Discipline"
+					disabled={optionsQuery.isPending}
+					value={addForm.disciplineId}
+					onChange={(event) =>
+						updateAddSelection({
+							disciplineId: event.target.value,
+							activityId: '',
+							subActivityId: '',
+						})
+					}
+					className={compactControlClass}
+				>
+					<option value="">Select</option>
+					{disciplineOptions.map((discipline) => (
+						<option key={discipline.id} value={discipline.id}>
+							{discipline.function_name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required
+					aria-label="Activity"
+					disabled={!selectedDiscipline}
+					value={addForm.activityId}
+					onChange={(event) =>
+						updateAddSelection({
+							activityId: event.target.value,
+							subActivityId: '',
+						})
+					}
+					className={compactControlClass}
+				>
+					<option value="">Select</option>
+					{(selectedDiscipline?.activities || []).map((activity) => (
+						<option key={activity.id} value={activity.id}>
+							{activity.activity_name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required={selectedSubActivities.length > 0}
+					aria-label="Sub Activity"
+					disabled={!selectedActivity || selectedSubActivities.length === 0}
+					value={addForm.subActivityId}
+					onChange={(event) =>
+						updateAddSelection({ subActivityId: event.target.value })
+					}
+					className={compactControlClass}
+				>
+					<option value="">
+						{selectedSubActivities.length > 0
+							? 'Select sub-activity…'
+							: 'No sub-activity'}
+					</option>
+					{selectedSubActivities.map((subActivity) => (
+						<option key={subActivity.id} value={subActivity.id}>
+							{subActivity.name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<input
+					type="text"
+					readOnly
+					aria-label="Default MH"
+					value={
+						selectedSubActivities.find(
+							(subActivity) => subActivity.id === addForm.subActivityId
+						)?.default_manhours || '–'
+					}
+					className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
+				/>
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
+				{renderTimePicker(
+					'add',
+					'start',
+					addForm.start,
+					startsPreviousDay(addForm) ? 'Previous day' : ''
+				)}
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
+				{renderTimePicker('add', 'end', addForm.end)}
+			</td>
+			<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
+				Auto
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<input
+					type="number"
+					min="0"
+					step="0.01"
+					aria-label="Quantity"
+					value={addForm.quantity}
+					onChange={(event) =>
+						updatePeriodField('add', 'quantity', event.target.value)
+					}
+					placeholder="Qty"
+					className={`${compactControlClass} max-w-16 text-center`}
+				/>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<input
+					type="date"
+					required
+					max={today}
+					aria-label="Date Completed"
+					value={addForm.dateCompleted}
+					onChange={(event) =>
+						updatePeriodField('add', 'dateCompleted', event.target.value)
+					}
+					className={compactControlClass}
+				/>
+			</td>
+			<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
+				–
+			</td>
+			<td className="py-1 px-2 align-middle">
+				<AutoGrowTextarea
+					value={addForm.remarks}
+					onChange={(event) =>
+						updatePeriodField('add', 'remarks', event.target.value)
+					}
+					placeholder="Remark"
+					aria-label="Remarks"
+					className="max-h-36 px-1.5 py-0.5 text-left text-xs focus:ring-1"
+				/>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				{renderEditorActions(mutation.isPending)}
+			</td>
+		</tr>
+	);
+
+	const renderEditForm = () => {
+		const period = editing.row;
+		const assignment = assignments.find(
+			(candidate) =>
+				String(candidate.project_id) === String(period.projectId) &&
+				String(candidate.activity_id) === String(period.activityId)
+		);
+		const defaultManhours = numberValue(
+			period.defaultManhours ?? assignment?.default_manhours
+		);
+		const status = period.status || assignment?.status || 'Not Started';
+		const documentsName = projectDocumentsName(period);
+		return (
+			<tr key={period.id} className="bg-purple-50/50 divide-x divide-gray-300">
+				<td className="py-1 px-2 text-center align-middle">
+					<ProjectNumberValue
+						projectId={period.projectId}
+						documentsName={documentsName}
+						code={period.projectCode || period.projectName || period.projectId}
+						documentCount={projectDocumentCount(
+							documentCounts,
+							period.projectId
+						)}
+					/>
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<ActivityTextValue value={period.discipline || '–'} />
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<ActivityTextValue
+						value={period.activityName || 'Unnamed Activity'}
+						className="font-semibold text-[#4A1254]"
+					/>
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<ActivityTextValue value={period.subActivityName || '–'} />
+				</td>
+				<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+					{formatQuantity(defaultManhours)}
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					{renderTimePicker(
+						'edit',
+						'start',
+						editing.fields.start,
+						periodDateHint(period.start, editing.fields.dateCompleted)
+					)}
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					{renderTimePicker(
+						'edit',
+						'end',
+						editing.fields.end,
+						periodDateHint(period.end, editing.fields.dateCompleted)
+					)}
+				</td>
+				<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
+					Auto
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<input
+						type="number"
+						min="0"
+						step="0.01"
+						aria-label="Quantity"
+						value={editing.fields.quantity}
+						onChange={(event) =>
+							updatePeriodField('edit', 'quantity', event.target.value)
+						}
+						className={`${compactControlClass} max-w-16 text-center`}
+					/>
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<input
+						type="date"
+						required
+						max={today}
+						aria-label="Date Completed"
+						value={editing.fields.dateCompleted}
+						onChange={(event) =>
+							updatePeriodField('edit', 'dateCompleted', event.target.value)
+						}
+						className={compactControlClass}
+					/>
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<span
+						className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
+							status
+						)}`}
+					>
+						{status}
+					</span>
+				</td>
+				<td className="py-1 px-2 align-middle">
+					<AutoGrowTextarea
+						value={editing.fields.remarks}
+						onChange={(event) =>
+							updatePeriodField('edit', 'remarks', event.target.value)
+						}
+						aria-label="Remarks"
+						className="max-h-36 px-1.5 py-0.5 text-left text-xs focus:ring-1"
+					/>
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					{renderEditorActions(mutation.isPending)}
+				</td>
+			</tr>
+		);
+	};
+
+	return (
+		<div className="min-w-0 rounded-xl border-2 border-purple-200 bg-white shadow-lg ring-1 ring-purple-100">
+			<div className="px-3 py-2 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between gap-2">
+				<div className="flex items-center gap-2">
+					<div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
+						<ClipboardDocumentListIcon
+							className="w-4 h-4 text-purple-600"
+							aria-hidden="true"
+						/>
 					</div>
-					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-						<div>
-							<label
-								htmlFor={`${formId}-project`}
-								className="mb-1 block text-sm font-semibold text-gray-700 after:ml-0.5 after:text-red-600 after:content-['*']"
+					<h3 className="text-sm font-bold text-[#4A1254]">
+						My Project Activities
+					</h3>
+				</div>
+				{hasAnyData && canLog && (
+					<button
+						type="button"
+						onClick={openAddRow}
+						disabled={editorOpen || mutation.isPending}
+						className="flex items-center gap-1 px-2 py-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors text-xs font-semibold disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+						title="Add a new activity"
+					>
+						<PlusIcon className="w-3.5 h-3.5" aria-hidden="true" />
+						Add
+					</button>
+				)}
+			</div>
+
+			{periodData && !canLog && (
+				<div className="mx-3 mt-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs leading-snug text-amber-900">
+					<LockClosedIcon
+						className="mt-0.5 h-3.5 w-3.5 shrink-0"
+						aria-hidden="true"
+					/>
+					<p>
+						Work Period logging is unavailable for this account. Ask your
+						manager or support to link your User Account to an Employee.
+					</p>
+				</div>
+			)}
+
+			{periodsQuery.isError && (
+				<div
+					role="alert"
+					className="mx-3 mt-2 flex flex-wrap items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
+				>
+					<p>
+						Work Periods could not load:{' '}
+						{errorMessage(periodsQuery.error, 'Try again.')}
+					</p>
+					<button
+						type="button"
+						onClick={() => periodsQuery.refetch()}
+						className="font-semibold underline"
+					>
+						Try again
+					</button>
+				</div>
+			)}
+
+			{legacyQuery.isError && !preloadedData && !legacyAccessDenied && (
+				<div
+					role="alert"
+					className="mx-3 mt-2 flex flex-wrap items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
+				>
+					<p>
+						Project activities could not load:{' '}
+						{errorMessage(legacyQuery.error, 'Try again.')}
+					</p>
+					<button
+						type="button"
+						onClick={() => legacyQuery.refetch()}
+						className="font-semibold underline"
+					>
+						Try again
+					</button>
+				</div>
+			)}
+
+			{!hasAnyData ? (
+				<div className="text-center py-10 text-[#4A1254]">
+					<ClipboardDocumentListIcon
+						className="w-14 h-14 mx-auto mb-3 opacity-50"
+						aria-hidden="true"
+					/>
+					<p className="text-sm">No projects assigned yet</p>
+					<p className="mt-1 text-xs text-gray-500">
+						Contact your project manager to be added to a project.
+					</p>
+				</div>
+			) : (
+				<>
+					<div
+						role="search"
+						aria-label="Filter project activities"
+						className="px-3 py-2 border-b border-purple-100 bg-white/60 flex flex-wrap items-end gap-2"
+					>
+						<div className="flex items-center gap-1">
+							<button
+								type="button"
+								onClick={() => changeWeek(-7)}
+								aria-label="Previous week"
+								title="Previous week"
+								className="p-1 rounded text-[#64126D] hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 							>
-								Project
-							</label>
-							<select
-								id={`${formId}-project`}
-								required
-								value={addForm.projectId}
-								onChange={(event) =>
-									updateAddSelection({ projectId: event.target.value })
-								}
-								className={selectClass}
+								<ChevronLeftIcon className="w-3.5 h-3.5" aria-hidden="true" />
+							</button>
+							<span className="px-1 text-xs font-semibold text-[#4A1254] whitespace-nowrap">
+								{formatWeekRange(activeWeek)}
+							</span>
+							<button
+								type="button"
+								onClick={() => changeWeek(7)}
+								aria-label="Next week"
+								title="Next week"
+								className="p-1 rounded text-[#64126D] hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 							>
-								<option value="">Select project…</option>
-								{projects.map((project) => (
-									<option key={project.projectId} value={project.projectId}>
-										{project.projectCode
-											? `${project.projectCode} – ${project.projectName}`
-											: project.projectName || project.projectId}
-									</option>
-								))}
-							</select>
+								<ChevronRightIcon className="w-3.5 h-3.5" aria-hidden="true" />
+							</button>
+							{activeWeek !== currentWeek && (
+								<button
+									type="button"
+									onClick={showCurrentWeek}
+									className="px-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
+								>
+									This week
+								</button>
+							)}
 						</div>
 						<div>
 							<label
-								htmlFor={`${formId}-discipline`}
-								className="mb-1 block text-sm font-semibold text-gray-700 after:ml-0.5 after:text-red-600 after:content-['*']"
+								htmlFor="activity-start-date"
+								className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
 							>
-								Discipline
+								From
 							</label>
-							<select
-								id={`${formId}-discipline`}
-								required
-								disabled={optionsQuery.isPending}
-								value={addForm.disciplineId}
-								onChange={(event) =>
-									updateAddSelection({
-										disciplineId: event.target.value,
-										activityId: '',
-										subActivityId: '',
-									})
-								}
-								className={selectClass}
+							<input
+								id="activity-start-date"
+								type="date"
+								value={fromDate}
+								min={activeWeek}
+								max={toDate || weekEnd}
+								onChange={(event) => setFromDate(event.target.value)}
+								className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							/>
+						</div>
+						<div>
+							<label
+								htmlFor="activity-end-date"
+								className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
 							>
-								<option value="">
-									{optionsQuery.isPending ? 'Loading activities…' : 'Select…'}
+								To
+							</label>
+							<input
+								id="activity-end-date"
+								type="date"
+								value={toDate}
+								min={fromDate || activeWeek}
+								max={weekEnd}
+								onChange={(event) => setToDate(event.target.value)}
+								className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							/>
+						</div>
+						<div className="relative min-w-0 grow basis-48">
+							<MagnifyingGlassIcon
+								className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+								aria-hidden="true"
+							/>
+							<input
+								type="text"
+								value={search}
+								onChange={(event) => setSearch(event.target.value)}
+								placeholder="Search code, project, activity…"
+								aria-label="Search activities"
+								className="w-full pl-7 pr-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							/>
+						</div>
+						<select
+							value={statusFilter}
+							onChange={(event) => setStatusFilter(event.target.value)}
+							className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							title="Filter by status"
+							aria-label="Filter by status"
+						>
+							<option value="all">All statuses</option>
+							{statusOptions.map((status) => (
+								<option key={status} value={status}>
+									{status}
 								</option>
-								{disciplineOptions.map((discipline) => (
-									<option key={discipline.id} value={discipline.id}>
-										{discipline.function_name}
-									</option>
-								))}
-							</select>
-						</div>
-						<div>
-							<label
-								htmlFor={`${formId}-activity`}
-								className="mb-1 block text-sm font-semibold text-gray-700 after:ml-0.5 after:text-red-600 after:content-['*']"
+							))}
+						</select>
+						{(search ||
+							statusFilter !== 'all' ||
+							sort.key ||
+							fromDate !== activeWeek ||
+							toDate !== weekEnd) && (
+							<button
+								type="button"
+								onClick={clearFilters}
+								className="px-2 py-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
 							>
-								Activity
-							</label>
-							<select
-								id={`${formId}-activity`}
-								required
-								disabled={!selectedDiscipline}
-								value={addForm.activityId}
-								onChange={(event) =>
-									updateAddSelection({
-										activityId: event.target.value,
-										subActivityId: '',
-									})
-								}
-								className={selectClass}
-							>
-								<option value="">Select…</option>
-								{(selectedDiscipline?.activities || []).map((activity) => (
-									<option key={activity.id} value={activity.id}>
-										{activity.activity_name}
-									</option>
-								))}
-							</select>
-						</div>
-						<div>
-							<label
-								htmlFor={`${formId}-sub-activity`}
-								className={`mb-1 block text-sm font-semibold text-gray-700 ${
-									selectedSubActivities.length > 0
-										? "after:ml-0.5 after:text-red-600 after:content-['*']"
-										: ''
-								}`}
-							>
-								Sub Activity
-							</label>
-							<select
-								id={`${formId}-sub-activity`}
-								required={selectedSubActivities.length > 0}
-								disabled={
-									!selectedActivity || selectedSubActivities.length === 0
-								}
-								value={addForm.subActivityId}
-								onChange={(event) =>
-									updateAddSelection({ subActivityId: event.target.value })
-								}
-								className={selectClass}
-							>
-								<option value="">
-									{selectedSubActivities.length > 0
-										? 'Select sub-activity…'
-										: 'No sub-activity'}
-								</option>
-								{selectedSubActivities.map((subActivity) => (
-									<option key={subActivity.id} value={subActivity.id}>
-										{subActivity.name}
-									</option>
-								))}
-							</select>
-						</div>
+								Clear
+							</button>
+						)}
+						<span className="ml-auto text-xs text-gray-500">
+							{flatRows.length}
+							{flatRows.length !== baseRows.length
+								? ` of ${baseRows.length}`
+								: ''}{' '}
+							{flatRows.length === 1 ? 'activity' : 'activities'}
+						</span>
 					</div>
-					{optionsQuery.isError && !actionError && (
+
+					{optionsQuery.isError && isAdding && !actionError && (
 						<div
 							role="alert"
-							className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+							className="mx-3 mt-2 flex flex-wrap items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
 						>
 							<p>
 								{errorMessage(optionsQuery.error, 'Activities could not load.')}
@@ -1056,438 +1606,260 @@ function ProjectActivityAssignmentsForUser({
 							<button
 								type="button"
 								onClick={() => optionsQuery.refetch()}
-								className="mt-1 font-semibold underline"
+								className="font-semibold underline"
 							>
 								Try again
 							</button>
 						</div>
 					)}
-					<WorkPeriodFields
-						value={addForm}
-						onChange={(next) => updateSharedFields('add', next)}
-						disabled={mutation.isPending}
-					/>
+
 					{actionErrorNode}
-					<div className="flex flex-wrap justify-end gap-2">
-						<button
-							type="button"
-							onClick={closeEditor}
-							disabled={mutation.isPending}
-							className={secondaryButtonClass}
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							disabled={mutation.isPending || optionsQuery.isPending}
-							className={primaryButtonClass}
-						>
-							<CheckIcon className="h-4 w-4" aria-hidden="true" />
-							{mutation.isPending ? 'Saving…' : 'Save Work Period'}
-						</button>
-					</div>
-				</form>
-			</td>
-		</tr>
-	);
 
-	const renderEditForm = () => (
-		<tr className="bg-purple-50/60">
-			<td colSpan={11} className="px-4 py-4 align-top">
-				<form
-					aria-labelledby={editTitleId}
-					onSubmit={submitEdit}
-					noValidate
-					className="space-y-5"
-				>
-					<div>
-						<h4 id={editTitleId} className="text-base font-bold text-[#4A1254]">
-							Edit Work Period
-						</h4>
-						<p className="mt-1 text-sm text-gray-600">
-							{editing.row.projectCode || editing.row.projectName} ·{' '}
-							{editing.row.activityName}. The overnight period stays one record.
-						</p>
-					</div>
-					<WorkPeriodFields
-						value={editing.fields}
-						onChange={(next) => updateSharedFields('edit', next)}
-						disabled={mutation.isPending}
-					/>
-					{actionErrorNode}
-					<div className="flex flex-wrap justify-end gap-2">
-						<button
-							type="button"
-							onClick={closeEditor}
-							disabled={mutation.isPending}
-							className={secondaryButtonClass}
-						>
-							Cancel
-						</button>
-						<button
-							type="submit"
-							disabled={mutation.isPending}
-							className={primaryButtonClass}
-						>
-							<CheckIcon className="h-4 w-4" aria-hidden="true" />
-							{mutation.isPending ? 'Saving…' : 'Save Work Period'}
-						</button>
-					</div>
-				</form>
-			</td>
-		</tr>
-	);
-
-	return (
-		<div className="min-w-0 rounded-xl border border-purple-200 bg-white shadow-sm">
-			<div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100 bg-purple-50/60 px-4 py-3">
-				<div className="flex items-center gap-2">
-					<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100">
-						<ClipboardDocumentListIcon
-							className="h-5 w-5 text-purple-700"
-							aria-hidden="true"
-						/>
-					</div>
-					<h3 className="text-base font-bold text-[#4A1254]">
-						My Project Activities
-					</h3>
-				</div>
-				{canLog && projects.length > 0 && (
-					<button
-						type="button"
-						onClick={openAddRow}
-						disabled={editorOpen || mutation.isPending}
-						title="Log a Work Period"
-						className={primaryButtonClass}
+					<form
+						aria-label="Work Period editor"
+						noValidate
+						onSubmit={isAdding ? submitAdd : editing ? submitEdit : undefined}
 					>
-						<PlusIcon className="h-4 w-4" aria-hidden="true" />
-						Add
-					</button>
-				)}
-			</div>
-
-			<div className="space-y-4 px-4 py-4">
-				<nav
-					aria-label="Work Period week"
-					className="flex flex-wrap items-center gap-2"
-				>
-					<button
-						type="button"
-						onClick={() => changeWeek(-7)}
-						className={secondaryButtonClass}
-					>
-						<ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
-						Previous week
-					</button>
-					<p className="min-w-52 px-2 text-center text-sm font-bold text-[#4A1254]">
-						{formatWeekRange(activeWeek)}
-					</p>
-					<button
-						type="button"
-						onClick={() => changeWeek(7)}
-						className={secondaryButtonClass}
-					>
-						Next week
-						<ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
-					</button>
-					{activeWeek !== currentWeek && (
-						<button
-							type="button"
-							onClick={showCurrentWeek}
-							className="min-h-10 rounded-md px-3 text-sm font-semibold text-[#64126D] hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-						>
-							This week
-						</button>
-					)}
-					{periodData && (
-						<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-							<span className="font-semibold text-[#4A1254]">
-								Week total: {formatHours(weekSeconds)}
-							</span>
-							<span className="font-semibold text-[#4A1254]">
-								Week quantity: {formatQuantity(weekQuantity)}
-							</span>
-						</div>
-					)}
-				</nav>
-
-				{periodData && !canLog && (
-					<div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-						<LockClosedIcon
-							className="mt-0.5 h-4 w-4 shrink-0"
-							aria-hidden="true"
-						/>
-						<p>
-							Work Period logging is unavailable for this account. Ask your
-							manager or support to link your User Account to an Employee.
-						</p>
-					</div>
-				)}
-
-				{periodsQuery.isError && (
-					<div
-						role="alert"
-						className="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-					>
-						<p>
-							Work Periods could not load:{' '}
-							{errorMessage(periodsQuery.error, 'Try again.')}
-						</p>
-						<button
-							type="button"
-							onClick={() => periodsQuery.refetch()}
-							className="min-h-8 font-semibold underline"
-						>
-							Try again
-						</button>
-					</div>
-				)}
-
-				{legacyQuery.isError && !preloadedData && !legacyAccessDenied && (
-					<div
-						role="alert"
-						className="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-					>
-						<p>
-							Project activities could not load:{' '}
-							{errorMessage(legacyQuery.error, 'Try again.')}
-						</p>
-						<button
-							type="button"
-							onClick={() => legacyQuery.refetch()}
-							className="min-h-8 font-semibold underline"
-						>
-							Try again
-						</button>
-					</div>
-				)}
-
-				{!editorOpen && actionErrorNode}
-
-				{noProjectsAtAll ? (
-					<div className="py-8 text-center text-[#4A1254]">
-						<ClipboardDocumentListIcon
-							className="mx-auto mb-3 h-12 w-12 opacity-50"
-							aria-hidden="true"
-						/>
-						<p className="text-sm font-semibold">No projects assigned yet</p>
-						<p className="mt-1 text-sm text-gray-600">
-							Contact your project manager to be added to a project.
-						</p>
-					</div>
-				) : (
-					<>
-						<search className="flex flex-wrap items-end gap-3">
-							<div className="min-w-64 grow">
-								<label
-									htmlFor={`${formId}-search`}
-									className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600"
-								>
-									Search
-								</label>
-								<div className="relative">
-									<MagnifyingGlassIcon
-										className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
-										aria-hidden="true"
-									/>
-									<input
-										id={`${formId}-search`}
-										type="search"
-										value={search}
-										onChange={(event) => setSearch(event.target.value)}
-										placeholder="Code, project, activity, remark…"
-										aria-label="Search Work Periods and history"
-										className="min-h-11 w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-3 text-base text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 sm:text-sm"
-									/>
-								</div>
-							</div>
-							<div>
-								<label
-									htmlFor={`${formId}-legacy-status`}
-									className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600"
-								>
-									Legacy status
-								</label>
-								<select
-									id={`${formId}-legacy-status`}
-									value={legacyStatus}
-									onChange={(event) => setLegacyStatus(event.target.value)}
-									className={selectClass}
-								>
-									<option value="all">All statuses</option>
-									{statusOptions.map((status) => (
-										<option key={status} value={status}>
-											{status}
-										</option>
-									))}
-								</select>
-							</div>
-							{(search || legacyStatus !== 'all') && (
-								<button
-									type="button"
-									onClick={clearFilters}
-									className="min-h-10 px-2 text-sm font-semibold text-[#64126D] hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-								>
-									Clear
-								</button>
-							)}
-							<p className="ml-auto text-sm text-gray-600" aria-live="polite">
-								{periodRows.length}{' '}
-								{periodRows.length === 1 ? 'Work Period' : 'Work Periods'}
-							</p>
-						</search>
-
 						<div
-							className="overflow-x-auto rounded-lg border border-gray-200"
+							className="relative overflow-x-auto rounded-b-xl"
 							role="region"
 							aria-labelledby={periodsCaptionId}
 							tabIndex={0}
 							aria-busy={periodsQuery.isFetching}
 						>
-							<table className="w-full min-w-[1500px] border-collapse text-sm">
+							<table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
 								<caption id={periodsCaptionId} className="sr-only">
-									Work Periods
+									Project activity table
 								</caption>
-								<thead className="sticky top-0 z-10 bg-purple-100/90">
-									<tr>
+								<colgroup>
+									<col className="w-[9%]" />
+									<col className="w-[7%]" />
+									<col className="w-[11%]" />
+									<col className="w-[9%]" />
+									<col className="w-[5%]" />
+									<col className="w-[8%]" />
+									<col className="w-[8%]" />
+									<col className="w-[6%]" />
+									<col className="w-[5%]" />
+									<col className="w-[11%]" />
+									<col className="w-[7%]" />
+									<col className="w-[8%]" />
+									<col className="w-[6%]" />
+								</colgroup>
+								<thead className="bg-[#64126D]/10">
+									<tr className="divide-x divide-[#64126D]/40">
 										<SortHeader
 											label="Project Number"
-											sortKey="project"
+											sortKey="project_code"
 											sort={sort}
 											onSort={toggleSort}
 										/>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]"
-										>
-											Discipline
-										</th>
+										<SortHeader
+											label="Discipline"
+											sortKey="discipline"
+											sort={sort}
+											onSort={toggleSort}
+										/>
 										<SortHeader
 											label="Activity"
-											sortKey="activity"
+											sortKey="activity_name"
+											sort={sort}
+											onSort={toggleSort}
+										/>
+										<SortHeader
+											label="Sub Activity"
+											sortKey="sub_activity_name"
+											sort={sort}
+											onSort={toggleSort}
+										/>
+										<SortHeader
+											label="Default MH"
+											sortKey="default_manhours"
 											sort={sort}
 											onSort={toggleSort}
 										/>
 										<th
 											scope="col"
-											className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]"
+											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
 										>
-											Sub Activity
+											Start Period
+										</th>
+										<th
+											scope="col"
+											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
+										>
+											End Period
 										</th>
 										<SortHeader
-											label="Start (IST)"
-											sortKey="start"
+											label="Manhours"
+											sortKey="planned_hours"
 											sort={sort}
 											onSort={toggleSort}
 										/>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]"
-										>
-											End (IST)
-										</th>
 										<SortHeader
-											label="Duration"
-											sortKey="duration"
+											label="Quantity"
+											sortKey="qty_completed"
+											sort={sort}
+											onSort={toggleSort}
+										/>
+										<SortHeader
+											label="Date Completed"
+											sortKey="due_date"
+											sort={sort}
+											onSort={toggleSort}
+										/>
+										<SortHeader
+											label="Status"
+											sortKey="status"
 											sort={sort}
 											onSort={toggleSort}
 										/>
 										<th
 											scope="col"
-											className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]"
+											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
 										>
-											Quantity
+											Remark
 										</th>
 										<th
 											scope="col"
-											className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]"
-										>
-											Date Completed
-										</th>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]"
-										>
-											Remarks
-										</th>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-[#64126D]"
+											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
 										>
 											Actions
 										</th>
 									</tr>
 								</thead>
-								<tbody className="divide-y divide-gray-200">
+								<tbody className="divide-y divide-gray-300">
 									{isAdding && renderAddForm()}
-									{periodsQuery.isPending && !periodData && !isAdding && (
-										<tr>
-											<td
-												colSpan={11}
-												className="px-4 py-8 text-center text-sm text-gray-600"
-											>
-												Loading Work Periods…
-											</td>
-										</tr>
-									)}
+									{periodsQuery.isPending &&
+										!periodData &&
+										!isAdding &&
+										flatRows.length === 0 && (
+											<tr>
+												<td
+													colSpan={COLS}
+													className="py-6 px-4 text-center text-sm text-[#4A1254]"
+												>
+													Loading assignments…
+												</td>
+											</tr>
+										)}
 									{periodsQuery.isError && !periodData && !isAdding && (
 										<tr>
 											<td
-												colSpan={11}
-												className="px-4 py-8 text-center text-sm text-red-800"
+												colSpan={COLS}
+												className="py-6 px-4 text-center text-sm text-red-800"
 											>
 												Work Periods could not load. Use Try again above.
 											</td>
 										</tr>
 									)}
-									{periodRows.length === 0 && periodData && !isAdding && (
-										<tr>
-											<td
-												colSpan={11}
-												className="px-4 py-8 text-center text-sm text-[#4A1254]"
-											>
-												{periods.length === 0
-													? 'No Work Periods for this week'
-													: 'No Work Periods match the current search.'}
-											</td>
-										</tr>
-									)}
-									{periodRows.map((period) => {
-										if (editing?.row.id === period.id) return renderEditForm();
-										const project = {
-											project_id: period.projectId,
-											project_code: period.projectCode,
-											project_name: period.projectName,
-										};
-										const documentsName = projectDocumentsName(project);
+									{flatRows.length === 0 &&
+										!periodsQuery.isPending &&
+										!isAdding && (
+											<tr>
+												<td
+													colSpan={COLS}
+													className="py-6 px-4 text-center text-sm text-[#4A1254]"
+												>
+													{baseRows.length === 0 ? (
+														<>
+															<p>
+																No activities yet. Click{' '}
+																<span className="font-semibold">Add</span> above
+																to log your first activity.
+															</p>
+															{assignableProjects.length > 0 && (
+																<div className="mt-4 space-y-2 text-left max-w-md mx-auto">
+																	<p className="text-xs font-semibold text-gray-700">
+																		Assigned projects
+																	</p>
+																	<ul className="space-y-2">
+																		{assignableProjects.map((project) => {
+																			const documentsName =
+																				projectDocumentsName(project);
+																			const documentCount =
+																				projectDocumentCount(
+																					documentCounts,
+																					project.project_id
+																				);
+																			return (
+																				<li
+																					key={project.project_id}
+																					className="flex items-center justify-between gap-3 rounded-lg border border-purple-100 bg-white px-3 py-2"
+																				>
+																					<span className="text-xs text-gray-700 break-words">
+																						{project.project_code
+																							? `${project.project_code} – ${project.project_name || ''}`
+																							: project.project_name ||
+																								project.project_id}
+																					</span>
+																					<Link
+																						href={projectDocumentsHref(
+																							project.project_id
+																						)}
+																						aria-label={documentsName}
+																						title={documentsName}
+																						className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+																					>
+																						Open documents
+																						<DocumentCountMarker
+																							count={documentCount}
+																						/>
+																					</Link>
+																				</li>
+																			);
+																		})}
+																	</ul>
+																</div>
+															)}
+														</>
+													) : (
+														<>
+															No activities match the current search or filter.
+														</>
+													)}
+												</td>
+											</tr>
+										)}
+									{flatRows.map((row) => {
+										if (editing && editing.row.id === row.period?.id)
+											return renderEditForm();
+										const activityName = row.activityName || 'Unnamed Activity';
+										const documentsName = projectDocumentsName(row);
 										const canEdit = Boolean(
-											period.editable && period.assignmentId && canLog
+											row.kind === 'period' &&
+											row.period.editable &&
+											row.period.assignmentId &&
+											canLog
 										);
-										const lockLabel = !period.assignmentId
-											? 'Assignment link missing'
-											: !canLog
-												? 'Logging unavailable'
-												: 'Locked';
-										const activityName =
-											period.activityName || 'Unnamed Activity';
+										const lockLabel =
+											row.kind === 'legacy'
+												? 'Historical duration-only log'
+												: row.kind === 'assignment'
+													? 'No Work Period recorded'
+													: !row.period.assignmentId
+														? 'Assignment link missing'
+														: !canLog
+															? 'Logging unavailable'
+															: 'Locked';
 										return (
 											<tr
-												key={period.id}
-												className="align-middle hover:bg-purple-50/40"
+												key={row.key}
+												className="transition-colors divide-x divide-gray-300 hover:bg-purple-50/40"
 											>
-												<td className="px-2 py-3 text-center">
-													{period.projectId ? (
+												<td className="py-1 px-2 text-center align-middle">
+													{row.projectId ? (
 														<ProjectNumberValue
-															projectId={period.projectId}
+															projectId={row.projectId}
 															documentsName={documentsName}
 															code={
-																period.projectCode ||
-																period.projectName ||
-																period.projectId
+																row.projectCode ||
+																row.projectName ||
+																row.projectId
 															}
 															documentCount={projectDocumentCount(
 																documentCounts,
-																period.projectId
+																row.projectId
 															)}
 														/>
 													) : (
@@ -1496,316 +1868,164 @@ function ProjectActivityAssignmentsForUser({
 														</span>
 													)}
 												</td>
-												<td className="px-2 py-3 text-center">
-													<ActivityTextValue value={period.discipline || '–'} />
+												<td className="py-1 px-2 text-center align-middle">
+													<ActivityTextValue
+														value={row.discipline || '–'}
+														className="text-[#4A1254]"
+													/>
 												</td>
-												<td className="px-2 py-3 text-center">
+												<td className="py-1 px-2 text-center align-middle">
 													<ActivityTextValue
 														value={activityName}
 														className="font-semibold text-[#4A1254]"
 													/>
 												</td>
-												<td className="px-2 py-3 text-center">
+												<td className="py-1 px-2 text-center align-middle">
 													<ActivityTextValue
-														value={period.subActivityName || 'No sub-activity'}
+														value={row.subActivityName || '–'}
+														className="text-[#4A1254]"
 													/>
 												</td>
-												<td className="whitespace-nowrap px-2 py-3 text-center text-gray-800">
-													{formatDateTimeLabel(period.start)}
-												</td>
-												<td className="whitespace-nowrap px-2 py-3 text-center text-gray-800">
-													{formatDateTimeLabel(period.end)}
-												</td>
-												<td className="px-2 py-3 text-center font-semibold tabular-nums text-[#4A1254]">
-													{formatHours(period.durationSeconds)}
-													{numberValue(period.weekSeconds) !==
-														numberValue(period.durationSeconds) && (
-														<span className="mt-1 block text-xs font-normal text-gray-600">
-															This week: {formatHours(period.weekSeconds)}
+												<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+													{formatQuantity(row.defaultManhours)}
+													{row.kind === 'assignment' && row.estimate > 0 && (
+														<span className="block text-[10px] font-normal text-gray-500">
+															Estimate: {formatQuantity(row.estimate)}
 														</span>
 													)}
 												</td>
-												<td className="px-2 py-3 text-center tabular-nums text-[#4A1254]">
-													{formatQuantity(period.quantity)}
-													{numberValue(period.weekQuantity) !==
-														numberValue(period.quantity) && (
-														<span className="mt-1 block text-xs text-gray-600">
-															This week: {formatQuantity(period.weekQuantity)}
-														</span>
-													)}
+												<td className="py-1 px-2 text-center align-middle">
+													<PeriodTime
+														endpoint={row.start}
+														dateCompleted={row.dateCompleted}
+													/>
 												</td>
-												<td className="px-2 py-3 text-center text-gray-800">
-													{formatDateLabel(period.dateCompleted)}
+												<td className="py-1 px-2 text-center align-middle">
+													<PeriodTime
+														endpoint={row.end}
+														dateCompleted={row.dateCompleted}
+													/>
 												</td>
-												<td className="px-2 py-3 text-left text-gray-700">
-													<span className="whitespace-pre-wrap break-words">
-														{period.remarks || '–'}
+												<td className="py-1 px-2 text-center align-middle text-[#4A1254] tabular-nums">
+													{row.kind === 'assignment'
+														? ''
+														: formatQuantity(row.manhours)}
+													{row.kind === 'period' &&
+														row.weekManhours !== row.manhours && (
+															<span className="block text-[10px] font-normal text-gray-500">
+																Week: {formatQuantity(row.weekManhours)}
+															</span>
+														)}
+												</td>
+												<td className="py-1 px-2 text-center align-middle tabular-nums">
+													{row.kind === 'assignment'
+														? ''
+														: formatQuantity(row.quantity)}
+													{row.kind === 'period' &&
+														row.weekQuantity !== row.quantity && (
+															<span className="block text-[10px] text-gray-500">
+																Week: {formatQuantity(row.weekQuantity)}
+															</span>
+														)}
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													{row.dateCompleted
+														? formatDateLabel(row.dateCompleted)
+														: ''}
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<span
+														className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(row.status)}`}
+													>
+														{row.status || 'Not Started'}
 													</span>
 												</td>
-												<td className="px-2 py-3 text-center">
+												<td className="py-1 px-2 align-middle">
+													<span className="block max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs text-gray-700">
+														{row.remarks || ''}
+													</span>
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
 													{canEdit ? (
 														<div className="flex items-center justify-center gap-1">
 															<button
 																type="button"
-																onClick={() => openEditRow(period)}
+																onClick={() => openEditRow(row.period)}
 																disabled={mutation.isPending}
-																className={iconButtonClass}
+																className="p-1 rounded text-[#64126D] hover:bg-purple-100 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+																title="Edit"
 																aria-label={`Edit Work Period for ${activityName}`}
-																title="Edit Work Period"
 															>
 																<PencilSquareIcon
-																	className="h-4 w-4"
+																	className="w-3.5 h-3.5"
 																	aria-hidden="true"
 																/>
 															</button>
 															<button
 																type="button"
-																onClick={() => deletePeriod(period)}
+																onClick={() => deletePeriod(row.period)}
 																disabled={mutation.isPending}
-																className={`${iconButtonClass} text-red-600 hover:bg-red-50`}
+																className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+																title="Delete"
 																aria-label={`Delete Work Period for ${activityName}`}
-																title="Delete Work Period"
 															>
 																<TrashIcon
-																	className="h-4 w-4"
+																	className="w-3.5 h-3.5"
 																	aria-hidden="true"
 																/>
 															</button>
 														</div>
 													) : (
-														<span
-															className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600"
+														<button
+															type="button"
+															disabled
+															className="p-1 rounded text-gray-400 cursor-not-allowed"
 															title={
 																lockLabel === 'Locked'
-																	? 'Both endpoints must fall on today or yesterday in IST.'
+																	? 'Both work dates must be today or yesterday to edit.'
 																	: lockLabel
 															}
+															aria-label={`${lockLabel} for ${activityName}`}
 														>
 															<LockClosedIcon
-																className="h-3.5 w-3.5"
+																className="w-3.5 h-3.5"
 																aria-hidden="true"
 															/>
-															{lockLabel}
-														</span>
+														</button>
 													)}
 												</td>
 											</tr>
 										);
 									})}
-									{periodRows.length > 0 && (
-										<tr className="bg-purple-50 font-semibold text-[#4A1254]">
+									{flatRows.length > 0 && (
+										<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
 											<td
-												colSpan={6}
-												className="px-3 py-2 text-right text-xs uppercase tracking-wide"
+												colSpan={7}
+												className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
 											>
-												{periodRows.length !== periods.length
+												{flatRows.length !== baseRows.length
 													? 'Total (filtered)'
-													: 'Week total'}
+													: 'Total Manhours'}
 											</td>
-											<td className="px-2 py-2 text-center tabular-nums">
-												{formatHours(filteredWeekSeconds)}
+											<td className="py-1 px-2 text-center text-[#4A1254] tabular-nums">
+												{formatQuantity(totalManhours)}
 											</td>
-											<td className="px-2 py-2 text-center tabular-nums">
-												{formatQuantity(filteredWeekQuantity)}
+											<td className="py-1 px-2 text-center text-[#4A1254] tabular-nums">
+												{formatQuantity(totalQuantity)}
 											</td>
-											<td
-												colSpan={3}
-												className="px-3 py-2 text-xs font-normal text-gray-600"
-											>
-												Quantity is counted only in the week of Date Completed.
-											</td>
+											<td colSpan={4}></td>
 										</tr>
 									)}
 								</tbody>
 							</table>
 						</div>
-
-						<p className="text-xs leading-relaxed text-gray-600">
-							Both endpoints must fall on today or yesterday in IST for Employee
-							edits. Older Work Periods stay visible and can be corrected by an
-							authorized manager. Weekly totals use each period&apos;s share
-							inside the selected week.
-						</p>
-
-						{projects.length > 0 &&
-							(periods.length === 0 || periodRows.length === 0) && (
-								<section
-									aria-labelledby={`${formId}-assigned-projects`}
-									className="rounded-lg border border-purple-100 bg-purple-50/40 p-4"
-								>
-									<h4
-										id={`${formId}-assigned-projects`}
-										className="text-sm font-bold text-[#4A1254]"
-									>
-										Assigned projects
-									</h4>
-									<ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-										{projects.map((project) => {
-											const documentsName = projectDocumentsName(project);
-											return (
-												<li
-													key={project.projectId}
-													className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-purple-100 bg-white px-3 py-2"
-												>
-													<span className="min-w-0 break-words text-sm text-gray-800">
-														{project.projectCode
-															? `${project.projectCode} – ${project.projectName}`
-															: project.projectName || project.projectId}
-													</span>
-													<Link
-														href={projectDocumentsHref(project.projectId)}
-														aria-label={documentsName}
-														title={documentsName}
-														className="inline-flex min-h-8 shrink-0 items-center gap-1 text-sm font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-													>
-														Open documents
-														<DocumentCountMarker
-															count={projectDocumentCount(
-																documentCounts,
-																project.projectId
-															)}
-														/>
-													</Link>
-												</li>
-											);
-										})}
-									</ul>
-								</section>
-							)}
-
-						{legacyWeekRows.length > 0 && (
-							<section
-								aria-labelledby={`${formId}-legacy-heading`}
-								className="space-y-3"
-							>
-								<div>
-									<h4
-										id={`${formId}-legacy-heading`}
-										className="text-base font-bold text-[#4A1254]"
-									>
-										Historical duration-only logs
-									</h4>
-									<p className="mt-1 text-sm text-gray-600">
-										Start and End were not recorded for these older logs. Their
-										recorded duration stays on its recorded date; no timestamps
-										are inferred and they cannot be edited here.
-									</p>
-								</div>
-								<div
-									className="overflow-x-auto rounded-lg border border-gray-200"
-									role="region"
-									aria-labelledby={legacyCaptionId}
-									tabIndex={0}
-								>
-									<table className="w-full min-w-[1200px] border-collapse text-sm">
-										<caption id={legacyCaptionId} className="sr-only">
-											Historical duration-only logs
-										</caption>
-										<thead className="bg-gray-100">
-											<tr>
-												{[
-													'Project Number',
-													'Discipline',
-													'Activity',
-													'Sub Activity',
-													'Recorded Date',
-													'Recorded Hours',
-													'Quantity',
-													'Status',
-													'Remarks',
-												].map((label) => (
-													<th
-														key={label}
-														scope="col"
-														className="px-2 py-2 text-center text-xs font-bold uppercase tracking-wide text-gray-700"
-													>
-														{label}
-													</th>
-												))}
-											</tr>
-										</thead>
-										<tbody className="divide-y divide-gray-200">
-											{legacyRows.length === 0 && (
-												<tr>
-													<td
-														colSpan={9}
-														className="px-4 py-6 text-center text-sm text-gray-600"
-													>
-														No historical logs match the current search or
-														status.
-													</td>
-												</tr>
-											)}
-											{legacyRows.map((row) => {
-												const documentsName = projectDocumentsName(row);
-												return (
-													<tr
-														key={row.key}
-														className="align-middle hover:bg-gray-50/60"
-													>
-														<td className="px-2 py-3 text-center">
-															<ProjectNumberValue
-																projectId={row.projectId}
-																documentsName={documentsName}
-																code={
-																	row.projectCode ||
-																	row.projectName ||
-																	row.projectId
-																}
-																documentCount={projectDocumentCount(
-																	documentCounts,
-																	row.projectId
-																)}
-															/>
-														</td>
-														<td className="px-2 py-3 text-center">
-															<ActivityTextValue
-																value={row.discipline || '–'}
-															/>
-														</td>
-														<td className="px-2 py-3 text-center">
-															<ActivityTextValue
-																value={row.activityName}
-																className="font-semibold text-[#4A1254]"
-															/>
-														</td>
-														<td className="px-2 py-3 text-center">
-															<ActivityTextValue
-																value={row.subActivityName || '–'}
-															/>
-														</td>
-														<td className="px-2 py-3 text-center">
-															{formatDateLabel(row.date)}
-														</td>
-														<td className="px-2 py-3 text-center font-semibold tabular-nums text-[#4A1254]">
-															{formatQuantity(row.hours)}h
-														</td>
-														<td className="px-2 py-3 text-center tabular-nums">
-															{formatQuantity(row.quantity)}
-														</td>
-														<td className="px-2 py-3 text-center">
-															<span
-																className={`inline-block rounded-full border px-2 py-0.5 text-xs font-semibold ${getStatusBadge(row.status)}`}
-															>
-																{row.status}
-															</span>
-														</td>
-														<td className="px-2 py-3 text-left">
-															<span className="whitespace-pre-wrap break-words text-gray-700">
-																{row.remarks || '–'}
-															</span>
-														</td>
-													</tr>
-												);
-											})}
-										</tbody>
-									</table>
-								</div>
-							</section>
-						)}
-					</>
-				)}
-			</div>
+					</form>
+					<p className="px-3 py-2 text-[11px] leading-snug text-gray-500">
+						Times use IST. For a new entry, an earlier end time means work
+						started the previous day. Older entries may have no recorded times.
+					</p>
+				</>
+			)}
 		</div>
 	);
 }

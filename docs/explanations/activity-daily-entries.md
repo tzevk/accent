@@ -113,6 +113,17 @@ Self-service add, edit, and delete are limited to today and yesterday in IST:
 A Monday 22:00–Tuesday 02:00 period is editable on Tuesday, but not on
 Wednesday. The server's current time and `Asia/Kolkata` decide eligibility.
 
+### Entering a Work Period
+
+In **My Project Activities**, select **Add** and fill the inline row. Use the
+time pickers in **Start Period** and **End Period**. **Date Completed** defaults
+to today in IST and sets the new period's end date. If the end time is earlier
+than the start time, the row shows **Previous day** under the start time.
+When editing an existing period, its saved work dates stay the same.
+Changing **Date Completed** on that row changes only the quantity's reporting date.
+Accent calculates **Manhours**; **Default MH** stays an estimate. Historical
+duration-only rows are read-only and have no start or end times.
+
 ### Monday–Sunday weeks
 
 My Project Activities opens the current IST Monday–Sunday week. Previous and

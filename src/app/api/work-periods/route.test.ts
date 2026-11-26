@@ -101,6 +101,8 @@ function period(overrides: Record<string, unknown> = {}) {
 		activityName: 'Design',
 		subActivityName: null,
 		employeeName: 'Employee Forty Two',
+		defaultManhours: 12.5,
+		status: 'In Progress',
 		...overrides,
 	};
 }
@@ -290,7 +292,16 @@ describe('work periods route weekly contract', () => {
 		);
 
 		expect(await response.json()).toMatchObject({
-			data: { periods: [{ weekQuantity: 2, editable: true }] },
+			data: {
+				periods: [
+					{
+						weekQuantity: 2,
+						editable: true,
+						defaultManhours: 12.5,
+						status: 'In Progress',
+					},
+				],
+			},
 		});
 	});
 
