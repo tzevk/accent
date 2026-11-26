@@ -17,7 +17,7 @@ const MATCHERS: Array<[string, string]> = [
 	['FROM payroll_run_rosters', 'rosters'],
 	['FROM payroll_employee_allocations a', 'allocations'],
 	['FROM payroll_employee_allocation_shares', 'shares'],
-	['FROM user_activity_assignments', 'assignments'],
+	['FROM logged_activity_assignments', 'assignments'],
 	['FROM payroll_schedules', 'schedules'],
 	['FROM holiday_master', 'holidays'],
 ];

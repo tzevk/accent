@@ -1053,11 +1053,12 @@ async function batchGetAttendance(db, employeeIds, month) {
 }
 
 /**
- * Logged project hours per employee for a payroll month. The assignment's
- * recorded employee id wins; otherwise ownership comes from the linked
- * account's `users.employee_id`. Display and login identifiers never establish
- * attribution. A month with no logged rows yields 0 for that employee: hours
- * alone decide pay.
+ * Logged project hours per employee for a payroll month. The effective
+ * `daily_entries` projection includes legacy records and Work Period daily
+ * attribution. The assignment's recorded employee id wins; otherwise ownership
+ * comes from the linked account's `users.employee_id`. Display and login
+ * identifiers never establish attribution. A month with no logged rows yields
+ * 0 for that employee: hours alone decide pay.
  */
 async function batchGetLoggedHours(db, employeeIds, month) {
 	const wanted = new Set(
@@ -1070,7 +1071,7 @@ async function batchGetLoggedHours(db, employeeIds, month) {
 	const [assignments] = await db.execute(
 		`SELECT uaa.employee_id, uaa.daily_entries,
             u.employee_id AS user_employee_id
-     FROM user_activity_assignments uaa
+     FROM logged_activity_assignments uaa
      LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
      WHERE uaa.status <> 'Cancelled'
        AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`

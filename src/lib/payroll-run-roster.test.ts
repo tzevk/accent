@@ -1029,7 +1029,7 @@ describe('loadPayrollRunRoster', () => {
 				}
 				if (sql.includes('FROM salary_structures')) return [[], undefined];
 				if (sql.includes('FROM payroll_slips')) return [[], undefined];
-				if (sql.includes('FROM user_activity_assignments'))
+				if (sql.includes('FROM logged_activity_assignments'))
 					return [[], undefined];
 				if (sql.includes('FROM employees')) {
 					return [
@@ -1098,7 +1098,7 @@ describe('loadPayrollRunRoster', () => {
 				}
 				if (text.includes('FROM salary_structures')) return [[], undefined];
 				if (text.includes('FROM payroll_slips')) return [[], undefined];
-				if (text.includes('FROM user_activity_assignments'))
+				if (text.includes('FROM logged_activity_assignments'))
 					return [[], undefined];
 				throw new Error(`unexpected SQL: ${text.slice(0, 80)}`);
 			},
@@ -1199,7 +1199,7 @@ describe('loadPayrollRunRoster', () => {
 				}
 				if (text.includes('FROM salary_structures')) return [[], undefined];
 				if (text.includes('FROM payroll_slips')) return [[], undefined];
-				if (text.includes('FROM user_activity_assignments'))
+				if (text.includes('FROM logged_activity_assignments'))
 					return [[], undefined];
 				throw new Error(`unexpected SQL: ${text.slice(0, 80)}`);
 			},
@@ -1256,7 +1256,7 @@ describe('loadPayrollRunRoster', () => {
 				}
 				if (text.includes('FROM salary_structures')) return [[], undefined];
 				if (text.includes('FROM payroll_slips')) return [[], undefined];
-				if (text.includes('FROM user_activity_assignments'))
+				if (text.includes('FROM logged_activity_assignments'))
 					return [[], undefined];
 				throw new Error(`unexpected SQL: ${text.slice(0, 80)}`);
 			},
@@ -1278,7 +1278,7 @@ describe('loadPayrollRunRoster', () => {
 		);
 		expect(slipCall?.params).toEqual(['2026-10-01', 2]);
 		const assignmentCall = calls.find((call) =>
-			call.sql.includes('FROM user_activity_assignments')
+			call.sql.includes('FROM logged_activity_assignments')
 		);
 		expect(assignmentCall?.params).toEqual([2, 2]);
 	});

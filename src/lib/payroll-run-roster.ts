@@ -178,6 +178,7 @@ export interface PayrollRunProfileRow {
 export interface PayrollRunAssignmentRow {
 	employee_id?: number | string | null;
 	user_employee_id?: number | string | null;
+	/** Effective legacy + Work Period daily attribution from the read view. */
 	daily_entries?: unknown;
 }
 
@@ -851,7 +852,8 @@ function emptyRoster(month: string): PayrollRunRoster {
 
 /**
  * Load the month's candidates, their active canonical/legacy profiles and the
- * month's slip/Logged Hours evidence, then build the roster.
+ * month's slip/Logged Hours evidence from the effective assignment view, then
+ * build the roster.
  *
  * Every read honours its lifecycle boundary: employees are soft-deleted with
  * `isDelete = 0`; profiles are `is_active = 1`; the assignment's linked account
@@ -965,7 +967,7 @@ export async function loadPayrollRunRoster(
 		db.execute(
 			`SELECT uaa.employee_id, uaa.daily_entries,
               u.employee_id AS user_employee_id
-         FROM user_activity_assignments uaa
+         FROM logged_activity_assignments uaa
          LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
         WHERE uaa.status <> 'Cancelled'
           AND uaa.daily_entries IS NOT NULL

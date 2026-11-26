@@ -26,7 +26,7 @@ const MATCHERS: Array<[string, string]> = [
 	['FROM payroll_employee_allocations a', 'allocations'],
 	['FROM payroll_employee_allocation_shares', 'shares'],
 	['FROM payroll_allocation_reconstruction_proposals', 'reconstructions'],
-	['FROM user_activity_assignments', 'assignments'],
+	['FROM logged_activity_assignments', 'assignments'],
 	['FROM employees WHERE isDelete', 'hourEmployees'],
 	['FROM payroll_schedules', 'schedules'],
 	['FROM holiday_master', 'holidays'],

@@ -359,11 +359,12 @@ async function loadFrozenAllocations(
 }
 
 /**
- * Every Logged Hour of the month, per Employee and Project. Uses the same
- * canonical parser and employee-resolution rule as the payroll calculator's
- * batch reader, so the allocation denominator cannot drift from the hours the
- * slip was priced at. A Project that no longer exists is not a reliable
- * destination: its hours stay in the denominator as No project.
+ * Every Logged Hour of the month, per Employee and Project. Reads the effective
+ * `daily_entries` projection (legacy records plus Work Period attribution) and
+ * uses the same canonical parser and employee-resolution rule as the payroll
+ * calculator's batch reader, so the allocation denominator cannot drift from
+ * the hours the slip was priced at. A Project that no longer exists is not a
+ * reliable destination: its hours stay in the denominator as No project.
  */
 async function loadMonthHours(
 	db: SqlConnection,
@@ -375,7 +376,7 @@ async function loadMonthHours(
             u.employee_id AS user_employee_id,
             p.project_code, COALESCE(p.project_title, p.name) AS project_name,
             p.client_name
-       FROM user_activity_assignments uaa
+       FROM logged_activity_assignments uaa
        LEFT JOIN users u ON u.id = uaa.user_id AND u.isDelete = 0
        LEFT JOIN projects p ON p.project_id = uaa.project_id AND p.isDelete = 0
       WHERE uaa.status <> 'Cancelled'

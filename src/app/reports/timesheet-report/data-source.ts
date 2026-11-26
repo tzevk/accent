@@ -10,14 +10,16 @@
  * (see docs/extras/*_TIMESHEET_*). Day-level values come from
  * `employee_attendance` (status, overtime), holiday names from
  * `holiday_master`, and the project/activity rows from
- * `user_activity_assignments`. Pure helpers (`statusKind`,
- * `hoursForStatus`, `buildSummary`, …) are exported for unit tests.
+ * `logged_activity_assignments`, whose effective `daily_entries` combines
+ * legacy duration records with Work Period attribution. Pure helpers
+ * (`statusKind`, `hoursForStatus`, `buildSummary`, …) are exported for unit tests.
  */
 
 import { query } from '@/utils/database';
 import { isWeeklyOff } from '@/utils/weekly-off';
 import {
 	hoursByDateForMonth,
+	parseDailyEntries,
 	parseDailyEntryRecords,
 	sumLoggedHoursForMonth,
 } from '@/lib/logged-hours';
@@ -70,6 +72,7 @@ export interface TsProject {
 	discipline_name: string | null;
 	status: string | null;
 	estimated_hours: number;
+	/** All-time Logged Hours derived from the effective daily_entries projection. */
 	actual_hours: number;
 	qty_assigned: number;
 	qty_completed: number;
@@ -137,9 +140,9 @@ export interface TimesheetData {
 
 export interface TimesheetMeta {
 	employees: TsEmployee[];
-	/** YYYY-MM months that have attendance records, newest first */
+	/** YYYY-MM months with attendance or effective Logged Hours, newest first */
 	months: string[];
-	/** Newest month with attendance, or null when none */
+	/** Newest available month, or the current month when none exists */
 	latest_month: string | null;
 }
 
@@ -358,20 +361,21 @@ export function monthLabel(month: string): string {
 	return `${MONTH_NAMES[m - 1]} ${y}`;
 }
 
-// ─── Project hours (daily_entries) ──────────────────────────────────
+// ─── Project hours (logged_activity_assignments.daily_entries) ───────
 
 /**
- * Build the per-day project-hour rows for a month from raw assignment rows.
- *
- * Each raw row must carry the assignment columns plus `daily_entries`
- * (JSON array of { date, hours, qty_done, … }) and the project lookup
- * columns (project_code / project_name). Entries outside the month are
- * dropped; duplicate dates within one assignment are summed (a single
- * assignment can log several entries per day).
+ * Build the per-day project-hour rows for a month from effective assignment
+ * rows. Each raw row must carry the assignment columns plus the view's
+ * `daily_entries` (legacy entries merged with Work Period daily attribution)
+ * and the project lookup columns (project_code / project_name). Entries outside
+ * the month are dropped; duplicate dates within one assignment are summed.
+ * `actual_hours` is re-derived across all dates because the view intentionally
+ * preserves the base table's potentially stale aggregate.
  */
 export function buildProjectRows(rawRows: DbRow[], month: string): TsProject[] {
 	const rows: TsProject[] = [];
 	for (const r of rawRows) {
+		const entries = parseDailyEntries(r.daily_entries);
 		rows.push({
 			project_id: n(r, 'project_id') || null,
 			project_code: s(r, 'project_code'),
@@ -380,13 +384,15 @@ export function buildProjectRows(rawRows: DbRow[], month: string): TsProject[] {
 			discipline_name: s(r, 'discipline_name', '') || null,
 			status: s(r, 'status', '') || null,
 			estimated_hours: n(r, 'estimated_hours'),
-			actual_hours: n(r, 'actual_hours'),
+			actual_hours: round2(
+				entries.reduce((total, entry) => total + entry.hours, 0)
+			),
 			qty_assigned: n(r, 'qty_assigned'),
 			qty_completed: n(r, 'qty_completed'),
 			start_date: s(r, 'start_date', '') || null,
 			due_date: s(r, 'due_date', '') || null,
-			days: hoursByDateForMonth([r.daily_entries], month),
-			total_hours: sumLoggedHoursForMonth([r.daily_entries], month),
+			days: hoursByDateForMonth([entries], month),
+			total_hours: sumLoggedHoursForMonth([entries], month),
 		});
 	}
 	return rows;
@@ -482,12 +488,12 @@ export async function fetchTimesheetMeta(): Promise<TimesheetMeta> {
 		/* employee_attendance may be empty — treat as no months */
 	}
 
-	// Union in months with logged project hours (daily_entries) so a
-	// timesheet is reachable even when no attendance was entered for that
-	// month — e.g. May 2026 has project entries but no attendance rows.
+	// Union in months from the view's effective daily_entries, including Work
+	// Period attribution, so a timesheet is reachable even when no attendance
+	// was entered for that month.
 	try {
 		const [asgRows] = (await query(
-			`SELECT daily_entries FROM user_activity_assignments
+			`SELECT daily_entries FROM logged_activity_assignments
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		const monthSet = new Set(months);
@@ -499,7 +505,7 @@ export async function fetchTimesheetMeta(): Promise<TimesheetMeta> {
 		// YYYY-MM sorts lexically, so reverse() = newest first.
 		months = Array.from(monthSet).sort().reverse();
 	} catch {
-		/* user_activity_assignments may not exist */
+		/* logged_activity_assignments may not exist */
 	}
 
 	// Always offer the current month so the grid can be viewed even when
@@ -587,13 +593,13 @@ export async function fetchTimesheetData(
 	try {
 		const [projectRows] = (await query(
 			`SELECT uaa.project_id, uaa.activity_name, uaa.discipline_name, uaa.status,
-			        uaa.estimated_hours, uaa.actual_hours,
+			        uaa.estimated_hours,
 			        uaa.qty_assigned, uaa.qty_completed, uaa.daily_entries,
 			        DATE_FORMAT(uaa.start_date, '%Y-%m-%d') AS start_date,
 			        DATE_FORMAT(uaa.due_date, '%Y-%m-%d') AS due_date,
 			        p.project_code,
 			        COALESCE(NULLIF(p.project_title, ''), NULLIF(p.name, ''), '') AS project_name
-			 FROM user_activity_assignments uaa
+			 FROM logged_activity_assignments uaa
 			 LEFT JOIN projects p ON p.project_id = uaa.project_id
 			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.status <> 'Cancelled'
