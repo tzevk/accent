@@ -111,10 +111,20 @@ export const FULL_SUITE_GROUPS: readonly E2EGroupDefinition[] = [
 		],
 	},
 	{
-		name: 'tickets-and-own-timesheet',
+		name: 'tickets',
+		specs: [{ file: 'e2e/specs/tickets.spec.ts', plannedLogins: 3 }],
+	},
+	{
+		name: 'employee-work-periods',
+		specs: [{ file: 'e2e/specs/employee-time.spec.ts', plannedLogins: 2 }],
+	},
+	{
+		name: 'work-period-contention',
 		specs: [
-			{ file: 'e2e/specs/tickets.spec.ts', plannedLogins: 3 },
-			{ file: 'e2e/specs/employee-time.spec.ts', plannedLogins: 1 },
+			{
+				file: 'e2e/specs/work-period-contention.spec.ts',
+				plannedLogins: 3,
+			},
 		],
 	},
 	{
