@@ -4,16 +4,10 @@ import { useId, useState, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api-client';
 import { WorkPeriodFields } from '@/components/WorkPeriodFields';
+import type { WorkPeriodFieldsValue } from '@/components/WorkPeriodFields';
+import { shiftIstDate, weekStartFor } from '@/lib/work-periods';
 
 type Id = string | number;
-
-interface PeriodFieldsValue {
-	start: string;
-	end: string;
-	quantity: string;
-	dateCompleted: string;
-	remarks: string;
-}
 
 interface ManagerAssignment {
 	id: Id;
@@ -68,19 +62,19 @@ type PeriodMutation =
 	| {
 			kind: 'create';
 			assignmentId: Id;
-			value: PeriodFieldsValue;
+			value: WorkPeriodFieldsValue;
 	  }
 	| {
 			kind: 'update';
 			period: WorkPeriodRow;
-			value: PeriodFieldsValue;
+			value: WorkPeriodFieldsValue;
 	  }
 	| {
 			kind: 'delete';
 			period: WorkPeriodRow;
 	  };
 
-const EMPTY_FIELDS: PeriodFieldsValue = {
+const EMPTY_FIELDS: WorkPeriodFieldsValue = {
 	start: '',
 	end: '',
 	quantity: '',
@@ -109,13 +103,27 @@ function assignmentLabel(assignment: ManagerAssignment) {
 	return `${assignment.employeeName} — ${activity}`;
 }
 
-function fieldsFromPeriod(period: WorkPeriodRow): PeriodFieldsValue {
+function fieldsFromPeriod(period: WorkPeriodRow): WorkPeriodFieldsValue {
 	return {
 		start: period.start,
 		end: period.end,
 		quantity: String(period.quantity ?? ''),
 		dateCompleted: period.dateCompleted,
 		remarks: period.remarks,
+	};
+}
+
+function withDefaultDateCompleted(
+	previous: WorkPeriodFieldsValue,
+	next: WorkPeriodFieldsValue
+): WorkPeriodFieldsValue {
+	const previousEndDate = previous.end.slice(0, 10);
+	const nextEndDate = next.end.slice(0, 10);
+	const hasCustomDate =
+		Boolean(next.dateCompleted) && next.dateCompleted !== previousEndDate;
+	return {
+		...next,
+		dateCompleted: hasCustomDate ? next.dateCompleted : nextEndDate,
 	};
 }
 
@@ -126,9 +134,15 @@ function fieldsFromPeriod(period: WorkPeriodRow): PeriodFieldsValue {
 export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 	const headingId = useId();
 	const queryClient = useQueryClient();
-	const queryKey = ['project-work-periods', String(projectId)] as const;
+	const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+	const queryKey = [
+		'project-work-periods',
+		String(projectId),
+		selectedWeek ?? 'current',
+	] as const;
 	const [newAssignmentId, setNewAssignmentId] = useState<Id | ''>('');
-	const [newFields, setNewFields] = useState<PeriodFieldsValue>(EMPTY_FIELDS);
+	const [newFields, setNewFields] =
+		useState<WorkPeriodFieldsValue>(EMPTY_FIELDS);
 	const [editing, setEditing] = useState<WorkPeriodRow | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<WorkPeriodRow | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -139,6 +153,7 @@ export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 		queryFn: async (): Promise<ProjectWorkPeriodsData> => {
 			const response = await apiGet<WorkPeriodsResponse>('/api/work-periods', {
 				projectId,
+				week: selectedWeek ?? undefined,
 			});
 			if (!response?.success || !response.data) {
 				throw new Error('Work periods could not be loaded for this project.');
@@ -177,6 +192,10 @@ export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 			return response;
 		},
 		onSuccess: async (_response, input) => {
+			if (input.kind === 'create') {
+				const endDate = input.value.end.slice(0, 10);
+				if (endDate) setSelectedWeek(weekStartFor(endDate));
+			}
 			await queryClient.invalidateQueries({ queryKey });
 			setDeleteTarget(null);
 			setNotice(
@@ -196,20 +215,31 @@ export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 
 	const assignments = periodsQuery.data?.assignments ?? [];
 	const periods = periodsQuery.data?.periods ?? [];
+	const activeWeek = selectedWeek ?? periodsQuery.data?.weekStart ?? null;
 	const selectedAssignmentId =
 		newAssignmentId || (assignments.length > 0 ? assignments[0].id : '');
 	const activeFields = editing ? fieldsFromPeriod(editing) : newFields;
 	const busy = saveMutation.isPending;
 	const fieldsDisabled = busy || (!editing && selectedAssignmentId === '');
 
-	function updateActiveFields(value: PeriodFieldsValue) {
+	function updateActiveFields(value: WorkPeriodFieldsValue) {
 		saveMutation.reset();
 		setNotice(null);
+		const next = withDefaultDateCompleted(activeFields, value);
 		if (editing) {
-			setEditing({ ...editing, ...value });
+			setEditing({ ...editing, ...next });
 		} else {
-			setNewFields(value);
+			setNewFields(next);
 		}
+	}
+
+	function moveWeek(days: number) {
+		if (!activeWeek || busy) return;
+		saveMutation.reset();
+		setNotice(null);
+		setEditing(null);
+		setDeleteTarget(null);
+		setSelectedWeek(shiftIstDate(activeWeek, days));
 	}
 
 	function beginEdit(period: WorkPeriodRow) {
@@ -229,7 +259,10 @@ export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 			saveMutation.mutate({
 				kind: 'update',
 				period: editing,
-				value: fieldsFromPeriod(editing),
+				value: withDefaultDateCompleted(
+					fieldsFromPeriod(editing),
+					fieldsFromPeriod(editing)
+				),
 			});
 			return;
 		}
@@ -237,7 +270,7 @@ export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 		saveMutation.mutate({
 			kind: 'create',
 			assignmentId: selectedAssignmentId,
-			value: newFields,
+			value: withDefaultDateCompleted(newFields, newFields),
 		});
 	}
 
@@ -334,7 +367,7 @@ export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 							}}
 							disabled={busy || assignments.length === 0}
 							required
-							className="mt-1 block min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-base text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+							className="mt-1 block min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100"
 						>
 							{assignments.length === 0 ? (
 								<option value="">No eligible assignments</option>
@@ -417,17 +450,49 @@ export default function ProjectWorkPeriods({ projectId }: { projectId: Id }) {
 				</p>
 			)}
 
+			{activeWeek && !periodsQuery.isError && (
+				<nav
+					aria-label="Work period weeks"
+					className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3"
+				>
+					<p className="text-sm font-medium text-gray-700">
+						Week of <time dateTime={activeWeek}>{activeWeek}</time>
+					</p>
+					<div className="flex flex-wrap gap-2">
+						<button
+							type="button"
+							onClick={() => moveWeek(-7)}
+							disabled={busy || periodsQuery.isFetching}
+							className="min-h-11 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-100"
+						>
+							Previous week
+						</button>
+						<button
+							type="button"
+							onClick={() => moveWeek(7)}
+							disabled={busy || periodsQuery.isFetching}
+							className="min-h-11 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-100"
+						>
+							Next week
+						</button>
+					</div>
+				</nav>
+			)}
+
 			{!periodsQuery.isPending &&
 				periods.length === 0 &&
 				!periodsQuery.isError && (
 					<p className="mt-5 text-sm text-gray-600">
-						No work periods recorded for this project.
+						No work periods recorded for this week.
 					</p>
 				)}
 			{periods.length > 0 && (
 				<div className="mt-5 overflow-x-auto">
 					<table className="w-full min-w-[62rem] border-collapse text-left text-sm">
-						<caption className="sr-only">Recorded work periods</caption>
+						<caption className="sr-only">
+							Recorded work periods
+							{activeWeek ? ` for week of ${activeWeek}` : ''}
+						</caption>
 						<thead>
 							<tr className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
 								<th scope="col" className="px-3 py-2 font-semibold">

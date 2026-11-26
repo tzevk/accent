@@ -46,10 +46,10 @@ const period = {
 	activityName: 'Structural design',
 	subActivityName: 'BIM coordination',
 	employeeName: 'Asha Rao',
-	start: '2026-10-05T09:00',
-	end: '2026-10-05T11:30',
+	start: '2026-10-20T09:00',
+	end: '2026-10-20T11:30',
 	quantity: '2.5',
-	dateCompleted: '2026-10-05',
+	dateCompleted: '2026-10-20',
 	remarks: 'Original coordination',
 	durationSeconds: 9000,
 	weekSeconds: 9000,
@@ -57,13 +57,17 @@ const period = {
 	editable: true,
 };
 
-function payload(periods = [period], assignments = [assignment]) {
+function payload(
+	periods = [period],
+	assignments = [assignment],
+	weekStart = '2026-10-19'
+) {
 	return {
 		success: true,
 		data: {
 			canLog: false,
 			today: '2026-10-22',
-			weekStart: '2026-10-19',
+			weekStart,
 			periods,
 			assignments,
 		},
@@ -104,9 +108,7 @@ function fillNewPeriod() {
 	fireEvent.change(screen.getByLabelText(/^quantity/i), {
 		target: { value: '2.5' },
 	});
-	fireEvent.change(screen.getByLabelText(/^date completed/i), {
-		target: { value: '2026-10-01' },
-	});
+
 	fireEvent.change(screen.getByLabelText(/^remarks/i), {
 		target: { value: 'Late correction' },
 	});
@@ -152,8 +154,8 @@ describe('ProjectWorkPeriods', () => {
 			dateCompleted: '2026-10-01',
 			remarks: 'Late correction',
 			durationSeconds: 7200,
-			weekSeconds: 0,
-			weekQuantity: '0',
+			weekSeconds: 7200,
+			weekQuantity: '2.5',
 		};
 		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
 			if (init?.method === 'POST') {
@@ -165,11 +167,15 @@ describe('ProjectWorkPeriods', () => {
 			)
 				? [addedPeriod]
 				: [period];
-			return Promise.resolve(jsonResponse(200, payload(periods)));
+			const week = new URL(url, 'http://localhost').searchParams.get('week');
+			return Promise.resolve(
+				jsonResponse(200, payload(periods, [assignment], week ?? '2026-10-19'))
+			);
 		});
 		const { projectSubmit } = renderWorkspace();
 		await screen.findByRole('table', { name: /recorded work periods/i });
 		fillNewPeriod();
+		expect(screen.getByLabelText(/^date completed/i)).toHaveValue('2026-10-01');
 		expect(
 			fireEvent.keyDown(screen.getByLabelText(/^start/i), { key: 'Enter' })
 		).toBe(false);
@@ -205,13 +211,19 @@ describe('ProjectWorkPeriods', () => {
 
 		expect(await screen.findByText('Work period added.')).toBeInTheDocument();
 		expect(await screen.findByText('Late correction')).toBeInTheDocument();
+		await waitFor(() => {
+			expect(fetchMock).toHaveBeenCalledWith(
+				'/api/work-periods?projectId=17&week=2026-09-28',
+				expect.objectContaining({ credentials: 'include' })
+			);
+		});
 		expect(projectSubmit).not.toHaveBeenCalled();
 	});
 
 	it('corrects a period without changing its assignment or employee', async () => {
 		const correctedPeriod = {
 			...period,
-			end: '2026-10-05T12:00',
+			end: '2026-10-20T12:00',
 			remarks: 'Corrected coordination',
 			durationSeconds: 10800,
 		};
@@ -230,9 +242,9 @@ describe('ProjectWorkPeriods', () => {
 		await screen.findByRole('table', { name: /recorded work periods/i });
 
 		fireEvent.click(screen.getByRole('button', { name: /^edit work period/i }));
-		expect(screen.getByLabelText(/^end/i)).toHaveValue('2026-10-05T11:30');
+		expect(screen.getByLabelText(/^end/i)).toHaveValue('2026-10-20T11:30');
 		fireEvent.change(screen.getByLabelText(/^end/i), {
-			target: { value: '2026-10-05T12:00' },
+			target: { value: '2026-10-20T12:00' },
 		});
 		fireEvent.change(screen.getByLabelText(/^remarks/i), {
 			target: { value: 'Corrected coordination' },
@@ -255,10 +267,10 @@ describe('ProjectWorkPeriods', () => {
 			manager: true,
 			projectId: '17',
 			id: 'period-1',
-			start: '2026-10-05T09:00',
-			end: '2026-10-05T12:00',
+			start: '2026-10-20T09:00',
+			end: '2026-10-20T12:00',
 			quantity: '2.5',
-			dateCompleted: '2026-10-05',
+			dateCompleted: '2026-10-20',
 			remarks: 'Corrected coordination',
 		});
 		expect(body).not.toHaveProperty('assignmentId');
@@ -356,5 +368,49 @@ describe('ProjectWorkPeriods', () => {
 		});
 		expect(within(table).getByText('Asha Rao')).toBeInTheDocument();
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	it('browses older manager weeks and keeps their corrections reachable', async () => {
+		const olderPeriod = {
+			...period,
+			id: 'period-older',
+			start: '2026-10-13T09:00',
+			end: '2026-10-13T10:00',
+			dateCompleted: '2026-10-13',
+			remarks: 'Older correction',
+			durationSeconds: 3600,
+			weekSeconds: 3600,
+		};
+		fetchMock.mockImplementation((url: string) => {
+			const week = new URL(url, 'http://localhost').searchParams.get('week');
+			return Promise.resolve(
+				jsonResponse(
+					200,
+					week === '2026-10-12'
+						? payload([olderPeriod], [assignment], week)
+						: payload()
+				)
+			);
+		});
+		renderWorkspace();
+		await screen.findByRole('table', { name: /recorded work periods/i });
+
+		fireEvent.click(screen.getByRole('button', { name: 'Previous week' }));
+		expect(await screen.findByText('Older correction')).toBeInTheDocument();
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/work-periods?projectId=17&week=2026-10-12',
+			expect.objectContaining({ credentials: 'include' })
+		);
+		fireEvent.click(screen.getByRole('button', { name: /^edit work period/i }));
+		expect(screen.getByLabelText(/^start/i)).toHaveValue('2026-10-13T09:00');
+
+		fireEvent.click(screen.getByRole('button', { name: 'Next week' }));
+		expect(
+			await screen.findByText('Original coordination')
+		).toBeInTheDocument();
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/work-periods?projectId=17&week=2026-10-19',
+			expect.objectContaining({ credentials: 'include' })
+		);
 	});
 });

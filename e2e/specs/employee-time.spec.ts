@@ -10,6 +10,7 @@ import {
 	AUTHORED_OVERNIGHT_PERIOD,
 	readEmployeeTimeState,
 	readWorkPeriods,
+	readWorkPeriodAssignmentIdentity,
 	seedEmployeeSelfTimesheetFixture,
 	seedEmployeeWorkPeriodFixture,
 	type FixtureProject,
@@ -211,11 +212,11 @@ test('work period reaches My Timesheet across IST midnight', async ({
 	const activity = page.getByLabel('Activity', { exact: true });
 	await expect(activity).toContainText(seeded.primary.name);
 	await activity.selectOption(seeded.primary.id);
-	const subActivity = page.getByLabel('Sub-activity', { exact: true });
+	const subActivity = page.getByLabel('Sub Activity', { exact: true });
 	await expect(subActivity).toHaveText('No sub-activity');
 	await subActivity.selectOption({ label: 'No sub-activity' });
-	await page.getByLabel('Start', { exact: true }).fill(seeded.self.start);
-	await page.getByLabel('End', { exact: true }).fill(seeded.self.end);
+	await page.getByLabel('Start (IST)', { exact: true }).fill(seeded.self.start);
+	await page.getByLabel('End (IST)', { exact: true }).fill(seeded.self.end);
 	await page.getByLabel('Quantity', { exact: true }).fill('2.5');
 	await expect(page.getByLabel('Date Completed', { exact: true })).toHaveValue(
 		seeded.self.dateCompleted
@@ -231,6 +232,16 @@ test('work period reaches My Timesheet across IST midnight', async ({
 		.getByRole('button', { name: 'Save Work Period', exact: true })
 		.click();
 	const selfId = await expectMutation(await saved);
+	const identity = await readWorkPeriodAssignmentIdentity(
+		db,
+		seeded.primary.assignmentId
+	);
+	expect(identity.projectActivityId).not.toBe(seeded.primary.id);
+	expect(identity).toMatchObject({
+		disciplineId: seeded.discipline.id,
+		catalogActivityId: seeded.primary.id,
+		catalogSubActivityId: null,
+	});
 
 	// Reopen the Employee's weekly view. Yesterday can belong to the previous
 	// week on Monday; the fixture names that week explicitly in IST.

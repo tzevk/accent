@@ -4,6 +4,7 @@ import {
 	projectAccessDeniedResponse,
 	requireProjectAccess,
 } from '@/lib/project-rights';
+import { istDate, shiftIstDate } from '@/lib/work-periods';
 
 /**
  * GET /api/projects/[id]/work-logs
@@ -33,11 +34,10 @@ export async function GET(request, { params }) {
 		const projectId = project.project_id ?? project.id;
 
 		const { searchParams } = new URL(request.url);
-		const endDate =
-			searchParams.get('end_date') || new Date().toISOString().split('T')[0];
+		const today = istDate(Date.now());
+		const endDate = searchParams.get('end_date') || today;
 		const startDate =
-			searchParams.get('start_date') ||
-			new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+			searchParams.get('start_date') || shiftIstDate(today, -30);
 		const filterUserId = searchParams.get('user_id');
 
 		// Query effective logged activity assignments joined with users

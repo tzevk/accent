@@ -82,32 +82,35 @@ Tables are listed if they use hard `DELETE FROM ... WHERE id = ?` in any API rou
 >
 > `salary_structure_components` is excluded for the same reason — it is rebuilt (DELETE + batch INSERT) whenever a salary structure is saved. The user-facing delete in that flow is `salary_structures` itself, which IS listed below.
 >
+> `work_periods` is also intentionally excluded from soft-delete conversion. Its DELETE is a user-authorized correction of one mistaken canonical interval, not deletion of the Project Activity assignment or historical duration-only entries. The command removes only that Work Period, rebuilds the derived daily projection in the same transaction, and retains the assignment and legacy history. Soft-deleting the interval would keep erroneous time eligible for overlap checks and reports, contradicting the correction behavior.
+>
 > `payroll_slips` also has a full-wipe `DELETE FROM payroll_slips` (no WHERE) in the "delete all slips" reset handler.
 
-| Table                                 | API Route(s)                                                                                                                       |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `todos`                               | `todos/route.js` (`admin/todos/route.js` has no DELETE handler)                                                                    |
-| `categories` (category_master)        | `masters/categories/route.js`                                                                                                      |
-| `descriptions` (description_master)   | `masters/descriptions/route.js`                                                                                                    |
-| `holidays` (holiday_master)           | `masters/holidays/route.js`                                                                                                        |
-| `accounts` (account_master)           | `masters/accounts/route.js`                                                                                                        |
-| `account_heads` (account_head_master) | `masters/account-heads/route.js`                                                                                                   |
-| `roles`                               | `roles/route.js`                                                                                                                   |
-| `activities_master`                   | `activities/route.js`, `activity-master/activities/route.js`                                                                       |
-| `functions_master`                    | `activity-master/route.js`                                                                                                         |
-| `sub_activities`                      | `activity-master/subactivities/route.js`                                                                                           |
-| `documents_master`                    | `document-master/route.js`                                                                                                         |
-| `entity_documents`                    | `document-upload/route.js`                                                                                                         |
-| `project_documents`                   | `project-docs/route.js`                                                                                                            |
-| `user_work_logs`                      | `work-logs/route.js`                                                                                                               |
-| `project_activities`                  | `projects/[id]/activities/route.js`                                                                                                |
-| `salary_structures`                   | `employees/[id]/salary-structure/route.js`                                                                                         |
-| `payroll_schedules`                   | `payroll/schedules/route.js`                                                                                                       |
-| `payroll_slips`                       | `payroll/slips/route.js`                                                                                                           |
-| `employee_salary_profile`             | `payroll/salary-profile/route.js`                                                                                                  |
-| `da_schedule`                         | `payroll/da-schedule/route.js`                                                                                                     |
-| `attendance_monthly`                  | `attendance/monthly/route.js`                                                                                                      |
-| `bank_master`                         | `masters/banks/route.js` — **missed by the original audit**; no `isDelete` column in baseline, hard delete on every DELETE request |
+| Table                                 | API Route(s)                                                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `todos`                               | `todos/route.js` (`admin/todos/route.js` has no DELETE handler)                                                                                         |
+| `categories` (category_master)        | `masters/categories/route.js`                                                                                                                           |
+| `descriptions` (description_master)   | `masters/descriptions/route.js`                                                                                                                         |
+| `holidays` (holiday_master)           | `masters/holidays/route.js`                                                                                                                             |
+| `accounts` (account_master)           | `masters/accounts/route.js`                                                                                                                             |
+| `account_heads` (account_head_master) | `masters/account-heads/route.js`                                                                                                                        |
+| `roles`                               | `roles/route.js`                                                                                                                                        |
+| `activities_master`                   | `activities/route.js`, `activity-master/activities/route.js`                                                                                            |
+| `functions_master`                    | `activity-master/route.js`                                                                                                                              |
+| `sub_activities`                      | `activity-master/subactivities/route.js`                                                                                                                |
+| `documents_master`                    | `document-master/route.js`                                                                                                                              |
+| `entity_documents`                    | `document-upload/route.js`                                                                                                                              |
+| `project_documents`                   | `project-docs/route.js`                                                                                                                                 |
+| `user_work_logs`                      | `work-logs/route.js`                                                                                                                                    |
+| `work_periods`                        | `work-periods/route.ts` (`DELETE` through `deleteWorkPeriodCommand`) — intentional user-authorized correction; derived projection is rebuilt atomically |
+| `project_activities`                  | `projects/[id]/activities/route.js`                                                                                                                     |
+| `salary_structures`                   | `employees/[id]/salary-structure/route.js`                                                                                                              |
+| `payroll_schedules`                   | `payroll/schedules/route.js`                                                                                                                            |
+| `payroll_slips`                       | `payroll/slips/route.js`                                                                                                                                |
+| `employee_salary_profile`             | `payroll/salary-profile/route.js`                                                                                                                       |
+| `da_schedule`                         | `payroll/da-schedule/route.js`                                                                                                                          |
+| `attendance_monthly`                  | `attendance/monthly/route.js`                                                                                                                           |
+| `bank_master`                         | `masters/banks/route.js` — **missed by the original audit**; no `isDelete` column in baseline, hard delete on every DELETE request                      |
 
 ---
 

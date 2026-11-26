@@ -367,7 +367,9 @@ export async function GET(request, { params }) {
 				default_manhours: parseFloat(row.default_manhours) || 0,
 				description: row.description || '',
 				qty_assigned: parseFloat(row.qty_assigned) || 0,
-				qty_completed: parseFloat(row.qty_completed) || derivedQty,
+				qty_completed: hasWorkPeriodProjection
+					? derivedQty
+					: parseFloat(row.qty_completed) || derivedQty,
 				planned_hours: parseFloat(row.estimated_hours) || 0,
 				actual_hours: hasWorkPeriodProjection
 					? derivedHours

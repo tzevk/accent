@@ -5,14 +5,17 @@
  * an independently owned InnoDB Employee row lock and observed lock waits, not
  * by sleeps or by hoping two promises overlap.
  */
+import { randomUUID } from 'node:crypto';
 import type { APIRequestContext, APIResponse } from '@playwright/test';
 import type { Connection, RowDataPacket } from 'mysql2/promise';
 import { expect, test } from '../support/test.ts';
+import { fitIdentifier } from '../../scripts/e2e/contracts.ts';
 import { connectFixtureReader } from '../support/runtime.ts';
 import {
 	AUTHORED_OVERNIGHT_PERIOD,
 	readWorkPeriodProjection,
 	readWorkPeriods,
+	readWorkPeriodAssignmentIdentity,
 	seedEmployeeWorkPeriodFixture,
 	type EmployeeWorkPeriodFixture,
 	type TimeLogin,
@@ -66,6 +69,52 @@ function selfPayload(
 		dateCompleted: fixture.self.dateCompleted,
 		remarks,
 	};
+}
+
+const TRIGGER_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
+
+async function installSaveMarkerFailure(
+	db: Connection,
+	fixture: EmployeeWorkPeriodFixture
+): Promise<string> {
+	const name = fitIdentifier(`WP468-${fixture.namespace}-marker`, 64);
+	if (!TRIGGER_NAME_PATTERN.test(name)) {
+		throw new Error(`[work-period-contention] unsafe trigger name ${name}`);
+	}
+	await db.query(`DROP TRIGGER IF EXISTS \`${name}\``);
+	await db.query(
+		`CREATE TRIGGER \`${name}\` BEFORE INSERT ON user_activity_logs
+         FOR EACH ROW
+         BEGIN
+           IF NEW.user_id = ${fixture.login.userId}
+              AND NEW.resource_type = 'project_activity_save' THEN
+             SIGNAL SQLSTATE '45000'
+               SET MESSAGE_TEXT = 'owned work-period marker rejection';
+           END IF;
+         END`
+	);
+	return name;
+}
+
+async function dropSaveMarkerFailure(
+	db: Connection,
+	name: string
+): Promise<void> {
+	if (TRIGGER_NAME_PATTERN.test(name)) {
+		await db.query(`DROP TRIGGER IF EXISTS \`${name}\``);
+	}
+}
+
+async function saveMarkerCount(
+	db: Connection,
+	userId: number
+): Promise<number> {
+	const [rows] = await db.execute<RowDataPacket[]>(
+		`SELECT COUNT(*) AS count FROM user_activity_logs
+		 WHERE user_id = ? AND resource_type = 'project_activity_save'`,
+		[userId]
+	);
+	return Number(rows[0]?.count ?? 0);
 }
 
 function transactionBlocks(status: unknown): string[] {
@@ -408,6 +457,135 @@ test('manager correction is scoped and a stale unrelated Project save preserves 
 		});
 	} finally {
 		await managerClient.dispose();
+		await employeeClient.dispose();
+		await fixture.dispose();
+	}
+});
+
+test('self service creates a separate Project Activity identity for a catalog selection', async ({
+	db,
+	runtime,
+	namespace,
+	playwright,
+}) => {
+	const fixture = await seedEmployeeWorkPeriodFixture(db, namespace);
+	const employeeClient = await playwright.request.newContext({
+		baseURL: runtime.baseUrl,
+	});
+	const catalogActivityId = randomUUID();
+	let createdAssignmentId: string | null = null;
+	try {
+		await db.execute(
+			`INSERT INTO activities_master (id, function_id, activity_name, default_manhours)
+			 VALUES (?, ?, ?, 0)`,
+			[
+				catalogActivityId,
+				fixture.discipline.id,
+				`${fixture.namespace} catalog identity`,
+			]
+		);
+		await signIn(employeeClient, fixture.login);
+		const remarks = `${fixture.namespace} separate catalog identity`;
+		await expectMutation(
+			await employeeClient.post('/api/work-periods', {
+				data: selfPayload(
+					fixture,
+					{ ...fixture.primary, id: catalogActivityId },
+					`${fixture.self.date}T00:00`,
+					`${fixture.self.date}T00:05`,
+					1,
+					remarks
+				),
+			})
+		);
+		const saved = (
+			await readWorkPeriods(db, { employeeId: fixture.employee.id })
+		).find((period) => period.remarks === remarks);
+		expect(saved).toBeDefined();
+		createdAssignmentId = saved?.assignmentId ?? null;
+		expect(createdAssignmentId).not.toBeNull();
+		const identity = await readWorkPeriodAssignmentIdentity(
+			db,
+			createdAssignmentId as string
+		);
+		expect(identity.projectActivityId).not.toBe(catalogActivityId);
+		expect(identity).toMatchObject({
+			disciplineId: fixture.discipline.id,
+			catalogActivityId,
+			catalogSubActivityId: null,
+		});
+	} finally {
+		if (!createdAssignmentId) {
+			const [rows] = await db.execute<RowDataPacket[]>(
+				'SELECT id FROM user_activity_assignments WHERE catalog_activity_id = ?',
+				[catalogActivityId]
+			);
+			createdAssignmentId = rows[0]?.id ? String(rows[0].id) : null;
+		}
+		if (createdAssignmentId) {
+			await db.execute('DELETE FROM work_periods WHERE assignment_id = ?', [
+				createdAssignmentId,
+			]);
+			await db.execute('DELETE FROM user_activity_assignments WHERE id = ?', [
+				createdAssignmentId,
+			]);
+		}
+		await db.execute('DELETE FROM activities_master WHERE id = ?', [
+			catalogActivityId,
+		]);
+		await employeeClient.dispose();
+		await fixture.dispose();
+	}
+});
+
+test('a rejected self-save marker rolls back the period and projection', async ({
+	db,
+	runtime,
+	namespace,
+	playwright,
+}) => {
+	const fixture = await seedEmployeeWorkPeriodFixture(db, namespace);
+	const employeeClient = await playwright.request.newContext({
+		baseURL: runtime.baseUrl,
+	});
+	let triggerName: string | null = null;
+	try {
+		await signIn(employeeClient, fixture.login);
+		const periodsBefore = await readWorkPeriods(db, {
+			employeeId: fixture.employee.id,
+		});
+		const projectionBefore = await readWorkPeriodProjection(
+			db,
+			fixture.primary.assignmentId
+		);
+		const markersBefore = await saveMarkerCount(db, fixture.login.userId);
+		triggerName = await installSaveMarkerFailure(db, fixture);
+
+		const response = await employeeClient.post('/api/work-periods', {
+			data: selfPayload(
+				fixture,
+				fixture.primary,
+				`${fixture.self.date}T00:00`,
+				`${fixture.self.date}T00:05`,
+				2.5,
+				`${fixture.namespace} marker failure must roll back`
+			),
+		});
+
+		expect(response.status()).toBe(500);
+		expect(await response.json()).toMatchObject({
+			success: false,
+			error: 'Failed to save Work Period',
+		});
+		expect(
+			await readWorkPeriods(db, { employeeId: fixture.employee.id })
+		).toEqual(periodsBefore);
+		expect(
+			await readWorkPeriodProjection(db, fixture.primary.assignmentId)
+		).toEqual(projectionBefore);
+		expect(await saveMarkerCount(db, fixture.login.userId)).toBe(markersBefore);
+	} finally {
+		if (triggerName) await dropSaveMarkerFailure(db, triggerName);
 		await employeeClient.dispose();
 		await fixture.dispose();
 	}

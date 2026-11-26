@@ -579,6 +579,13 @@ interface WorkPeriodProjectionRow extends RowDataPacket {
 	work_period_entries: unknown;
 }
 
+interface AssignmentIdentityRow extends RowDataPacket {
+	activity_id: string | null;
+	discipline_id: string | null;
+	catalog_activity_id: string | null;
+	catalog_sub_activity_id: string | null;
+}
+
 /** Independent committed-state readback; never derives browser expectations. */
 export async function readWorkPeriods(
 	db: Connection,
@@ -620,6 +627,30 @@ export async function readWorkPeriodProjection(
 		[assignmentId]
 	);
 	return rows[0] ? parseJsonValue(rows[0].work_period_entries) : null;
+}
+
+export async function readWorkPeriodAssignmentIdentity(
+	db: Connection,
+	assignmentId: string
+): Promise<{
+	projectActivityId: string | null;
+	disciplineId: string | null;
+	catalogActivityId: string | null;
+	catalogSubActivityId: string | null;
+}> {
+	const [rows] = await db.execute<AssignmentIdentityRow[]>(
+		`SELECT activity_id, discipline_id, catalog_activity_id,
+		        catalog_sub_activity_id
+		   FROM user_activity_assignments WHERE id = ?`,
+		[assignmentId]
+	);
+	const row = rows[0];
+	return {
+		projectActivityId: row?.activity_id ?? null,
+		disciplineId: row?.discipline_id ?? null,
+		catalogActivityId: row?.catalog_activity_id ?? null,
+		catalogSubActivityId: row?.catalog_sub_activity_id ?? null,
+	};
 }
 
 /* ── independent persisted readback ────────────────────────────────── */
@@ -799,6 +830,8 @@ async function seedAssignment(
 		disciplineId?: string;
 		disciplineName?: string;
 		activityId?: string;
+		catalogActivityId?: string;
+		catalogSubActivityId?: string | null;
 	}
 ): Promise<string> {
 	const assignmentId = randomUUID();
@@ -811,10 +844,11 @@ async function seedAssignment(
 	await db.execute(
 		`INSERT INTO user_activity_assignments (
         id, user_id, employee_id, project_id, activity_id, activity_name,
-        discipline_id, discipline_name, assigned_by, status, estimated_hours,
+        discipline_id, catalog_activity_id, catalog_sub_activity_id,
+        discipline_name, assigned_by, status, estimated_hours,
         actual_hours, qty_assigned, qty_completed, start_date, daily_entries,
         description
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'In Progress', 10, ?,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'In Progress', 10, ?,
                 10, 4, ?, ?, ?)`,
 		[
 			assignmentId,
@@ -824,6 +858,8 @@ async function seedAssignment(
 			input.activityId ?? null,
 			input.project.activityName,
 			input.disciplineId ?? null,
+			input.catalogActivityId ?? null,
+			input.catalogSubActivityId ?? null,
 			input.disciplineName ?? 'E2E Time',
 			input.employee.linkedUserId,
 			totalHours,
@@ -847,24 +883,26 @@ async function seedWorkPeriodActivity(
 		entries: readonly ExpectedTimeEntry[];
 	}
 ): Promise<WorkPeriodActivity> {
-	const activityId = randomUUID();
+	const catalogActivityId = randomUUID();
 	await db.execute(
 		`INSERT INTO activities_master (
         id, function_id, activity_name, default_manhours
       ) VALUES (?, ?, ?, 0)`,
-		[activityId, input.disciplineId, input.project.activityName]
+		[catalogActivityId, input.disciplineId, input.project.activityName]
 	);
-	owned.activityIds.push(activityId);
+	owned.activityIds.push(catalogActivityId);
+	const projectActivityId = randomUUID();
 	const assignmentId = await seedAssignment(db, owned, {
 		employee: input.employee,
 		project: input.project,
 		entries: input.entries,
 		disciplineId: input.disciplineId,
 		disciplineName: input.disciplineName,
-		activityId,
+		activityId: projectActivityId,
+		catalogActivityId,
 	});
 	return {
-		id: activityId,
+		id: catalogActivityId,
 		name: input.project.activityName,
 		assignmentId,
 		project: input.project,

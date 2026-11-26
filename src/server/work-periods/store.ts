@@ -174,7 +174,7 @@ function affectedRowsOf(value: unknown): number {
 
 /**
  * Take the per-Employee mutex before any consistent read used by a write.
- * Returns false when the Employee does not exist.
+ * Returns false when the Employee does not exist or is deleted.
  */
 export async function lockWorkPeriodEmployee(
 	db: WorkPeriodStoreDb,
@@ -182,7 +182,7 @@ export async function lockWorkPeriodEmployee(
 ): Promise<boolean> {
 	const [result] = await execute(
 		db,
-		sql`SELECT id FROM employees WHERE id = ${employeeId} FOR UPDATE`
+		sql`SELECT id FROM employees WHERE id = ${employeeId} AND isDelete = 0 FOR UPDATE`
 	);
 	return rowsOf(result).length > 0;
 }

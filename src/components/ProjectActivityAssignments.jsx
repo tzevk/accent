@@ -9,6 +9,7 @@ import {
 	shiftIstDate,
 	weekStartFor,
 } from '@/lib/work-periods';
+import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
 import Link from 'next/link';
 import { WorkPeriodFields } from '@/components/WorkPeriodFields';
 import {
@@ -301,36 +302,13 @@ const EMPTY_ADD_FORM = {
 	remarks: '',
 };
 
-const dateFormatter = new Intl.DateTimeFormat('en-GB', {
-	timeZone: 'Asia/Kolkata',
-	day: '2-digit',
-	month: 'short',
-	year: 'numeric',
-});
-
-const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
-	timeZone: 'Asia/Kolkata',
-	day: '2-digit',
-	month: 'short',
-	year: 'numeric',
-	hour: '2-digit',
-	minute: '2-digit',
-	hourCycle: 'h23',
-});
-
-const shortDateFormatter = new Intl.DateTimeFormat('en-GB', {
-	timeZone: 'UTC',
-	day: 'numeric',
-	month: 'short',
-});
-
 const textCollator = new Intl.Collator(undefined, {
 	numeric: true,
 	sensitivity: 'base',
 });
 
 const selectClass =
-	'min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 sm:text-sm';
+	'min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 sm:text-sm';
 
 const primaryButtonClass =
 	'inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-[#64126D] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#7F2487] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500 disabled:cursor-not-allowed disabled:opacity-50';
@@ -347,9 +325,7 @@ function numberValue(value) {
 }
 
 function formatQuantity(value) {
-	return numberValue(value).toLocaleString('en-IN', {
-		maximumFractionDigits: 2,
-	});
+	return formatNumber(value).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
 }
 
 function formatHours(seconds) {
@@ -362,28 +338,32 @@ function formatHours(seconds) {
 
 function formatDateLabel(value) {
 	if (!value) return '–';
-	const date = new Date(`${value.slice(0, 10)}T00:00:00+05:30`);
-	return Number.isNaN(date.getTime()) ? '–' : dateFormatter.format(date);
+	return formatDate(`${value.slice(0, 10)}T00:00:00+05:30`, {
+		timeZone: 'Asia/Kolkata',
+	});
 }
 
 function formatDateTimeLabel(value) {
 	if (!value) return '–';
-	const date = new Date(`${value}+05:30`);
-	return Number.isNaN(date.getTime()) ? '–' : dateTimeFormatter.format(date);
+	return formatDateTime(`${value}+05:30`, {
+		timeZone: 'Asia/Kolkata',
+		hourCycle: 'h23',
+	});
 }
 
 function formatWeekRange(weekStart) {
-	const start = new Date(`${weekStart}T00:00:00Z`);
-	const end = new Date(`${shiftIstDate(weekStart, 6)}T00:00:00Z`);
-	const startLabel = shortDateFormatter.format(start);
-	const endLabel = shortDateFormatter.format(end);
-	if (start.getUTCMonth() === end.getUTCMonth()) {
-		return `${start.getUTCDate()} ${startLabel.split(' ')[1]} – ${endLabel} ${end.getUTCFullYear()}`;
+	const start = formatDate(`${weekStart}T00:00:00+05:30`, {
+		timeZone: 'Asia/Kolkata',
+	}).split(' ');
+	const end = formatDate(`${shiftIstDate(weekStart, 6)}T00:00:00+05:30`, {
+		timeZone: 'Asia/Kolkata',
+	}).split(' ');
+	const startDay = start[0].replace(/^0/, '');
+	const endDay = end[0].replace(/^0/, '');
+	if (start[2] === end[2]) {
+		return `${startDay} ${start[1]} – ${endDay} ${end[1]} ${end[2]}`;
 	}
-	if (start.getUTCFullYear() === end.getUTCFullYear()) {
-		return `${startLabel} – ${endLabel} ${end.getUTCFullYear()}`;
-	}
-	return `${startLabel} ${start.getUTCFullYear()} – ${endLabel} ${end.getUTCFullYear()}`;
+	return `${startDay} ${start[1]} ${start[2]} – ${endDay} ${end[1]} ${end[2]}`;
 }
 
 function rawLegacyEntries(assignment) {

@@ -319,6 +319,21 @@ describe('work periods route weekly contract', () => {
 		});
 	});
 
+	it.each(['week=2026-11-23T00%3A00', 'userId=not-an-id'])(
+		'rejects malformed query shapes before reading periods',
+		async (query) => {
+			const response = await GET(
+				request('GET', undefined, `http://localhost/api/work-periods?${query}`)
+			);
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toMatchObject({
+				code: 'INVALID_WORK_PERIOD',
+			});
+			expect(mocks.dbConnect).not.toHaveBeenCalled();
+		}
+	);
+
 	it('rejects a week selector that is not a Monday', async () => {
 		const response = await GET(
 			request(
@@ -334,6 +349,45 @@ describe('work periods route weekly contract', () => {
 });
 
 describe('work periods route mutations', () => {
+	it.each([[], null, 'not-an-object'])(
+		'rejects a non-object JSON body before opening the database',
+		async (body) => {
+			const response = await POST(request('POST', body));
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toMatchObject({
+				code: 'INVALID_WORK_PERIOD',
+				error: 'A valid JSON request body is required.',
+			});
+			expect(mocks.dbConnect).not.toHaveBeenCalled();
+		}
+	);
+
+	it('rejects a non-boolean manager option with the actionable scope message', async () => {
+		const response = await POST(
+			request('POST', { manager: 'true', projectId: 7 })
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			code: 'INVALID_WORK_PERIOD',
+			error: 'manager must be true when using manager scope.',
+		});
+		expect(mocks.dbConnect).not.toHaveBeenCalled();
+	});
+
+	it('rejects a projectId that cannot be a positive safe integer', async () => {
+		const response = await POST(
+			request('POST', { manager: false, projectId: '7-project' })
+		);
+
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			code: 'INVALID_WORK_PERIOD',
+			error: 'projectId is required.',
+		});
+		expect(mocks.dbConnect).not.toHaveBeenCalled();
+	});
 	it('rejects missing endpoints without writing', async () => {
 		const response = await POST(
 			request('POST', {
@@ -515,7 +569,7 @@ describe('work periods route mutations', () => {
 		});
 	});
 
-	it('saves self work with IST-derived defaults and the mutation envelope', async () => {
+	it('defaults a blank Date Completed from the IST end date and returns the mutation envelope', async () => {
 		const response = await POST(
 			request('POST', {
 				projectId: 7,
@@ -524,6 +578,7 @@ describe('work periods route mutations', () => {
 				subActivityId: null,
 				start: '2026-11-26T10:00',
 				end: '2026-11-26T11:00',
+				dateCompleted: '',
 			})
 		);
 

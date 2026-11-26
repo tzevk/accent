@@ -17,7 +17,7 @@ export type WorkPeriodFieldsProps = {
 };
 
 const controlClass =
-	'min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 sm:text-sm';
+	'min-h-11 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base shadow-sm transition-colors focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-200 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 sm:text-sm';
 
 /** Shared controlled fields for Employee and manager Work Period forms. */
 export function WorkPeriodFields({
@@ -36,7 +36,7 @@ export function WorkPeriodFields({
 		onChange({ ...value, ...patch });
 
 	return (
-		<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+		<div lang="en-IN" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			<div className="min-w-0">
 				<label
 					htmlFor={startId}
@@ -49,6 +49,7 @@ export function WorkPeriodFields({
 					name="start"
 					type="datetime-local"
 					step="60"
+					autoComplete="off"
 					required
 					disabled={disabled}
 					value={value.start}
@@ -69,6 +70,7 @@ export function WorkPeriodFields({
 					name="end"
 					type="datetime-local"
 					step="60"
+					autoComplete="off"
 					required
 					disabled={disabled}
 					value={value.end}
@@ -91,6 +93,7 @@ export function WorkPeriodFields({
 					min="0"
 					step="0.01"
 					inputMode="decimal"
+					autoComplete="off"
 					disabled={disabled}
 					value={value.quantity}
 					onChange={(event) => update({ quantity: event.target.value })}
@@ -108,6 +111,7 @@ export function WorkPeriodFields({
 					id={dateCompletedId}
 					name="dateCompleted"
 					type="date"
+					autoComplete="off"
 					required
 					disabled={disabled}
 					value={value.dateCompleted}

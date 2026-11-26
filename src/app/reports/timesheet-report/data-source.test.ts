@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
 	statusKind,
 	hoursForStatus,
@@ -10,7 +10,40 @@ import {
 	monthLabel,
 	buildProjectRows,
 	computeMonthlyHours,
+	fetchTimesheetMeta,
 } from '@/app/reports/timesheet-report/data-source';
+
+const mocks = vi.hoisted(() => ({ query: vi.fn() }));
+vi.mock('@/utils/database', () => ({ query: mocks.query }));
+
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+describe('fetchTimesheetMeta', () => {
+	it('offers the current Asia/Kolkata month near UTC midnight', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-31T20:00:00.000Z'));
+		mocks.query.mockReset();
+		mocks.query
+			.mockResolvedValueOnce([
+				[
+					{
+						id: 7,
+						employee_id: 'EMP-007',
+						name: 'Eligible Employee',
+					},
+				],
+			])
+			.mockResolvedValueOnce([[]])
+			.mockResolvedValueOnce([[]]);
+
+		const meta = await fetchTimesheetMeta();
+
+		expect(meta.months).toContain('2026-02');
+		expect(meta.latest_month).toBe('2026-02');
+	});
+});
 
 describe('statusKind', () => {
 	it('classifies working statuses', () => {
@@ -508,6 +541,7 @@ describe('mixed legacy and Work Period Timesheet', () => {
 		expect(april).toMatchObject({
 			estimated_hours: 40,
 			actual_hours: 11,
+			qty_completed: 10,
 			days: { '2026-04-30': 8 },
 			total_hours: 8,
 		});
@@ -528,6 +562,7 @@ describe('mixed legacy and Work Period Timesheet', () => {
 		expect(may).toMatchObject({
 			estimated_hours: 40,
 			actual_hours: 11,
+			qty_completed: 5,
 			days: { '2026-05-01': 2, '2026-05-02': 1 },
 			total_hours: 3,
 		});

@@ -1,0 +1,8 @@
+{
+	"id": "65389214-0f5a-45e1-a1f7-462e6a5906cd",
+	"prevIds": ["14126593-6df7-4811-8585-a955d5f159ad"],
+	"version": "6",
+	"dialect": "mysql",
+	"ddl": [],
+	"renames": []
+}

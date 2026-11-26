@@ -288,6 +288,7 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 							{ date: '2026-10-27', qty_done: 2, hours: 3 },
 						]),
 						actual_hours: 99,
+						qty_completed: 99,
 					}),
 				],
 			])
@@ -312,7 +313,9 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 			},
 		]);
 		expect(body.data.assignments[0].actual_hours).toBe(5);
+		expect(body.data.assignments[0].qty_completed).toBe(3);
 		expect(body.data.stats.totalActualHours).toBe(5);
+		expect(body.data.stats.totalQtyCompleted).toBe(3);
 	});
 
 	it('does not let malformed legacy JSON hide effective entries or totals', async () => {
@@ -327,6 +330,7 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 							{ date: '2026-10-26', qty_done: 1, hours: 2 },
 						]),
 						actual_hours: 99,
+						qty_completed: 99,
 					}),
 				],
 			])
@@ -342,7 +346,9 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 		]);
 		expect(body.data.assignments[0].legacy_daily_entries).toEqual([]);
 		expect(body.data.assignments[0].actual_hours).toBe(2);
+		expect(body.data.assignments[0].qty_completed).toBe(1);
 		expect(body.data.stats.totalActualHours).toBe(2);
+		expect(body.data.stats.totalQtyCompleted).toBe(1);
 	});
 
 	it('keeps valid legacy history readable when effective JSON is malformed', async () => {
@@ -383,6 +389,7 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 						legacy_daily_entries: '[]',
 						work_period_entries: null,
 						actual_hours: 7,
+						qty_completed: 7,
 					}),
 				],
 			])
@@ -396,7 +403,9 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 		expect(body.data.assignments[0].daily_entries).toEqual([]);
 		expect(body.data.assignments[0].legacy_daily_entries).toEqual([]);
 		expect(body.data.assignments[0].actual_hours).toBe(7);
+		expect(body.data.assignments[0].qty_completed).toBe(7);
 		expect(body.data.stats.totalActualHours).toBe(7);
+		expect(body.data.stats.totalQtyCompleted).toBe(7);
 	});
 });
 

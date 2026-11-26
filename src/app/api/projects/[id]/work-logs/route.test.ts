@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ProjectRightsModule from '@/lib/project-rights';
 
 const mockExecute = vi.fn();
@@ -46,11 +46,15 @@ function params() {
 	return { params: Promise.resolve({ id: 'PRJ-10' }) };
 }
 
-function request(): Request {
-	return new Request(
-		'http://localhost/api/projects/10/work-logs?start_date=2026-01-01&end_date=2026-01-31'
-	);
+function request(
+	url = 'http://localhost/api/projects/10/work-logs?start_date=2026-01-01&end_date=2026-01-31'
+): Request {
+	return new Request(url);
 }
+
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 describe('GET /api/projects/[id]/work-logs', () => {
 	beforeEach(() => {
@@ -70,6 +74,21 @@ describe('GET /api/projects/[id]/work-logs', () => {
 			expect.stringContaining('FROM logged_activity_assignments'),
 			[10]
 		);
+	});
+
+	it('defaults work-log bounds to the Asia/Kolkata calendar date', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-31T20:00:00.000Z'));
+		grantAccess(true);
+
+		const response = await GET(
+			request('http://localhost/api/projects/10/work-logs'),
+			params()
+		);
+		const body = await response.json();
+
+		expect(body.data.start_date).toBe('2026-01-02');
+		expect(body.data.end_date).toBe('2026-02-01');
 	});
 
 	it('uses effective Work Period entries instead of stale assignment totals', async () => {

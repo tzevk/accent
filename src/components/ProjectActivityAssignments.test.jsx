@@ -236,6 +236,19 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		vi.restoreAllMocks();
 	});
 
+	it.each([401, 403])(
+		'renders nothing when the API denies access with %s',
+		async (status) => {
+			apiGet.mockRejectedValue(new Error(`Request failed (${status})`));
+
+			const { container } = renderAssignments({ preloadedData: null });
+
+			await waitFor(() => {
+				expect(container).toBeEmptyDOMElement();
+			});
+		}
+	);
+
 	it('opens on the IST Monday and clips weekly totals from API fields', async () => {
 		renderAssignments();
 

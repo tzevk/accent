@@ -9,6 +9,17 @@ import {
 	WorkPeriodCommandError,
 } from '@/server/work-periods/commands';
 import {
+	createManagerWorkPeriodSchema,
+	createSelfWorkPeriodSchema,
+	deleteWorkPeriodSchema,
+	parseWorkPeriodSchema,
+	updateWorkPeriodSchema,
+	workPeriodCreateScopeSchema,
+	workPeriodJsonObjectSchema,
+	workPeriodMutationScopeSchema,
+	workPeriodQuerySchema,
+} from '@/server/work-periods/validation';
+import {
 	formatIstLocal,
 	isSelfServicePeriod,
 	istDate,
@@ -56,53 +67,7 @@ async function readBody(request: Request): Promise<JsonBody> {
 			'A valid JSON request body is required.'
 		);
 	}
-	if (!body || typeof body !== 'object' || Array.isArray(body)) {
-		throw new WorkPeriodCommandError(
-			400,
-			'INVALID_WORK_PERIOD',
-			'A valid JSON request body is required.'
-		);
-	}
-	return body as JsonBody;
-}
-
-function managerScope(body: JsonBody): boolean {
-	if (body.manager === undefined || body.manager === false) return false;
-	if (body.manager === true) return true;
-	throw new WorkPeriodCommandError(
-		400,
-		'INVALID_WORK_PERIOD',
-		'manager must be true when using manager scope.'
-	);
-}
-
-function requiredId(body: JsonBody, field: string): string {
-	const value = body[field];
-	if (typeof value !== 'string' || !value.trim()) {
-		throw new WorkPeriodCommandError(
-			400,
-			'INVALID_WORK_PERIOD',
-			`${field} is required.`
-		);
-	}
-	return value.trim();
-}
-
-function requiredProjectId(body: JsonBody): number {
-	const value = body.projectId;
-	const projectId = Number(value);
-	if (
-		(typeof value !== 'number' && typeof value !== 'string') ||
-		!Number.isSafeInteger(projectId) ||
-		projectId <= 0
-	) {
-		throw new WorkPeriodCommandError(
-			400,
-			'INVALID_WORK_PERIOD',
-			'projectId is required.'
-		);
-	}
-	return projectId;
+	return parseWorkPeriodSchema(workPeriodJsonObjectSchema, body);
 }
 
 function resolvedProjectId(project: Record<string, unknown>): number {
@@ -148,10 +113,9 @@ function requireCurrentTeam(
 		: jsonError(403, 'PROJECT_ACCESS_DENIED', PROJECT_ACCESS_DENIED);
 }
 
-function weekWindow(request: Request, nowMs: number) {
+function weekWindow(requestedWeek: string | undefined, nowMs: number) {
 	const today = istDate(nowMs);
-	const requested = new URL(request.url).searchParams.get('week');
-	const weekStart = requested ?? weekStartFor(today);
+	const weekStart = requestedWeek ?? weekStartFor(today);
 	const weekStartMs = parseIstLocal(`${weekStart}T00:00`);
 	if (
 		weekStartMs === null ||
@@ -223,9 +187,12 @@ export async function GET(request: Request): Promise<Response> {
 		const user = await getCurrentUser(request);
 		if (!user) return jsonError(401, 'UNAUTHORIZED', 'Unauthorized');
 
-		const url = new URL(request.url);
-		const projectParam = url.searchParams.get('projectId');
-		const userParam = url.searchParams.get('userId');
+		const query = parseWorkPeriodSchema(
+			workPeriodQuerySchema,
+			Object.fromEntries(new URL(request.url).searchParams)
+		);
+		const projectParam = query.projectId;
+		const userParam = query.userId;
 		if (projectParam && userParam) {
 			throw new WorkPeriodCommandError(
 				400,
@@ -238,7 +205,7 @@ export async function GET(request: Request): Promise<Response> {
 		}
 
 		const nowMs = Date.now();
-		const window = weekWindow(request, nowMs);
+		const window = weekWindow(query.week, nowMs);
 		db = await dbConnect();
 		const ddb = drizzle({ client: db });
 
@@ -338,8 +305,9 @@ export async function POST(request: Request): Promise<Response> {
 		const user = await getCurrentUser(request);
 		if (!user) return jsonError(401, 'UNAUTHORIZED', 'Unauthorized');
 		const body = await readBody(request);
-		const manager = managerScope(body);
-		const requestedProjectId = requiredProjectId(body);
+		const scope = parseWorkPeriodSchema(workPeriodCreateScopeSchema, body);
+		const manager = scope.manager;
+		const requestedProjectId = scope.projectId;
 		db = await dbConnect();
 		const access = await requireProjectAccess(request, requestedProjectId, {
 			db,
@@ -355,11 +323,11 @@ export async function POST(request: Request): Promise<Response> {
 		}
 
 		const nowMs = Date.now();
-		const input = parseWorkPeriodInput(body, nowMs);
 		const project = access.project;
 		const projectId = resolvedProjectId(project);
 		if (manager) {
-			const assignmentId = requiredId(body, 'assignmentId');
+			const data = parseWorkPeriodSchema(createManagerWorkPeriodSchema, body);
+			const input = parseWorkPeriodInput(data, nowMs);
 			const saved = await createWorkPeriod({
 				db,
 				actor: user,
@@ -368,7 +336,7 @@ export async function POST(request: Request): Promise<Response> {
 				input,
 				nowMs,
 				manager: true,
-				assignmentId,
+				assignmentId: data.assignmentId,
 			});
 			return mutationSuccess(saved.id);
 		}
@@ -381,22 +349,8 @@ export async function POST(request: Request): Promise<Response> {
 				'Your User Account is not linked to an active Employee. Contact an administrator.'
 			);
 		}
-		const disciplineId = requiredId(body, 'disciplineId');
-		const activityId = requiredId(body, 'activityId');
-		if (!Object.hasOwn(body, 'subActivityId')) {
-			throw new WorkPeriodCommandError(
-				400,
-				'INVALID_WORK_PERIOD',
-				'Choose a Sub-activity or No sub-activity.'
-			);
-		}
-		if (body.subActivityId !== null && typeof body.subActivityId !== 'string') {
-			throw new WorkPeriodCommandError(
-				400,
-				'INVALID_WORK_PERIOD',
-				'Choose a Sub-activity or No sub-activity.'
-			);
-		}
+		const data = parseWorkPeriodSchema(createSelfWorkPeriodSchema, body);
+		const input = parseWorkPeriodInput(data, nowMs);
 		const saved = await createWorkPeriod({
 			db,
 			actor: user,
@@ -406,9 +360,9 @@ export async function POST(request: Request): Promise<Response> {
 			nowMs,
 			manager: false,
 			employeeId: employee.employeeId,
-			disciplineId,
-			activityId,
-			subActivityId: body.subActivityId,
+			disciplineId: data.disciplineId,
+			activityId: data.activityId,
+			subActivityId: data.subActivityId,
 		});
 		return mutationSuccess(saved.id);
 	} catch (error) {
@@ -428,9 +382,10 @@ export async function PUT(request: Request): Promise<Response> {
 		const user = await getCurrentUser(request);
 		if (!user) return jsonError(401, 'UNAUTHORIZED', 'Unauthorized');
 		const body = await readBody(request);
-		const manager = managerScope(body);
-		const id = requiredId(body, 'id');
-		const requestedProjectId = requiredProjectId(body);
+		const scope = parseWorkPeriodSchema(workPeriodMutationScopeSchema, body);
+		const manager = scope.manager;
+		const id = scope.id;
+		const requestedProjectId = scope.projectId;
 		db = await dbConnect();
 		const access = await requireProjectAccess(request, requestedProjectId, {
 			db,
@@ -446,7 +401,8 @@ export async function PUT(request: Request): Promise<Response> {
 		}
 
 		const nowMs = Date.now();
-		const input = parseWorkPeriodInput(body, nowMs);
+		const data = parseWorkPeriodSchema(updateWorkPeriodSchema, body);
+		const input = parseWorkPeriodInput(data, nowMs);
 		const project = access.project;
 		const projectId = resolvedProjectId(project);
 		let employeeId: number | undefined;
@@ -490,9 +446,10 @@ export async function DELETE(request: Request): Promise<Response> {
 		const user = await getCurrentUser(request);
 		if (!user) return jsonError(401, 'UNAUTHORIZED', 'Unauthorized');
 		const body = await readBody(request);
-		const manager = managerScope(body);
-		const id = requiredId(body, 'id');
-		const requestedProjectId = requiredProjectId(body);
+		const data = parseWorkPeriodSchema(deleteWorkPeriodSchema, body);
+		const manager = data.manager;
+		const id = data.id;
+		const requestedProjectId = data.projectId;
 		db = await dbConnect();
 		const access = await requireProjectAccess(request, requestedProjectId, {
 			db,

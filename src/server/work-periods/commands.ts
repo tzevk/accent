@@ -17,6 +17,14 @@ import {
 	parseIstLocal,
 } from '@/lib/work-periods';
 import { isUserInProjectTeam } from '@/utils/project-access';
+import {
+	WorkPeriodCommandError,
+	type WorkPeriodCommandErrorCode,
+	type WorkPeriodRequestFields,
+} from '@/server/work-periods/validation';
+
+export { WorkPeriodCommandError };
+export type { WorkPeriodCommandErrorCode };
 
 export type WorkPeriodInput = {
 	startMs: number;
@@ -43,33 +51,6 @@ export type ManagerAssignment = {
 	subActivityName: string;
 };
 
-export type WorkPeriodCommandErrorCode =
-	| 'INVALID_WORK_PERIOD'
-	| 'INVALID_ACTIVITY_SELECTION'
-	| 'EMPLOYEE_LINK_REQUIRED'
-	| 'PROJECT_ACCESS_DENIED'
-	| 'OUTSIDE_SELF_SERVICE_WINDOW'
-	| 'WORK_PERIOD_OVERLAP'
-	| 'WORK_PERIOD_NOT_FOUND'
-	| 'ASSIGNMENT_NOT_AVAILABLE'
-	| 'WORK_PERIOD_WRITE_FAILED';
-
-export class WorkPeriodCommandError extends Error {
-	readonly status: number;
-	readonly code: WorkPeriodCommandErrorCode;
-
-	constructor(
-		status: number,
-		code: WorkPeriodCommandErrorCode,
-		message: string
-	) {
-		super(message);
-		this.name = 'WorkPeriodCommandError';
-		this.status = status;
-		this.code = code;
-	}
-}
-
 type Db = PoolConnection;
 type Row = Record<string, unknown>;
 type Project = Record<string, unknown>;
@@ -84,6 +65,8 @@ type AssignmentRow = Row & {
 	activity_name: string;
 	discipline_id: string | null;
 	discipline_name: string | null;
+	catalog_activity_id: string | null;
+	catalog_sub_activity_id: string | null;
 	sub_activity_name: string | null;
 	default_manhours: string | number | null;
 };
@@ -218,7 +201,7 @@ function parseDailyEntries(value: unknown): Row[] {
 }
 
 export function parseWorkPeriodInput(
-	body: Row,
+	body: WorkPeriodRequestFields,
 	nowMs: number
 ): WorkPeriodInput {
 	const startMs = parseIstLocal(body.start);
@@ -229,37 +212,19 @@ export function parseWorkPeriodInput(
 	if (endMs <= startMs) invalid('End must be after Start.');
 	if (endMs > nowMs) invalid('End cannot be in the future.');
 
-	let quantity = 0;
-	if (
-		body.quantity !== undefined &&
-		body.quantity !== null &&
-		body.quantity !== ''
-	) {
-		if (
-			typeof body.quantity !== 'number' &&
-			typeof body.quantity !== 'string'
-		) {
-			invalid('Quantity must be a non-negative number.');
-		}
-		quantity = Number(body.quantity);
-		if (!Number.isFinite(quantity) || quantity < 0) {
-			invalid('Quantity must be a non-negative number.');
-		}
-	}
-
-	if (
-		body.remarks !== undefined &&
-		body.remarks !== null &&
-		typeof body.remarks !== 'string'
-	) {
-		invalid('Remarks must be text.');
+	const quantity = body.quantity ?? 0;
+	if (!Number.isFinite(quantity) || quantity < 0) {
+		invalid('Quantity must be a non-negative number.');
 	}
 
 	const today = istDate(nowMs);
+	const suppliedDateCompleted = body.dateCompleted?.trim();
 	const dateCompleted =
-		body.dateCompleted === undefined || body.dateCompleted === null
+		suppliedDateCompleted === undefined ||
+		suppliedDateCompleted === null ||
+		suppliedDateCompleted === ''
 			? istDate(endMs)
-			: text(body.dateCompleted);
+			: suppliedDateCompleted;
 	const dateMs = parseIstLocal(`${dateCompleted}T00:00`);
 	if (!dateCompleted || dateMs === null || istDate(dateMs) !== dateCompleted) {
 		invalid('Date Completed must be a valid IST date in YYYY-MM-DD format.');
@@ -271,7 +236,7 @@ export function parseWorkPeriodInput(
 		endMs,
 		quantity: String(quantity),
 		dateCompleted,
-		remarks: text(body.remarks).trim(),
+		remarks: body.remarks?.trim() ?? '',
 	};
 }
 
@@ -424,9 +389,9 @@ function requireTeam(
 type CatalogSelection = {
 	disciplineId: string;
 	disciplineName: string;
-	activityId: string;
+	catalogActivityId: string;
 	activityName: string;
-	subActivityId: string | null;
+	catalogSubActivityId: string | null;
 	subActivityName: string;
 	defaultManhours: number;
 };
@@ -497,23 +462,100 @@ async function loadCatalogSelection(
 	return {
 		disciplineId,
 		disciplineName: text(catalog.discipline_name),
-		activityId,
+		catalogActivityId: activityId,
 		activityName: text(catalog.activity_name),
-		subActivityId,
+		catalogSubActivityId: subActivityId,
 		subActivityName: text(selectedSub?.name),
 		defaultManhours: numberValue(catalog.default_manhours),
 	};
 }
 
-function assignmentMatchesCatalog(
+function compatibleDisciplineId(
+	value: unknown,
+	catalog: CatalogSelection
+): boolean {
+	const disciplineId = text(value);
+	return !disciplineId || disciplineId === catalog.disciplineId;
+}
+
+function compatibleSubActivity(
+	id: unknown,
+	label: unknown,
+	catalog: CatalogSelection
+): boolean {
+	const subActivityId = text(id);
+	return subActivityId
+		? subActivityId === catalog.catalogSubActivityId
+		: sameLabel(label, catalog.subActivityName);
+}
+
+function matchesStableCatalog(
 	assignment: AssignmentRow,
 	catalog: CatalogSelection
 ): boolean {
 	return (
+		text(assignment.activity_id) !== '' &&
+		text(assignment.catalog_activity_id) === catalog.catalogActivityId &&
+		compatibleDisciplineId(assignment.discipline_id, catalog) &&
+		compatibleSubActivity(
+			assignment.catalog_sub_activity_id,
+			assignment.sub_activity_name,
+			catalog
+		)
+	);
+}
+
+function matchesLegacyCatalog(
+	assignment: AssignmentRow,
+	catalog: CatalogSelection
+): boolean {
+	return (
+		text(assignment.activity_id) !== '' &&
+		text(assignment.activity_id) !== catalog.catalogActivityId &&
+		!text(assignment.catalog_activity_id) &&
+		compatibleDisciplineId(assignment.discipline_id, catalog) &&
 		sameLabel(assignment.discipline_name, catalog.disciplineName) &&
 		sameLabel(assignment.activity_name, catalog.activityName) &&
 		sameLabel(assignment.sub_activity_name, catalog.subActivityName)
 	);
+}
+
+async function persistMissingCatalogIdentity(
+	ddb: WorkPeriodDrizzleDb,
+	assignment: AssignmentRow,
+	catalog: CatalogSelection
+): Promise<AssignmentRow> {
+	if (
+		text(assignment.discipline_id) &&
+		text(assignment.catalog_activity_id) &&
+		(text(assignment.catalog_sub_activity_id) ||
+			catalog.catalogSubActivityId === null)
+	) {
+		return assignment;
+	}
+	await ddb.execute(sql`
+		UPDATE user_activity_assignments
+		SET discipline_id = COALESCE(discipline_id, ${catalog.disciplineId}),
+		    catalog_activity_id = COALESCE(catalog_activity_id, ${catalog.catalogActivityId}),
+		    catalog_sub_activity_id = CASE
+		      WHEN ${catalog.catalogSubActivityId} IS NULL THEN catalog_sub_activity_id
+		      ELSE COALESCE(catalog_sub_activity_id, ${catalog.catalogSubActivityId})
+		    END
+		WHERE id = ${assignment.id}
+	`);
+	const updated = await loadValidAssignment(
+		ddb,
+		assignment.id,
+		Number(assignment.project_id)
+	);
+	if (!updated) {
+		throw commandError(
+			404,
+			'ASSIGNMENT_NOT_AVAILABLE',
+			'The Project Activity assignment is no longer available.'
+		);
+	}
+	return updated;
 }
 
 async function findSelfAssignment(
@@ -532,26 +574,49 @@ async function findSelfAssignment(
 		ORDER BY created_at, id
 		FOR UPDATE
 	`);
-	const matches = rowsOf(result)
-		.map((row) => row as AssignmentRow)
-		.filter(
-			(assignment) =>
-				text(assignment.activity_id) &&
-				assignmentMatchesCatalog(assignment, catalog)
-		);
-	return matches[0] ?? null;
+	const candidates = rowsOf(result).map((row) => row as AssignmentRow);
+	const stable = candidates.find((assignment) =>
+		matchesStableCatalog(assignment, catalog)
+	);
+	if (stable) return persistMissingCatalogIdentity(ddb, stable, catalog);
+	const legacy = candidates.filter((assignment) =>
+		matchesLegacyCatalog(assignment, catalog)
+	);
+	return legacy.length === 1
+		? persistMissingCatalogIdentity(ddb, legacy[0], catalog)
+		: null;
 }
 
-function blobActivityMatches(
-	activity: Row,
+function findBlobActivity(
+	activities: Row[],
 	catalog: CatalogSelection
-): boolean {
-	const discipline = activity.discipline ?? activity.function_name;
-	return (
-		sameLabel(discipline, catalog.disciplineName) &&
-		sameLabel(activity.activity_name, catalog.activityName) &&
-		sameLabel(activity.sub_activity_name, catalog.subActivityName)
+): Row | undefined {
+	const stable = activities.filter(
+		(activity) =>
+			text(activity.id) &&
+			text(activity.catalog_activity_id) === catalog.catalogActivityId &&
+			compatibleDisciplineId(activity.discipline_id, catalog) &&
+			compatibleSubActivity(
+				activity.catalog_sub_activity_id,
+				activity.sub_activity_name,
+				catalog
+			)
 	);
+	if (stable.length === 1) return stable[0];
+	const legacy = activities.filter(
+		(activity) =>
+			text(activity.id) &&
+			text(activity.id) !== catalog.catalogActivityId &&
+			!text(activity.catalog_activity_id) &&
+			compatibleDisciplineId(activity.discipline_id, catalog) &&
+			sameLabel(
+				activity.discipline ?? activity.function_name,
+				catalog.disciplineName
+			) &&
+			sameLabel(activity.activity_name, catalog.activityName) &&
+			sameLabel(activity.sub_activity_name, catalog.subActivityName)
+	);
+	return legacy.length === 1 ? legacy[0] : undefined;
 }
 
 function zeroBlobAssignment(userId: number): Row {
@@ -575,6 +640,9 @@ function zeroBlobAssignment(userId: number): Row {
 function newBlobActivity(catalog: CatalogSelection, userId: number): Row {
 	return {
 		id: randomUUID(),
+		discipline_id: catalog.disciplineId,
+		catalog_activity_id: catalog.catalogActivityId,
+		catalog_sub_activity_id: catalog.catalogSubActivityId,
 		activity_name: catalog.activityName,
 		function_name: catalog.disciplineName,
 		discipline: catalog.disciplineName,
@@ -611,14 +679,16 @@ async function insertAssignment(
 	await ddb.execute(sql`
 		INSERT INTO user_activity_assignments
 			(id, user_id, employee_id, project_id, activity_id, activity_name,
-			 discipline_id, discipline_name, sub_activity_name, assigned_by,
+			 discipline_id, catalog_activity_id, catalog_sub_activity_id,
+			 discipline_name, sub_activity_name, assigned_by,
 			 due_date, start_date, status, progress_percentage, estimated_hours,
 			 actual_hours, qty_assigned, qty_completed, notes, remarks,
 			 description, default_manhours, daily_entries)
 		VALUES
 			(${assignmentId}, ${userId}, ${employeeId}, ${projectId}, ${activityId},
-			 ${catalog.activityName}, ${catalog.disciplineId}, ${catalog.disciplineName},
-			 ${catalog.subActivityName || null}, ${actorId},
+			 ${catalog.activityName}, ${catalog.disciplineId},
+			 ${catalog.catalogActivityId}, ${catalog.catalogSubActivityId},
+			 ${catalog.disciplineName}, ${catalog.subActivityName || null}, ${actorId},
 			 ${text(source.due_date) || null}, ${text(source.start_date) || null},
 			 ${text(source.status) || 'Not Started'}, ${numberValue(source.progress_percentage)},
 			 ${numberValue(source.planned_hours)}, ${numberValue(source.actual_hours)},
@@ -658,11 +728,17 @@ async function resolveSelfAssignment(
 		};
 	}
 
-	let activity = activities.find((entry) =>
-		blobActivityMatches(entry, catalog)
-	);
+	let activity = findBlobActivity(activities, catalog);
 	let projectBlob: string;
 	if (activity) {
+		if (!text(activity.discipline_id))
+			activity.discipline_id = catalog.disciplineId;
+		if (!text(activity.catalog_activity_id)) {
+			activity.catalog_activity_id = catalog.catalogActivityId;
+		}
+		if (!text(activity.catalog_sub_activity_id)) {
+			activity.catalog_sub_activity_id = catalog.catalogSubActivityId;
+		}
 		projectBlob = JSON.stringify(activities);
 	} else {
 		activity = newBlobActivity(catalog, options.actor.id);
@@ -716,6 +792,21 @@ async function loadAssignmentForProjection(
 	return (rowsOf(result)[0] as AssignmentRow | undefined) ?? null;
 }
 
+function effectiveAssignmentTotals(assignment: AssignmentRow) {
+	let hours = 0;
+	let quantity = 0;
+	for (const payload of [
+		assignment.daily_entries,
+		assignment.work_period_entries,
+	]) {
+		for (const entry of parseDailyEntries(payload)) {
+			hours += numberValue(entry.hours);
+			quantity += numberValue(entry.qty_done);
+		}
+	}
+	return { hours, quantity };
+}
+
 async function syncProjectAssignmentBlob(
 	ddb: WorkPeriodDrizzleDb,
 	projectId: number,
@@ -729,6 +820,9 @@ async function syncProjectAssignmentBlob(
 	if (!activity) {
 		activity = {
 			id: assignment.activity_id,
+			discipline_id: assignment.discipline_id,
+			catalog_activity_id: assignment.catalog_activity_id,
+			catalog_sub_activity_id: assignment.catalog_sub_activity_id,
 			activity_name: assignment.activity_name,
 			function_name: assignment.discipline_name || '',
 			discipline: assignment.discipline_name || '',
@@ -739,6 +833,11 @@ async function syncProjectAssignmentBlob(
 		};
 		activities.push(activity);
 	}
+
+	const totals = effectiveAssignmentTotals(assignment);
+	activity.discipline_id = assignment.discipline_id;
+	activity.catalog_activity_id = assignment.catalog_activity_id;
+	activity.catalog_sub_activity_id = assignment.catalog_sub_activity_id;
 
 	activity.activity_name = assignment.activity_name;
 	activity.function_name = assignment.discipline_name || '';
@@ -758,9 +857,9 @@ async function syncProjectAssignmentBlob(
 		...(existingIndex >= 0 ? assignedUsers[existingIndex] : {}),
 		user_id: assignment.user_id,
 		qty_assigned: numberValue(assignment.qty_assigned),
-		qty_completed: numberValue(assignment.qty_completed),
+		qty_completed: totals.quantity,
 		planned_hours: numberValue(assignment.estimated_hours),
-		actual_hours: numberValue(assignment.actual_hours),
+		actual_hours: totals.hours,
 		status: text(assignment.status) || 'Not Started',
 		due_date: assignment.due_date ?? null,
 		start_date: assignment.start_date ?? null,

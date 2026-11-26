@@ -23,6 +23,7 @@ import {
 	parseDailyEntryRecords,
 	sumLoggedHoursForMonth,
 } from '@/lib/logged-hours';
+import { istDate } from '@/lib/work-periods';
 
 // ─── Public types ───────────────────────────────────────────────────
 
@@ -75,6 +76,7 @@ export interface TsProject {
 	/** All-time Logged Hours derived from the effective daily_entries projection. */
 	actual_hours: number;
 	qty_assigned: number;
+	/** Quantity credited once on Date Completed within the displayed month. */
 	qty_completed: number;
 	start_date: string | null;
 	due_date: string | null;
@@ -355,6 +357,22 @@ function round2(v: number): number {
 	return Math.round(v * 100) / 100;
 }
 
+function quantityForMonth(raw: unknown, month: string): number {
+	let total = 0;
+	for (const { date, entry } of parseDailyEntryRecords(raw)) {
+		if (
+			!date.startsWith(month) ||
+			entry.qty_done == null ||
+			entry.qty_done === ''
+		) {
+			continue;
+		}
+		const quantity = Number(entry.qty_done);
+		if (Number.isFinite(quantity)) total += quantity;
+	}
+	return round2(total);
+}
+
 export function monthLabel(month: string): string {
 	const [y, m] = month.split('-').map(Number);
 	if (!y || !m || m < 1 || m > 12) return month;
@@ -388,7 +406,7 @@ export function buildProjectRows(rawRows: DbRow[], month: string): TsProject[] {
 				entries.reduce((total, entry) => total + entry.hours, 0)
 			),
 			qty_assigned: n(r, 'qty_assigned'),
-			qty_completed: n(r, 'qty_completed'),
+			qty_completed: quantityForMonth(r.daily_entries, month),
 			start_date: s(r, 'start_date', '') || null,
 			due_date: s(r, 'due_date', '') || null,
 			days: hoursByDateForMonth([entries], month),
@@ -510,8 +528,7 @@ export async function fetchTimesheetMeta(): Promise<TimesheetMeta> {
 
 	// Always offer the current month so the grid can be viewed even when
 	// no attendance has been entered yet.
-	const now = new Date();
-	const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+	const currentMonth = istDate(Date.now()).slice(0, 7);
 	if (!months.includes(currentMonth)) months.push(currentMonth);
 
 	return { employees, months, latest_month: months[0] ?? currentMonth };
@@ -594,7 +611,7 @@ export async function fetchTimesheetData(
 		const [projectRows] = (await query(
 			`SELECT uaa.project_id, uaa.activity_name, uaa.discipline_name, uaa.status,
 			        uaa.estimated_hours,
-			        uaa.qty_assigned, uaa.qty_completed, uaa.daily_entries,
+			        uaa.qty_assigned, uaa.daily_entries,
 			        DATE_FORMAT(uaa.start_date, '%Y-%m-%d') AS start_date,
 			        DATE_FORMAT(uaa.due_date, '%Y-%m-%d') AS due_date,
 			        p.project_code,
