@@ -27,6 +27,43 @@ const dateTimeFormatter = new Intl.DateTimeFormat('en-IN', {
 	minute: '2-digit',
 });
 
+const zonedDateFormatters = new Map();
+const zonedDateTimeFormatters = new Map();
+
+function dateFormatterIn(timeZone) {
+	if (!timeZone) return dateFormatter;
+	let formatter = zonedDateFormatters.get(timeZone);
+	if (!formatter) {
+		formatter = new Intl.DateTimeFormat('en-IN', {
+			day: '2-digit',
+			month: 'short',
+			year: 'numeric',
+			timeZone,
+		});
+		zonedDateFormatters.set(timeZone, formatter);
+	}
+	return formatter;
+}
+
+function dateTimeFormatterIn(timeZone, hourCycle) {
+	if (!timeZone && !hourCycle) return dateTimeFormatter;
+	const key = `${timeZone || ''}:${hourCycle || ''}`;
+	let formatter = zonedDateTimeFormatters.get(key);
+	if (!formatter) {
+		formatter = new Intl.DateTimeFormat('en-IN', {
+			day: '2-digit',
+			month: 'short',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			...(timeZone ? { timeZone } : {}),
+			...(hourCycle ? { hourCycle } : {}),
+		});
+		zonedDateTimeFormatters.set(key, formatter);
+	}
+	return formatter;
+}
+
 const monthFormatter = new Intl.DateTimeFormat('en-IN', {
 	month: 'long',
 	year: 'numeric',
@@ -71,21 +108,23 @@ export function formatCurrencyIn(value, currency) {
 		}
 		currencyFormatters.set(code, formatter);
 	}
-	return formatter ? formatter.format(n) : `${code} ${numberFormatter.format(n)}`;
+	return formatter
+		? formatter.format(n)
+		: `${code} ${numberFormatter.format(n)}`;
 }
 
-export function formatDate(value) {
+export function formatDate(value, options = {}) {
 	if (!value) return '—';
 	const d = value instanceof Date ? value : new Date(value);
 	if (Number.isNaN(d.getTime())) return '—';
-	return dateFormatter.format(d);
+	return dateFormatterIn(options.timeZone).format(d);
 }
 
-export function formatDateTime(value) {
+export function formatDateTime(value, options = {}) {
 	if (!value) return '—';
 	const d = value instanceof Date ? value : new Date(value);
 	if (Number.isNaN(d.getTime())) return '—';
-	return dateTimeFormatter.format(d);
+	return dateTimeFormatterIn(options.timeZone, options.hourCycle).format(d);
 }
 
 const dateNumericFormatter = new Intl.DateTimeFormat('en-IN');

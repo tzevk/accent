@@ -1,7 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import { randomUUID } from 'crypto';
+import { parseDailyEntries } from '@/lib/logged-hours';
 import {
 	getProjectTeamMembership,
 	isUserInProjectTeam,
@@ -24,12 +24,18 @@ function membershipConflict(name) {
 }
 
 function userLabel(user) {
-	return (
-		user?.full_name ||
-		user?.username ||
-		user?.email ||
-		'This person'
-	);
+	return user?.full_name || user?.username || user?.email || 'This person';
+}
+
+/** Decode one JSON-array payload without letting a second payload affect it. */
+function parseDailyEntriesPayload(value) {
+	if (!value) return [];
+	try {
+		const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
 }
 
 /**
@@ -70,14 +76,6 @@ async function requireAssignmentMembership(
 	}
 
 	return null;
-}
-
-async function loadAssignmentProject(db, projectId) {
-	const [rows] = await db.execute(
-		'SELECT project_id, project_team FROM projects WHERE project_id = ? AND isDelete = 0 LIMIT 1',
-		[projectId]
-	);
-	return rows?.[0] || null;
 }
 
 async function generateTicketNumber(connection) {
@@ -239,10 +237,9 @@ const PROJECT_ACTIVITY_SAVE_RESOURCE = 'project_activity_save';
 
 /**
  * Latest self-service activity-save evidence for a user: the newest
- * `user_activity_logs` row the user recorded by saving their own activity
- * data (PUT progress update or PATCH self-service add). Manager edits to
- * another user's assignments move assignment `updated_at` but never write
- * this marker, so rows without dedicated evidence read as unknown (null)
+ * `user_activity_logs` row the user recorded by saving Work Periods. Manager
+ * edits to another user's assignments move assignment `updated_at` but never
+ * write this marker, so rows without dedicated evidence read as unknown (null)
  * rather than inferring a save time. Numeric epoch ms or null. Throws on
  * read failure — a logging outage must fail the request, never be
  * misreported as "no saves".
@@ -264,33 +261,11 @@ async function readLastActivitySaveMs(connection, userId) {
 }
 
 /**
- * Record a self-service activity save for the acting user on the SAME
- * connection (call inside the save transaction so content and evidence
- * commit atomically). `resource_id` is omitted: activity ids are UUIDs
- * and the column is INT. Throws on failure so the caller rolls back.
- */
-async function insertActivitySaveMarker(
-	connection,
-	{ userId, actionType, projectId, activityId }
-) {
-	await connection.execute(
-		`INSERT INTO user_activity_logs
-       (user_id, action_type, resource_type, description, details, status)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-		[
-			userId,
-			actionType,
-			PROJECT_ACTIVITY_SAVE_RESOURCE,
-			`Activity progress saved for project ${projectId}`,
-			JSON.stringify({ projectId, activityId }),
-			'success',
-		]
-	);
-}
-
-/**
  * GET /api/users/[id]/activity-assignments
- * Fetch all activity assignments for a user from project_activities_list
+ * Fetch all activity assignments for a user through the read-only Logged Hours
+ * projection. `daily_entries` combines legacy duration records with Work Period
+ * attribution; `legacy_daily_entries` remains the independently decoded raw
+ * history for readers that must not invent Start or End values.
  */
 export async function GET(request, { params }) {
 	let db;
@@ -326,7 +301,8 @@ export async function GET(request, { params }) {
 
 		db = await dbConnect();
 
-		// Query user_activity_assignments directly instead of parsing JSON blob
+		// The view is read-only: writes belong to the normalized assignment table
+		// or the dedicated Work Period routes, never to this projection.
 		const [rows] = await db.execute(
 			`
       SELECT
@@ -336,7 +312,7 @@ export async function GET(request, { params }) {
         p.status AS project_status,
         p.start_date AS project_start_date,
         p.end_date AS project_end_date
-      FROM user_activity_assignments uaa
+      FROM logged_activity_assignments uaa
       LEFT JOIN projects p ON uaa.project_id = p.project_id
       WHERE uaa.user_id = ?
       ORDER BY p.start_date DESC, uaa.created_at ASC
@@ -355,30 +331,29 @@ export async function GET(request, { params }) {
 
 		const assignments = [];
 		for (const row of rows) {
-			// Parse daily_entries from JSON string
-			let dailyEntries = [];
-			if (row.daily_entries) {
-				try {
-					dailyEntries =
-						typeof row.daily_entries === 'string'
-							? JSON.parse(row.daily_entries)
-							: row.daily_entries;
-				} catch {
-					dailyEntries = [];
-				}
-			}
-			if (!Array.isArray(dailyEntries)) dailyEntries = [];
+			// Effective entries drive the reminder. A Work Period projection also
+			// overrides the stale stored duration aggregate; without one, preserve
+			// the preexisting legacy-only aggregate display. Legacy history is
+			// decoded independently so malformed data cannot hide the other side.
+			const dailyEntries = parseDailyEntriesPayload(row.daily_entries);
+			const legacyDailyEntries = parseDailyEntriesPayload(
+				row.legacy_daily_entries
+			);
 
 			const derivedQty = dailyEntries.reduce(
-				(s, e) => s + (parseFloat(e.qty_done) || 0),
+				(s, e) => s + (parseFloat(e?.qty_done) || 0),
 				0
 			);
-			const derivedHours = dailyEntries.reduce(
-				(s, e) => s + (parseFloat(e.hours) || 0),
+			const derivedHours = parseDailyEntries(row.daily_entries).reduce(
+				(s, e) => s + e.hours,
 				0
 			);
+			const hasWorkPeriodProjection =
+				row.work_period_entries !== null &&
+				row.work_period_entries !== undefined;
 
 			assignments.push({
+				id: row.id,
 				project_id: row.project_id,
 				project_name: row.project_name || '',
 				project_code: row.project_code || '',
@@ -393,9 +368,13 @@ export async function GET(request, { params }) {
 				default_manhours: parseFloat(row.default_manhours) || 0,
 				description: row.description || '',
 				qty_assigned: parseFloat(row.qty_assigned) || 0,
-				qty_completed: parseFloat(row.qty_completed) || derivedQty,
+				qty_completed: hasWorkPeriodProjection
+					? derivedQty
+					: parseFloat(row.qty_completed) || derivedQty,
 				planned_hours: parseFloat(row.estimated_hours) || 0,
-				actual_hours: parseFloat(row.actual_hours) || derivedHours,
+				actual_hours: hasWorkPeriodProjection
+					? derivedHours
+					: parseFloat(row.actual_hours) || derivedHours,
 				start_date: row.start_date || null,
 				due_date: row.due_date || null,
 				status: row.status || 'Not Started',
@@ -403,6 +382,7 @@ export async function GET(request, { params }) {
 				remarks: row.remarks || '',
 				progress_percentage: parseFloat(row.progress_percentage) || 0,
 				daily_entries: dailyEntries,
+				legacy_daily_entries: legacyDailyEntries,
 			});
 		}
 
@@ -562,266 +542,6 @@ export async function GET(request, { params }) {
 			{
 				success: false,
 				error: 'Failed to fetch activity assignments',
-				details: error.message,
-			},
-			{ status: 500 }
-		);
-	}
-}
-
-/**
- * PUT /api/users/[id]/activity-assignments
- * Update a user's progress on an activity
- */
-export async function PUT(request, { params }) {
-	let db;
-	let inTransaction = false;
-	try {
-		const { id } = await params;
-		const requestedUserId = parseInt(id);
-
-		const currentUser = await getCurrentUser(request);
-
-		if (!currentUser) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
-
-		// Users can update their own assignments
-		// Super admins can edit any user's assignments
-		const isOwnData = requestedUserId === currentUser.id;
-		if (!isOwnData && !currentUser.is_super_admin) {
-			return NextResponse.json(
-				{
-					success: false,
-					error:
-						"Forbidden - Only super admins can edit other users' assignments",
-				},
-				{ status: 403 }
-			);
-		}
-
-		const body = await request.json();
-		const {
-			project_id,
-			activity_id,
-			qty_assigned,
-			status,
-			remarks,
-			description,
-			start_date,
-			due_date,
-			notes,
-			progress_percentage,
-			daily_entries,
-			discipline_name,
-			activity_name,
-			sub_activity_name,
-			planned_hours,
-		} = body;
-
-		console.log(
-			'[Activity Assignment Update] User:',
-			currentUser.username,
-			'(super_admin:',
-			currentUser.is_super_admin,
-			') updating user:',
-			requestedUserId
-		);
-		console.log(
-			'[Activity Assignment Update] project_id:',
-			project_id,
-			'activity_id:',
-			activity_id
-		);
-		console.log(
-			'[Activity Assignment Update] daily_entries count:',
-			daily_entries?.length || 0
-		);
-
-		if (!project_id || !activity_id) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: 'project_id and activity_id are required',
-				},
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		// Assignment writes require both the acting user and the target user
-		// to already be on the project team. A non-member changes nothing.
-		const project = await loadAssignmentProject(db, project_id);
-		if (!project) {
-			db.release();
-			return NextResponse.json(
-				{ success: false, error: 'Project not found' },
-				{ status: 404 }
-			);
-		}
-		const membershipFailure = await requireAssignmentMembership(
-			db,
-			project,
-			currentUser,
-			requestedUserId
-		);
-		if (membershipFailure) {
-			db.release();
-			return membershipFailure;
-		}
-
-		// Find the existing assignment row
-		const [existing] = await db.execute(
-			'SELECT * FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
-			[requestedUserId, project_id, activity_id]
-		);
-
-		if (existing.length === 0) {
-			db.release();
-			return NextResponse.json(
-				{ success: false, error: 'User is not assigned to this activity' },
-				{ status: 404 }
-			);
-		}
-
-		// Build dynamic UPDATE with only the fields present in the request
-		const setClauses = [];
-		const updateParams = [];
-		let normalizedEntries = null;
-
-		if (qty_assigned !== undefined) {
-			setClauses.push('qty_assigned = ?');
-			updateParams.push(parseFloat(qty_assigned) || 0);
-		}
-		if (planned_hours !== undefined) {
-			setClauses.push('estimated_hours = ?');
-			updateParams.push(parseFloat(planned_hours) || 0);
-		}
-		if (status !== undefined) {
-			setClauses.push('status = ?');
-			updateParams.push(status);
-		}
-		if (remarks !== undefined) {
-			setClauses.push('remarks = ?');
-			updateParams.push(remarks);
-		}
-		if (description !== undefined) {
-			setClauses.push('description = ?');
-			updateParams.push(description);
-		}
-		if (start_date !== undefined) {
-			setClauses.push('start_date = ?');
-			updateParams.push(start_date || null);
-		}
-		if (due_date !== undefined) {
-			setClauses.push('due_date = ?');
-			updateParams.push(due_date || null);
-		}
-		if (notes !== undefined) {
-			setClauses.push('notes = ?');
-			updateParams.push(notes);
-		}
-		if (progress_percentage !== undefined) {
-			setClauses.push('progress_percentage = ?');
-			updateParams.push(parseFloat(progress_percentage) || 0);
-		}
-		if (daily_entries !== undefined) {
-			setClauses.push('daily_entries = ?');
-			normalizedEntries = Array.isArray(daily_entries)
-				? daily_entries.map((e) => {
-						if (!e || typeof e !== 'object') return {};
-						// Normalize the known numeric/text fields but keep
-						// every other flag (isLocked, …) intact — the old
-						// mapping silently dropped them on round-trip.
-						return {
-							...e,
-							date: e.date || '',
-							qty_done: parseFloat(e.qty_done) || 0,
-							hours: parseFloat(e.hours) || 0,
-							remarks: e.remarks || '',
-						};
-					})
-				: [];
-			updateParams.push(JSON.stringify(normalizedEntries));
-		}
-		// Activity-level fields
-		if (discipline_name !== undefined) {
-			setClauses.push('discipline_name = ?');
-			updateParams.push(discipline_name);
-		}
-		if (activity_name !== undefined) {
-			setClauses.push('activity_name = ?');
-			updateParams.push(activity_name);
-		}
-		if (sub_activity_name !== undefined) {
-			setClauses.push('sub_activity_name = ?');
-			updateParams.push(sub_activity_name);
-		}
-
-		if (setClauses.length === 0) {
-			db.release();
-			return NextResponse.json({
-				success: true,
-				message: 'No fields to update',
-				affected_rows: 0,
-			});
-		}
-
-		setClauses.push('updated_at = NOW()');
-		updateParams.push(requestedUserId, project_id, activity_id);
-
-		// The assignment write and its save evidence commit atomically: a
-		// manager edit to another user's row moves updated_at but never
-		// records evidence for that user, and a failed marker insert rolls
-		// the content write back so a save is never half-recorded.
-		await db.beginTransaction();
-		inTransaction = true;
-
-		const [updateResult] = await db.execute(
-			`UPDATE user_activity_assignments SET ${setClauses.join(', ')}
-	       WHERE user_id = ? AND project_id = ? AND activity_id = ?`,
-			updateParams
-		);
-
-		if (updateResult.affectedRows > 0 && isOwnData) {
-			await insertActivitySaveMarker(db, {
-				userId: currentUser.id,
-				actionType: 'update',
-				projectId: project_id,
-				activityId: activity_id,
-			});
-		}
-
-		await db.commit();
-		inTransaction = false;
-
-		db.release();
-
-		return NextResponse.json({
-			success: true,
-			message: 'Assignment updated successfully',
-			affected_rows: updateResult.affectedRows,
-		});
-	} catch (error) {
-		console.error('[Activity Assignment Update] Error:', error);
-		if (db) {
-			if (inTransaction) {
-				try {
-					await db.rollback();
-				} catch {}
-			}
-			try {
-				db.release();
-			} catch {}
-		}
-		return NextResponse.json(
-			{
-				success: false,
-				error: 'Failed to update assignment',
 				details: error.message,
 			},
 			{ status: 500 }
@@ -997,390 +717,6 @@ export async function POST(request, { params }) {
 			{
 				success: false,
 				error: 'Failed to create OT approval request',
-				details: error.message,
-			},
-			{ status: 500 }
-		);
-	}
-}
-
-/**
- * PATCH /api/users/[id]/activity-assignments
- * Self-service: add a new activity entry (Discipline / Activity / Sub-Activity)
- * to a project's activity list, assigned to the requesting user.
- */
-export async function PATCH(request, { params }) {
-	let db;
-	let inTransaction = false;
-	try {
-		const { id } = await params;
-		const requestedUserId = parseInt(id);
-
-		const currentUser = await getCurrentUser(request);
-		if (!currentUser) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
-
-		const isOwnData = requestedUserId === currentUser.id;
-		if (!isOwnData && !currentUser.is_super_admin) {
-			return NextResponse.json(
-				{ success: false, error: 'Forbidden' },
-				{ status: 403 }
-			);
-		}
-
-		const body = await request.json();
-		const {
-			project_id,
-			discipline_name,
-			activity_name,
-			sub_activity_name,
-			manhours_assigned,
-			due_date,
-			default_manhours,
-			qty_completed,
-			status,
-			remarks,
-		} = body || {};
-
-		if (!project_id || !discipline_name || !activity_name) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: 'project_id, discipline_name and activity_name are required',
-				},
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		const [projects] = await db.execute(
-			'SELECT project_id, project_team, project_activities_list FROM projects WHERE project_id = ? AND isDelete = 0',
-			[project_id]
-		);
-
-		if (projects.length === 0) {
-			db.release();
-			return NextResponse.json(
-				{ success: false, error: 'Project not found' },
-				{ status: 404 }
-			);
-		}
-
-		const project = projects[0];
-
-		const membershipFailure = await requireAssignmentMembership(
-			db,
-			project,
-			currentUser,
-			requestedUserId
-		);
-		if (membershipFailure) {
-			db.release();
-			return membershipFailure;
-		}
-		let activitiesList = project.project_activities_list;
-		if (typeof activitiesList === 'string') {
-			try {
-				activitiesList = activitiesList ? JSON.parse(activitiesList) : [];
-			} catch {
-				activitiesList = [];
-			}
-		}
-		if (!Array.isArray(activitiesList)) activitiesList = [];
-
-		// The entered manhours/quantity are logged as that day's entry so they
-		// surface in the timesheet/man-hours reports; planned hours also go
-		// to estimated_hours.
-		const dailyEntry = {
-			date: due_date || new Date().toISOString().split('T')[0],
-			qty_done: parseFloat(qty_completed) || 0,
-			hours: parseFloat(manhours_assigned) || 0,
-			remarks: '',
-		};
-
-		const newActivity = {
-			id: randomUUID(),
-			activity_name,
-			function_name: discipline_name,
-			discipline: discipline_name,
-			sub_activity_name: sub_activity_name || '',
-			default_manhours: parseFloat(default_manhours) || 0,
-			activity_description: '',
-			assigned_users: [
-				{
-					user_id: requestedUserId,
-					qty_assigned: 0,
-					qty_completed: parseFloat(qty_completed) || 0,
-					planned_hours: parseFloat(manhours_assigned) || 0,
-					actual_hours: 0,
-					status: status || 'Not Started',
-					due_date: due_date || null,
-					remarks: remarks || '',
-					notes: '',
-					progress_percentage: 100,
-					daily_entries: [dailyEntry],
-				},
-			],
-		};
-
-		activitiesList.push(newActivity);
-
-		// Blob update, normalized insert and save evidence commit atomically
-		// on the same connection. A failed evidence insert or commit rolls
-		// everything back.
-		await db.beginTransaction();
-		inTransaction = true;
-
-		await db.execute(
-			'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
-			[JSON.stringify(activitiesList), project.project_id]
-		);
-
-		// Also insert into normalized user_activity_assignments table.
-		// employee_id is carried over from the login account so reports that
-		// key on it can resolve the row directly.
-		try {
-			const [userRows] = await db.execute(
-				'SELECT employee_id FROM users WHERE id = ?',
-				[requestedUserId]
-			);
-			const employeeId = userRows[0]?.employee_id ?? null;
-			await db.execute(
-				`INSERT INTO user_activity_assignments
-         (id, user_id, employee_id, project_id, activity_id, activity_name,
-          discipline_name, sub_activity_name, description, due_date, start_date,
-          status, estimated_hours, actual_hours, qty_assigned, qty_completed,
-          notes, remarks, default_manhours, progress_percentage,
-          daily_entries, assigned_date, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
-				[
-					randomUUID(),
-					requestedUserId,
-					employeeId,
-					project_id,
-					newActivity.id,
-					activity_name,
-					discipline_name,
-					sub_activity_name || null,
-					'',
-					due_date || null,
-					null,
-					status || 'Not Started',
-					parseFloat(manhours_assigned) || 0,
-					0,
-					0,
-					parseFloat(qty_completed) || 0,
-					'',
-					remarks || '',
-					parseFloat(default_manhours) || 0,
-					100,
-					JSON.stringify([dailyEntry]),
-				]
-			);
-		} catch (insertErr) {
-			console.error(
-				'Failed to insert into user_activity_assignments:',
-				insertErr
-			);
-			// Non-fatal — the JSON blob update already succeeded
-		}
-
-		// Evidence only for self-service saves, recorded after the save
-		// writes on the same transaction: a super-admin adding for another
-		// user never resets that user's timer.
-		if (isOwnData) {
-			await insertActivitySaveMarker(db, {
-				userId: currentUser.id,
-				actionType: 'create',
-				projectId: project_id,
-				activityId: newActivity.id,
-			});
-		}
-
-		await db.commit();
-		inTransaction = false;
-
-		db.release();
-
-		return NextResponse.json({
-			success: true,
-			message: 'Activity added successfully',
-			data: { activity_id: newActivity.id },
-		});
-	} catch (error) {
-		console.error('Error adding self-service activity:', error);
-		if (db) {
-			if (inTransaction) {
-				try {
-					await db.rollback();
-				} catch {}
-			}
-			try {
-				db.release();
-			} catch {}
-		}
-		return NextResponse.json(
-			{
-				success: false,
-				error: 'Failed to add activity',
-				details: error.message,
-			},
-			{ status: 500 }
-		);
-	}
-}
-
-/**
- * DELETE /api/users/[id]/activity-assignments
- * Remove a user's activity assignment
- */
-export async function DELETE(request, { params }) {
-	let db;
-	try {
-		const { id } = await params;
-		const requestedUserId = parseInt(id);
-
-		const currentUser = await getCurrentUser(request);
-
-		if (!currentUser) {
-			return NextResponse.json(
-				{ success: false, error: 'Unauthorized' },
-				{ status: 401 }
-			);
-		}
-
-		// Users can delete their own assignments
-		// Super admins can delete any user's assignments
-		const isOwnData = requestedUserId === currentUser.id;
-		if (!isOwnData && !currentUser.is_super_admin) {
-			return NextResponse.json(
-				{
-					success: false,
-					error:
-						"Forbidden - Only super admins can delete other users' assignments",
-				},
-				{ status: 403 }
-			);
-		}
-
-		const body = await request.json();
-		const { project_id, activity_id } = body || {};
-
-		if (!project_id || !activity_id) {
-			return NextResponse.json(
-				{
-					success: false,
-					error: 'project_id and activity_id are required',
-				},
-				{ status: 400 }
-			);
-		}
-
-		db = await dbConnect();
-
-		const project = await loadAssignmentProject(db, project_id);
-		if (!project) {
-			db.release();
-			return NextResponse.json(
-				{ success: false, error: 'Project not found' },
-				{ status: 404 }
-			);
-		}
-		const membershipFailure = await requireAssignmentMembership(
-			db,
-			project,
-			currentUser,
-			requestedUserId
-		);
-		if (membershipFailure) {
-			db.release();
-			return membershipFailure;
-		}
-
-		const [deleteResult] = await db.execute(
-			'DELETE FROM user_activity_assignments WHERE user_id = ? AND project_id = ? AND activity_id = ?',
-			[requestedUserId, project_id, activity_id]
-		);
-
-		if (deleteResult.affectedRows === 0) {
-			db.release();
-			return NextResponse.json(
-				{ success: false, error: 'Assignment not found' },
-				{ status: 404 }
-			);
-		}
-
-		// Also drop the user from the project_activities_list blob so a later
-		// project save (which re-syncs assignments from the blob) does not
-		// resurrect the deleted assignment.
-		try {
-			const [projects] = await db.execute(
-				'SELECT project_activities_list FROM projects WHERE project_id = ?',
-				[project_id]
-			);
-			let list = projects[0]?.project_activities_list;
-			if (typeof list === 'string') {
-				try {
-					list = list ? JSON.parse(list) : [];
-				} catch {
-					list = [];
-				}
-			}
-			if (Array.isArray(list)) {
-				const cleaned = list
-					.map((activity) => {
-						if (!activity || activity.id !== activity_id) return activity;
-						const users = Array.isArray(activity.assigned_users)
-							? activity.assigned_users.filter(
-									(u) => String(u?.user_id) !== String(requestedUserId)
-								)
-							: activity.assigned_users;
-						return { ...activity, assigned_users: users };
-					})
-					.filter(
-						(activity) =>
-							!activity ||
-							activity.id !== activity_id ||
-							!Array.isArray(activity.assigned_users) ||
-							activity.assigned_users.length > 0
-					);
-				if (JSON.stringify(cleaned) !== JSON.stringify(list)) {
-					await db.execute(
-						'UPDATE projects SET project_activities_list = ? WHERE project_id = ?',
-						[JSON.stringify(cleaned), project_id]
-					);
-				}
-			}
-		} catch (blobErr) {
-			// Non-fatal: the normalized row is gone either way.
-			console.error(
-				'Failed to remove assignment from project activities blob:',
-				blobErr
-			);
-		}
-
-		db.release();
-
-		return NextResponse.json({
-			success: true,
-			message: 'Assignment deleted successfully',
-		});
-	} catch (error) {
-		console.error('[Activity Assignment Delete] Error:', error);
-		if (db) {
-			try {
-				db.release();
-			} catch {}
-		}
-		return NextResponse.json(
-			{
-				success: false,
-				error: 'Failed to delete assignment',
 				details: error.message,
 			},
 			{ status: 500 }

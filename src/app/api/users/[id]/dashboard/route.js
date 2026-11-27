@@ -5,8 +5,40 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-import { hasPermission } from '@/utils/rbac';
+import { parseDailyEntries } from '@/lib/logged-hours';
 
+function parseDailyEntriesPayload(value) {
+	if (!value) return [];
+	try {
+		const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+function effectiveLoggedHours(row) {
+	const derivedHours = parseDailyEntries(row.daily_entries).reduce(
+		(sum, entry) => sum + entry.hours,
+		0
+	);
+	if (
+		row.work_period_entries !== null &&
+		row.work_period_entries !== undefined
+	) {
+		return derivedHours;
+	}
+	return parseFloat(row.actual_hours) || derivedHours;
+}
+
+function withEffectiveLoggedHours(row) {
+	return {
+		...row,
+		daily_entries: parseDailyEntriesPayload(row.daily_entries),
+		legacy_daily_entries: parseDailyEntriesPayload(row.legacy_daily_entries),
+		actual_hours: effectiveLoggedHours(row),
+	};
+}
 /**
  * GET /api/users/[id]/dashboard
  * Fetch comprehensive dashboard statistics for a user
@@ -67,20 +99,20 @@ export async function GET(request, { params }) {
 				recentUpdatesResult,
 				workloadSummaryResult,
 				priorityBreakdownResult,
+				assignmentLogsResult,
 			] = await Promise.all([
 				// 1. Activity statistics by status
 				db.execute(
 					`
-          SELECT 
+          SELECT
             status,
             priority,
             COUNT(*) as count,
-            SUM(estimated_hours) as total_estimated_hours,
-            SUM(actual_hours) as total_actual_hours
-          FROM user_activity_assignments
+            SUM(estimated_hours) as total_estimated_hours
+          FROM logged_activity_assignments
           WHERE user_id = ?
           GROUP BY status, priority
-          ORDER BY 
+          ORDER BY
             FIELD(status, 'Not Started', 'In Progress', 'On Hold', 'Completed', 'Cancelled'),
             FIELD(priority, 'Critical', 'High', 'Medium', 'Low')
         `,
@@ -90,10 +122,10 @@ export async function GET(request, { params }) {
 				// 2. Status summary (simplified)
 				db.execute(
 					`
-          SELECT 
+          SELECT
             status,
             COUNT(*) as count
-          FROM user_activity_assignments
+          FROM logged_activity_assignments
           WHERE user_id = ?
           GROUP BY status
         `,
@@ -103,13 +135,13 @@ export async function GET(request, { params }) {
 				// 3. Upcoming deadlines (next 7 days)
 				db.execute(
 					`
-          SELECT 
+          SELECT
             uaa.*,
             p.project_title,
             p.client_name,
             p.project_code,
             DATEDIFF(uaa.due_date, CURDATE()) as days_remaining
-          FROM user_activity_assignments uaa
+          FROM logged_activity_assignments uaa
           LEFT JOIN projects p ON uaa.project_id = p.project_id
           WHERE uaa.user_id = ?
           AND uaa.status NOT IN ('Completed', 'Cancelled')
@@ -123,12 +155,12 @@ export async function GET(request, { params }) {
 				// 4. Overdue activities
 				db.execute(
 					`
-          SELECT 
+          SELECT
             uaa.*,
             p.project_title,
             p.client_name,
             DATEDIFF(CURDATE(), uaa.due_date) as days_overdue
-          FROM user_activity_assignments uaa
+          FROM logged_activity_assignments uaa
           LEFT JOIN projects p ON uaa.project_id = p.project_id
           WHERE uaa.user_id = ?
           AND uaa.status NOT IN ('Completed', 'Cancelled')
@@ -141,7 +173,7 @@ export async function GET(request, { params }) {
 				// 5. Active projects with activity counts
 				db.execute(
 					`
-          SELECT 
+          SELECT
             p.project_id,
             p.name as project_title,
             p.client_name,
@@ -154,7 +186,7 @@ export async function GET(request, { params }) {
             SUM(CASE WHEN uaa.status = 'On Hold' THEN 1 ELSE 0 END) as on_hold,
             SUM(CASE WHEN uaa.due_date < CURDATE() AND uaa.status NOT IN ('Completed', 'Cancelled') THEN 1 ELSE 0 END) as overdue
           FROM projects p
-          INNER JOIN user_activity_assignments uaa ON p.project_id = uaa.project_id
+          INNER JOIN logged_activity_assignments uaa ON p.project_id = uaa.project_id
           WHERE uaa.user_id = ?
           AND p.status IN ('NEW', 'planning', 'in-progress', 'Ongoing')
           GROUP BY p.project_id, p.name, p.client_name, p.status, p.project_code
@@ -167,7 +199,7 @@ export async function GET(request, { params }) {
 				db
 					.execute(
 						`
-          SELECT 
+          SELECT
             au.*,
             uaa.activity_name,
             uaa.project_id,
@@ -175,7 +207,7 @@ export async function GET(request, { params }) {
             u.username as updated_by_username,
             u.full_name as updated_by_full_name
           FROM activity_updates au
-          INNER JOIN user_activity_assignments uaa ON au.activity_assignment_id = uaa.id
+          INNER JOIN logged_activity_assignments uaa ON au.activity_assignment_id = uaa.id
           LEFT JOIN projects p ON uaa.project_id = p.project_id
           LEFT JOIN users u ON au.updated_by = u.id
           WHERE uaa.user_id = ?
@@ -189,13 +221,12 @@ export async function GET(request, { params }) {
 				// 7. Workload summary
 				db.execute(
 					`
-          SELECT 
+          SELECT
             COUNT(*) as total_active_activities,
             SUM(estimated_hours) as total_estimated_hours,
-            SUM(actual_hours) as total_actual_hours,
             SUM(CASE WHEN status = 'In Progress' THEN estimated_hours ELSE 0 END) as in_progress_hours,
             AVG(progress_percentage) as avg_progress
-          FROM user_activity_assignments
+          FROM logged_activity_assignments
           WHERE user_id = ?
           AND status NOT IN ('Completed', 'Cancelled')
         `,
@@ -205,14 +236,26 @@ export async function GET(request, { params }) {
 				// 8. Priority breakdown
 				db.execute(
 					`
-          SELECT 
+          SELECT
             priority,
             COUNT(*) as count,
             SUM(CASE WHEN status NOT IN ('Completed', 'Cancelled') THEN 1 ELSE 0 END) as active_count
-          FROM user_activity_assignments
+          FROM logged_activity_assignments
           WHERE user_id = ?
           GROUP BY priority
           ORDER BY FIELD(priority, 'Critical', 'High', 'Medium', 'Low')
+        `,
+					[requestedUserId]
+				),
+
+				// 9. Logged Hours for the aggregate cards. A Work Period projection
+				// overrides the stale base-column aggregate; legacy-only rows keep
+				// their preexisting actual_hours display.
+				db.execute(
+					`
+          SELECT status, priority, daily_entries, work_period_entries, actual_hours
+          FROM logged_activity_assignments
+          WHERE user_id = ?
         `,
 					[requestedUserId]
 				),
@@ -227,6 +270,29 @@ export async function GET(request, { params }) {
 			const [recentUpdates] = recentUpdatesResult;
 			const [workloadSummary] = workloadSummaryResult;
 			const [priorityBreakdown] = priorityBreakdownResult;
+			const [assignmentLogs] = assignmentLogsResult;
+
+			const actualHoursByGroup = new Map();
+			let activeActualHours = 0;
+			for (const row of assignmentLogs) {
+				const hours = effectiveLoggedHours(row);
+				const key = `${row.status ?? ''}\u0000${row.priority ?? ''}`;
+				actualHoursByGroup.set(key, (actualHoursByGroup.get(key) || 0) + hours);
+				if (
+					row.status != null &&
+					row.status !== 'Completed' &&
+					row.status !== 'Cancelled'
+				) {
+					activeActualHours += hours;
+				}
+			}
+			const activityStatsWithLoggedHours = activityStats.map((row) => ({
+				...row,
+				total_actual_hours:
+					actualHoursByGroup.get(
+						`${row.status ?? ''}\u0000${row.priority ?? ''}`
+					) || 0,
+			}));
 
 			// Transform status summary into object for easier access
 			const statusCounts = statusSummary.reduce((acc, item) => {
@@ -237,7 +303,7 @@ export async function GET(request, { params }) {
 			return NextResponse.json({
 				success: true,
 				data: {
-					activity_stats: activityStats,
+					activity_stats: activityStatsWithLoggedHours,
 					status_summary: {
 						not_started: statusCounts.not_started || 0,
 						in_progress: statusCounts.in_progress || 0,
@@ -246,17 +312,19 @@ export async function GET(request, { params }) {
 						cancelled: statusCounts.cancelled || 0,
 						total: Object.values(statusCounts).reduce((a, b) => a + b, 0),
 					},
-					upcoming_deadlines: upcomingDeadlines,
-					overdue_activities: overdueActivities,
+					upcoming_deadlines: upcomingDeadlines.map(withEffectiveLoggedHours),
+					overdue_activities: overdueActivities.map(withEffectiveLoggedHours),
 					overdue_count: overdueActivities.length,
 					active_projects: activeProjects,
 					recent_updates: recentUpdates,
-					workload_summary: workloadSummary[0] || {
-						total_active_activities: 0,
-						total_estimated_hours: 0,
-						total_actual_hours: 0,
-						in_progress_hours: 0,
-						avg_progress: 0,
+					workload_summary: {
+						...(workloadSummary[0] || {
+							total_active_activities: 0,
+							total_estimated_hours: 0,
+							in_progress_hours: 0,
+							avg_progress: 0,
+						}),
+						total_actual_hours: activeActualHours,
 					},
 					priority_breakdown: priorityBreakdown,
 				},

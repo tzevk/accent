@@ -231,6 +231,9 @@ const mockProjectRows = [
 	{
 		project_id: 10,
 		daily_entries: entries({ '2026-10-01': 8, '2026-10-02': 8 }),
+		work_period_entries: '[]',
+		actual_hours: 999,
+		qty_completed: 999,
 		project_code: 'P-010',
 		project_title: 'Omega Plant',
 		project_name: 'omega plant',
@@ -282,8 +285,13 @@ function mockDb() {
 			return Promise.resolve([mockHolidays]);
 		if (sql.includes('FROM employee_attendance'))
 			return Promise.resolve([mockAttendance]);
-		if (sql.includes('uaa.project_id'))
+		if (
+			sql.includes('FROM logged_activity_assignments uaa') &&
+			sql.includes('p.project_code')
+		)
 			return Promise.resolve([mockProjectRows]);
+		if (sql.includes('FROM logged_activity_assignments uaa'))
+			return Promise.resolve([mockAssignments]);
 		if (sql.includes('FROM user_activity_assignments'))
 			return Promise.resolve([mockAssignments]);
 		// The dashboard's own queries.

@@ -103,6 +103,7 @@ import DocumentationTab from './tabs/DocumentationTab';
 import MeetingsTab from './tabs/MeetingsTab';
 import DocumentsReceivedTab from './tabs/DocumentsReceivedTab';
 import DocumentUpload from '@/components/DocumentUpload';
+import ProjectWorkPeriods from '@/components/ProjectWorkPeriods';
 
 const INITIAL_FORM = {
 	// Scope & Annexure fields
@@ -4801,6 +4802,11 @@ export default function EditProjectForm() {
 										removeScopeActivity={removeScopeActivity}
 									/>
 								)}
+
+								{activeTab === 'project_activity' &&
+									canEditSection('project_activity') && (
+										<ProjectWorkPeriods projectId={id} />
+									)}
 								{/* Discussion Tab */}
 								{activeTab === 'discussion' && (
 									<DiscussionTab

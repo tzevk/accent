@@ -19,6 +19,14 @@ import type {
 import { fitIdentifier } from '../../scripts/e2e/contracts.ts';
 import { createJourneyUser, type JourneyUser } from './journey-user.ts';
 
+export const AUTHORED_OVERNIGHT_PERIOD = {
+	start: '2024-06-30T23:30',
+	end: '2024-07-01T01:30',
+	quantity: 3,
+	dateCompleted: '2024-07-01',
+	remarks: 'Authored Sunday-to-Monday overnight Work Period',
+} as const;
+
 const TARGET_LOG_SPEC = [
 	{ day: 3, hours: 4 },
 	{ day: 10, hours: 2.5 },
@@ -120,6 +128,49 @@ export interface TimesheetReportFixture {
 	dispose(): Promise<void>;
 }
 
+export interface WorkPeriodActivity {
+	id: string;
+	name: string;
+	assignmentId: string;
+	project: FixtureProject;
+}
+
+export interface EmployeeWorkPeriodFixture {
+	namespace: string;
+	login: TimeLogin;
+	manager: TimeLogin;
+	employee: FixtureEmployee;
+	discipline: { id: string; name: string };
+	primary: WorkPeriodActivity;
+	secondary: WorkPeriodActivity;
+	legacy: ExpectedTimeEntry;
+	self: {
+		date: string;
+		day: number;
+		month: string;
+		weekStart: string;
+		start: string;
+		end: string;
+		clock: string;
+		totalClock: string;
+		dateCompleted: string;
+		remarks: string;
+	};
+	/** Delete every owned row, then the identities. Safe to call twice. */
+	dispose(): Promise<void>;
+}
+
+export interface PersistedWorkPeriod {
+	id: string;
+	assignmentId: string;
+	employeeId: number;
+	startMs: number;
+	endMs: number;
+	quantity: number;
+	dateCompleted: string;
+	remarks: string;
+}
+
 export interface PersistedDailyEntry {
 	date: string;
 	hours: number;
@@ -149,6 +200,8 @@ interface OwnedRows {
 	employeeIds: number[];
 	projectIds: number[];
 	assignmentIds: string[];
+	disciplineIds: string[];
+	activityIds: string[];
 	identities: JourneyUser[];
 }
 
@@ -166,6 +219,8 @@ export async function seedEmployeeSelfTimesheetFixture(
 		employeeIds: [],
 		projectIds: [],
 		assignmentIds: [],
+		disciplineIds: [],
+		activityIds: [],
 		identities: [],
 	};
 	const { currentMonth, targetMonth } = relativeMonths();
@@ -273,6 +328,8 @@ export async function seedTimesheetReportFixture(
 		employeeIds: [],
 		projectIds: [],
 		assignmentIds: [],
+		disciplineIds: [],
+		activityIds: [],
 		identities: [],
 	};
 	const { currentMonth, targetMonth } = relativeMonths();
@@ -342,6 +399,261 @@ export async function seedTimesheetReportFixture(
 		await cleanupAfterFailedSeed(db, owned, error);
 		throw error;
 	}
+}
+
+/**
+ * Seed the Work Period browser and contention actors: one linked Employee, one
+ * Project Lead, two Projects and two catalog Activities without children. The
+ * secondary assignment owns exactly one historical duration-only row.
+ */
+export async function seedEmployeeWorkPeriodFixture(
+	db: Connection,
+	namespace: string
+): Promise<EmployeeWorkPeriodFixture> {
+	const owned: OwnedRows = {
+		userIds: [],
+		employeeIds: [],
+		projectIds: [],
+		assignmentIds: [],
+		disciplineIds: [],
+		activityIds: [],
+		identities: [],
+	};
+	const nowMs = Date.now();
+	// Before 00:16 IST, yesterday is the only safe finished interval. After
+	// that, use today so a midnight rollover during the browser journey merely
+	// turns today into yesterday instead of expiring the record.
+	const istNow = new Date(nowMs + IST_OFFSET_MS);
+	const minuteOfDay = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+	const today = istDate(nowMs);
+	const useToday = minuteOfDay >= 16;
+	const selfDate = useToday ? today : shiftIstDate(today, -1);
+	const selfStart = minuteOfDay >= 631 || !useToday ? '09:00' : '00:00';
+	const selfEnd = minuteOfDay >= 631 || !useToday ? '10:30' : '00:15';
+	const selfDurationSeconds = selfEnd === '10:30' ? 5_400 : 900;
+	const selfWeekStart = weekStartFor(selfDate);
+	const selfRemarks = `${namespace} finished self-service Work Period`;
+
+	try {
+		const login = await createJourneyUser(
+			db,
+			`${namespace}-work-period-self`,
+			[],
+			{}
+		);
+		owned.identities.push(login);
+		owned.userIds.push(login.userId);
+		const manager = await createJourneyUser(
+			db,
+			`${namespace}-work-period-manager`,
+			[],
+			{}
+		);
+		owned.identities.push(manager);
+		owned.userIds.push(manager.userId);
+		const employee = await seedLinkedEmployee(
+			db,
+			owned,
+			`${namespace}:work-period-employee`,
+			login,
+			'E2E Work Period Employee'
+		);
+		const managerTeam = {
+			user_id: manager.userId,
+			id: manager.userId,
+			name: manager.username,
+			email: `${manager.username.toLowerCase()}@e2e.invalid`,
+			role: 'Project Lead',
+		};
+		const baselineSchedule = {
+			id: `${namespace}-baseline-schedule`,
+			sr_no: '1',
+			activity_description: 'Authored baseline schedule',
+			legend: 'accent_activities',
+			status_completed: 'Ongoing',
+			remarks: 'Present before the stale Project snapshot',
+		};
+		const primaryProject = await seedProject(db, owned, {
+			token: tokenFor(`${namespace}:work-period-primary`),
+			codePrefix: 'E2EWP',
+			namePrefix: 'E2E Work Period Primary',
+			member: employee,
+			additionalTeam: [managerTeam],
+			scheduleRows: [baselineSchedule],
+			startMonth: '2024-01',
+		});
+		const secondaryProject = await seedProject(db, owned, {
+			token: tokenFor(`${namespace}:work-period-secondary`),
+			codePrefix: 'E2EWL',
+			namePrefix: 'E2E Work Period Legacy',
+			member: employee,
+			additionalTeam: [managerTeam],
+			scheduleRows: [baselineSchedule],
+			startMonth: '2024-01',
+		});
+
+		const disciplineId = randomUUID();
+		const disciplineName = fitIdentifier(
+			`${namespace} Work Period Discipline`,
+			100
+		);
+		await db.execute(
+			`INSERT INTO functions_master (id, function_name, status, description)
+			 VALUES (?, ?, 'active', ?)`,
+			[disciplineId, disciplineName, 'Owned Work Period e2e discipline']
+		);
+		owned.disciplineIds.push(disciplineId);
+
+		const primary = await seedWorkPeriodActivity(db, owned, {
+			employee,
+			project: primaryProject,
+			disciplineId,
+			disciplineName,
+			entries: [],
+		});
+		const legacy: ExpectedTimeEntry = {
+			day: 1,
+			date: '2024-07-01',
+			hours: 1.25,
+			clock: '01:15',
+		};
+		const secondary = await seedWorkPeriodActivity(db, owned, {
+			employee,
+			project: secondaryProject,
+			disciplineId,
+			disciplineName,
+			entries: [legacy],
+		});
+
+		let disposed = false;
+		return {
+			namespace,
+			login: {
+				userId: login.userId,
+				username: login.username,
+				password: login.password,
+			},
+			manager: {
+				userId: manager.userId,
+				username: manager.username,
+				password: manager.password,
+			},
+			employee,
+			discipline: { id: disciplineId, name: disciplineName },
+			primary,
+			secondary,
+			legacy,
+			self: {
+				date: selfDate,
+				day: Number(selfDate.slice(8, 10)),
+				month: selfDate.slice(0, 7),
+				weekStart: selfWeekStart,
+				start: `${selfDate}T${selfStart}`,
+				end: `${selfDate}T${selfEnd}`,
+				clock: selfDurationSeconds === 5_400 ? '01:30' : '00:15',
+				totalClock: selfDurationSeconds === 5_400 ? '1:30:00' : '0:15:00',
+				dateCompleted: selfDate,
+				remarks: selfRemarks,
+			},
+			async dispose(): Promise<void> {
+				if (disposed) return;
+				disposed = true;
+				await cleanupOwned(db, owned);
+			},
+		};
+	} catch (error) {
+		await cleanupAfterFailedSeed(db, owned, error);
+		throw error;
+	}
+}
+
+interface WorkPeriodRow extends RowDataPacket {
+	id: string;
+	assignment_id: string;
+	employee_id: number | string;
+	start_ms: number | string;
+	end_ms: number | string;
+	quantity: number | string;
+	date_completed: string | Date;
+	remarks: string | null;
+}
+
+interface WorkPeriodProjectionRow extends RowDataPacket {
+	work_period_entries: unknown;
+}
+
+interface AssignmentIdentityRow extends RowDataPacket {
+	activity_id: string | null;
+	discipline_id: string | null;
+	catalog_activity_id: string | null;
+	catalog_sub_activity_id: string | null;
+}
+
+/** Independent committed-state readback; never derives browser expectations. */
+export async function readWorkPeriods(
+	db: Connection,
+	input: { employeeId: number; assignmentId?: string }
+): Promise<PersistedWorkPeriod[]> {
+	const params: (number | string)[] = [input.employeeId];
+	let assignmentClause = '';
+	if (input.assignmentId !== undefined) {
+		assignmentClause = ' AND assignment_id = ?';
+		params.push(input.assignmentId);
+	}
+	const [rows] = await db.execute<WorkPeriodRow[]>(
+		`SELECT id, assignment_id, employee_id, start_ms, end_ms, quantity,
+		        date_completed, remarks
+		   FROM work_periods
+		  WHERE employee_id = ?${assignmentClause}
+		  ORDER BY start_ms, id`,
+		params
+	);
+	return rows.map((row) => ({
+		id: String(row.id),
+		assignmentId: String(row.assignment_id),
+		employeeId: Number(row.employee_id),
+		startMs: Number(row.start_ms),
+		endMs: Number(row.end_ms),
+		quantity: Number(row.quantity),
+		dateCompleted: dateOnly(row.date_completed),
+		remarks: String(row.remarks ?? ''),
+	}));
+}
+
+/** Read the assignment projection so a stale Project save cannot erase it. */
+export async function readWorkPeriodProjection(
+	db: Connection,
+	assignmentId: string
+): Promise<unknown> {
+	const [rows] = await db.execute<WorkPeriodProjectionRow[]>(
+		`SELECT work_period_entries FROM user_activity_assignments WHERE id = ?`,
+		[assignmentId]
+	);
+	return rows[0] ? parseJsonValue(rows[0].work_period_entries) : null;
+}
+
+export async function readWorkPeriodAssignmentIdentity(
+	db: Connection,
+	assignmentId: string
+): Promise<{
+	projectActivityId: string | null;
+	disciplineId: string | null;
+	catalogActivityId: string | null;
+	catalogSubActivityId: string | null;
+}> {
+	const [rows] = await db.execute<AssignmentIdentityRow[]>(
+		`SELECT activity_id, discipline_id, catalog_activity_id,
+		        catalog_sub_activity_id
+		   FROM user_activity_assignments WHERE id = ?`,
+		[assignmentId]
+	);
+	const row = rows[0];
+	return {
+		projectActivityId: row?.activity_id ?? null,
+		disciplineId: row?.discipline_id ?? null,
+		catalogActivityId: row?.catalog_activity_id ?? null,
+		catalogSubActivityId: row?.catalog_sub_activity_id ?? null,
+	};
 }
 
 /* ── independent persisted readback ────────────────────────────────── */
@@ -474,6 +786,8 @@ async function seedProject(
 		namePrefix: string;
 		member: FixtureEmployee;
 		startMonth: string;
+		additionalTeam?: readonly Record<string, unknown>[];
+		scheduleRows?: readonly Record<string, unknown>[];
 	}
 ): Promise<FixtureProject> {
 	const code = fitIdentifier(`${input.codePrefix}-${input.token}`, 100);
@@ -487,14 +801,18 @@ async function seedProject(
 			email: input.member.email,
 			role: 'Team Member',
 		},
+		...(input.additionalTeam ?? []),
 	]);
+	const schedule = input.scheduleRows
+		? JSON.stringify({ locked: false, rows: input.scheduleRows })
+		: null;
 
 	const [result] = await db.execute<ResultSetHeader>(
 		`INSERT INTO projects (
         project_title, name, project_code, status, start_date,
-        project_team, isDelete
-      ) VALUES (?, ?, ?, 'ONGOING', ?, ?, 0)`,
-		[name, name, code, `${input.startMonth}-01`, projectTeam]
+        project_team, project_schedule_list, isDelete
+      ) VALUES (?, ?, ?, 'ONGOING', ?, ?, ?, 0)`,
+		[name, name, code, `${input.startMonth}-01`, projectTeam, schedule]
 	);
 	const projectId = Number(result.insertId);
 	if (!Number.isInteger(projectId) || projectId <= 0) {
@@ -512,6 +830,11 @@ async function seedAssignment(
 		employee: FixtureEmployee;
 		project: FixtureProject;
 		entries: readonly ExpectedTimeEntry[];
+		disciplineId?: string;
+		disciplineName?: string;
+		activityId?: string;
+		catalogActivityId?: string;
+		catalogSubActivityId?: string | null;
 	}
 ): Promise<string> {
 	const assignmentId = randomUUID();
@@ -523,17 +846,24 @@ async function seedAssignment(
 
 	await db.execute(
 		`INSERT INTO user_activity_assignments (
-        id, user_id, employee_id, project_id, activity_name, discipline_name,
-        assigned_by, status, estimated_hours, actual_hours, qty_assigned,
-        qty_completed, start_date, daily_entries, description
-      ) VALUES (?, ?, ?, ?, ?, 'E2E Time', ?, 'In Progress', 10, ?,
+        id, user_id, employee_id, project_id, activity_id, activity_name,
+        discipline_id, catalog_activity_id, catalog_sub_activity_id,
+        discipline_name, assigned_by, status, estimated_hours,
+        actual_hours, qty_assigned, qty_completed, start_date, daily_entries,
+        description
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'In Progress', 10, ?,
                 10, 4, ?, ?, ?)`,
 		[
 			assignmentId,
 			input.employee.linkedUserId,
 			input.employee.id,
 			input.project.id,
+			input.activityId ?? null,
 			input.project.activityName,
+			input.disciplineId ?? null,
+			input.catalogActivityId ?? null,
+			input.catalogSubActivityId ?? null,
+			input.disciplineName ?? 'E2E Time',
 			input.employee.linkedUserId,
 			totalHours,
 			firstDate,
@@ -543,6 +873,43 @@ async function seedAssignment(
 	);
 	owned.assignmentIds.push(assignmentId);
 	return assignmentId;
+}
+
+async function seedWorkPeriodActivity(
+	db: Connection,
+	owned: OwnedRows,
+	input: {
+		employee: FixtureEmployee;
+		project: FixtureProject;
+		disciplineId: string;
+		disciplineName: string;
+		entries: readonly ExpectedTimeEntry[];
+	}
+): Promise<WorkPeriodActivity> {
+	const catalogActivityId = randomUUID();
+	await db.execute(
+		`INSERT INTO activities_master (
+        id, function_id, activity_name, default_manhours
+      ) VALUES (?, ?, ?, 0)`,
+		[catalogActivityId, input.disciplineId, input.project.activityName]
+	);
+	owned.activityIds.push(catalogActivityId);
+	const projectActivityId = randomUUID();
+	const assignmentId = await seedAssignment(db, owned, {
+		employee: input.employee,
+		project: input.project,
+		entries: input.entries,
+		disciplineId: input.disciplineId,
+		disciplineName: input.disciplineName,
+		activityId: projectActivityId,
+		catalogActivityId,
+	});
+	return {
+		id: catalogActivityId,
+		name: input.project.activityName,
+		assignmentId,
+		project: input.project,
+	};
 }
 
 /* ── cleanup ───────────────────────────────────────────────────────── */
@@ -569,11 +936,19 @@ async function cleanupAfterFailedSeed(
 async function cleanupOwned(db: Connection, owned: OwnedRows): Promise<void> {
 	await deleteByValues(
 		db,
+		'work_periods',
+		'assignment_id',
+		owned.assignmentIds
+	);
+	await deleteByValues(
+		db,
 		'user_activity_assignments',
 		'id',
 		owned.assignmentIds
 	);
 	await deleteByValues(db, 'projects', 'project_id', owned.projectIds);
+	await deleteByValues(db, 'activities_master', 'id', owned.activityIds);
+	await deleteByValues(db, 'functions_master', 'id', owned.disciplineIds);
 
 	if (owned.userIds.length > 0) {
 		const slots = owned.userIds.map(() => '?').join(', ');
@@ -687,6 +1062,30 @@ function parseJsonValue(value: unknown): unknown {
 }
 
 /* ── date and display helpers ──────────────────────────────────────── */
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1_000;
+
+function istDate(nowMs: number): string {
+	return new Date(nowMs + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+function shiftIstDate(date: string, days: number): string {
+	const shifted = new Date(`${date}T00:00:00Z`);
+	shifted.setUTCDate(shifted.getUTCDate() + days);
+	return shifted.toISOString().slice(0, 10);
+}
+
+function weekStartFor(date: string): string {
+	const anchor = new Date(`${date}T00:00:00Z`);
+	const weekday = anchor.getUTCDay();
+	return shiftIstDate(date, weekday === 0 ? -6 : 1 - weekday);
+}
+
+function dateOnly(value: string | Date): string {
+	return value instanceof Date
+		? value.toISOString().slice(0, 10)
+		: value.slice(0, 10);
+}
 
 function relativeMonths(now = new Date()): {
 	currentMonth: string;

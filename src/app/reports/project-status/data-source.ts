@@ -35,6 +35,11 @@ function toNumberOrZero(v: unknown): number {
 	return Number.isFinite(num) ? Math.max(0, num) : 0;
 }
 
+function toFiniteNumberOrZero(v: unknown): number {
+	const num = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
+	return Number.isFinite(num) ? num : 0;
+}
+
 // ── Project picker ──────────────────────────────────────────────────
 
 export interface ProjectStatusRow {
@@ -61,21 +66,44 @@ export async function fetchProjectStatusData(): Promise<ProjectStatusRow[]> {
 			COALESCE(NULLIF(p.project_title, ''), p.name, CONCAT('Project #', p.project_id)) AS project_name,
 			COALESCE(p.project_code, '')  AS project_code,
 			COALESCE(p.client_name, '')   AS client_name,
-			COALESCE(p.unit_qty, 0)       AS target_qty,
-			COALESCE(ua.cnt_users, 0)     AS people_assigned,
-			COALESCE(ua.sum_completed, 0) AS actual_qty
+			COALESCE(p.unit_qty, 0)       AS target_qty
 		FROM projects p
-		LEFT JOIN (
-			SELECT project_id,
-			       COUNT(DISTINCT user_id)         AS cnt_users,
-			       SUM(COALESCE(qty_completed, 0)) AS sum_completed
-			FROM user_activity_assignments
-			WHERE project_id IS NOT NULL
-			GROUP BY project_id
-		) ua ON ua.project_id = p.project_id
 		WHERE COALESCE(p.isDelete, 0) = 0
 		ORDER BY p.start_date DESC, p.project_id DESC`
 	)) as [DbRow[], unknown];
+	if (rows.length === 0) return [];
+
+	const [assignmentRows] = (await query(
+		`SELECT uaa.project_id, uaa.user_id, uaa.qty_completed,
+		        CASE WHEN uaa.work_period_entries IS NOT NULL
+		             THEN uaa.daily_entries ELSE NULL END AS daily_entries,
+		        uaa.work_period_entries
+		 FROM logged_activity_assignments uaa
+		 JOIN projects p ON p.project_id = uaa.project_id AND COALESCE(p.isDelete, 0) = 0
+		 WHERE uaa.project_id IS NOT NULL`
+	)) as [DbRow[], unknown];
+
+	const rollups = new Map<string, { users: Set<string>; actualQty: number }>();
+	for (const row of assignmentRows) {
+		const projectId = s(row, 'project_id');
+		if (!projectId) continue;
+		let rollup = rollups.get(projectId);
+		if (!rollup) {
+			rollup = { users: new Set(), actualQty: 0 };
+			rollups.set(projectId, rollup);
+		}
+		if (row.user_id != null) rollup.users.add(String(row.user_id));
+
+		// Work Period projections carry authoritative quantity. Legacy rows
+		// keep their independently stored aggregate, including zero fallback.
+		if (row.work_period_entries != null) {
+			for (const { entry } of parseDailyEntryRecords(row.daily_entries)) {
+				rollup.actualQty += toFiniteNumberOrZero(entry.qty_done);
+			}
+		} else {
+			rollup.actualQty += toFiniteNumberOrZero(row.qty_completed);
+		}
+	}
 
 	const result: ProjectStatusRow[] = [];
 	for (const row of rows) {
@@ -83,8 +111,9 @@ export async function fetchProjectStatusData(): Promise<ProjectStatusRow[]> {
 		const id = idStr ? parseInt(idStr, 10) : NaN;
 		if (!Number.isFinite(id)) continue;
 
+		const rollup = rollups.get(idStr);
 		const target = toNumberOrZero(row.target_qty);
-		const actual = toNumberOrZero(row.actual_qty);
+		const actual = toNumberOrZero(rollup?.actualQty ?? 0);
 		const balance = target - actual;
 
 		result.push({
@@ -92,7 +121,7 @@ export async function fetchProjectStatusData(): Promise<ProjectStatusRow[]> {
 			project_name: s(row, 'project_name', `Project #${id}`),
 			project_code: s(row, 'project_code'),
 			client_name: s(row, 'client_name'),
-			people_assigned: toNumberOrZero(row.people_assigned),
+			people_assigned: rollup?.users.size ?? 0,
 			target_qty: target,
 			actual_qty: actual,
 			balance,
@@ -357,7 +386,7 @@ export async function fetchActivityStatusReport(
 	try {
 		const [assignments] = await query(
 			`SELECT user_id, daily_entries
-			 FROM user_activity_assignments
+			 FROM logged_activity_assignments
 			 WHERE project_id = ?`,
 			[projectId]
 		);
@@ -405,7 +434,7 @@ export async function fetchActivityStatusReport(
 			}
 		}
 	} catch {
-		/* table may not exist */
+		/* view may not exist */
 	}
 
 	// ── 3. Finalize: ratio + sort by name ─────────────────────────

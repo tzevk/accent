@@ -5,8 +5,10 @@
  * - Capacity: working days × 8h, net of scheduled weekly offs (Sundays plus
  *   2nd/4th Saturdays), injected active holidays, and approved leave
  *   (full day 8h, half day 4h). Unsanctioned absence keeps its capacity.
- * - Logged Hours: uncapped sum of `user_activity_assignments.daily_entries`
- *   hours for the month — overtime counts, so overload reads above 100.
+ * - Logged Hours: uncapped sum of effective
+ *   `logged_activity_assignments.daily_entries` hours (legacy durations plus
+ *   Work Period attribution) for the month — overtime counts, so overload
+ *   reads above 100.
  * - Utilization: logged / capacity × 100, banded under 80 / 80–100 / over 100.
  * - Monthly Cost on the shared canonical CTC basis (`employer_cost` by
  *   presence, including an explicit zero; legacy gross only when the
@@ -991,7 +993,7 @@ async function collectUtilizationMonths(): Promise<string[]> {
 	}
 	try {
 		const [asgRows] = (await query(
-			`SELECT daily_entries FROM user_activity_assignments
+			`SELECT daily_entries FROM logged_activity_assignments
 			 WHERE daily_entries IS NOT NULL AND daily_entries NOT IN ('', '[]')`
 		)) as [DbRow[], unknown];
 		for (const row of asgRows) {
@@ -1000,7 +1002,7 @@ async function collectUtilizationMonths(): Promise<string[]> {
 			}
 		}
 	} catch {
-		/* user_activity_assignments may not exist */
+		/* logged_activity_assignments may not exist */
 	}
 	// App-activity months: the same two sources the employment window falls
 	// back to. Restricted to live Payroll employees so the picker matches the
@@ -1517,7 +1519,7 @@ async function loadUtilizationSpan(
 		const [assignmentRows] = (await query(
 			`SELECT uaa.employee_id, uaa.daily_entries,
 			        u.employee_id AS user_employee_id
-			 FROM user_activity_assignments uaa
+			 FROM logged_activity_assignments uaa
 			 LEFT JOIN users u ON u.id = uaa.user_id
 			 WHERE uaa.status <> 'Cancelled'
 			   AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')`
@@ -1533,7 +1535,7 @@ async function loadUtilizationSpan(
 			entriesByEmployee.set(empId, arr);
 		}
 	} catch {
-		/* user_activity_assignments may not exist */
+		/* logged_activity_assignments may not exist */
 	}
 
 	// The Logged Hours evidence bounds come from the payloads already in hand:

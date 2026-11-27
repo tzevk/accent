@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
 	statusKind,
 	hoursForStatus,
@@ -10,7 +10,40 @@ import {
 	monthLabel,
 	buildProjectRows,
 	computeMonthlyHours,
+	fetchTimesheetMeta,
 } from '@/app/reports/timesheet-report/data-source';
+
+const mocks = vi.hoisted(() => ({ query: vi.fn() }));
+vi.mock('@/utils/database', () => ({ query: mocks.query }));
+
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+describe('fetchTimesheetMeta', () => {
+	it('offers the current Asia/Kolkata month near UTC midnight', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-31T20:00:00.000Z'));
+		mocks.query.mockReset();
+		mocks.query
+			.mockResolvedValueOnce([
+				[
+					{
+						id: 7,
+						employee_id: 'EMP-007',
+						name: 'Eligible Employee',
+					},
+				],
+			])
+			.mockResolvedValueOnce([[]])
+			.mockResolvedValueOnce([[]]);
+
+		const meta = await fetchTimesheetMeta();
+
+		expect(meta.months).toContain('2026-02');
+		expect(meta.latest_month).toBe('2026-02');
+	});
+});
 
 describe('statusKind', () => {
 	it('classifies working statuses', () => {
@@ -475,6 +508,76 @@ describe('buildProjectRows', () => {
 	it('treats a malformed month as matching nothing', () => {
 		const rows = buildProjectRows(raw, 'bogus');
 		expect(rows[0].days).toEqual({});
+	});
+});
+
+describe('mixed legacy and Work Period Timesheet', () => {
+	const mixedRow = {
+		project_id: 25,
+		project_code: '25',
+		project_name: 'Pressure Vessel',
+		activity_name: 'PID Markup',
+		discipline_name: 'Piping',
+		status: 'In Progress',
+		estimated_hours: 40,
+		// Before the Work Period was recorded, only the legacy hours were
+		// present in this aggregate.
+		actual_hours: 6,
+		qty_assigned: 100,
+		qty_completed: 70,
+		start_date: null,
+		due_date: null,
+		daily_entries: JSON.stringify([
+			{ date: '2026-04-30', hours: 6, qty_done: 10 },
+			// Work Period 501: 30 April 22:00–1 May 02:00 IST.
+			{ date: '2026-04-30', hours: 2, work_period_id: 501 },
+			{ date: '2026-05-01', hours: 2, work_period_id: 501 },
+			{ date: '2026-05-02', hours: 1, qty_done: 5 },
+		]),
+	};
+
+	it('credits a cross-month period by day without trusting the stale aggregate', () => {
+		const april = buildProjectRows([mixedRow], '2026-04')[0];
+		expect(april).toMatchObject({
+			estimated_hours: 40,
+			actual_hours: 11,
+			qty_completed: 10,
+			days: { '2026-04-30': 8 },
+			total_hours: 8,
+		});
+		expect(
+			computeMonthlyHours([april], [], {
+				standard_working_hours: 8,
+				half_day_hours: 4,
+			})
+		).toMatchObject({
+			source: 'project',
+			daily: { '2026-04-30': 8 },
+			normal: 8,
+			overtime: 0,
+			total: 8,
+		});
+
+		const may = buildProjectRows([mixedRow], '2026-05')[0];
+		expect(may).toMatchObject({
+			estimated_hours: 40,
+			actual_hours: 11,
+			qty_completed: 5,
+			days: { '2026-05-01': 2, '2026-05-02': 1 },
+			total_hours: 3,
+		});
+		expect(
+			computeMonthlyHours([may], [], {
+				standard_working_hours: 8,
+				half_day_hours: 4,
+			})
+		).toMatchObject({
+			source: 'project',
+			daily: { '2026-05-01': 2, '2026-05-02': 1 },
+			normal: 3,
+			overtime: 0,
+			total: 3,
+		});
 	});
 });
 

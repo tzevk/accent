@@ -46,13 +46,15 @@ const mockProjectEmpty = {
 	project_name: 'Empty Project',
 };
 
-// user_activity_assignments rows matching UaaRow interface
+// logged_activity_assignments rows matching the report's row contract
 const mockAssignmentsForAlice = [
 	{
 		user_id: 1,
 		project_id: 10,
 		activity_id: 'act-1',
 		activity_name: 'Foundation Work',
+		qty_completed: 999,
+		work_period_entries: '[]',
 		sub_activity_name: 'Excavation',
 		estimated_hours: 12,
 		daily_entries: JSON.stringify([
@@ -115,7 +117,7 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 				return Promise.resolve([mockEmployees]);
 			if (sql.includes('FROM projects'))
 				return Promise.resolve([[mockProjectOmega, mockProjectEmpty]]);
-			if (sql.includes('FROM user_activity_assignments'))
+			if (sql.includes('FROM logged_activity_assignments'))
 				return Promise.resolve([mockAssignmentsForAlice]);
 			return Promise.resolve([[]]);
 		});
@@ -132,7 +134,7 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 		expect(alice.user_name).toBe('Alice Sharma');
 		expect(alice.rows.length).toBe(2);
 
-		// Verify row shape
+		expect(alice.rows[0].qty_completed).toBe(5);
 		expect(alice.rows[0]).toMatchObject({
 			date: expect.any(String),
 			project_code: 'P-010',
@@ -225,7 +227,7 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 			if (sql.includes('FROM employees')) return Promise.resolve([[]]);
 			if (sql.includes('FROM projects'))
 				return Promise.resolve([[{ project_id: 99, project_code: 'P-099' }]]);
-			if (sql.includes('FROM user_activity_assignments'))
+			if (sql.includes('FROM logged_activity_assignments'))
 				return Promise.resolve([[badAssignment]]);
 			return Promise.resolve([[]]);
 		});
@@ -262,7 +264,7 @@ describe('Employee Report API — GET /api/reports/employee-report', () => {
 				return Promise.resolve([[{ id: 3, first_name: 'C' }]]);
 			if (sql.includes('FROM projects'))
 				return Promise.resolve([[mockProjectOmega]]);
-			if (sql.includes('FROM user_activity_assignments'))
+			if (sql.includes('FROM logged_activity_assignments'))
 				return Promise.resolve([mockAssignmentsForAlice]);
 			return Promise.resolve([[]]);
 		});

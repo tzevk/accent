@@ -1,13 +1,25 @@
 'use client';
 
-import React, {
-	useState,
-	useEffect,
-	useLayoutEffect,
-	useRef,
-	useId,
-} from 'react';
-import { fetchJSON } from '@/utils/http';
+import { useState, useEffect, useLayoutEffect, useRef, useId } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api-client';
+import {
+	istDate,
+	parseIstLocal,
+	shiftIstDate,
+	weekStartFor,
+} from '@/lib/work-periods';
+import { formatDate, formatNumber } from '@/lib/format';
+import {
+	formatWorkPeriodClock,
+	WorkPeriodTimePicker,
+} from '@/components/WorkPeriodTimePicker';
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from '@/components/ui/tooltip';
 import Link from 'next/link';
 import {
 	ClipboardDocumentListIcon,
@@ -20,16 +32,13 @@ import {
 	PencilSquareIcon,
 	TrashIcon,
 	ExclamationCircleIcon,
+	ChevronLeftIcon,
+	ChevronRightIcon,
+	LockClosedIcon,
 } from '@heroicons/react/24/outline';
 
-// Browser-local YYYY-MM-DD. `toISOString` is UTC, which reports tomorrow for
-// evening users west of UTC and yesterday for early users east of it.
-const localDateStr = (date = new Date()) =>
-	`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-		date.getDate()
-	).padStart(2, '0')}`;
-const todayStr = () => localDateStr();
-const monthStartStr = () => `${todayStr().slice(0, 7)}-01`;
+const currentIstDate = () => istDate(Date.now());
+const currentWeekStart = () => weekStartFor(currentIstDate());
 
 const STATUS_BADGE_CLASSES = {
 	Completed: 'bg-green-100 text-green-700 border-green-200',
@@ -41,8 +50,18 @@ const STATUS_BADGE_CLASSES = {
 	'Not Started': 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
-const getStatusBadge = (status) =>
-	STATUS_BADGE_CLASSES[status] || 'bg-gray-100 text-gray-600 border-gray-200';
+function StatusBadge({ status }) {
+	const label = status || 'Not Started';
+	const color =
+		STATUS_BADGE_CLASSES[label] || 'bg-gray-100 text-gray-600 border-gray-200';
+	return (
+		<span
+			className={`inline-block max-w-full rounded-full border px-1 py-0.5 text-center text-[0.6875rem] font-semibold leading-tight wrap-break-word ${color}`}
+		>
+			{label}
+		</span>
+	);
+}
 
 /**
  * Project navigation vocabulary — one link pattern for every Project name on
@@ -103,23 +122,25 @@ function DocumentCountMarker({ count, className = 'h-3.5 w-3.5' }) {
  * per project instead of two differently worded links that open it.
  */
 function projectLinkName(project) {
-	return project?.project_name || project?.project_code || project?.project_id;
+	return (
+		project?.projectName ||
+		project?.project_name ||
+		project?.projectCode ||
+		project?.project_code ||
+		project?.projectId ||
+		project?.project_id
+	);
 }
 
-/**
- * Textarea that grows with its content so users always see what they type.
- * Starts at one row to match table density, expands as the user types, and
- * scrolls internally once it reaches its max height (set via className).
- */
+/** Compact incumbent textarea: one row initially, growing with its content. */
 function AutoGrowTextarea({ value, className = '', ...props }) {
 	const ref = useRef(null);
 
 	useLayoutEffect(() => {
-		const el = ref.current;
-		if (!el) return;
-		// border-box sizing: scrollHeight excludes the 2px vertical borders
-		el.style.height = 'auto';
-		el.style.height = `${el.scrollHeight + 2}px`;
+		const element = ref.current;
+		if (!element) return;
+		element.style.height = 'auto';
+		element.style.height = `${element.scrollHeight + 2}px`;
 	}, [value]);
 
 	return (
@@ -136,13 +157,8 @@ function AutoGrowTextarea({ value, className = '', ...props }) {
 /**
  * Whether an element's rendered text is cut off by its own box.
  *
- * The measurement is the rendered overflow itself — `scrollWidth` past
- * `clientWidth` on the element that carries the ellipsis — taken after layout
- * and repeated whenever the box changes, because the table re-cuts its fixed
- * columns on resize and when the lazy section first mounts, and webfonts change
- * the text width without resizing the box. A value that fits measures false, so
- * no affordance is ever built for it. Layout does not run under jsdom (every
- * width reads zero), which is the right answer there too.
+ * Measure both axes: project codes stay on one line and activity labels
+ * wrap to two. Remeasure when the cell or its font changes.
  */
 function useIsTruncated(ref, value) {
 	const [truncated, setTruncated] = useState(false);
@@ -152,7 +168,10 @@ function useIsTruncated(ref, value) {
 		if (!element) return;
 
 		const measure = () =>
-			setTruncated(element.scrollWidth - element.clientWidth > 1);
+			setTruncated(
+				element.scrollWidth - element.clientWidth > 1 ||
+					element.scrollHeight - element.clientHeight > 1
+			);
 		measure();
 
 		let active = true;
@@ -193,7 +212,7 @@ function FullCellValue({ id, value, shown }) {
 			id={id}
 			data-testid="truncated-cell-value"
 			hidden={!shown}
-			className="mt-0.5 block w-full rounded border border-purple-200 bg-purple-50/70 px-1 py-0.5 text-left text-xs font-normal leading-snug text-[#4A1254] shadow-sm"
+			className="mt-0.5 block w-full rounded border border-purple-200 bg-purple-50/70 px-1 py-0.5 text-left text-xs font-normal leading-snug wrap-break-word text-[#4A1254] shadow-sm"
 		>
 			{value}
 		</span>
@@ -223,7 +242,7 @@ function ActivityTextValue({ value, className = '' }) {
 				data-truncated={truncated ? 'true' : undefined}
 				tabIndex={truncated ? 0 : undefined}
 				title={value}
-				className={`block truncate leading-tight ${className}`}
+				className={`line-clamp-2 text-xs leading-snug wrap-break-word ${className}`}
 			>
 				{value}
 			</span>
@@ -259,7 +278,7 @@ function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 				aria-label={documentsName}
 				title={documentsName}
 				aria-describedby={truncated ? fullValueId : undefined}
-				className="inline-flex max-w-full items-center gap-1 font-mono text-xs text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+				className="inline-flex max-w-full items-center gap-0.5 font-mono text-xs text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 			>
 				<span
 					ref={ref}
@@ -268,7 +287,7 @@ function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 				>
 					{codeText}
 				</span>
-				<DocumentCountMarker count={documentCount} className="h-3 w-3" />
+				<DocumentCountMarker count={documentCount} className="size-3" />
 			</Link>
 			{truncated && (
 				<FullCellValue id={fullValueId} value={codeText} shown={focused} />
@@ -277,162 +296,366 @@ function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 	);
 }
 
-const REMARK_STATUS_LABELS = {
-	saving: 'Saving remark…',
-	saved: 'Remark saved',
-	error: 'Failed to save remark',
-};
+const WORK_PERIOD_COLUMNS = [
+	{
+		label: 'Project Number',
+		sortKey: 'project_code',
+		help: 'Select the project number to open its documents.',
+	},
+	{
+		label: 'Discipline',
+		sortKey: 'discipline',
+		help: 'The specialty responsible for the activity.',
+	},
+	{
+		label: 'Activity',
+		sortKey: 'activity_name',
+		help: 'The type of work you did on the project.',
+	},
+	{
+		label: 'Sub Activity',
+		sortKey: 'sub_activity_name',
+		help: 'Choose a more specific task when the activity has sub-activities.',
+	},
+	{
+		label: 'Activity Description',
+		alignLeft: true,
+		help: 'Describe the work you did. This is required to save a Work Period.',
+	},
+	{
+		label: 'Default MH',
+		sortKey: 'default_manhours',
+		help: 'Preset hours for the activity, not hours you worked.',
+	},
+	{
+		label: 'Start Period',
+		help: 'When you started work, in Indian Standard Time (IST).',
+	},
+	{
+		label: 'End Period',
+		help: 'When you finished work, in IST. Save only after the work ends.',
+	},
+	{
+		label: 'Manhours',
+		sortKey: 'planned_hours',
+		help: 'Hours worked, calculated from the start and end times for new entries.',
+	},
+	{
+		label: 'Quantity',
+		sortKey: 'qty_completed',
+		help: 'Optional: how much work you completed.',
+	},
+	{
+		label: 'Date Completed',
+		sortKey: 'due_date',
+		help: 'Sets the end date for new entries and the date the quantity counts toward.',
+	},
+	{
+		label: 'Status',
+		sortKey: 'status',
+		help: 'The current status of the project activity.',
+	},
+	{
+		label: 'Actions',
+		help: 'Edit or delete eligible Work Periods. A lock means the row is read-only.',
+	},
+];
 
-/** Compact save-state cue for the inline remark editor (spinner / tick / alert / dirty dot). */
-function RemarkStatus({ status, isDirty }) {
-	if (status === 'saving') {
-		return (
-			<span
-				className="pointer-events-none absolute right-1 top-1 flex items-center"
-				title={REMARK_STATUS_LABELS.saving}
-			>
-				<span className="inline-block w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-			</span>
-		);
-	}
-	if (status === 'saved') {
-		return (
-			<span
-				className="pointer-events-none absolute right-1 top-1 flex items-center"
-				role="status"
-				title={REMARK_STATUS_LABELS.saved}
-			>
-				<CheckIcon className="w-3 h-3 rounded-full bg-white p-px text-green-600 shadow-sm" />
-			</span>
-		);
-	}
-	if (status === 'error') {
-		return (
-			<span
-				className="pointer-events-none absolute right-1 top-1 flex items-center"
-				role="alert"
-				title={REMARK_STATUS_LABELS.error}
-			>
-				<ExclamationCircleIcon className="w-3 h-3 rounded-full bg-white p-px text-red-500 shadow-sm" />
-			</span>
-		);
-	}
-	if (isDirty) {
-		return (
-			<span
-				className="pointer-events-none absolute right-1 top-1.5 flex items-center"
-				title="Unsaved change — press Esc to discard or Ctrl+Enter to save"
-			>
-				<span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ring-1 ring-amber-200" />
-			</span>
-		);
-	}
-	return null;
-}
-
-function SortHeader({ label, sortKey, sort, onSort }) {
-	const isActive = sort.key === sortKey;
-	const arrow = !isActive ? '' : sort.dir === 'asc' ? '▲' : '▼';
+function WorkPeriodColumnHeader({ column, sort, onSort }) {
+	const { label, help, sortKey, alignLeft } = column;
+	const isActive = Boolean(sortKey && sort.key === sortKey);
 	return (
 		<th
-			className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-xs leading-tight select-none"
+			scope="col"
+			className={`relative font-bold text-[#64126D] text-xs leading-tight ${sortKey ? 'px-0 text-center' : alignLeft ? 'px-2 text-left' : 'px-2 text-center'}`}
 			aria-sort={
-				isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+				isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined
 			}
 		>
-			<button
-				type="button"
-				onClick={() => onSort(sortKey)}
-				className={`inline-flex items-center justify-center gap-1 w-full ${
-					isActive ? 'text-[#64126D]' : 'text-[#64126D]/80'
-				} hover:text-[#7F2487] focus:outline-none focus:ring-1 focus:ring-purple-300 rounded`}
-				title={`Sort by ${label}`}
-			>
-				<span>{label}</span>
-				{isActive ? (
-					<span className="text-xs leading-none">{arrow}</span>
+			<Tooltip>
+				{sortKey ? (
+					<TooltipTrigger
+						type="button"
+						delay={300}
+						onClick={() => onSort(sortKey)}
+						className="flex min-h-6 w-full items-center justify-center gap-0.5 rounded px-1 hover:underline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-purple-500"
+					>
+						<span className="min-w-0 max-w-full text-balance">{label}</span>
+						<ArrowsUpDownIcon
+							aria-hidden="true"
+							className={`absolute bottom-1 left-1/2 size-2.5 shrink-0 -translate-x-1/2 @min-[76rem]:static @min-[76rem]:translate-x-0 ${isActive ? 'opacity-100' : 'opacity-50'}`}
+						/>
+					</TooltipTrigger>
 				) : (
-					<ArrowsUpDownIcon className="w-3 h-3 opacity-50" />
+					<TooltipTrigger
+						render={<span />}
+						tabIndex={0}
+						delay={300}
+						className="block rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+					>
+						{label}
+					</TooltipTrigger>
 				)}
-			</button>
+				<TooltipContent>{help}</TooltipContent>
+			</Tooltip>
 		</th>
 	);
 }
 
-export default function ProjectActivityAssignments({
+const EMPTY_LEGACY_DATA = {
+	assignments: [],
+	emptyProjects: [],
+	accessibleProjects: [],
+	documentCounts: {},
+};
+
+const EMPTY_ADD_FORM = {
+	projectId: '',
+	disciplineId: '',
+	activityId: '',
+	subActivityId: '',
+	start: '',
+	end: '',
+	quantity: '',
+	dateCompleted: '',
+	remarks: '',
+};
+
+const textCollator = new Intl.Collator(undefined, {
+	numeric: true,
+	sensitivity: 'base',
+});
+
+function numberValue(value) {
+	const number = Number(value);
+	return Number.isFinite(number) ? number : 0;
+}
+
+function formatQuantity(value) {
+	return formatNumber(value).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+}
+
+function formatDateLabel(value) {
+	if (!value) return '–';
+	return formatDate(`${value.slice(0, 10)}T00:00:00+05:30`, {
+		timeZone: 'Asia/Kolkata',
+	});
+}
+
+function periodClock(endpoint) {
+	return endpoint?.slice(11, 16) ?? '';
+}
+
+function startsPreviousDay({ start, end }) {
+	return Boolean(start && end && end < start);
+}
+
+function addEndpoints(fields) {
+	const endDate = fields.dateCompleted;
+	const startDate = startsPreviousDay(fields)
+		? shiftIstDate(endDate, -1)
+		: endDate;
+	return {
+		start: `${startDate}T${fields.start}`,
+		end: `${endDate}T${fields.end}`,
+	};
+}
+
+function editEndpoint(saved, time) {
+	// A clock edit must not move hours to a different date.
+	if (!saved || !time) return '';
+	return time === periodClock(saved) ? saved : `${saved.slice(0, 10)}T${time}`;
+}
+
+function periodDateHint(endpoint, dateCompleted) {
+	const date = endpoint?.slice(0, 10);
+	if (!date || date === dateCompleted) return '';
+	if (
+		dateCompleted &&
+		date < dateCompleted &&
+		shiftIstDate(date, 1) === dateCompleted
+	)
+		return 'Previous day';
+	return formatDateLabel(date);
+}
+
+function PeriodTime({ endpoint, dateCompleted }) {
+	if (!endpoint) return null;
+	const hint = periodDateHint(endpoint, dateCompleted);
+	return (
+		<>
+			<time className="tabular-nums" dateTime={`${endpoint}+05:30`}>
+				{formatWorkPeriodClock(periodClock(endpoint))}
+			</time>
+			{hint && (
+				<span className="block text-xs leading-snug text-muted-foreground">
+					{hint}
+				</span>
+			)}
+		</>
+	);
+}
+
+function formatWeekRange(weekStart) {
+	const start = formatDate(`${weekStart}T00:00:00+05:30`, {
+		timeZone: 'Asia/Kolkata',
+	}).split(' ');
+	const end = formatDate(`${shiftIstDate(weekStart, 6)}T00:00:00+05:30`, {
+		timeZone: 'Asia/Kolkata',
+	}).split(' ');
+	const startDay = start[0].replace(/^0/, '');
+	const endDay = end[0].replace(/^0/, '');
+	if (start[2] === end[2]) {
+		return `${startDay} ${start[1]} – ${endDay} ${end[1]} ${end[2]}`;
+	}
+	return `${startDay} ${start[1]} ${start[2]} – ${endDay} ${end[1]} ${end[2]}`;
+}
+
+function rawLegacyEntries(assignment) {
+	if (
+		Object.prototype.hasOwnProperty.call(assignment, 'legacy_daily_entries')
+	) {
+		return Array.isArray(assignment.legacy_daily_entries)
+			? assignment.legacy_daily_entries
+			: [];
+	}
+	return Array.isArray(assignment.daily_entries)
+		? assignment.daily_entries
+		: [];
+}
+
+function errorMessage(error, fallback) {
+	return error?.message || fallback;
+}
+
+function periodSearchText(period) {
+	return [
+		period.projectCode,
+		period.projectName,
+		period.discipline,
+		period.activityName,
+		period.subActivityName,
+		period.employeeName,
+		period.remarks,
+	]
+		.filter(Boolean)
+		.join(' ')
+		.toLowerCase();
+}
+
+function legacySearchText(row) {
+	return [
+		row.projectCode,
+		row.projectName,
+		row.discipline,
+		row.activityName,
+		row.subActivityName,
+		row.remarks,
+		row.status,
+	]
+		.filter(Boolean)
+		.join(' ')
+		.toLowerCase();
+}
+
+// The dashboard's own failed legacy fetch stays silent; its error line owns
+// the message (#340).
+export default function ProjectActivityAssignments({ userId, ...props }) {
+	return (
+		<ProjectActivityAssignmentsForUser
+			key={userId}
+			userId={userId}
+			{...props}
+		/>
+	);
+}
+
+function ProjectActivityAssignmentsForUser({
 	userId,
 	preloadedData,
-	// The dashboard already loaded this data and reported a failure itself
-	// (#340). The section then stays out of the way: no second fetch, no
-	// "no access" silence, since the reader is looking at the dashboard's
-	// error line instead.
 	fetchFailed = false,
 }) {
-	const [assignments, setAssignments] = useState([]);
-	const [emptyProjects, setEmptyProjects] = useState([]);
-	const [accessibleProjects, setAccessibleProjects] = useState([]);
-	// Per-project document counts keyed by project id (all three document stores).
-	const [documentCounts, setDocumentCounts] = useState({});
-	const [loading, setLoading] = useState(true);
-	const [hasAccess, setHasAccess] = useState(true);
-	const [remarkValues, setRemarkValues] = useState({});
-	// Per-row remark save state: 'saving' | 'saved' | 'error' (keyed by rowKey)
-	const [remarkStatus, setRemarkStatus] = useState({});
-	const [remarkErrors, setRemarkErrors] = useState({});
-	const remarkTimersRef = useRef({});
-	// Separate refs: the add row and the edit row can be open at once, and one
-	// editor must never report the other's date constraint.
-	const addDateRef = useRef(null);
-	const editDateRef = useRef(null);
-	const [saving, setSaving] = useState(false);
-	const [disciplineOptions, setDisciplineOptions] = useState([]);
-
-	const [addingProjectId, setAddingProjectId] = useState(null);
-	const [addForm, setAddForm] = useState({
-		project_id: '',
-		discipline_id: '',
-		activity_id: '',
-		sub_activity_id: '',
-		manhours_assigned: '',
-		quantity: '',
-		due_date: todayStr(),
-		status: 'Not Started',
-		remark: '',
-	});
-
-	// Edit / delete state
-	const [editingKey, setEditingKey] = useState(null); // "project_id-activity_id"
-	const [editForm, setEditForm] = useState({});
-	const [savingEdit, setSavingEdit] = useState(false);
-	const [deleting, setDeleting] = useState(new Set());
-
-	// Search / filter / sort state
+	const queryClient = useQueryClient();
+	const errorRef = useRef(null);
+	const formId = useId();
+	const descriptionId = `${formId}-description`;
+	const actionErrorId = `${formId}-error`;
+	const periodsCaptionId = `${formId}-periods-caption`;
+	const [week, setWeek] = useState(currentWeekStart);
+	const [fromDate, setFromDate] = useState(currentWeekStart);
+	const [toDate, setToDate] = useState(() =>
+		shiftIstDate(currentWeekStart(), 6)
+	);
 	const [search, setSearch] = useState('');
 	const [statusFilter, setStatusFilter] = useState('all');
-	const [startDate, setStartDate] = useState(() => monthStartStr());
-	const [endDate, setEndDate] = useState(() => todayStr());
 	const [sort, setSort] = useState({ key: 'due_date', dir: 'desc' });
+	const [isAdding, setIsAdding] = useState(false);
+	const [addForm, setAddForm] = useState({ ...EMPTY_ADD_FORM });
+	const [editing, setEditing] = useState(null);
+	const [actionError, setActionError] = useState('');
+	const descriptionRequiredError = 'Enter an Activity Description.';
+	const descriptionInvalid = actionError === descriptionRequiredError;
+	const editorOpen = isAdding || Boolean(editing);
 
-	const toggleSort = (key) => {
-		setSort((prev) => {
-			if (prev.key !== key) return { key, dir: 'asc' };
-			if (prev.dir === 'asc') return { key, dir: 'desc' };
-			return { key: null, dir: 'asc' };
-		});
-	};
+	useEffect(() => {
+		if (descriptionInvalid) {
+			document.getElementById(descriptionId)?.focus();
+		} else if (actionError) {
+			errorRef.current?.focus();
+		}
+	}, [actionError, descriptionId, descriptionInvalid]);
 
-	const handleRemarkChange = (key, value) => {
-		setRemarkValues((prev) => ({ ...prev, [key]: value }));
-	};
+	const legacyQuery = useQuery({
+		queryKey: ['activity-assignments', userId],
+		queryFn: async () => {
+			const response = await apiGet(
+				`/api/users/${userId}/activity-assignments`
+			);
+			if (!response?.success) {
+				throw new Error(
+					response?.error || 'Project activities could not load.'
+				);
+			}
+			return response.data;
+		},
+		enabled: Boolean(userId && !preloadedData && !fetchFailed),
+	});
 
-	/**
-	 * An acknowledged project-activity save resets the dashboard's activity-log
-	 * reminder. A response that reports affected_rows only counts when a row
-	 * actually changed; success responses without that field count as saved.
-	 */
-	const emitActivityLogSaved = (res) => {
+	const periodsQuery = useQuery({
+		queryKey: ['work-periods', userId, week],
+		queryFn: async () => {
+			const response = await apiGet('/api/work-periods', { week, userId });
+			if (!response?.success) {
+				throw new Error(response?.error || 'Work Periods could not load.');
+			}
+			return response.data;
+		},
+		enabled: Boolean(userId && !fetchFailed),
+	});
+
+	const optionsQuery = useQuery({
+		queryKey: ['activity-master', 'options'],
+		queryFn: async () => {
+			const response = await apiGet('/api/activity-master/options');
+			if (!response?.success) {
+				throw new Error(response?.error || 'Activities could not load.');
+			}
+			return response.data || [];
+		},
+		enabled: Boolean(userId && isAdding && !fetchFailed),
+	});
+
+	const periodData = periodsQuery.data;
+
+	const emitActivityLogSaved = (response) => {
 		if (typeof window === 'undefined') return;
-		if (res && 'affected_rows' in res && !(res.affected_rows > 0)) return;
+		if (
+			response &&
+			'affected_rows' in response &&
+			!(numberValue(response.affected_rows) > 0)
+		) {
+			return;
+		}
 		window.dispatchEvent(
 			new CustomEvent('activity-log-saved', {
 				detail: { userId, savedAt: Date.now() },
@@ -440,1248 +663,1336 @@ export default function ProjectActivityAssignments({
 		);
 	};
 
-	// Auto-save an edited remark on commit (blur / Ctrl+Enter). Skips the
-	// request when the value was reverted back to the saved one.
-	const saveRemark = async (projectId, activityId, key, originalValue) => {
-		const value = remarkValues[key];
-		if (value === undefined || value === originalValue) return;
-
-		setRemarkStatus((prev) => ({ ...prev, [key]: 'saving' }));
-		try {
-			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					project_id: projectId,
-					activity_id: activityId,
-					remarks: value,
-				}),
-			});
-			emitActivityLogSaved(res);
-			setRemarkStatus((prev) => ({ ...prev, [key]: 'saved' }));
-			setRemarkErrors((prev) => {
-				if (!(key in prev)) return prev;
-				const next = { ...prev };
-				delete next[key];
-				return next;
-			});
-			clearTimeout(remarkTimersRef.current[key]);
-			remarkTimersRef.current[key] = setTimeout(() => {
-				setRemarkStatus((prev) => {
-					if (prev[key] !== 'saved') return prev;
-					const next = { ...prev };
-					delete next[key];
-					return next;
-				});
-			}, 1800);
-		} catch (err) {
-			console.error('Failed to save remark:', err);
-			setRemarkStatus((prev) => ({ ...prev, [key]: 'error' }));
-			setRemarkErrors((prev) => ({
-				...prev,
-				[key]: err?.message || 'Failed to save remark',
-			}));
-		}
-	};
-
-	// Clear any pending "saved" indicator timers on unmount.
-	useEffect(
-		() => () => {
-			Object.values(remarkTimersRef.current).forEach(clearTimeout);
+	const mutation = useMutation({
+		mutationFn: async ({ method, body }) => {
+			const response =
+				method === 'POST'
+					? await apiPost('/api/work-periods', body)
+					: method === 'PUT'
+						? await apiPut('/api/work-periods', body)
+						: await apiDelete('/api/work-periods', body);
+			if (!response?.success) {
+				throw new Error(
+					response?.error || 'The Work Period could not be saved.'
+				);
+			}
+			return response;
 		},
-		[]
-	);
+		onSuccess: async (response, variables) => {
+			if (variables.method !== 'DELETE') emitActivityLogSaved(response);
+			if (variables.method === 'POST') setIsAdding(false);
+			if (variables.method === 'PUT') setEditing(null);
+			setActionError('');
+			await queryClient.invalidateQueries({
+				queryKey: ['work-periods', userId],
+			});
+		},
+		onError: (error) => {
+			toast.error(
+				errorMessage(error, 'The Work Period could not be saved. Try again.'),
+				{
+					id: actionErrorId,
+					ariaProps: { role: 'alert', 'aria-live': 'assertive' },
+				}
+			);
+		},
+	});
 
-	// Use preloaded data if available (from parent dashboard)
-	useEffect(() => {
-		if (preloadedData) {
-			setAssignments(preloadedData.assignments || []);
-			setAccessibleProjects(preloadedData.accessibleProjects || []);
-			setEmptyProjects(preloadedData.emptyProjects || []);
-			setDocumentCounts(preloadedData.documentCounts || {});
-			setLoading(false);
-		}
-	}, [preloadedData]);
+	const legacyAccessDenied =
+		!preloadedData &&
+		legacyQuery.isError &&
+		/unauthorized|forbidden|no access|request failed \(401\)|request failed \(403\)/i.test(
+			legacyQuery.error?.message || ''
+		);
 
-	// Only fetch if no preloaded data provided
-	useEffect(() => {
-		if (!userId || preloadedData || fetchFailed) return;
-		loadAssignments();
-	}, [userId, preloadedData, fetchFailed]);
+	if (fetchFailed || legacyAccessDenied) return null;
 
-	// Load discipline/activity/sub-activity dropdown options
-	useEffect(() => {
-		if (!userId) return;
-		(async () => {
-			try {
-				const res = await fetchJSON('/api/activity-master/options');
-				if (res?.success) setDisciplineOptions(res.data || []);
-			} catch (err) {
-				console.error('Failed to load activity options:', err);
-			}
-		})();
-	}, [userId]);
-
-	const loadAssignments = async () => {
-		try {
-			const response = await fetch(`/api/users/${userId}/activity-assignments`);
-			if (response.status === 401 || response.status === 403) {
-				setHasAccess(false);
-				setLoading(false);
-				return;
-			}
-			const res = await response.json();
-			if (res.success) {
-				setAccessibleProjects(res.data.accessibleProjects || []);
-				setAssignments(res.data.assignments || []);
-				setEmptyProjects(res.data.emptyProjects || []);
-				setDocumentCounts(res.data.documentCounts || {});
-			} else {
-				setHasAccess(false);
-			}
-		} catch (err) {
-			console.error('Failed to load activity assignments:', err);
-			setHasAccess(false);
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const formatShortDate = (dateStr) => {
-		if (!dateStr) return '–';
-		const d = new Date(dateStr + 'T00:00:00');
-		return d.toLocaleDateString('en-GB', {
-			day: '2-digit',
-			month: 'short',
-			year: 'numeric',
-		});
-	};
-
-	// ── Open the inline add row ──
-	const openAddRow = () => {
-		setAddingProjectId('new');
-		setAddForm({
-			project_id: '',
-			discipline_id: '',
-			activity_id: '',
-			sub_activity_id: '',
-			manhours_assigned: '',
-			quantity: '',
-			due_date: todayStr(),
-			status: 'Not Started',
-			remark: '',
-		});
-	};
-
-	const closeAddRow = () => {
-		if (saving) return;
-		setAddingProjectId(null);
-	};
-
+	const legacyData = preloadedData || legacyQuery.data || EMPTY_LEGACY_DATA;
+	const assignments = Array.isArray(legacyData.assignments)
+		? legacyData.assignments
+		: [];
+	const emptyProjects = Array.isArray(legacyData.emptyProjects)
+		? legacyData.emptyProjects
+		: [];
+	const accessibleProjects = Array.isArray(legacyData.accessibleProjects)
+		? legacyData.accessibleProjects
+		: [];
+	const documentCounts = legacyData.documentCounts || {};
+	const periods = Array.isArray(periodData?.periods) ? periodData.periods : [];
+	const canLog = periodData?.canLog === true;
+	const today = periodData?.today || currentIstDate();
+	const yesterday = shiftIstDate(today, -1);
+	const currentWeek = periodData?.today
+		? weekStartFor(periodData.today)
+		: currentWeekStart();
+	const activeWeek = periodData?.weekStart || week;
+	const weekEnd = shiftIstDate(activeWeek, 6);
+	const disciplineOptions = optionsQuery.data || [];
 	const selectedDiscipline = disciplineOptions.find(
-		(d) => d.id === addForm.discipline_id
+		(discipline) => String(discipline.id) === String(addForm.disciplineId)
 	);
 	const selectedActivity = selectedDiscipline?.activities?.find(
-		(a) => a.id === addForm.activity_id
+		(activity) => String(activity.id) === String(addForm.activityId)
+	);
+	const selectedSubActivities = selectedActivity?.subActivities || [];
+
+	const projects = [];
+	const seenProjects = new Set();
+	const pushProject = (project) => {
+		if (!project) return;
+		const projectId = project.projectId ?? project.project_id;
+		if (projectId === null || projectId === undefined || projectId === '')
+			return;
+		const key = String(projectId);
+		if (seenProjects.has(key)) return;
+		seenProjects.add(key);
+		projects.push({
+			projectId,
+			projectCode: project.projectCode ?? project.project_code ?? '',
+			projectName: project.projectName ?? project.project_name ?? '',
+		});
+	};
+	assignments.forEach(pushProject);
+	emptyProjects.forEach(pushProject);
+	accessibleProjects.forEach(pushProject);
+	periods.forEach(pushProject);
+
+	const assignmentsById = new Map(assignments.map((row) => [row.id, row]));
+
+	const legacyWeekRows = assignments.flatMap((assignment) =>
+		rawLegacyEntries(assignment)
+			.map((entry, index) => ({
+				key: `${assignment.id}-${entry?.date || 'undated'}-${index}`,
+				projectId: assignment.project_id,
+				projectCode: assignment.project_code || '',
+				projectName: assignment.project_name || '',
+				discipline: assignment.discipline || '',
+				activityName: assignment.activity_name || 'Unnamed Activity',
+				subActivityName: assignment.sub_activity_name || '',
+				defaultManhours: numberValue(assignment.default_manhours),
+				date: String(entry?.date || '').slice(0, 10),
+				hours: numberValue(entry?.hours),
+				quantity: numberValue(entry?.qty_done),
+				remarks: entry?.remarks || '',
+				status: assignment.status || 'Not Started',
+			}))
+			.filter((row) => row.date >= activeWeek && row.date <= weekEnd)
 	);
 
-	const submitAdd = async () => {
-		// Saves are click handlers, not native form submissions, so the date
-		// field's max constraint is reported explicitly here.
-		if (addDateRef.current && !addDateRef.current.reportValidity()) return;
-
-		const discipline = disciplineOptions.find(
-			(d) => d.id === addForm.discipline_id
-		);
-		const activity = discipline?.activities?.find(
-			(a) => a.id === addForm.activity_id
-		);
-		const subActivity = activity?.subActivities?.find(
-			(s) => s.id === addForm.sub_activity_id
-		);
-
-		if (!addForm.project_id) {
-			alert('Please select a project.');
-			return;
-		}
-		if (!discipline || !activity) {
-			alert('Please select a Discipline and Activity.');
-			return;
-		}
-
-		setSaving(true);
-		try {
-			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					project_id: addForm.project_id,
-					discipline_name: discipline.function_name,
-					activity_name: activity.activity_name,
-					sub_activity_name: subActivity?.name || '',
-					default_manhours: subActivity?.default_manhours || 0,
-					manhours_assigned: addForm.manhours_assigned,
-					qty_completed: addForm.quantity,
-					due_date: addForm.due_date || null,
-					status: addForm.status,
-					remarks: addForm.remark,
-				}),
-			});
-			if (res?.success) {
-				emitActivityLogSaved(res);
-				setAddingProjectId(null);
-				await loadAssignments();
-			} else {
-				alert(res?.error || 'Failed to add activity');
-			}
-		} catch (err) {
-			console.error('Failed to add activity:', err);
-			// The server names the missing prerequisite (project team
-			// membership); show it instead of a generic failure. The
-			// dashboard never adds the actor to the team itself.
-			alert(err?.message || 'Failed to add activity');
-		} finally {
-			setSaving(false);
-		}
-	};
-
-	// ── Edit an existing row ──
-	const openEditRow = (row) => {
-		const a = row.activity;
-		const key = `${a.project_id}-${a.activity_id}`;
-		setEditingKey(key);
-		setEditForm({
-			manhours: a.planned_hours || '',
-			quantity: a.qty_completed || '',
-			due_date: a.due_date || todayStr(),
-			status: a.status || 'Not Started',
-			remark: a.remarks || '',
-		});
-	};
-
-	const closeEditRow = () => {
-		if (savingEdit) return;
-		setEditingKey(null);
-		setEditForm({});
-	};
-
-	const submitEdit = async (projectId, activityId) => {
-		if (editDateRef.current && !editDateRef.current.reportValidity()) return;
-
-		setSavingEdit(true);
-		try {
-			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					project_id: projectId,
-					activity_id: activityId,
-					planned_hours: editForm.manhours || null,
-					qty_completed: editForm.quantity || null,
-					due_date: editForm.due_date || null,
-					status: editForm.status,
-					remarks: editForm.remark,
-				}),
-			});
-			if (res?.success) {
-				emitActivityLogSaved(res);
-				setEditingKey(null);
-				setEditForm({});
-				await loadAssignments();
-			} else {
-				alert(res?.error || 'Failed to update activity');
-			}
-		} catch (err) {
-			console.error('Failed to update activity:', err);
-			alert('Failed to update activity');
-		} finally {
-			setSavingEdit(false);
-		}
-	};
-
-	// ── Delete a row ──
-	const deleteActivity = async (projectId, activityId) => {
-		if (!window.confirm('Delete this activity log? This cannot be undone.'))
-			return;
-
-		const key = `${projectId}-${activityId}`;
-		setDeleting((prev) => new Set(prev).add(key));
-		try {
-			const res = await fetchJSON(`/api/users/${userId}/activity-assignments`, {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					project_id: projectId,
-					activity_id: activityId,
-				}),
-			});
-			if (res?.success) {
-				await loadAssignments();
-			} else {
-				alert(res?.error || 'Failed to delete activity');
-			}
-		} catch (err) {
-			console.error('Failed to delete activity:', err);
-			alert('Failed to delete activity');
-		} finally {
-			setDeleting((prev) => {
-				const next = new Set(prev);
-				next.delete(key);
-				return next;
-			});
-		}
-	};
-
-	// The dashboard's own fetch failed and its error line is on screen (#340):
-	// stay silent instead of guessing at a second load. Checked before the
-	// spinner, because with no self-fetch there is no load to wait for.
-	if (fetchFailed) return null;
-
-	if (loading) {
-		return (
-			<div className="bg-white rounded-xl shadow-md border-2 border-purple-200 p-6 mb-6">
-				<div className="flex items-center justify-center gap-2 text-[#4A1254] text-sm">
-					<span className="inline-block w-3.5 h-3.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-					Loading assignments…
-				</div>
-			</div>
-		);
-	}
-
-	if (!hasAccess) return null;
-
-	// Group activity rows and accessible projects by project.
-	const projectGroups = {};
-	const projectOrder = [];
-	assignments.forEach((a) => {
-		const pid = a.project_id || 'unknown';
-		if (!projectGroups[pid]) {
-			projectGroups[pid] = {
-				project_code: a.project_code,
-				project_name: a.project_name,
-				activities: [],
-			};
-			projectOrder.push(pid);
-		}
-		projectGroups[pid].activities.push(a);
-	});
-	emptyProjects.forEach((p) => {
-		const pid = p.project_id || 'unknown';
-		if (!projectGroups[pid]) {
-			projectGroups[pid] = {
-				project_code: p.project_code,
-				project_name: p.project_name,
-				activities: [],
-			};
-			projectOrder.push(pid);
-		}
-	});
-	accessibleProjects.forEach((p) => {
-		const pid = p.project_id || 'unknown';
-		if (!projectGroups[pid]) {
-			projectGroups[pid] = {
-				project_code: p.project_code,
-				project_name: p.project_name,
-				activities: [],
-			};
-			projectOrder.push(pid);
-		} else {
-			projectGroups[pid].project_code ||= p.project_code;
-			projectGroups[pid].project_name ||= p.project_name;
-		}
-	});
-
-	const COLS = 11; // + actions column
-
-	// Build the project list for activity creation and detail links from every
-	// project the API authorized, even when it has no activity rows yet.
-	const assignableProjects = (() => {
-		const seen = new Set();
-		const list = [];
-		const push = (p) => {
-			if (!p) return;
-			const pid = String(p.project_id);
-			if (seen.has(pid)) return;
-			seen.add(pid);
-			list.push({
-				project_id: pid,
-				project_code: p.project_code,
-				project_name: p.project_name,
-			});
+	const workRows = periods.map((period) => {
+		const assignment = assignmentsById.get(period.assignmentId);
+		return {
+			kind: 'period',
+			key: `period-${period.id}`,
+			period,
+			projectId: period.projectId,
+			projectCode: period.projectCode || assignment?.project_code || '',
+			projectName: period.projectName || assignment?.project_name || '',
+			discipline: period.discipline || assignment?.discipline || '',
+			activityName:
+				period.activityName || assignment?.activity_name || 'Unnamed Activity',
+			subActivityName:
+				period.subActivityName ?? assignment?.sub_activity_name ?? '',
+			defaultManhours: numberValue(
+				period.defaultManhours ?? assignment?.default_manhours
+			),
+			start: period.start || '',
+			end: period.end || '',
+			manhours: numberValue(period.durationSeconds) / 3600,
+			weekManhours: numberValue(period.weekSeconds) / 3600,
+			quantity: numberValue(period.quantity),
+			weekQuantity: numberValue(period.weekQuantity),
+			dateCompleted: period.dateCompleted || '',
+			status: period.status || assignment?.status || 'Not Started',
+			remarks: period.remarks || '',
 		};
-		assignments.forEach(push);
-		emptyProjects.forEach(push);
-		accessibleProjects.forEach(push);
-		return list;
-	})();
-
-	// Distinct status values present in the data, for the filter dropdown.
-	const statusOptions = (() => {
-		const set = new Set();
-		assignments.forEach((a) => {
-			if (a.status) set.add(a.status);
-		});
-		return Array.from(set).sort();
-	})();
-
-	// Flatten assignments into a single list, preserving per-project grouping order.
-	const baseRows = projectOrder.flatMap((pid) => {
-		const group = projectGroups[pid];
-		return group.activities.map((activity) => ({
-			project_code: group.project_code,
-			project_name: group.project_name,
-			activity,
-		}));
 	});
 
-	// Apply search, status filter, and sort.
-	const q = search.trim().toLowerCase();
-	let flatRows = baseRows;
-	if (startDate || endDate) {
-		flatRows = flatRows.filter((r) => {
-			const activityDate =
-				typeof r.activity.due_date === 'string'
-					? r.activity.due_date.slice(0, 10)
-					: '';
-			return (
-				activityDate &&
-				(!startDate || activityDate >= startDate) &&
-				(!endDate || activityDate <= endDate)
-			);
-		});
-	}
+	const legacyRows = legacyWeekRows.map((row) => ({
+		...row,
+		kind: 'legacy',
+		key: `legacy-${row.key}`,
+		period: null,
+		start: '',
+		end: '',
+		manhours: row.hours,
+		weekManhours: row.hours,
+		dateCompleted: row.date,
+		weekQuantity: row.quantity,
+	}));
 
-	if (q) {
-		flatRows = flatRows.filter((r) => {
-			const a = r.activity;
-			return (
-				(r.project_code || '').toLowerCase().includes(q) ||
-				(r.project_name || '').toLowerCase().includes(q) ||
-				(a.discipline || '').toLowerCase().includes(q) ||
-				(a.activity_name || '').toLowerCase().includes(q) ||
-				(a.sub_activity_name || '').toLowerCase().includes(q)
-			);
-		});
-	}
-	if (statusFilter !== 'all') {
-		flatRows = flatRows.filter(
-			(r) => (r.activity.status || 'Not Started') === statusFilter
-		);
-	}
+	const baseRows = [...workRows, ...legacyRows];
+	const statusOptions = Array.from(
+		new Set(baseRows.map((row) => row.status).filter(Boolean))
+	).sort(textCollator.compare);
+
+	const normalizedSearch = search.trim().toLowerCase();
+	const rangeStart = fromDate || activeWeek;
+	const rangeEnd = toDate || weekEnd;
+	const rangeStartMidnight = `${rangeStart}T00:00`;
+	let flatRows = baseRows.filter((row) => {
+		const matchesSearch =
+			!normalizedSearch ||
+			(row.kind === 'period'
+				? periodSearchText(row.period)
+				: legacySearchText(row)
+			).includes(normalizedSearch);
+		const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
+		const matchesDate =
+			row.kind === 'period'
+				? row.start.slice(0, 10) <= rangeEnd && row.end > rangeStartMidnight
+				: row.dateCompleted >= rangeStart && row.dateCompleted <= rangeEnd;
+		return matchesSearch && matchesStatus && matchesDate;
+	});
+
 	if (sort.key) {
-		const dir = sort.dir === 'asc' ? 1 : -1;
-		const get = (r) => {
+		const direction = sort.dir === 'asc' ? 1 : -1;
+		const valueFor = (row) => {
 			switch (sort.key) {
 				case 'project_code':
-					return (r.project_code || '').toLowerCase();
+					return `${row.projectCode || ''} ${row.projectName || ''}`.toLowerCase();
 				case 'discipline':
-					return (r.activity.discipline || '').toLowerCase();
+					return (row.discipline || '').toLowerCase();
 				case 'activity_name':
-					return (r.activity.activity_name || '').toLowerCase();
+					return (row.activityName || '').toLowerCase();
 				case 'sub_activity_name':
-					return (r.activity.sub_activity_name || '').toLowerCase();
+					return (row.subActivityName || '').toLowerCase();
 				case 'default_manhours':
-					return parseFloat(r.activity.default_manhours) || 0;
+					return numberValue(row.defaultManhours);
 				case 'planned_hours':
-					return parseFloat(r.activity.planned_hours) || 0;
+					return numberValue(row.manhours);
 				case 'qty_completed':
-					return parseFloat(r.activity.qty_completed) || 0;
+					return numberValue(row.quantity);
 				case 'due_date':
-					return r.activity.due_date || '';
+					return row.dateCompleted || '';
 				case 'status':
-					return (r.activity.status || 'Not Started').toLowerCase();
+					return (row.status || 'Not Started').toLowerCase();
 				default:
 					return '';
 			}
 		};
-		flatRows = [...flatRows].sort((a, b) => {
-			const va = get(a);
-			const vb = get(b);
-			if (va < vb) return -1 * dir;
-			if (va > vb) return 1 * dir;
+		flatRows = [...flatRows].sort((left, right) => {
+			const leftValue = valueFor(left);
+			const rightValue = valueFor(right);
+			if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+				return (leftValue - rightValue) * direction;
+			}
+			if (leftValue < rightValue) return -1 * direction;
+			if (leftValue > rightValue) return 1 * direction;
 			return 0;
 		});
 	}
 
 	const totalManhours = flatRows.reduce(
-		(sum, r) => sum + (parseFloat(r.activity.planned_hours) || 0),
+		(total, row) => total + numberValue(row.weekManhours),
 		0
 	);
-	const isAdding = addingProjectId !== null;
-	const hasAnyData = projectOrder.length > 0;
+	const totalQuantity = flatRows.reduce(
+		(total, row) => total + numberValue(row.weekQuantity),
+		0
+	);
+	const assignableProjects = projects.map((project) => ({
+		project_id: project.projectId,
+		project_code: project.projectCode,
+		project_name: project.projectName,
+	}));
+	const hasAnyData = projects.length > 0;
+	const COLS = 13;
+
+	const toggleSort = (key) => {
+		setSort((previous) => {
+			if (previous.key !== key) return { key, dir: 'asc' };
+			if (previous.dir === 'asc') return { key, dir: 'desc' };
+			return { key: null, dir: 'asc' };
+		});
+	};
+
+	const clearFilters = () => {
+		setSearch('');
+		setStatusFilter('all');
+		setFromDate(activeWeek);
+		setToDate(weekEnd);
+		setSort({ key: 'due_date', dir: 'desc' });
+	};
+
+	const changeWeek = (offset) => {
+		const nextWeek = shiftIstDate(week, offset);
+		setWeek(nextWeek);
+		setFromDate(nextWeek);
+		setToDate(shiftIstDate(nextWeek, 6));
+	};
+
+	const showCurrentWeek = () => {
+		setWeek(currentWeek);
+		setFromDate(currentWeek);
+		setToDate(shiftIstDate(currentWeek, 6));
+	};
+
+	const openAddRow = () => {
+		if (!canLog || projects.length === 0 || mutation.isPending) return;
+		setEditing(null);
+		setIsAdding(true);
+		setAddForm({
+			...EMPTY_ADD_FORM,
+			dateCompleted: today,
+		});
+		setActionError('');
+	};
+
+	const openEditRow = (period) => {
+		if (
+			!period.editable ||
+			!period.assignmentId ||
+			!canLog ||
+			mutation.isPending
+		) {
+			return;
+		}
+		setIsAdding(false);
+		setEditing({
+			row: period,
+			fields: {
+				start: periodClock(period.start),
+				end: periodClock(period.end),
+				quantity: period.quantity ?? 0,
+				dateCompleted: period.dateCompleted || '',
+				remarks: period.remarks || '',
+			},
+		});
+		setActionError('');
+	};
+
+	const closeEditor = () => {
+		if (mutation.isPending) return;
+		setIsAdding(false);
+		setEditing(null);
+		setActionError('');
+	};
+
+	const updateAddSelection = (patch) => {
+		setAddForm((previous) => ({ ...previous, ...patch }));
+		setActionError('');
+	};
+
+	const updatePeriodField = (mode, field, value) => {
+		setActionError('');
+		const apply = (current) => ({ ...current, [field]: value });
+		if (mode === 'add') {
+			setAddForm(apply);
+			return;
+		}
+		setEditing((previous) =>
+			previous ? { ...previous, fields: apply(previous.fields) } : previous
+		);
+	};
+
+	const dateWindowError =
+		'You can log or edit Work Periods only when both endpoints fall on today or yesterday in IST. Contact an authorized manager for older work.';
+	const validatePeriodFields = (fields, endpoints) => {
+		if (!fields.start || !fields.end) return 'Enter both Start and End.';
+		if (!fields.dateCompleted) return 'Enter Date Completed.';
+		if (fields.dateCompleted > today)
+			return 'Date Completed cannot be in the future.';
+		if (!endpoints) return dateWindowError;
+		const { start, end } = endpoints;
+		const startMs = parseIstLocal(start);
+		const endMs = parseIstLocal(end);
+		if (startMs === null || endMs === null)
+			return 'Enter valid Start and End times.';
+		if (endMs <= startMs) return 'End must be after Start.';
+		const quantity = Number(fields.quantity);
+		if (!Number.isFinite(quantity) || quantity < 0) {
+			return 'Quantity cannot be negative.';
+		}
+		if (
+			![today, yesterday].includes(istDate(startMs)) ||
+			![today, yesterday].includes(istDate(endMs))
+		) {
+			return dateWindowError;
+		}
+		if (!fields.remarks.trim()) return descriptionRequiredError;
+		return '';
+	};
+
+	const rejectForm = (message) => {
+		setActionError(message);
+	};
+
+	const submitAdd = (event) => {
+		event.preventDefault();
+		if (!addForm.projectId) {
+			rejectForm('Please select a project.');
+			return;
+		}
+		if (!selectedDiscipline || !selectedActivity) {
+			rejectForm('Please select a Discipline and Activity.');
+			return;
+		}
+		if (selectedSubActivities.length > 0 && !addForm.subActivityId) {
+			rejectForm('Please select a Sub Activity.');
+			return;
+		}
+		const endpoints = [today, yesterday].includes(addForm.dateCompleted)
+			? addEndpoints(addForm)
+			: null;
+		const validationError = validatePeriodFields(addForm, endpoints);
+		if (validationError) {
+			rejectForm(validationError);
+			return;
+		}
+		setActionError('');
+		mutation.mutate({
+			method: 'POST',
+			body: {
+				projectId: addForm.projectId,
+				disciplineId: addForm.disciplineId,
+				activityId: addForm.activityId,
+				subActivityId: addForm.subActivityId || null,
+				...endpoints,
+				quantity: numberValue(addForm.quantity),
+				dateCompleted: addForm.dateCompleted,
+				remarks: addForm.remarks,
+			},
+		});
+	};
+
+	const submitEdit = (event) => {
+		event.preventDefault();
+		if (!editing) return;
+		const endpoints = {
+			start: editEndpoint(editing.row.start, editing.fields.start),
+			end: editEndpoint(editing.row.end, editing.fields.end),
+		};
+		const validationError = validatePeriodFields(editing.fields, endpoints);
+		if (validationError) {
+			rejectForm(validationError);
+			return;
+		}
+		setActionError('');
+		mutation.mutate({
+			method: 'PUT',
+			body: {
+				id: editing.row.id,
+				projectId: editing.row.projectId,
+				...endpoints,
+				quantity: numberValue(editing.fields.quantity),
+				dateCompleted: editing.fields.dateCompleted,
+				remarks: editing.fields.remarks,
+			},
+		});
+	};
+
+	const deletePeriod = (period) => {
+		if (
+			!period.editable ||
+			!period.assignmentId ||
+			!canLog ||
+			mutation.isPending
+		) {
+			return;
+		}
+		if (
+			!window.confirm(
+				'Delete this Work Period? The Project Activity and its other Work Periods will not be deleted.'
+			)
+		) {
+			return;
+		}
+		setActionError('');
+		mutation.mutate({
+			method: 'DELETE',
+			body: { id: period.id, projectId: period.projectId },
+		});
+	};
+
+	const actionErrorNode = actionError ? (
+		<div
+			ref={errorRef}
+			id={actionErrorId}
+			role="alert"
+			tabIndex={-1}
+			className="mt-2 flex items-start gap-1.5 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs leading-snug text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+		>
+			<ExclamationCircleIcon
+				className="mt-0.5 h-3.5 w-3.5 shrink-0"
+				aria-hidden="true"
+			/>
+			<p>{actionError}</p>
+		</div>
+	) : null;
+
+	const renderDescription = (mode, value) => (
+		<AutoGrowTextarea
+			id={descriptionId}
+			name="remarks"
+			value={value}
+			onChange={(event) =>
+				updatePeriodField(mode, 'remarks', event.target.value)
+			}
+			placeholder="Required"
+			aria-label="Activity Description"
+			required
+			aria-invalid={descriptionInvalid}
+			aria-describedby={descriptionInvalid ? actionErrorId : undefined}
+			className="max-h-36 px-1.5 py-0.5 text-left text-xs focus:ring-1 aria-invalid:border-red-500"
+		/>
+	);
+
+	const compactControlClass =
+		'w-full min-w-0 px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100';
+
+	const renderTimePicker = (mode, endpoint, time, hint = '') => {
+		const label = endpoint === 'start' ? 'Start Period' : 'End Period';
+		const id = `${formId}-${mode}-${endpoint}`;
+		return (
+			<>
+				<WorkPeriodTimePicker
+					id={id}
+					label={label}
+					value={time}
+					describedBy={hint ? `${id}-hint` : undefined}
+					disabled={mutation.isPending}
+					onChange={(value) => updatePeriodField(mode, endpoint, value)}
+				/>
+				{hint && (
+					<span
+						id={`${id}-hint`}
+						className="block text-xs leading-snug text-muted-foreground"
+					>
+						{hint}
+					</span>
+				)}
+			</>
+		);
+	};
+
+	const renderEditorActions = (disabled) => (
+		<div className="flex items-center justify-center gap-1">
+			<button
+				type="submit"
+				disabled={disabled}
+				className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+				title="Save Work Period"
+				aria-label="Save Work Period"
+			>
+				<CheckIcon className="w-3.5 h-3.5" aria-hidden="true" />
+			</button>
+			<button
+				type="button"
+				onClick={closeEditor}
+				disabled={disabled}
+				className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+				title="Cancel"
+				aria-label="Cancel"
+			>
+				<XMarkIcon className="w-3.5 h-3.5" aria-hidden="true" />
+			</button>
+		</div>
+	);
+
+	const renderAddForm = () => (
+		<tr className="bg-purple-50/50 divide-x divide-gray-300">
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required
+					aria-label="Project"
+					title="Select a project you are assigned to"
+					value={addForm.projectId}
+					onChange={(event) =>
+						updateAddSelection({ projectId: event.target.value })
+					}
+					className={compactControlClass}
+				>
+					<option value="">Select project…</option>
+					{assignableProjects.map((project) => (
+						<option key={project.project_id} value={project.project_id}>
+							{project.project_code
+								? `${project.project_code} – ${project.project_name}`
+								: project.project_name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required
+					aria-label="Discipline"
+					disabled={optionsQuery.isPending}
+					value={addForm.disciplineId}
+					onChange={(event) =>
+						updateAddSelection({
+							disciplineId: event.target.value,
+							activityId: '',
+							subActivityId: '',
+						})
+					}
+					className={compactControlClass}
+				>
+					<option value="">Select</option>
+					{disciplineOptions.map((discipline) => (
+						<option key={discipline.id} value={discipline.id}>
+							{discipline.function_name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required
+					aria-label="Activity"
+					disabled={!selectedDiscipline}
+					value={addForm.activityId}
+					onChange={(event) =>
+						updateAddSelection({
+							activityId: event.target.value,
+							subActivityId: '',
+						})
+					}
+					className={compactControlClass}
+				>
+					<option value="">Select</option>
+					{(selectedDiscipline?.activities || []).map((activity) => (
+						<option key={activity.id} value={activity.id}>
+							{activity.activity_name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<select
+					required={selectedSubActivities.length > 0}
+					aria-label="Sub Activity"
+					disabled={!selectedActivity || selectedSubActivities.length === 0}
+					value={addForm.subActivityId}
+					onChange={(event) =>
+						updateAddSelection({ subActivityId: event.target.value })
+					}
+					className={compactControlClass}
+				>
+					<option value="">
+						{selectedSubActivities.length > 0
+							? 'Select sub-activity…'
+							: 'No sub-activity'}
+					</option>
+					{selectedSubActivities.map((subActivity) => (
+						<option key={subActivity.id} value={subActivity.id}>
+							{subActivity.name}
+						</option>
+					))}
+				</select>
+			</td>
+			<td className="py-1 px-2 align-middle">
+				{renderDescription('add', addForm.remarks)}
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<input
+					type="text"
+					readOnly
+					aria-label="Default MH"
+					value={
+						selectedSubActivities.find(
+							(subActivity) => subActivity.id === addForm.subActivityId
+						)?.default_manhours || '–'
+					}
+					className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
+				/>
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
+				{renderTimePicker(
+					'add',
+					'start',
+					addForm.start,
+					startsPreviousDay(addForm) ? 'Previous day' : ''
+				)}
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
+				{renderTimePicker('add', 'end', addForm.end)}
+			</td>
+			<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
+				Auto
+			</td>
+			<td className="py-1 px-2 text-center align-middle">
+				<input
+					type="number"
+					min="0"
+					step="0.01"
+					aria-label="Quantity"
+					value={addForm.quantity}
+					onChange={(event) =>
+						updatePeriodField('add', 'quantity', event.target.value)
+					}
+					placeholder="Qty"
+					className={`${compactControlClass} max-w-16 text-center`}
+				/>
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
+				<input
+					type="date"
+					required
+					max={today}
+					aria-label="Date Completed"
+					value={addForm.dateCompleted}
+					onChange={(event) =>
+						updatePeriodField('add', 'dateCompleted', event.target.value)
+					}
+					className={compactControlClass}
+				/>
+			</td>
+			<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
+				–
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
+				{renderEditorActions(mutation.isPending)}
+			</td>
+		</tr>
+	);
+
+	const renderEditForm = () => {
+		const period = editing.row;
+		const assignment = assignmentsById.get(period.assignmentId);
+		const defaultManhours = numberValue(
+			period.defaultManhours ?? assignment?.default_manhours
+		);
+		const status = period.status || assignment?.status || 'Not Started';
+		const documentsName = projectDocumentsName(period);
+		return (
+			<tr key={period.id} className="bg-purple-50/50 divide-x divide-gray-300">
+				<td className="py-1 px-2 text-center align-middle">
+					<ProjectNumberValue
+						projectId={period.projectId}
+						documentsName={documentsName}
+						code={period.projectCode || period.projectName || period.projectId}
+						documentCount={projectDocumentCount(
+							documentCounts,
+							period.projectId
+						)}
+					/>
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<ActivityTextValue value={period.discipline || '–'} />
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<ActivityTextValue
+						value={period.activityName || 'Unnamed Activity'}
+						className="font-semibold text-[#4A1254]"
+					/>
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<ActivityTextValue value={period.subActivityName || '–'} />
+				</td>
+				<td className="py-1 px-2 align-middle">
+					{renderDescription('edit', editing.fields.remarks)}
+				</td>
+				<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+					{formatQuantity(defaultManhours)}
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					{renderTimePicker(
+						'edit',
+						'start',
+						editing.fields.start,
+						periodDateHint(period.start, editing.fields.dateCompleted)
+					)}
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					{renderTimePicker(
+						'edit',
+						'end',
+						editing.fields.end,
+						periodDateHint(period.end, editing.fields.dateCompleted)
+					)}
+				</td>
+				<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
+					Auto
+				</td>
+				<td className="py-1 px-2 text-center align-middle">
+					<input
+						type="number"
+						min="0"
+						step="0.01"
+						aria-label="Quantity"
+						value={editing.fields.quantity}
+						onChange={(event) =>
+							updatePeriodField('edit', 'quantity', event.target.value)
+						}
+						className={`${compactControlClass} max-w-16 text-center`}
+					/>
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					<input
+						type="date"
+						required
+						max={today}
+						aria-label="Date Completed"
+						value={editing.fields.dateCompleted}
+						onChange={(event) =>
+							updatePeriodField('edit', 'dateCompleted', event.target.value)
+						}
+						className={compactControlClass}
+					/>
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					<StatusBadge status={status} />
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					{renderEditorActions(mutation.isPending)}
+				</td>
+			</tr>
+		);
+	};
 
 	return (
-		<div className="min-w-0 rounded-xl border-2 border-purple-200 bg-white shadow-lg ring-1 ring-purple-100">
-			{/* Header */}
+		<div className="@container min-w-0 rounded-xl border-2 border-purple-200 bg-white shadow-lg ring-1 ring-purple-100">
 			<div className="px-3 py-2 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2">
 					<div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
-						<ClipboardDocumentListIcon className="w-4 h-4 text-purple-600" />
+						<ClipboardDocumentListIcon
+							className="w-4 h-4 text-purple-600"
+							aria-hidden="true"
+						/>
 					</div>
 					<h3 className="text-sm font-bold text-[#4A1254]">
 						My Project Activities
 					</h3>
 				</div>
-				{hasAnyData && (
+				{hasAnyData && canLog && (
 					<button
+						type="button"
 						onClick={openAddRow}
-						disabled={isAdding}
+						disabled={editorOpen || mutation.isPending}
 						className="flex items-center gap-1 px-2 py-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors text-xs font-semibold disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 						title="Add a new activity"
 					>
-						<PlusIcon className="w-3.5 h-3.5" />
+						<PlusIcon className="w-3.5 h-3.5" aria-hidden="true" />
 						Add
 					</button>
 				)}
 			</div>
 
-			{/* Search / filter toolbar */}
-			{hasAnyData && (
-				<div className="px-3 py-2 border-b border-purple-100 bg-white/60 flex flex-wrap items-end gap-2">
-					<div>
-						<label
-							htmlFor="activity-start-date"
-							className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
-						>
-							From
-						</label>
-						<input
-							id="activity-start-date"
-							type="date"
-							value={startDate}
-							max={endDate || undefined}
-							onChange={(e) => setStartDate(e.target.value)}
-							className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-						/>
-					</div>
-					<div>
-						<label
-							htmlFor="activity-end-date"
-							className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
-						>
-							To
-						</label>
-						<input
-							id="activity-end-date"
-							type="date"
-							value={endDate}
-							min={startDate || undefined}
-							onChange={(e) => setEndDate(e.target.value)}
-							className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-						/>
-					</div>
-					<div className="relative min-w-0 grow basis-48">
-						<MagnifyingGlassIcon className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-						<input
-							type="text"
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-							placeholder="Search code, project, activity…"
-							aria-label="Search activities"
-							className="w-full pl-7 pr-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-						/>
-					</div>
-					<select
-						value={statusFilter}
-						onChange={(e) => setStatusFilter(e.target.value)}
-						className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-						title="Filter by status"
-						aria-label="Filter by status"
+			{periodData && !canLog && (
+				<div className="mx-3 mt-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs leading-snug text-amber-900">
+					<LockClosedIcon
+						className="mt-0.5 h-3.5 w-3.5 shrink-0"
+						aria-hidden="true"
+					/>
+					<p>
+						Work Period logging is unavailable for this account. Ask your
+						manager or support to link your User Account to an Employee.
+					</p>
+				</div>
+			)}
+
+			{periodsQuery.isError && (
+				<div
+					role="alert"
+					className="mx-3 mt-2 flex flex-wrap items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
+				>
+					<p>
+						Work Periods could not load:{' '}
+						{errorMessage(periodsQuery.error, 'Try again.')}
+					</p>
+					<button
+						type="button"
+						onClick={() => periodsQuery.refetch()}
+						className="font-semibold underline"
 					>
-						<option value="all">All statuses</option>
-						{statusOptions.map((s) => (
-							<option key={s} value={s}>
-								{s}
-							</option>
-						))}
-					</select>
-					{(search || statusFilter !== 'all' || sort.key) && (
-						<button
-							onClick={() => {
-								setSearch('');
-								setStatusFilter('all');
-								setStartDate(monthStartStr());
-								setEndDate(todayStr());
-								setSort({ key: 'due_date', dir: 'desc' });
-							}}
-							className="px-2 py-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
-						>
-							Clear
-						</button>
-					)}
-					<span className="ml-auto text-xs text-gray-500">
-						{flatRows.length}
-						{flatRows.length !== baseRows.length
-							? ` of ${baseRows.length}`
-							: ''}{' '}
-						{flatRows.length === 1 ? 'activity' : 'activities'}
-					</span>
+						Try again
+					</button>
+				</div>
+			)}
+
+			{legacyQuery.isError && !preloadedData && !legacyAccessDenied && (
+				<div
+					role="alert"
+					className="mx-3 mt-2 flex flex-wrap items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
+				>
+					<p>
+						Project activities could not load:{' '}
+						{errorMessage(legacyQuery.error, 'Try again.')}
+					</p>
+					<button
+						type="button"
+						onClick={() => legacyQuery.refetch()}
+						className="font-semibold underline"
+					>
+						Try again
+					</button>
 				</div>
 			)}
 
 			{!hasAnyData ? (
 				<div className="text-center py-10 text-[#4A1254]">
-					<ClipboardDocumentListIcon className="w-14 h-14 mx-auto mb-3 opacity-50" />
+					<ClipboardDocumentListIcon
+						className="w-14 h-14 mx-auto mb-3 opacity-50"
+						aria-hidden="true"
+					/>
 					<p className="text-sm">No projects assigned yet</p>
 					<p className="mt-1 text-xs text-gray-500">
 						Contact your project manager to be added to a project.
 					</p>
 				</div>
 			) : (
-				<div
-					className="overflow-x-auto rounded-b-xl"
-					role="region"
-					aria-label="Project activity table"
-					tabIndex={0}
-				>
-					<table className="w-full min-w-[1200px] table-fixed border-collapse text-sm">
-						<colgroup>
-							<col className="w-[10%]" />
-							<col className="w-[8%]" />
-							<col className="w-[13%]" />
-							<col className="w-[12%]" />
-							<col className="w-[5%]" />
-							<col className="w-[6%]" />
-							<col className="w-[6%]" />
-							<col className="w-[13%]" />
-							<col className="w-[9%]" />
-							<col className="w-[11%]" />
-							<col className="w-[7%]" />
-						</colgroup>
-						<thead className="bg-[#64126D]/10">
-							<tr className="divide-x divide-[#64126D]/40">
-								<SortHeader
-									label="Project Number"
-									sortKey="project_code"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Discipline"
-									sortKey="discipline"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Activity"
-									sortKey="activity_name"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Sub Activity"
-									sortKey="sub_activity_name"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Default MH"
-									sortKey="default_manhours"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Manhours"
-									sortKey="planned_hours"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Quantity"
-									sortKey="qty_completed"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Date Completed"
-									sortKey="due_date"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<SortHeader
-									label="Status"
-									sortKey="status"
-									sort={sort}
-									onSort={toggleSort}
-								/>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-xs leading-tight select-none">
-									Remark
-								</th>
-								<th className="text-center py-1 px-2 font-bold text-[#64126D] uppercase tracking-wide text-xs leading-tight select-none">
-									Actions
-								</th>
-							</tr>
-						</thead>
-						<tbody className="divide-y divide-gray-300">
-							{flatRows.length === 0 && !isAdding && (
-								<tr>
-									<td
-										colSpan={COLS}
-										className="py-6 px-4 text-center text-sm text-[#4A1254]"
-									>
-										{baseRows.length === 0 ? (
-											<>
-												<p>
-													No activities yet. Click{' '}
-													<span className="font-semibold">Add</span> above to
-													log your first activity.
-												</p>
-												{assignableProjects.length > 0 && (
-													<div className="mt-4 space-y-2 text-left max-w-md mx-auto">
-														<p className="text-xs font-semibold text-gray-700">
-															Assigned projects
-														</p>
-														<ul className="space-y-2">
-															{assignableProjects.map((p) => {
-																const documentsName = projectDocumentsName(p);
-																const documentCount = projectDocumentCount(
-																	documentCounts,
-																	p.project_id
-																);
-																return (
-																	<li
-																		key={p.project_id}
-																		className="flex items-center justify-between gap-3 rounded-lg border border-purple-100 bg-white px-3 py-2"
-																	>
-																		<span className="text-xs text-gray-700 break-words">
-																			{p.project_code
-																				? `${p.project_code} – ${p.project_name || ''}`
-																				: p.project_name || p.project_id}
-																		</span>
-																		<Link
-																			href={projectDocumentsHref(p.project_id)}
-																			aria-label={documentsName}
-																			title={documentsName}
-																			className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-																		>
-																			Open documents
-																			<DocumentCountMarker
-																				count={documentCount}
-																			/>
-																		</Link>
-																	</li>
-																);
-															})}
-														</ul>
-													</div>
-												)}
-											</>
-										) : (
-											<>No activities match the current search or filter.</>
-										)}
-									</td>
-								</tr>
+				<>
+					<div
+						role="search"
+						aria-label="Filter project activities"
+						className="px-3 py-2 border-b border-purple-100 bg-white/60 flex flex-wrap items-end gap-2"
+					>
+						<div className="flex h-8 items-center gap-1">
+							<button
+								type="button"
+								onClick={() => changeWeek(-7)}
+								aria-label="Previous week"
+								title="Previous week"
+								className="p-1 rounded text-[#64126D] hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+							>
+								<ChevronLeftIcon className="w-3.5 h-3.5" aria-hidden="true" />
+							</button>
+							<span className="px-1 text-xs font-semibold text-[#4A1254] whitespace-nowrap">
+								{formatWeekRange(activeWeek)}
+							</span>
+							<button
+								type="button"
+								onClick={() => changeWeek(7)}
+								aria-label="Next week"
+								title="Next week"
+								className="p-1 rounded text-[#64126D] hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+							>
+								<ChevronRightIcon className="w-3.5 h-3.5" aria-hidden="true" />
+							</button>
+							{activeWeek !== currentWeek && (
+								<button
+									type="button"
+									onClick={showCurrentWeek}
+									className="px-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
+								>
+									This week
+								</button>
 							)}
+						</div>
+						<div>
+							<label
+								htmlFor="activity-start-date"
+								className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
+							>
+								From
+							</label>
+							<input
+								id="activity-start-date"
+								type="date"
+								value={fromDate}
+								min={activeWeek}
+								max={toDate || weekEnd}
+								onChange={(event) => setFromDate(event.target.value)}
+								className="block h-8 px-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							/>
+						</div>
+						<div>
+							<label
+								htmlFor="activity-end-date"
+								className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1"
+							>
+								To
+							</label>
+							<input
+								id="activity-end-date"
+								type="date"
+								value={toDate}
+								min={fromDate || activeWeek}
+								max={weekEnd}
+								onChange={(event) => setToDate(event.target.value)}
+								className="block h-8 px-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							/>
+						</div>
+						<div className="relative min-w-0 grow basis-48">
+							<MagnifyingGlassIcon
+								className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+								aria-hidden="true"
+							/>
+							<input
+								type="text"
+								value={search}
+								onChange={(event) => setSearch(event.target.value)}
+								placeholder="Search code, project, activity…"
+								aria-label="Search activities"
+								className="block h-8 w-full pl-7 pr-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							/>
+						</div>
+						<select
+							value={statusFilter}
+							onChange={(event) => setStatusFilter(event.target.value)}
+							className="h-8 px-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							title="Filter by status"
+							aria-label="Filter by status"
+						>
+							<option value="all">All statuses</option>
+							{statusOptions.map((status) => (
+								<option key={status} value={status}>
+									{status}
+								</option>
+							))}
+						</select>
+						{(search ||
+							statusFilter !== 'all' ||
+							sort.key ||
+							fromDate !== activeWeek ||
+							toDate !== weekEnd) && (
+							<button
+								type="button"
+								onClick={clearFilters}
+								className="inline-flex h-8 items-center rounded px-2 text-xs font-semibold text-[#64126D] hover:bg-purple-50"
+							>
+								Clear
+							</button>
+						)}
+						<span className="ml-auto inline-flex h-8 items-center whitespace-pre text-xs text-gray-500">
+							{flatRows.length}
+							{flatRows.length !== baseRows.length
+								? ` of ${baseRows.length}`
+								: ''}{' '}
+							{flatRows.length === 1 ? 'activity' : 'activities'}
+						</span>
+					</div>
 
-							{/* Inline Add Row */}
-							{isAdding && (
-								<tr className="bg-purple-50/50 divide-x divide-gray-300">
-									<td className="py-1 px-2 text-center align-middle">
-										<select
-											value={addForm.project_id}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													project_id: e.target.value,
-												}))
-											}
-											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-											title="Select a project you are assigned to"
-										>
-											<option value="">Select project…</option>
-											{assignableProjects.map((p) => (
-												<option key={p.project_id} value={p.project_id}>
-													{p.project_code
-														? `${p.project_code} – ${p.project_name}`
-														: p.project_name}
-												</option>
-											))}
-										</select>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<select
-											value={addForm.discipline_id}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													discipline_id: e.target.value,
-													activity_id: '',
-													sub_activity_id: '',
-												}))
-											}
-											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-										>
-											<option value="">Select</option>
-											{disciplineOptions.map((d) => (
-												<option key={d.id} value={d.id}>
-													{d.function_name}
-												</option>
-											))}
-										</select>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<select
-											value={addForm.activity_id}
-											disabled={!selectedDiscipline}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													activity_id: e.target.value,
-													sub_activity_id: '',
-												}))
-											}
-											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
-										>
-											<option value="">Select</option>
-											{(selectedDiscipline?.activities || []).map((a) => (
-												<option key={a.id} value={a.id}>
-													{a.activity_name}
-												</option>
-											))}
-										</select>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<select
-											value={addForm.sub_activity_id}
-											disabled={!selectedActivity?.subActivities?.length}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													sub_activity_id: e.target.value,
-												}))
-											}
-											className="w-full px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100"
-										>
-											<option value="">Select</option>
-											{(selectedActivity?.subActivities || []).map((s) => (
-												<option key={s.id} value={s.id}>
-													{s.name}
-												</option>
-											))}
-										</select>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<input
-											type="text"
-											readOnly
-											value={
-												selectedActivity?.subActivities?.find(
-													(s) => s.id === addForm.sub_activity_id
-												)?.default_manhours || '–'
-											}
-											className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
-										/>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<input
-											type="number"
-											min="0"
-											step="0.5"
-											value={addForm.manhours_assigned}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													manhours_assigned: e.target.value,
-												}))
-											}
-											placeholder="Hrs"
-											className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-										/>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<input
-											type="number"
-											min="0"
-											step="1"
-											value={addForm.quantity}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													quantity: e.target.value,
-												}))
-											}
-											placeholder="Qty"
-											className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-										/>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<input
-											ref={addDateRef}
-											type="date"
-											aria-label="Date Completed"
-											max={todayStr()}
-											value={addForm.due_date}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													due_date: e.target.value,
-												}))
-											}
-											className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-										/>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<select
-											value={addForm.status}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													status: e.target.value,
-												}))
-											}
-											className="w-full px-0.5 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-											title="Status"
-										>
-											<option value="Not Started">Not Started</option>
-											<option value="In Progress">In Progress</option>
-											<option value="On Hold">On Hold</option>
-											<option value="Completed">Completed</option>
-											<option value="Cancelled">Cancelled</option>
-										</select>
-									</td>
-									<td className="py-1 px-2 align-middle">
-										<AutoGrowTextarea
-											value={addForm.remark}
-											onChange={(e) =>
-												setAddForm((p) => ({
-													...p,
-													remark: e.target.value,
-												}))
-											}
-											placeholder="Add remark…"
-											aria-label="Remark"
-											className="max-h-36 px-1.5 py-0.5 text-left text-xs border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-200"
-										/>
-									</td>
-									<td className="py-1 px-2 text-center align-middle">
-										<div className="flex items-center justify-center gap-1">
-											<button
-												onClick={() => submitAdd()}
-												disabled={saving}
-												className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-												title="Save"
-											>
-												<CheckIcon className="w-3.5 h-3.5" />
-											</button>
-											<button
-												onClick={closeAddRow}
-												disabled={saving}
-												className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-												title="Cancel"
-											>
-												<XMarkIcon className="w-3.5 h-3.5" />
-											</button>
-										</div>
-									</td>
-								</tr>
-							)}
+					{optionsQuery.isError && isAdding && !actionError && (
+						<div
+							role="alert"
+							className="mx-3 mt-2 flex flex-wrap items-center gap-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
+						>
+							<p>
+								{errorMessage(optionsQuery.error, 'Activities could not load.')}
+							</p>
+							<button
+								type="button"
+								onClick={() => optionsQuery.refetch()}
+								className="font-semibold underline"
+							>
+								Try again
+							</button>
+						</div>
+					)}
 
-							{flatRows.map(({ project_code, project_name, activity }) => {
-								const rowKey = `${activity.project_id}-${activity.activity_id}`;
-								const isEditing = editingKey === rowKey;
-								const isDeleting = deleting.has(rowKey);
-								const originalRemark = activity.remarks || '';
-								const currentRemark =
-									remarkValues[rowKey] !== undefined
-										? remarkValues[rowKey]
-										: originalRemark;
-								const remarkStatusForKey = remarkStatus[rowKey];
-								const isRemarkDirty =
-									currentRemark !== originalRemark &&
-									remarkStatusForKey !== 'saving';
-								// The one project navigation name: this project reads
-								// the same here as in the assigned-projects list.
-								const documentsName = projectDocumentsName({
-									project_id: activity.project_id,
-									project_code,
-									project_name,
-								});
+					{actionErrorNode}
 
-								return (
-									<tr
-										key={rowKey}
-										className={`transition-colors divide-x divide-gray-300 ${
-											isEditing ? 'bg-purple-50/50' : 'hover:bg-purple-50/40'
-										}`}
-									>
-										{/* Project Number */}
-										<td className="py-1 px-2 text-center align-middle">
-											<ProjectNumberValue
-												projectId={activity.project_id}
-												documentsName={documentsName}
-												code={project_code}
-												documentCount={projectDocumentCount(
-													documentCounts,
-													activity.project_id
-												)}
+					<form
+						aria-label="Work Period editor"
+						noValidate
+						onSubmit={isAdding ? submitAdd : editing ? submitEdit : undefined}
+					>
+						<div
+							className="relative overflow-x-auto rounded-b-xl"
+							role="region"
+							aria-labelledby={periodsCaptionId}
+							tabIndex={0}
+							aria-busy={periodsQuery.isFetching}
+						>
+							<table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+								<caption id={periodsCaptionId} className="sr-only">
+									Project activity table
+								</caption>
+								<colgroup>
+									<col className="w-[8.5%]" />
+									<col className="w-[7%]" />
+									<col className="w-[10%]" />
+									<col className="w-[8.5%]" />
+									<col className="w-[11.5%]" />
+									<col className="w-[5%]" />
+									<col className="w-[8%]" />
+									<col className="w-[8%]" />
+									<col className="w-[6.5%]" />
+									<col className="w-[5.5%]" />
+									<col className="w-[9%]" />
+									<col className="w-[7.5%]" />
+									<col className="w-[5%]" />
+								</colgroup>
+								<thead className="bg-[#64126D]/10 [&_th]:align-middle [&_th]:pt-2 [&_th]:pb-4 @min-[76rem]:[&_th]:pb-2">
+									<tr className="divide-x divide-[#64126D]/40">
+										{WORK_PERIOD_COLUMNS.map((column) => (
+											<WorkPeriodColumnHeader
+												key={column.label}
+												column={column}
+												sort={sort}
+												onSort={toggleSort}
 											/>
-										</td>
-										{/* Discipline */}
-										<td className="py-1 px-2 text-center align-middle">
-											<ActivityTextValue
-												value={activity.discipline}
-												className="text-[#4A1254]"
-											/>
-										</td>
-										{/* Activity */}
-										<td className="py-1 px-2 text-center align-middle">
-											<ActivityTextValue
-												value={activity.activity_name}
-												className="font-semibold text-[#4A1254]"
-											/>
-										</td>
-										{/* Sub Activity */}
-										<td className="py-1 px-2 text-center align-middle">
-											<ActivityTextValue
-												value={activity.sub_activity_name || '–'}
-												className="text-[#4A1254]"
-											/>
-										</td>
-										{/* Default MH */}
-										<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
-											{activity.default_manhours || 0}
-										</td>
-										{/* Manhours */}
-										<td className="py-1 px-2 text-center align-middle">
-											{isEditing ? (
-												<input
-													type="number"
-													min="0"
-													step="0.5"
-													value={editForm.manhours}
-													onChange={(e) =>
-														setEditForm((p) => ({
-															...p,
-															manhours: e.target.value,
-														}))
-													}
-													className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-												/>
-											) : (
-												<span className="text-[#4A1254]">
-													{activity.planned_hours || 0}
-												</span>
-											)}
-										</td>
-										{/* Quantity */}
-										<td className="py-1 px-2 text-center align-middle">
-											{isEditing ? (
-												<input
-													type="number"
-													min="0"
-													step="1"
-													value={editForm.quantity}
-													onChange={(e) =>
-														setEditForm((p) => ({
-															...p,
-															quantity: e.target.value,
-														}))
-													}
-													className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-												/>
-											) : (
-												<span className="text-[#4A1254]">
-													{activity.qty_completed || 0}
-												</span>
-											)}
-										</td>
-										{/* Date Completed */}
-										<td className="py-1 px-2 text-center align-middle">
-											{isEditing ? (
-												<input
-													ref={editDateRef}
-													type="date"
-													aria-label="Date Completed"
-													max={todayStr()}
-													value={editForm.due_date}
-													onChange={(e) =>
-														setEditForm((p) => ({
-															...p,
-															due_date: e.target.value,
-														}))
-													}
-													className="w-full px-2 py-1 text-xs border border-gray-300 rounded text-center focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-												/>
-											) : (
-												<span className="text-[#4A1254]">
-													{formatShortDate(activity.due_date)}
-												</span>
-											)}
-										</td>
-										{/* Status */}
-										<td className="py-1 px-2 text-center align-middle">
-											{isEditing ? (
-												<select
-													value={editForm.status}
-													onChange={(e) =>
-														setEditForm((p) => ({
-															...p,
-															status: e.target.value,
-														}))
-													}
-													className="w-full px-0.5 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
-												>
-													<option value="Not Started">Not Started</option>
-													<option value="In Progress">In Progress</option>
-													<option value="On Hold">On Hold</option>
-													<option value="Completed">Completed</option>
-													<option value="Cancelled">Cancelled</option>
-												</select>
-											) : (
-												<span
-													className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
-														activity.status
-													)}`}
-												>
-													{activity.status || 'Not Started'}
-												</span>
-											)}
-										</td>
-										{/* Remark */}
-										<td className="py-1 px-2 align-middle">
-											<div className="relative">
-												<AutoGrowTextarea
-													value={
-														isEditing ? editForm.remark || '' : currentRemark
-													}
-													onChange={(e) =>
-														isEditing
-															? setEditForm((p) => ({
-																	...p,
-																	remark: e.target.value,
-																}))
-															: handleRemarkChange(rowKey, e.target.value)
-													}
-													onBlur={() => {
-														if (!isEditing)
-															saveRemark(
-																activity.project_id,
-																activity.activity_id,
-																rowKey,
-																originalRemark
-															);
-													}}
-													onKeyDown={(e) => {
-														if (isEditing) return;
-														if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-															e.preventDefault();
-															e.currentTarget.blur();
-														} else if (e.key === 'Escape') {
-															// Revert to the saved remark, then blur
-															// (blur skips the request when unchanged).
-															handleRemarkChange(rowKey, originalRemark);
-															e.currentTarget.blur();
-														}
-													}}
-													placeholder="Add remark…"
-													aria-label={`Remark for ${
-														activity.activity_name || 'activity'
-													}`}
-													title={
-														remarkStatusForKey === 'error'
-															? `Failed to save remark: ${
-																	remarkErrors[rowKey] || 'unknown error'
-																}`
-															: originalRemark || undefined
-													}
-													className={`max-h-36 px-1.5 py-0.5 pr-4 text-left text-xs focus:ring-1 ${
-														remarkStatusForKey === 'error'
-															? 'border-red-300 bg-red-50/40 focus:border-red-400 focus:ring-red-100'
-															: 'border-gray-200 hover:border-gray-300 focus:border-purple-400 focus:ring-purple-200'
-													}`}
-												/>
-												{!isEditing &&
-													(remarkStatusForKey || isRemarkDirty) && (
-														<RemarkStatus
-															status={remarkStatusForKey}
-															isDirty={isRemarkDirty}
-														/>
-													)}
-											</div>
-										</td>
-										{/* Actions */}
-										<td className="py-1 px-2 text-center align-middle">
-											{isEditing ? (
-												<div className="flex items-center justify-center gap-1">
-													<button
-														onClick={() =>
-															submitEdit(
-																activity.project_id,
-																activity.activity_id
-															)
-														}
-														disabled={savingEdit}
-														className="p-1 rounded bg-[#64126D] text-white hover:bg-[#7F2487] transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-														title="Save"
-													>
-														<CheckIcon className="w-3.5 h-3.5" />
-													</button>
-													<button
-														onClick={closeEditRow}
-														disabled={savingEdit}
-														className="p-1 rounded bg-white text-[#4A1254] border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-														title="Cancel"
-													>
-														<XMarkIcon className="w-3.5 h-3.5" />
-													</button>
-												</div>
-											) : (
-												<div className="flex items-center justify-center gap-1">
-													<button
-														onClick={() =>
-															openEditRow({
-																project_code,
-																activity,
-															})
-														}
-														className="p-1 rounded text-[#64126D] hover:bg-purple-100 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-														title="Edit"
-													>
-														<PencilSquareIcon className="w-3.5 h-3.5" />
-													</button>
-													<button
-														onClick={() =>
-															deleteActivity(
-																activity.project_id,
-																activity.activity_id
-															)
-														}
-														disabled={isDeleting}
-														className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
-														title="Delete"
-													>
-														{isDeleting ? (
-															<span className="inline-block w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-														) : (
-															<TrashIcon className="w-3.5 h-3.5" />
-														)}
-													</button>
-												</div>
-											)}
-										</td>
+										))}
 									</tr>
-								);
-							})}
-
-							{flatRows.length > 0 && (
-								<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
-									<td
-										colSpan={5}
-										className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
-									>
-										{baseRows.length !== flatRows.length
-											? 'Total (filtered)'
-											: 'Total Manhours'}
-									</td>
-									<td className="py-1 px-2 text-center text-[#4A1254]">
-										{totalManhours}
-									</td>
-									<td colSpan={5}></td>
-								</tr>
-							)}
-						</tbody>
-					</table>
-				</div>
+								</thead>
+								<tbody className="divide-y divide-gray-300">
+									{isAdding && renderAddForm()}
+									{periodsQuery.isPending &&
+										!periodData &&
+										!isAdding &&
+										flatRows.length === 0 && (
+											<tr>
+												<td
+													colSpan={COLS}
+													className="py-6 px-4 text-center text-sm text-[#4A1254]"
+												>
+													Loading recorded work…
+												</td>
+											</tr>
+										)}
+									{periodsQuery.isError && !periodData && !isAdding && (
+										<tr>
+											<td
+												colSpan={COLS}
+												className="py-6 px-4 text-center text-sm text-red-800"
+											>
+												Work Periods could not load. Use Try again above.
+											</td>
+										</tr>
+									)}
+									{flatRows.length === 0 &&
+										!periodsQuery.isPending &&
+										!isAdding && (
+											<tr>
+												<td
+													colSpan={COLS}
+													className="py-6 px-4 text-center text-sm text-[#4A1254]"
+												>
+													{baseRows.length === 0 ? (
+														<>
+															<p>No work recorded this week.</p>
+															{assignableProjects.length > 0 && (
+																<div className="mt-4 space-y-2 text-left max-w-md mx-auto">
+																	<p className="text-xs font-semibold text-gray-700">
+																		Assigned projects
+																	</p>
+																	<ul className="space-y-2">
+																		{assignableProjects.map((project) => {
+																			const documentsName =
+																				projectDocumentsName(project);
+																			const documentCount =
+																				projectDocumentCount(
+																					documentCounts,
+																					project.project_id
+																				);
+																			return (
+																				<li
+																					key={project.project_id}
+																					className="flex items-center justify-between gap-3 rounded-lg border border-purple-100 bg-white px-3 py-2"
+																				>
+																					<span className="text-xs text-gray-700 break-words">
+																						{project.project_code
+																							? `${project.project_code} – ${project.project_name || ''}`
+																							: project.project_name ||
+																								project.project_id}
+																					</span>
+																					<Link
+																						href={projectDocumentsHref(
+																							project.project_id
+																						)}
+																						aria-label={documentsName}
+																						title={documentsName}
+																						className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-purple-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+																					>
+																						Open documents
+																						<DocumentCountMarker
+																							count={documentCount}
+																						/>
+																					</Link>
+																				</li>
+																			);
+																		})}
+																	</ul>
+																</div>
+															)}
+														</>
+													) : (
+														<>No recorded work matches the current filters.</>
+													)}
+												</td>
+											</tr>
+										)}
+									{flatRows.map((row) => {
+										if (editing && editing.row.id === row.period?.id)
+											return renderEditForm();
+										const activityName = row.activityName || 'Unnamed Activity';
+										const documentsName = projectDocumentsName(row);
+										const canEdit = Boolean(
+											row.kind === 'period' &&
+											row.period.editable &&
+											row.period.assignmentId &&
+											canLog
+										);
+										const lockLabel =
+											row.kind === 'legacy'
+												? 'Historical duration-only log'
+												: !row.period.assignmentId
+													? 'Assignment link missing'
+													: !canLog
+														? 'Logging unavailable'
+														: 'Locked';
+										return (
+											<tr
+												key={row.key}
+												className="transition-colors divide-x divide-gray-300 hover:bg-purple-50/40"
+											>
+												<td className="py-1 px-1 text-center align-middle">
+													{row.projectId ? (
+														<ProjectNumberValue
+															projectId={row.projectId}
+															documentsName={documentsName}
+															code={
+																row.projectCode ||
+																row.projectName ||
+																row.projectId
+															}
+															documentCount={projectDocumentCount(
+																documentCounts,
+																row.projectId
+															)}
+														/>
+													) : (
+														<span className="text-xs text-gray-600">
+															Project unavailable
+														</span>
+													)}
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<ActivityTextValue
+														value={row.discipline || '–'}
+														className="text-[#4A1254]"
+													/>
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<ActivityTextValue
+														value={activityName}
+														className="font-semibold text-[#4A1254]"
+													/>
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<ActivityTextValue
+														value={row.subActivityName || '–'}
+														className="text-[#4A1254]"
+													/>
+												</td>
+												<td className="py-1 px-2 align-middle">
+													<span className="block max-h-24 overflow-y-auto whitespace-pre-wrap wrap-break-word text-xs leading-snug text-foreground">
+														{row.remarks}
+													</span>
+												</td>
+												<td className="py-1 px-1 text-center align-middle text-xs text-[#4A1254] tabular-nums">
+													{formatQuantity(row.defaultManhours)}
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<PeriodTime
+														endpoint={row.start}
+														dateCompleted={row.dateCompleted}
+													/>
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<PeriodTime
+														endpoint={row.end}
+														dateCompleted={row.dateCompleted}
+													/>
+												</td>
+												<td className="py-1 px-2 text-center align-middle text-[#4A1254] tabular-nums">
+													{formatQuantity(row.manhours)}
+													{row.kind === 'period' &&
+														row.weekManhours !== row.manhours && (
+															<span className="block text-[10px] font-normal text-gray-500">
+																Week: {formatQuantity(row.weekManhours)}
+															</span>
+														)}
+												</td>
+												<td className="py-1 px-2 text-center align-middle tabular-nums">
+													{formatQuantity(row.quantity)}
+													{row.kind === 'period' &&
+														row.weekQuantity !== row.quantity && (
+															<span className="block text-[10px] text-gray-500">
+																Week: {formatQuantity(row.weekQuantity)}
+															</span>
+														)}
+												</td>
+												<td className="py-1 px-1 text-center align-middle whitespace-nowrap text-xs">
+													{row.dateCompleted
+														? formatDateLabel(row.dateCompleted)
+														: ''}
+												</td>
+												<td className="py-1 px-1 text-center align-middle">
+													<StatusBadge status={row.status} />
+												</td>
+												<td className="py-1 px-1 text-center align-middle">
+													{canEdit ? (
+														<div className="flex items-center justify-center gap-1">
+															<button
+																type="button"
+																onClick={() => openEditRow(row.period)}
+																disabled={mutation.isPending}
+																className="p-1 rounded text-[#64126D] hover:bg-purple-100 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+																title="Edit"
+																aria-label={`Edit Work Period for ${activityName}`}
+															>
+																<PencilSquareIcon
+																	className="w-3.5 h-3.5"
+																	aria-hidden="true"
+																/>
+															</button>
+															<button
+																type="button"
+																onClick={() => deletePeriod(row.period)}
+																disabled={mutation.isPending}
+																className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+																title="Delete"
+																aria-label={`Delete Work Period for ${activityName}`}
+															>
+																<TrashIcon
+																	className="w-3.5 h-3.5"
+																	aria-hidden="true"
+																/>
+															</button>
+														</div>
+													) : (
+														<button
+															type="button"
+															disabled
+															className="p-1 rounded text-gray-400 cursor-not-allowed"
+															title={
+																lockLabel === 'Locked'
+																	? 'Both work dates must be today or yesterday to edit.'
+																	: lockLabel
+															}
+															aria-label={`${lockLabel} for ${activityName}`}
+														>
+															<LockClosedIcon
+																className="w-3.5 h-3.5"
+																aria-hidden="true"
+															/>
+														</button>
+													)}
+												</td>
+											</tr>
+										);
+									})}
+									{flatRows.length > 0 && (
+										<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
+											<td
+												colSpan={8}
+												className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
+											>
+												{flatRows.length !== baseRows.length
+													? 'Total (filtered)'
+													: 'Total Manhours'}
+											</td>
+											<td className="py-1 px-2 text-center text-[#4A1254] tabular-nums">
+												{formatQuantity(totalManhours)}
+											</td>
+											<td className="py-1 px-2 text-center text-[#4A1254] tabular-nums">
+												{formatQuantity(totalQuantity)}
+											</td>
+											<td colSpan={3}></td>
+										</tr>
+									)}
+								</tbody>
+							</table>
+						</div>
+					</form>
+					<p className="px-3 py-2 text-[11px] leading-snug text-gray-500">
+						Times use IST. For a new entry, an earlier end time means work
+						started the previous day. Older entries may have no recorded times.
+					</p>
+				</>
 			)}
 		</div>
 	);

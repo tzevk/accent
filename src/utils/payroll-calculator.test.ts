@@ -333,7 +333,7 @@ describe('calculateEmployeePayroll — hours-based pay', () => {
 		return {
 			executed: [] as string[],
 			execute: vi.fn(async (sql: string) => {
-				if (sql.includes('FROM user_activity_assignments')) {
+				if (sql.includes('FROM logged_activity_assignments')) {
 					return [
 						[
 							{

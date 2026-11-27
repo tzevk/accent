@@ -186,9 +186,21 @@ _Avoid_: Concurrent Leave
 Net available working hours for an Employee in a period — 8h per working day (excluding Sundays, 2nd/4th Saturdays, and active non-optional `holiday_master` dates — an optional holiday is a working day), minus approved leave (8h per full day, 4h per half-day).
 _Avoid_: Expected hours, Standard hours (ambiguous), Bandwidth
 
+**Work Period**:
+One continuous interval an Employee works against a Project Activity assignment, stored as one canonical `work_periods` row with authoritative IST Start and End instants. Duration is derived, not entered. A Work Period can cross midnight or a week boundary, stays one editable record, and contributes only each date's or week's elapsed share to Logged Hours. It is not an estimate, an Attendance Record, a Work Session, or approval of Payable Hours (ADR-0038).
+_Avoid_: Work Session, Shift, Daily Activity Entry, Attendance Record
+
+**Daily Activity Entry** (historical):
+A duration-only per-day record in `user_activity_assignments.daily_entries`, with a date, hours, and optional quantity and remarks. It has no Start or End. Historical entries remain on their recorded dates; Accent does not invent endpoints or convert them into Work Periods.
+_Avoid_: Work Period, Estimate, Derived daily slice
+
+**Effective Daily Entries**:
+The shared read-only daily attribution used by Logged Hours consumers: historical Daily Activity Entries plus Work Period elapsed slices split at IST midnight. Quantity is credited once on Date Completed. The Work Period projection is transactionally maintained and is not a second independently editable log.
+_Avoid_: Canonical Work Period, Raw legacy history (when entries are merged)
+
 **Logged Hours**:
-Sum of `user_activity_assignments.daily_entries.hours` (`actual_hours`) entered via Project Activity Assignments, including overtime. The billed-effort truth for utilization, and the payroll numerator: Gross = Hourly Rate × Logged Hours (ADR-0010); never `planned_hours`/`estimated_hours`.
-_Avoid_: Manhours (ambiguous), Planned hours, Assigned hours
+The uncapped sum of hours in Effective Daily Entries for an Employee and period, including overtime. It is actual Project effort used by Timesheet, utilization, billing, Project-cost readers, and the current payroll numerator: Gross = Hourly Rate × Logged Hours (ADR-0010). It is never planned or estimated effort, Attendance Record hours, or Payable Hours approval; correcting a Work Period does not reprice a recorded Payroll Slip.
+_Avoid_: Manhours (ambiguous), Planned hours, Assigned hours, Payable Hours
 
 **Utilization**:
 `total_logged / capacity × 100` per employee per month. Under <80%, healthy 80–100%, over >100%. Answers whether an Employee is underworked or overworked.
@@ -415,11 +427,13 @@ Time Present (the device-measured span), and a User can hold more than one on a 
 _Avoid_: Session (the login, not the span), Punch (a device event), Shift
 
 **Timesheet**:
-An Employee's month view of worked hours — hours from the Attendance Record's status
-(`P` = 8h, `HD` = 4h) plus Logged Hours from Project Activity Assignments daily entries,
-with worked-hours overtime counting every minute past 8 (ADR-0006). It carries no punch
-times; Punches feed Time Present and the Attendance Record's times instead.
-_Avoid_: Attendance Record (the daily cell), Logged Hours (the project effort it
+An Employee's month view of worked hours. It uses Project Logged Hours from
+Effective Daily Entries — historical Daily Activity Entries plus Work Period
+slices — and falls back to Attendance Record status hours (`P` = 8h, `HD` = 4h)
+when no Project hours are logged. Worked-hours overtime counts every minute past
+8 (ADR-0006), independently of Payable OT. A Timesheet carries no Punch times;
+Punches feed Time Present and the Attendance Record's times instead.
+_Avoid_: Attendance Record (the daily cell), Logged Hours (the Project effort it
 includes), Payable OT (the paid variant)
 
 **Project Team Member**:

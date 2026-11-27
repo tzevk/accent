@@ -73,7 +73,7 @@ interface ProjectRow {
 	[key: string]: unknown;
 }
 
-/** Raw row from `user_activity_assignments` table. */
+/** Raw row from the effective `logged_activity_assignments` view. */
 interface UaaRow {
 	user_id: number | string;
 	project_id: number | string;
@@ -81,6 +81,7 @@ interface UaaRow {
 	activity_name?: string;
 	discipline_name?: string;
 	sub_activity_name?: string;
+	work_period_entries?: string | null;
 	default_manhours?: number | string;
 	estimated_hours?: number | string;
 	actual_hours?: number | string;
@@ -200,12 +201,12 @@ export async function GET(request: Request) {
 			});
 		}
 
-		// ── 3. Load assignments from normalized table ────────────────────────
+		// ── 3. Load assignments through the effective logged-hours view ───────
 		const rowsByUser = new Map<string, DailyRow[]>();
 
 		try {
 			const [assignments] = await query(`
-				SELECT * FROM user_activity_assignments
+				SELECT * FROM logged_activity_assignments
 				ORDER BY project_id, created_at ASC
 			`);
 
@@ -223,10 +224,17 @@ export async function GET(request: Request) {
 				const defaultManhours = parseFloat(String(row.default_manhours)) || 0;
 				const plannedHours =
 					parseFloat(String(row.estimated_hours || '0')) || 0;
-				const qtyCompleted = parseFloat(String(row.qty_completed || '0')) || 0;
 				// One output row per dated daily entry (a malformed blob yields
 				// none, and the skeleton row below stands in for the assignment).
 				const dailyEntries = parseDailyEntryRecords(row.daily_entries);
+				const qtyCompleted =
+					row.work_period_entries != null
+						? dailyEntries.reduce(
+								(sum, { entry }) =>
+									sum + (parseFloat(String(entry.qty_done ?? '')) || 0),
+								0
+							)
+						: parseFloat(String(row.qty_completed || '0')) || 0;
 
 				if (dailyEntries.length === 0) {
 					const rows = rowsByUser.get(userId) || [];
@@ -268,7 +276,7 @@ export async function GET(request: Request) {
 				rowsByUser.set(userId, rows);
 			}
 		} catch {
-			/* table may not exist */
+			/* view may not exist */
 		}
 
 		// ── 4. Assemble the result (every roster employee, even with rows: []) ─

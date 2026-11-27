@@ -1,123 +1,209 @@
-# `daily_entries` — Data Model Reference
+# Work Periods and historical `daily_entries` — Data Model Reference
 
-> Current reference — last verified 2026-10-06 against the source files linked below. Part of the
-> [documentation index](../README.md). For the July 2026 normalization migration, see
-> [ACTIVITY_NORMALIZATION.md](./ACTIVITY_NORMALIZATION.md).
+> Domain reference for [#468](https://github.com/tzevk/accent/issues/468) and
+> [ADR-0038](../adr/0038-timesheets-use-recorded-work-periods.md). The legacy
+> `daily_entries` behavior was last verified 2026-10-06; the Work Period rules
+> below describe the accepted #468 contract. Part of the
+> [documentation index](../README.md).
 
-## Schema (stored in `user_activity_assignments.daily_entries`)
+## Two kinds of evidence, one effective read
 
-A JSON array of per-day work logs. Each entry:
+| Record                                | Authoritative facts                                                                          | Identity and editing                                                               | Daily reporting                                                                          |
+| ------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Work Period**                       | Real Start and End, Employee, Project Activity assignment, quantity, Date Completed, remarks | One canonical `work_periods` row per continuous interval; duration is derived      | Split at IST midnight; the same period can contribute to several dates, weeks, or months |
+| **Daily Activity Entry** (historical) | A recorded date and duration, with optional quantity and remarks                             | An item in the assignment's legacy `daily_entries` JSON; it has no clock endpoints | Stays on its recorded date with its recorded duration                                    |
 
-```json
-{
-	"date": "2026-07-28",
-	"qty_done": 5,
-	"hours": 8,
-	"remarks": "Completed piping isometrics",
-	"isLocked": true
-}
-```
+A Work Period is not a duration-only Daily Activity Entry, an estimate, an
+Attendance Record, a Work Session, or approval of Payable Hours. Several Work
+Periods may reference the same Project Activity assignment. Editing or deleting
+one changes only that period.
 
-| Field      | Type                | Required | Notes                                                                                                                       |
-| ---------- | ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `date`     | string (YYYY-MM-DD) | —        | Day the work was performed                                                                                                  |
-| `qty_done` | number              | —        | Quantity completed that day                                                                                                 |
-| `hours`    | number              | —        | Hours worked that day                                                                                                       |
-| `remarks`  | string              | —        | Free-text note                                                                                                              |
-| `isLocked` | boolean             | —        | Lock flag set by `EditProjectForm.jsx` when a new entry is added. Round-trips through the API (see “Lock semantics” below). |
+### Canonical storage: `work_periods`
 
-`daily_entries` is the **ground truth** for work tracking — it records what actually happened day by day. The parent row columns `qty_completed` and `actual_hours` are supposed to be aggregates but are stored independently and can drift (see [ACTIVITY_NORMALIZATION.md](./ACTIVITY_NORMALIZATION.md) §1).
+| Column           | Type                                            | Meaning                                                       |
+| ---------------- | ----------------------------------------------- | ------------------------------------------------------------- |
+| `id`             | `varchar(36)`                                   | Stable Work Period identity                                   |
+| `assignment_id`  | FK → `user_activity_assignments.id`, `RESTRICT` | Project Activity assignment; remains separate from the period |
+| `employee_id`    | `INT` FK → `employees.id`, `RESTRICT`           | Employee who worked the period                                |
+| `start_ms`       | `BIGINT`                                        | Authoritative start instant, stored as epoch milliseconds     |
+| `end_ms`         | `BIGINT`                                        | Authoritative end instant, stored as epoch milliseconds       |
+| `date_completed` | `DATE`                                          | Date that receives the period's quantity once                 |
+| `quantity`       | `DECIMAL(10,2)`                                 | Completed quantity attached to the period                     |
+| `remarks`        | `TEXT`                                          | Remarks attached to the period                                |
 
----
+The API exposes Start and End as explicit IST local strings
+(`YYYY-MM-DDTHH:mm`). Parsing and formatting use `Asia/Kolkata`, never the
+browser, server, or database default zone. Duration is
+`(end_ms - start_ms) / 1000`; users do not enter an hours total.
 
-## Write paths (who creates/updates daily_entries)
+### Projection and view
 
-### 1. Project edit form — admin/PM adds a day entry
+`user_activity_assignments.work_period_entries` is a separate, transactionally
+maintained projection of daily Work Period attribution. It is not a second
+independently editable copy of a Work Period.
 
-**File:** `src/app/projects/[id]/edit/EditProjectForm.jsx`
+The read-only `logged_activity_assignments` view exposes all existing assignment
+columns and the shared effective entries as `daily_entries`. Until the
+projection exists, legacy `daily_entries` remain unchanged; no endpoints or
+Employee links are inferred or backfilled.
 
-- **`addDailyEntry(activityId, userId)`** (line 3815): Locks all previous entries (`isLocked: true`, lines 3843-3847), appends a new unlocked entry dated the day after the last entry (or today). Saved when the project form submits → flows through `projects/[id]/route.js` sync.
-- **`updateDailyEntry(activityId, userId, entryIndex, field, value)`** (line 3849): Edits a single entry field in-place.
-- **`removeDailyEntry(activityId, userId, entryIndex)`** (line 3877): Removes an entry.
+## Effective daily attribution
 
-All mutate the in-memory `project_activities_list` state. Persisted on project save.
+The shared read combines two sources exactly once:
 
-### 2. Project activities report — read-only
+1. Historical Daily Activity Entries keep their recorded date, hours, quantity,
+   and remarks.
+2. Each Work Period is split at every IST midnight, including month boundaries.
+   Each slice carries only the elapsed hours belonging to that date.
 
-The July 2026 "project activity redo" (commit `9c06a27`) removed the inline edit/delete handlers. `src/app/reports/project-activities/page.tsx` now exposes filters only, and data loading lives in `src/app/reports/project-activities/data-source.ts` (`fetchProjectActivitiesData`, which parses entries via `parseDailyEntryRecords` at line 152). Admin edits to daily entries happen through the project edit form (path 1).
+Quantity and remarks belong to the underlying Work Period. Quantity is credited
+once, on Date Completed, which defaults to the period's IST end date and retains
+the no-future-date rule. A Date Completed in another week attributes quantity
+there without adding time to that week. Derived slices must never be presented
+as independently editable legacy entries.
 
-### 3. User self-service add
+For example, Monday `2026-11-23T22:00` to Tuesday `2026-11-24T02:00` is one Work
+Period with two effective entries: two hours on each date. A Sunday-to-Monday
+period appears in both weekly views with the same identity and original
+endpoints, but each week counts only its own elapsed share.
 
-**File:** `src/app/api/users/[id]/activity-assignments/route.js` — PATCH handler (line 726)
+## Work Period API and writes
 
-Creates a default entry when a user adds themselves to a project activity (lines 801-806):
+`/api/work-periods` is the canonical write surface:
 
-```js
-daily_entries: [
-	{
-		date: due_date || today,
-		qty_done: qty_completed || 0,
-		hours: manhours_assigned || 0,
-		remarks: '',
-	},
-];
-```
+| Method           | Scope                                                            | Contract                                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`            | Self, or manager when `projectId` is present                     | `?week=YYYY-MM-DD` selects a Monday–Sunday week; optional `userId` follows the dashboard self-view rule. Manager reads require Project edit permission.                      |
+| `POST`           | Self, or manager with `manager: true`                            | Self selects Project, Discipline, Activity, and Sub-activity; manager selects `projectId` and `assignmentId`. Both supply Start, End, quantity, Date Completed, and remarks. |
+| `PUT` / `DELETE` | Self for an eligible own period, or manager with `manager: true` | The manager targets `{ id, projectId, ...periodFields }` in the authorized Project scope.                                                                                    |
 
-### 4. User dashboard edit
+Successful mutations return `{ success: true, data: { id }, affected_rows: 1 }`.
+Reads return `{ success: true, data: { canLog, today, weekStart, periods } }`.
+`periods` contains Work Period rows with assignment labels, explicit IST
+endpoints, duration, weekly hours and quantity, and editability.
 
-**API:** `src/app/api/users/[id]/activity-assignments/route.js` — PUT handler (line 347)
+`src/lib/work-periods.ts` owns the shared pure rules for exact IST parsing and
+formatting, Monday week starts, two-day eligibility, daily attribution, and
+week-second intersections.
 
-Accepts `daily_entries` from the request body, normalizes each entry's `date`/`qty_done`/`hours`/`remarks`, and stores the array as a JSON string (lines 481-500). Unknown entry fields are preserved (`isLocked` survives the round-trip).
+### Validation and concurrency
 
-**UI:** `src/components/ProjectActivityAssignments.jsx` (PUT at lines 203/412, DELETE at line 448), rendered by `src/app/dashboard/user-dashboard.jsx` (~line 1253).
+- Require a direct User Account link to an existing, non-deleted Employee and
+  validate Project membership and the Activity catalog selection on the server.
+- Require both explicit endpoints, a positive interval, and an End that is not
+  in the future. Reject malformed or impossible calendar dates. An earlier clock
+  time is not an implicit next-day End. Activity status is not a completion
+  requirement.
+- **No sub-activity** is valid only when the selected Activity has no children.
+- Compare half-open intervals `[Start, End)` across all of the Employee's Work
+  Periods and Projects, excluding the period being corrected. Touching endpoints
+  are allowed; historical duration-only entries do not participate.
+- Lock the Employee row first, then check overlap and perform every mutation in
+  the same transaction. This applies to self-service and manager writes, so two
+  concurrent saves cannot both pass.
 
-On the user dashboard, **Date Completed** accepts today or an earlier date when adding or editing an activity. The date limit uses the browser’s local calendar day.
+### Two-day self-service window
 
-### 5. Project save sync
+Self-service add, edit, and delete are limited to today and yesterday in IST:
 
-**File:** `src/app/api/projects/[id]/route.js` (~lines 1131-1315)
+- Add: both proposed endpoints must qualify.
+- Edit: both saved endpoints and both replacement endpoints must qualify.
+- Delete: both saved endpoints must qualify.
 
-Copies `daily_entries` from the `project_activities_list` form payload into `user_activity_assignments`. Uses a per-row UPSERT keyed on `(user_id, project_id, activity_id)`: rows omitted from the payload are not deleted, but submitted fields — including `daily_entries` — are overwritten with the form's copy, so saving a stale form can clobber entries added elsewhere.
+A Monday 22:00–Tuesday 02:00 period is editable on Tuesday, but not on
+Wednesday. The server's current time and `Asia/Kolkata` decide eligibility.
 
----
+### Entering a Work Period
 
-## Read paths (who consumes daily_entries)
+In **My Project Activities**, select **Add** and fill the inline row. Open
+**Start Period** and **End Period** to pick an hour, minute, and **AM** or **PM**.
+Select **OK** to apply each time. **Date Completed** defaults to today in IST
+and sets the new period's end date. If the end time is earlier than the start
+time, the row shows **Previous day** under the start time.
+Accent only accepts finished Work Periods. For a period that ends today, choose
+an end time no later than the current time in IST.
+When editing an existing period, its saved work dates stay the same.
+Changing **Date Completed** on that row changes only the quantity's reporting date.
+**Activity Description** is required when employees add or edit a Work Period.
+**Quantity** is optional.
+Accent calculates **Manhours** from the saved times. **Default MH** shows the
+catalog default, not the assignment's planned hours. Historical duration-only
+rows are read-only and have no start or end times.
+Hover over a column heading or focus it with the keyboard for a short explanation.
 
-| Consumer                          | File                                                                 | What it does                                                                                                  |
-| --------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **Dashboard reminder**            | `src/app/dashboard/user-dashboard.jsx:441-454`                       | Shows the "pending activities" reminder when an assignment has no entry dated today (does not use `isLocked`) |
-| **My Activities tab**             | `src/app/projects/[id]/edit/tabs/MyActivitiesTab.jsx:276-284`        | Renders per-day rows with running balance (`qtyAssigned - doneSoFar`); lock fallback at 463-465               |
-| **Project activities report**     | `src/app/reports/project-activities/page.tsx` + `data-source.ts:152` | Read-only matrix; entries parsed via `parseDailyEntryRecords`                                                 |
-| **Employee report API**           | `src/app/api/reports/employee-report/route.ts:229`                   | Parses entries via `parseDailyEntryRecords`, expands into per-day rows per user                               |
-| **Project activities report API** | `src/app/api/reports/project-activities/route.js:47`                 | Delegates to `fetchProjectActivitiesData()` in `data-source.ts`                                               |
-| **Activity assignments GET**      | `src/app/api/users/[id]/activity-assignments/route.js:144-168`       | Parses entries inline, derives totals as a fallback when stored columns are 0/absent                          |
+### Monday–Sunday weeks
 
-Most server-side report readers decode the blob through one canonical module, `src/lib/logged-hours.ts` (ADR-0010): `parseDailyEntries` for logged hours, `parseDailyEntryRecords` where the reader also needs `qty_done` / `remarks`, and `sumLoggedHoursForMonth` / `hoursByDateForMonth` for the aggregates. Add a new reader there rather than parsing the JSON again. The activity-assignments API route (GET/PUT) still parses/normalizes inline.
+My Project Activities opens the current IST Monday–Sunday week. Previous and
+Next browse history without changing write eligibility. A period is visible in
+every week its half-open interval overlaps, with one stable identity and its
+original endpoints. Weekly seconds are the intersection with that week; a
+period ending at Monday 00:00 contributes no time to the new week.
+
+The table shows only recorded work in the selected dates. Historical Daily
+Activity Entries appear on their recorded dates. Project Activity assignments
+without recorded work do not appear as rows, but their Projects remain
+available in **Add**.
+
+### Manager corrections and protected Project saves
+
+A manager with the existing Project edit permission can add, correct, and remove
+older Work Periods in the Project editor. The manager bypasses only the
+two-day window, not endpoint, future-time, catalog, or overlap validation.
+
+General Project saves must not replace or delete Work Periods or overwrite their
+projection, including saves from stale assignment snapshots. Work Period
+corrections use their own API. The `RESTRICT` foreign keys also prevent generic
+assignment or Employee deletion from silently removing canonical periods.
+
+## Read paths
+
+| Consumer                                  | Source                                             | Meaning                                                                                                                                          |
+| ----------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **My Project Activities**                 | `/api/work-periods` plus legacy assignment history | One row per Work Period; historical duration-only logs remain visible without guessed Start or End                                               |
+| **Activity assignments GET**              | Effective `daily_entries`                          | When merged for the reminder, raw historical JSON is returned separately as `legacy_daily_entries`; derived entries are never rendered as legacy |
+| **Dashboard reminder**                    | Effective entry dated today in IST                 | A successful self-service Work Period save counts as activity evidence                                                                           |
+| **My Timesheet**                          | Shared effective daily attribution                 | Credits overnight and month-crossing time to the dates worked                                                                                    |
+| **Admin Timesheet and Excel export**      | Same effective attribution                         | Matching daily, monthly, normal, and overtime totals                                                                                             |
+| **Employee and Project activity reports** | `logged_activity_assignments` / shared attribution | Mixed legacy and Work Period data without double counting                                                                                        |
+
+Most server-side report readers continue to decode effective entries through
+`src/lib/logged-hours.ts` (ADR-0010): `parseDailyEntries` for hours and
+`parseDailyEntryRecords` when quantity or remarks are also needed. Add a reader
+there rather than parsing JSON again.
 
 ### Two-hour activity log reminder
 
-The dashboard separately warns after two hours without a saved project activity update.
-The assignments API returns `data.lastActivityLoggedAt` from authenticated self-service save markers in the existing `user_activity_logs` table (`resource_type='project_activity_save'`, `action_type` create/update, `status='success'`, actor matching the requested user) — never assignment `updated_at`, so a manager saving another user's rows never resets that user's timer. No migration.
-Successful self-service activity additions, edits, and remark saves reset the reminder; browsing, typing, failed saves, and deletions do not.
-Old history without a dedicated marker is unknown and gets first-visit grace rather than an inferred or backfilled save; without a saved update today, monitoring starts at the first dashboard visit of the local calendar day.
-The per-user/day baseline and two-hour dismissal snooze survive refreshes and synchronize across tabs through local storage.
-If storage is unavailable, tracking continues in memory while mounted.
-The reminder stays silent when assignments fail to load, the user has no accessible project to log to, or an administrator views another user's dashboard.
-The existing missing-daily-entry reminder takes priority. Attendance, mouse-idle metrics, and payroll rules remain unchanged.
+The assignments API returns `data.lastActivityLoggedAt` from authenticated
+self-service save markers in `user_activity_logs`
+(`resource_type='project_activity_save'`, successful create/update, actor
+matching the requested user). A successful self-service Work Period save keeps
+this evidence working. Failed writes, rejected overlaps, deletions, and manager
+saves on another Employee's behalf do not reset the Employee's reminder.
 
----
+Assignment `updated_at` is never used as a substitute. Old history without a
+marker remains unknown and receives first-visit grace. The existing per-user/day
+baseline, dismissal snooze, in-memory fallback, load-failure silence, and
+missing-daily-entry reminder priority are unchanged.
 
-## Lock semantics
+## Legacy lock semantics
 
-`isLocked` is set by `EditProjectForm.jsx` when a day entry is added (previous entries are marked locked, new entry unlocked). It is **persisted**: the PUT handler keeps unknown entry fields during normalization (`route.js:481-500`), and project save stores the array as submitted. Entries created by the self-service PATCH path carry no `isLocked`.
+`isLocked` belongs to historical Daily Activity Entries. The Project editor set
+it when adding an entry, the assignments API preserved unknown fields during
+normalization, and My Activities treated an entry as locked when the flag was
+true or its date was before today.
 
-Who reads it:
+It does not control Work Period eligibility. Work Period editability comes from
+the IST two-day window or an authorized manager correction.
 
-1. The **dashboard reminder** no longer consults `isLocked` — it fires when an assignment has no entry dated today (`user-dashboard.jsx:441-454`). An earlier version checked `e.isLocked` and fired false negatives; that was fixed.
-2. The **MyActivitiesTab** treats an entry as locked when `entry.isLocked === true` OR the entry date is before today (`MyActivitiesTab.jsx:463-465`), so locking still works for rows saved before the flag was persisted.
+## Legacy aggregate drift
 
----
+The parent assignment's `qty_completed` and `actual_hours` columns can drift
+from the sum of legacy `daily_entries`; see
+[ACTIVITY_NORMALIZATION.md](./ACTIVITY_NORMALIZATION.md) §1. Effective Logged
+Hours readers must not let a stale aggregate mask newly logged Work Period time.
+Project estimate fields remain separate planned-effort inputs and are never
+populated from elapsed time.
 
-## Known issue: redundant with `qty_completed` / `actual_hours`
-
-The parent row has `qty_completed` and `actual_hours` columns that should equal `SUM(daily_entries.qty_done)` and `SUM(daily_entries.hours)`. The GET handler returns the stored column when non-zero and falls back to the derived sum otherwise (`route.js:182-184`). The stored columns can drift — see [ACTIVITY_NORMALIZATION.md](./ACTIVITY_NORMALIZATION.md) §1 for details.
+Attendance status and overtime remain separate inputs. Current payroll continues
+to follow ADR-0010, and correcting a Work Period does not reprice a recorded
+Payroll Slip.

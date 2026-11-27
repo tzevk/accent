@@ -38,6 +38,9 @@ const mtoAssignments = [
 		user_id: 1,
 		activity_name: 'Engineering',
 		sub_activity_name: 'MTO',
+		work_period_entries: '[]',
+		actual_hours: 999,
+		qty_completed: 999,
 		daily_entries: JSON.stringify([
 			{ date: '2026-07-22', hours: 8, qty_done: 0 },
 			{ date: '2026-07-23', hours: 4, qty_done: 0 },
@@ -106,8 +109,14 @@ function setupMockQueries() {
 		const s = String(sql);
 		if (s.includes('FROM projects') && s.includes('project_id = ?'))
 			return Promise.resolve([[projectRow]]);
-		if (s.includes('FROM user_activity_assignments'))
+		if (s.includes('FROM logged_activity_assignments'))
 			return Promise.resolve([[...mtoAssignments, ...isoAssignments]]);
+		if (s.includes('FROM user_activity_assignments'))
+			return Promise.resolve([
+				[...mtoAssignments, ...isoAssignments].map(({ user_id }) => ({
+					user_id,
+				})),
+			]);
 		if (s.includes('FROM users')) return Promise.resolve([userRows]);
 		if (s.includes('FROM employees')) return Promise.resolve([[]]);
 		return Promise.resolve([[]]);
@@ -305,6 +314,8 @@ describe('Project Status Detail — GET /api/reports/project-status/[projectId]'
 			const s = String(sql);
 			if (s.includes('FROM projects') && s.includes('project_id = ?'))
 				return Promise.resolve([[projectRow]]);
+			if (s.includes('FROM logged_activity_assignments'))
+				return Promise.resolve([[]]);
 			if (s.includes('FROM user_activity_assignments'))
 				return Promise.resolve([[]]);
 			if (s.includes('FROM users')) return Promise.resolve([userRows]);

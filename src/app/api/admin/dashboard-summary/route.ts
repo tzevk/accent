@@ -16,9 +16,9 @@
  * - `week` is the rolling last 7 days ending today, on the current month's
  *   Payroll roster — the range lens in the utilization data-source.
  *
- * Access: super admins only. Every hour comes from
- * `user_activity_assignments.daily_entries` and every capacity hour from
- * the payroll capacity calendar; no figure is read from a table nothing
+ * Access: super admins only. Every hour comes from the effective
+ * `logged_activity_assignments.daily_entries` projection and every capacity hour
+ * from the payroll capacity calendar; no figure is read from a table nothing
  * writes.
  *
  * Uses pool.execute (via query()) — no long-held connection.
@@ -254,7 +254,7 @@ async function loadProjects(
 	const [rows] = (await query(
 		`SELECT uaa.project_id, uaa.daily_entries,
 		        p.project_code, p.project_title, p.name AS project_name
-		 FROM user_activity_assignments uaa
+		 FROM logged_activity_assignments uaa
 		 LEFT JOIN projects p ON p.project_id = uaa.project_id AND p.isDelete = 0
 		 WHERE uaa.status <> 'Cancelled'
 		   AND uaa.daily_entries IS NOT NULL AND uaa.daily_entries NOT IN ('', '[]')
