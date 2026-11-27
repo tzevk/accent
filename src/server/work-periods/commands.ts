@@ -1263,6 +1263,8 @@ export async function updateWorkPeriodCommand(
 			);
 		}
 
+		// Employee attribution belongs to the canonical period. A correction
+		// never adopts mutable assignment metadata or caller-supplied identity.
 		const saved = await updateWorkPeriod(ddb, {
 			id: options.id,
 			assignmentId: current.period.assignmentId,

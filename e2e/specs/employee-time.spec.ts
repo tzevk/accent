@@ -234,9 +234,16 @@ test('work period reaches My Timesheet across IST midnight', async ({
 	await expect(subActivity).toHaveValue('');
 	const startTime = seeded.self.start.slice(11);
 	const endTime = seeded.self.end.slice(11);
-	await page
-		.getByLabel('Date Completed', { exact: true })
-		.fill(seeded.self.dateCompleted);
+	for (const [label, date] of [
+		['Start Period', seeded.self.date],
+		['End Period', seeded.self.date],
+	]) {
+		await editor.getByLabel(`${label} date`, { exact: true }).click();
+		await editor.getByLabel(`${label} Date`, { exact: true }).fill(date);
+	}
+	await expect(page.getByLabel('Date Completed', { exact: true })).toHaveValue(
+		seeded.self.date
+	);
 	for (const [label, time] of [
 		['Start Period', startTime],
 		['End Period', endTime],

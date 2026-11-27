@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { RESOURCES, PERMISSIONS } from '@/utils/api-permissions';
 import { hasPermission } from '@/utils/rbac';
 import { randomUUID } from 'crypto';
+import {
+	effectiveLoggedHours,
+	parseDailyEntryRecords,
+} from '@/lib/logged-hours';
 
 /**
  * GET /api/users/[id]/activities
@@ -171,7 +175,7 @@ export async function GET(request, { params }) {
         p.project_code,
         u.username as assigned_by_name,
         u.full_name as assigned_by_full_name
-      FROM user_activity_assignments uaa
+      FROM logged_activity_assignments uaa
       LEFT JOIN projects p ON uaa.project_id = p.project_id
       LEFT JOIN users u ON uaa.assigned_by = u.id
       WHERE uaa.user_id = ?
@@ -203,11 +207,21 @@ export async function GET(request, { params }) {
 				' ORDER BY uaa.due_date ASC, uaa.priority DESC, uaa.created_at DESC';
 
 			const [activities] = await db.execute(query, queryParams);
+			const effectiveActivities = activities.map((row) => ({
+				...row,
+				daily_entries: parseDailyEntryRecords(row.daily_entries).map(
+					(record) => record.entry
+				),
+				legacy_daily_entries: parseDailyEntryRecords(
+					row.legacy_daily_entries
+				).map((record) => record.entry),
+				actual_hours: effectiveLoggedHours(row),
+			}));
 
 			return NextResponse.json({
 				success: true,
-				data: activities,
-				count: activities.length,
+				data: effectiveActivities,
+				count: effectiveActivities.length,
 				summary: summary,
 			});
 		} finally {

@@ -5,7 +5,7 @@ import {
 	RESOURCES,
 	PERMISSIONS,
 } from '@/utils/api-permissions';
-import { parseDailyEntries } from '@/lib/logged-hours';
+import { effectiveLoggedHours } from '@/lib/logged-hours';
 
 function parseDailyEntriesPayload(value) {
 	if (!value) return [];
@@ -15,20 +15,6 @@ function parseDailyEntriesPayload(value) {
 	} catch {
 		return [];
 	}
-}
-
-function effectiveLoggedHours(row) {
-	const derivedHours = parseDailyEntries(row.daily_entries).reduce(
-		(sum, entry) => sum + entry.hours,
-		0
-	);
-	if (
-		row.work_period_entries !== null &&
-		row.work_period_entries !== undefined
-	) {
-		return derivedHours;
-	}
-	return parseFloat(row.actual_hours) || derivedHours;
 }
 
 function withEffectiveLoggedHours(row) {

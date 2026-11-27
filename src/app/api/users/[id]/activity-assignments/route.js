@@ -1,7 +1,7 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/utils/api-permissions';
-import { parseDailyEntries } from '@/lib/logged-hours';
+import { effectiveLoggedHours } from '@/lib/logged-hours';
 import {
 	getProjectTeamMembership,
 	isUserInProjectTeam,
@@ -344,10 +344,6 @@ export async function GET(request, { params }) {
 				(s, e) => s + (parseFloat(e?.qty_done) || 0),
 				0
 			);
-			const derivedHours = parseDailyEntries(row.daily_entries).reduce(
-				(s, e) => s + e.hours,
-				0
-			);
 			const hasWorkPeriodProjection =
 				row.work_period_entries !== null &&
 				row.work_period_entries !== undefined;
@@ -372,9 +368,7 @@ export async function GET(request, { params }) {
 					? derivedQty
 					: parseFloat(row.qty_completed) || derivedQty,
 				planned_hours: parseFloat(row.estimated_hours) || 0,
-				actual_hours: hasWorkPeriodProjection
-					? derivedHours
-					: parseFloat(row.actual_hours) || derivedHours,
+				actual_hours: effectiveLoggedHours(row),
 				start_date: row.start_date || null,
 				due_date: row.due_date || null,
 				status: row.status || 'Not Started',

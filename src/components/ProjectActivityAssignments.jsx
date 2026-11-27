@@ -328,14 +328,6 @@ const WORK_PERIOD_COLUMNS = [
 		help: 'Preset hours for the activity, not hours you worked.',
 	},
 	{
-		label: 'Start Period',
-		help: 'When you started work, in Indian Standard Time (IST).',
-	},
-	{
-		label: 'End Period',
-		help: 'When you finished work, in IST. Save only after the work ends.',
-	},
-	{
 		label: 'Manhours',
 		sortKey: 'planned_hours',
 		help: 'Hours worked, calculated from the start and end times for new entries.',
@@ -346,9 +338,17 @@ const WORK_PERIOD_COLUMNS = [
 		help: 'Optional: how much work you completed.',
 	},
 	{
+		label: 'Start Period',
+		help: 'When you started work, in Indian Standard Time (IST).',
+	},
+	{
+		label: 'End Period',
+		help: 'When you finished work, in IST. Save only after the work ends.',
+	},
+	{
 		label: 'Date Completed',
 		sortKey: 'due_date',
-		help: 'Sets the end date for new entries and the date the quantity counts toward.',
+		help: 'Defaults to the End date for new entries and sets the date the quantity counts toward.',
 	},
 	{
 		label: 'Status',
@@ -414,8 +414,8 @@ const EMPTY_ADD_FORM = {
 	disciplineId: '',
 	activityId: '',
 	subActivityId: '',
-	start: '',
-	end: '',
+	startDate: '',
+	endDate: '',
 	quantity: '',
 	dateCompleted: '',
 	remarks: '',
@@ -446,25 +446,40 @@ function periodClock(endpoint) {
 	return endpoint?.slice(11, 16) ?? '';
 }
 
-function startsPreviousDay({ start, end }) {
-	return Boolean(start && end && end < start);
+function periodRangeManhours(start, end, rangeStart, rangeEnd) {
+	const startMs = parseIstLocal(start);
+	const endMs = parseIstLocal(end);
+	const rangeStartMs = parseIstLocal(`${rangeStart}T00:00`);
+	const rangeEndMs = parseIstLocal(`${shiftIstDate(rangeEnd, 1)}T00:00`);
+	if (
+		startMs === null ||
+		endMs === null ||
+		rangeStartMs === null ||
+		rangeEndMs === null ||
+		endMs <= startMs
+	) {
+		return 0;
+	}
+	const clippedStart = Math.max(startMs, rangeStartMs);
+	const clippedEnd = Math.min(endMs, rangeEndMs);
+	return clippedEnd <= clippedStart
+		? 0
+		: (clippedEnd - clippedStart) / (60 * 60 * 1000);
 }
 
 function addEndpoints(fields) {
-	const endDate = fields.dateCompleted;
-	const startDate = startsPreviousDay(fields)
-		? shiftIstDate(endDate, -1)
-		: endDate;
 	return {
-		start: `${startDate}T${fields.start}`,
-		end: `${endDate}T${fields.end}`,
+		start: `${fields.startDate}T${fields.start}`,
+		end: `${fields.endDate}T${fields.end}`,
 	};
 }
 
-function editEndpoint(saved, time) {
-	// A clock edit must not move hours to a different date.
-	if (!saved || !time) return '';
-	return time === periodClock(saved) ? saved : `${saved.slice(0, 10)}T${time}`;
+function editEndpoint(date, time) {
+	return date && time ? `${date}T${time}` : '';
+}
+
+function effectiveDateCompleted(fields) {
+	return fields.dateCompleted || fields.endDate || '';
 }
 
 function periodDateHint(endpoint, dateCompleted) {
@@ -479,9 +494,9 @@ function periodDateHint(endpoint, dateCompleted) {
 	return formatDateLabel(date);
 }
 
-function PeriodTime({ endpoint, dateCompleted }) {
+function PeriodTime({ endpoint, dateCompleted, showDate = true }) {
 	if (!endpoint) return null;
-	const hint = periodDateHint(endpoint, dateCompleted);
+	const hint = showDate ? periodDateHint(endpoint, dateCompleted) : '';
 	return (
 		<>
 			<time className="tabular-nums" dateTime={`${endpoint}+05:30`}>
@@ -493,6 +508,42 @@ function PeriodTime({ endpoint, dateCompleted }) {
 				</span>
 			)}
 		</>
+	);
+}
+
+function EndpointDateControl({
+	id,
+	label,
+	value,
+	min,
+	max,
+	disabled,
+	onChange,
+}) {
+	return (
+		<details className="mt-1 text-xs leading-none text-muted-foreground">
+			<summary
+				aria-label={`${label} date`}
+				className="inline-flex min-h-6 w-fit cursor-pointer list-none items-center rounded px-1 py-1 hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring [&::-webkit-details-marker]:hidden"
+			>
+				Date
+			</summary>
+			<div className="mt-1">
+				<label htmlFor={id} className="sr-only">
+					{label} Date
+				</label>
+				<input
+					id={id}
+					type="date"
+					min={min}
+					max={max}
+					disabled={disabled}
+					value={value}
+					onChange={(event) => onChange(event.target.value)}
+					className="h-7 w-full min-w-0 rounded border border-input bg-background px-1 text-xs tabular-nums text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+				/>
+			</div>
+		</details>
 	);
 }
 
@@ -720,6 +771,7 @@ function ProjectActivityAssignmentsForUser({
 	const documentCounts = legacyData.documentCounts || {};
 	const periods = Array.isArray(periodData?.periods) ? periodData.periods : [];
 	const canLog = periodData?.canLog === true;
+	const readOnly = periodData?.readOnly === true;
 	const today = periodData?.today || currentIstDate();
 	const yesterday = shiftIstDate(today, -1);
 	const currentWeek = periodData?.today
@@ -758,6 +810,10 @@ function ProjectActivityAssignmentsForUser({
 	periods.forEach(pushProject);
 
 	const assignmentsById = new Map(assignments.map((row) => [row.id, row]));
+	const rangeStart = fromDate || activeWeek;
+	const rangeEnd = toDate || weekEnd;
+	const rangeStartMidnight = `${rangeStart}T00:00`;
+	const isFullWeekRange = rangeStart === activeWeek && rangeEnd === weekEnd;
 
 	const legacyWeekRows = assignments.flatMap((assignment) =>
 		rawLegacyEntries(assignment)
@@ -799,9 +855,15 @@ function ProjectActivityAssignmentsForUser({
 			start: period.start || '',
 			end: period.end || '',
 			manhours: numberValue(period.durationSeconds) / 3600,
-			weekManhours: numberValue(period.weekSeconds) / 3600,
+			rangeManhours: isFullWeekRange
+				? numberValue(period.weekSeconds) / 3600
+				: periodRangeManhours(period.start, period.end, rangeStart, rangeEnd),
 			quantity: numberValue(period.quantity),
-			weekQuantity: numberValue(period.weekQuantity),
+			rangeQuantity: isFullWeekRange
+				? numberValue(period.weekQuantity)
+				: period.dateCompleted >= rangeStart && period.dateCompleted <= rangeEnd
+					? numberValue(period.quantity)
+					: 0,
 			dateCompleted: period.dateCompleted || '',
 			status: period.status || assignment?.status || 'Not Started',
 			remarks: period.remarks || '',
@@ -816,9 +878,9 @@ function ProjectActivityAssignmentsForUser({
 		start: '',
 		end: '',
 		manhours: row.hours,
-		weekManhours: row.hours,
+		rangeManhours: row.hours,
 		dateCompleted: row.date,
-		weekQuantity: row.quantity,
+		rangeQuantity: row.quantity,
 	}));
 
 	const baseRows = [...workRows, ...legacyRows];
@@ -827,9 +889,11 @@ function ProjectActivityAssignmentsForUser({
 	).sort(textCollator.compare);
 
 	const normalizedSearch = search.trim().toLowerCase();
-	const rangeStart = fromDate || activeWeek;
-	const rangeEnd = toDate || weekEnd;
-	const rangeStartMidnight = `${rangeStart}T00:00`;
+	const quantityInRange = (row) =>
+		row.kind === 'period' &&
+		numberValue(row.quantity) > 0 &&
+		row.dateCompleted >= rangeStart &&
+		row.dateCompleted <= rangeEnd;
 	let flatRows = baseRows.filter((row) => {
 		const matchesSearch =
 			!normalizedSearch ||
@@ -840,7 +904,9 @@ function ProjectActivityAssignmentsForUser({
 		const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
 		const matchesDate =
 			row.kind === 'period'
-				? row.start.slice(0, 10) <= rangeEnd && row.end > rangeStartMidnight
+				? (row.start.slice(0, 10) <= rangeEnd &&
+						row.end > rangeStartMidnight) ||
+					quantityInRange(row)
 				: row.dateCompleted >= rangeStart && row.dateCompleted <= rangeEnd;
 		return matchesSearch && matchesStatus && matchesDate;
 	});
@@ -884,13 +950,14 @@ function ProjectActivityAssignmentsForUser({
 	}
 
 	const totalManhours = flatRows.reduce(
-		(total, row) => total + numberValue(row.weekManhours),
+		(total, row) => total + numberValue(row.rangeManhours),
 		0
 	);
 	const totalQuantity = flatRows.reduce(
-		(total, row) => total + numberValue(row.weekQuantity),
+		(total, row) => total + numberValue(row.rangeQuantity),
 		0
 	);
+	const rangeLabel = isFullWeekRange ? 'Week' : 'Selected';
 	const assignableProjects = projects.map((project) => ({
 		project_id: project.projectId,
 		project_code: project.projectCode,
@@ -934,6 +1001,8 @@ function ProjectActivityAssignmentsForUser({
 		setIsAdding(true);
 		setAddForm({
 			...EMPTY_ADD_FORM,
+			startDate: today,
+			endDate: today,
 			dateCompleted: today,
 		});
 		setActionError('');
@@ -952,6 +1021,8 @@ function ProjectActivityAssignmentsForUser({
 		setEditing({
 			row: period,
 			fields: {
+				startDate: period.start.slice(0, 10),
+				endDate: period.end.slice(0, 10),
 				start: periodClock(period.start),
 				end: periodClock(period.end),
 				quantity: period.quantity ?? 0,
@@ -976,7 +1047,16 @@ function ProjectActivityAssignmentsForUser({
 
 	const updatePeriodField = (mode, field, value) => {
 		setActionError('');
-		const apply = (current) => ({ ...current, [field]: value });
+		const apply = (current) => {
+			const next = { ...current, [field]: value };
+			if (
+				field === 'endDate' &&
+				(!current.dateCompleted || current.dateCompleted === current.endDate)
+			) {
+				next.dateCompleted = value;
+			}
+			return next;
+		};
 		if (mode === 'add') {
 			setAddForm(apply);
 			return;
@@ -990,9 +1070,8 @@ function ProjectActivityAssignmentsForUser({
 		'You can log or edit Work Periods only when both endpoints fall on today or yesterday in IST. Contact an authorized manager for older work.';
 	const validatePeriodFields = (fields, endpoints) => {
 		if (!fields.start || !fields.end) return 'Enter both Start and End.';
-		if (!fields.dateCompleted) return 'Enter Date Completed.';
-		if (fields.dateCompleted > today)
-			return 'Date Completed cannot be in the future.';
+		const dateCompleted = effectiveDateCompleted(fields);
+		if (dateCompleted > today) return 'Date Completed cannot be in the future.';
 		if (!endpoints) return dateWindowError;
 		const { start, end } = endpoints;
 		const startMs = parseIstLocal(start);
@@ -1032,9 +1111,7 @@ function ProjectActivityAssignmentsForUser({
 			rejectForm('Please select a Sub Activity.');
 			return;
 		}
-		const endpoints = [today, yesterday].includes(addForm.dateCompleted)
-			? addEndpoints(addForm)
-			: null;
+		const endpoints = addEndpoints(addForm);
 		const validationError = validatePeriodFields(addForm, endpoints);
 		if (validationError) {
 			rejectForm(validationError);
@@ -1050,7 +1127,7 @@ function ProjectActivityAssignmentsForUser({
 				subActivityId: addForm.subActivityId || null,
 				...endpoints,
 				quantity: numberValue(addForm.quantity),
-				dateCompleted: addForm.dateCompleted,
+				dateCompleted: effectiveDateCompleted(addForm),
 				remarks: addForm.remarks,
 			},
 		});
@@ -1060,8 +1137,8 @@ function ProjectActivityAssignmentsForUser({
 		event.preventDefault();
 		if (!editing) return;
 		const endpoints = {
-			start: editEndpoint(editing.row.start, editing.fields.start),
-			end: editEndpoint(editing.row.end, editing.fields.end),
+			start: editEndpoint(editing.fields.startDate, editing.fields.start),
+			end: editEndpoint(editing.fields.endDate, editing.fields.end),
 		};
 		const validationError = validatePeriodFields(editing.fields, endpoints);
 		if (validationError) {
@@ -1076,7 +1153,7 @@ function ProjectActivityAssignmentsForUser({
 				projectId: editing.row.projectId,
 				...endpoints,
 				quantity: numberValue(editing.fields.quantity),
-				dateCompleted: editing.fields.dateCompleted,
+				dateCompleted: effectiveDateCompleted(editing.fields),
 				remarks: editing.fields.remarks,
 			},
 		});
@@ -1141,7 +1218,23 @@ function ProjectActivityAssignmentsForUser({
 	const compactControlClass =
 		'w-full min-w-0 px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100';
 
-	const renderTimePicker = (mode, endpoint, time, hint = '') => {
+	const renderEndpointDate = (mode, endpoint, date) => {
+		const label = endpoint === 'start' ? 'Start Period' : 'End Period';
+		const id = `${formId}-${mode}-${endpoint}-date`;
+		return (
+			<EndpointDateControl
+				id={id}
+				label={label}
+				value={date}
+				min={yesterday}
+				max={today}
+				disabled={mutation.isPending}
+				onChange={(value) => updatePeriodField(mode, `${endpoint}Date`, value)}
+			/>
+		);
+	};
+
+	const renderTimePicker = (mode, endpoint, time, date, hint = '') => {
 		const label = endpoint === 'start' ? 'Start Period' : 'End Period';
 		const id = `${formId}-${mode}-${endpoint}`;
 		return (
@@ -1154,6 +1247,7 @@ function ProjectActivityAssignmentsForUser({
 					disabled={mutation.isPending}
 					onChange={(value) => updatePeriodField(mode, endpoint, value)}
 				/>
+				{renderEndpointDate(mode, endpoint, date)}
 				{hint && (
 					<span
 						id={`${id}-hint`}
@@ -1297,17 +1391,6 @@ function ProjectActivityAssignmentsForUser({
 					className="w-full max-w-16 px-1.5 py-0.5 text-xs border border-gray-300 rounded text-center bg-gray-100 text-gray-500 focus:outline-none"
 				/>
 			</td>
-			<td className="py-1 px-1 text-center align-middle">
-				{renderTimePicker(
-					'add',
-					'start',
-					addForm.start,
-					startsPreviousDay(addForm) ? 'Previous day' : ''
-				)}
-			</td>
-			<td className="py-1 px-1 text-center align-middle">
-				{renderTimePicker('add', 'end', addForm.end)}
-			</td>
 			<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
 				Auto
 			</td>
@@ -1326,9 +1409,36 @@ function ProjectActivityAssignmentsForUser({
 				/>
 			</td>
 			<td className="py-1 px-1 text-center align-middle">
+				{renderTimePicker(
+					'add',
+					'start',
+					addForm.start,
+					addForm.startDate,
+					addForm.startDate !== addForm.endDate
+						? periodDateHint(
+								`${addForm.startDate}T${addForm.start}`,
+								effectiveDateCompleted(addForm)
+							)
+						: ''
+				)}
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
+				{renderTimePicker(
+					'add',
+					'end',
+					addForm.end,
+					addForm.endDate,
+					addForm.startDate !== addForm.endDate
+						? periodDateHint(
+								`${addForm.endDate}T${addForm.end}`,
+								effectiveDateCompleted(addForm)
+							)
+						: ''
+				)}
+			</td>
+			<td className="py-1 px-1 text-center align-middle">
 				<input
 					type="date"
-					required
 					max={today}
 					aria-label="Date Completed"
 					value={addForm.dateCompleted}
@@ -1386,22 +1496,6 @@ function ProjectActivityAssignmentsForUser({
 				<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
 					{formatQuantity(defaultManhours)}
 				</td>
-				<td className="py-1 px-1 text-center align-middle">
-					{renderTimePicker(
-						'edit',
-						'start',
-						editing.fields.start,
-						periodDateHint(period.start, editing.fields.dateCompleted)
-					)}
-				</td>
-				<td className="py-1 px-1 text-center align-middle">
-					{renderTimePicker(
-						'edit',
-						'end',
-						editing.fields.end,
-						periodDateHint(period.end, editing.fields.dateCompleted)
-					)}
-				</td>
 				<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
 					Auto
 				</td>
@@ -1419,9 +1513,36 @@ function ProjectActivityAssignmentsForUser({
 					/>
 				</td>
 				<td className="py-1 px-1 text-center align-middle">
+					{renderTimePicker(
+						'edit',
+						'start',
+						editing.fields.start,
+						editing.fields.startDate,
+						editing.fields.startDate !== editing.fields.endDate
+							? periodDateHint(
+									`${editing.fields.startDate}T${editing.fields.start}`,
+									effectiveDateCompleted(editing.fields)
+								)
+							: ''
+					)}
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
+					{renderTimePicker(
+						'edit',
+						'end',
+						editing.fields.end,
+						editing.fields.endDate,
+						editing.fields.startDate !== editing.fields.endDate
+							? periodDateHint(
+									`${editing.fields.endDate}T${editing.fields.end}`,
+									effectiveDateCompleted(editing.fields)
+								)
+							: ''
+					)}
+				</td>
+				<td className="py-1 px-1 text-center align-middle">
 					<input
 						type="date"
-						required
 						max={today}
 						aria-label="Date Completed"
 						value={editing.fields.dateCompleted}
@@ -1469,7 +1590,7 @@ function ProjectActivityAssignmentsForUser({
 				)}
 			</div>
 
-			{periodData && !canLog && (
+			{periodData && !canLog && !readOnly && (
 				<div className="mx-3 mt-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs leading-snug text-amber-900">
 					<LockClosedIcon
 						className="mt-0.5 h-3.5 w-3.5 shrink-0"
@@ -1697,10 +1818,10 @@ function ProjectActivityAssignmentsForUser({
 									<col className="w-[8.5%]" />
 									<col className="w-[11.5%]" />
 									<col className="w-[5%]" />
-									<col className="w-[8%]" />
-									<col className="w-[8%]" />
 									<col className="w-[6.5%]" />
 									<col className="w-[5.5%]" />
+									<col className="w-[8%]" />
+									<col className="w-[8%]" />
 									<col className="w-[9%]" />
 									<col className="w-[7.5%]" />
 									<col className="w-[5%]" />
@@ -1820,9 +1941,11 @@ function ProjectActivityAssignmentsForUser({
 												? 'Historical duration-only log'
 												: !row.period.assignmentId
 													? 'Assignment link missing'
-													: !canLog
-														? 'Logging unavailable'
-														: 'Locked';
+													: readOnly
+														? 'Read only'
+														: !canLog
+															? 'Logging unavailable'
+															: 'Locked';
 										return (
 											<tr
 												key={row.key}
@@ -1875,35 +1998,43 @@ function ProjectActivityAssignmentsForUser({
 												<td className="py-1 px-1 text-center align-middle text-xs text-[#4A1254] tabular-nums">
 													{formatQuantity(row.defaultManhours)}
 												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<PeriodTime
-														endpoint={row.start}
-														dateCompleted={row.dateCompleted}
-													/>
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<PeriodTime
-														endpoint={row.end}
-														dateCompleted={row.dateCompleted}
-													/>
-												</td>
 												<td className="py-1 px-2 text-center align-middle text-[#4A1254] tabular-nums">
 													{formatQuantity(row.manhours)}
 													{row.kind === 'period' &&
-														row.weekManhours !== row.manhours && (
+														row.rangeManhours !== row.manhours && (
 															<span className="block text-[10px] font-normal text-gray-500">
-																Week: {formatQuantity(row.weekManhours)}
+																{rangeLabel}:{' '}
+																{formatQuantity(row.rangeManhours)}
 															</span>
 														)}
 												</td>
 												<td className="py-1 px-2 text-center align-middle tabular-nums">
 													{formatQuantity(row.quantity)}
 													{row.kind === 'period' &&
-														row.weekQuantity !== row.quantity && (
+														row.rangeQuantity !== row.quantity && (
 															<span className="block text-[10px] text-gray-500">
-																Week: {formatQuantity(row.weekQuantity)}
+																{rangeLabel}:{' '}
+																{formatQuantity(row.rangeQuantity)}
 															</span>
 														)}
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<PeriodTime
+														endpoint={row.start}
+														dateCompleted={row.dateCompleted}
+														showDate={
+															row.start.slice(0, 10) !== row.end.slice(0, 10)
+														}
+													/>
+												</td>
+												<td className="py-1 px-2 text-center align-middle">
+													<PeriodTime
+														endpoint={row.end}
+														dateCompleted={row.dateCompleted}
+														showDate={
+															row.start.slice(0, 10) !== row.end.slice(0, 10)
+														}
+													/>
 												</td>
 												<td className="py-1 px-1 text-center align-middle whitespace-nowrap text-xs">
 													{row.dateCompleted
@@ -1968,7 +2099,7 @@ function ProjectActivityAssignmentsForUser({
 									{flatRows.length > 0 && (
 										<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
 											<td
-												colSpan={8}
+												colSpan={6}
 												className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
 											>
 												{flatRows.length !== baseRows.length
@@ -1981,7 +2112,7 @@ function ProjectActivityAssignmentsForUser({
 											<td className="py-1 px-2 text-center text-[#4A1254] tabular-nums">
 												{formatQuantity(totalQuantity)}
 											</td>
-											<td colSpan={3}></td>
+											<td colSpan={5}></td>
 										</tr>
 									)}
 								</tbody>
@@ -1989,8 +2120,8 @@ function ProjectActivityAssignmentsForUser({
 						</div>
 					</form>
 					<p className="px-3 py-2 text-[11px] leading-snug text-gray-500">
-						Times use IST. For a new entry, an earlier end time means work
-						started the previous day. Older entries may have no recorded times.
+						Times use IST. Start and End dates are independent. Older entries
+						may have no recorded times.
 					</p>
 				</>
 			)}

@@ -30,6 +30,7 @@ describe('fetchProjectActivitiesData', () => {
 				return Promise.resolve([
 					[
 						{ id: 1, full_name: 'Legacy User' },
+						{ id: 3, full_name: 'Invalid Entry User' },
 						{ id: 2, full_name: 'Work Period User' },
 					],
 				]);
@@ -65,6 +66,21 @@ describe('fetchProjectActivitiesData', () => {
 								{ date: '2026-10-01', hours: 6, qty_done: 5 },
 							]),
 						},
+						{
+							project_id: 10,
+							activity_id: 7,
+							activity_name: 'Engineering',
+							user_id: 3,
+							qty_completed: 999,
+							actual_hours: 999,
+							work_period_entries: '[]',
+							daily_entries: JSON.stringify([
+								{ date: 'invalid', hours: 100 },
+								{ date: '2026-10-01', hours: -2 },
+								{ date: '2026-10-02', hours: 0 },
+								{ date: '2026-10-03', hours: '1.25' },
+							]),
+						},
 					],
 				]);
 			}
@@ -77,6 +93,7 @@ describe('fetchProjectActivitiesData', () => {
 		const members = projects[0].activities[0].members!;
 		const legacy = members.find((member) => member.user_id === '1');
 		const workPeriod = members.find((member) => member.user_id === '2');
+		const invalidEntry = members.find((member) => member.user_id === '3');
 
 		expect(legacy).toMatchObject({
 			description: 'Legacy assignment',
@@ -85,5 +102,9 @@ describe('fetchProjectActivitiesData', () => {
 			actual_hours: 12,
 		});
 		expect(workPeriod).toMatchObject({ qty_completed: 5, actual_hours: 6 });
+		expect(invalidEntry).toMatchObject({
+			qty_completed: 0,
+			actual_hours: 1.25,
+		});
 	});
 });

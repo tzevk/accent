@@ -1,6 +1,8 @@
 import { dbConnect } from '@/utils/database';
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { drizzle } from 'drizzle-orm/mysql2';
+import { sql } from 'drizzle-orm';
 import {
 	ASSIGNEE_NOT_PROJECT_MEMBER,
 	PROJECT_ACCESS_DENIED,
@@ -38,6 +40,37 @@ function releaseQuietly(db) {
 	try {
 		db.release();
 	} catch {}
+}
+
+const RECORDED_WORK_CODE = 'ASSIGNMENT_HAS_WORK_PERIODS';
+const RECORDED_WORK_REASSIGNMENT_MESSAGE =
+	'Recorded Work Periods use this assignment. Keep the current assignee or correct the recorded Work Periods before reassigning.';
+const RECORDED_WORK_DELETE_MESSAGE =
+	'Recorded Work Periods use this assignment. Delete those Work Periods before deleting the assignment.';
+
+class RecordedWorkReassignmentError extends Error {}
+
+function rowsOf(result) {
+	if (!Array.isArray(result)) return [];
+	const rows = Array.isArray(result[0]) ? result[0] : result;
+	return rows.filter(
+		(row) => Boolean(row) && typeof row === 'object' && !Array.isArray(row)
+	);
+}
+
+function recordedWorkConflict(message) {
+	return NextResponse.json(
+		{ success: false, code: RECORDED_WORK_CODE, error: message },
+		{ status: 409 }
+	);
+}
+
+function isRecordedWorkDeleteError(error) {
+	if (!error || typeof error !== 'object') return false;
+	const foreignKeyFailure =
+		error.code === 'ER_ROW_IS_REFERENCED_2' || error.errno === 1451;
+	const message = typeof error.message === 'string' ? error.message : '';
+	return foreignKeyFailure && /\bwork_periods_assignment_fk\b/i.test(message);
 }
 
 /**
@@ -157,11 +190,7 @@ export async function POST(request, { params }) {
 					assignment.user_id !== ''
 			)
 			.map((assignment) => ({ userId: assignment.user_id }));
-		const nonMember = await firstNonMember(
-			db,
-			access.project,
-			targets
-		);
+		const nonMember = await firstNonMember(db, access.project, targets);
 		if (nonMember) return assigneeConflict(nonMember.name);
 
 		const project = access.project;
@@ -441,92 +470,144 @@ export async function PUT(request, { params }) {
 					update.user_id !== ''
 			)
 			.map((update) => ({ userId: update.user_id }));
-		const nonMember = await firstNonMember(
-			db,
-			access.project,
-			targets
-		);
+		const nonMember = await firstNonMember(db, access.project, targets);
 		if (nonMember) return assigneeConflict(nonMember.name);
 
+		const ddb = drizzle({ client: db });
 		const updateCount = [];
 		const errors = [];
 
-		for (let i = 0; i < updates.length; i++) {
-			const update = updates[i];
+		// Read committed sees child inserts without locking a Work Period that a
+		// correction may already hold while waiting for this assignment.
+		await db.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+		await db.beginTransaction();
+		try {
+			for (let i = 0; i < updates.length; i++) {
+				const update = updates[i];
 
-			try {
-				if (!update.assignment_id) {
-					errors.push({ index: i, error: 'assignment_id is required' });
-					continue;
-				}
+				try {
+					if (!update.assignment_id) {
+						errors.push({ index: i, error: 'assignment_id is required' });
+						continue;
+					}
 
-				const updateFields = [];
-				const values = [];
+					const updateFields = [];
+					const values = [];
 
-				if (update.user_id) {
-					updateFields.push('user_id = ?');
-					values.push(update.user_id);
-				}
-				if (update.due_date !== undefined) {
-					updateFields.push('due_date = ?');
-					values.push(update.due_date);
-				}
-				if (update.priority) {
-					updateFields.push('priority = ?');
-					values.push(update.priority);
-				}
-				if (update.estimated_hours !== undefined) {
-					updateFields.push('estimated_hours = ?');
-					values.push(update.estimated_hours);
-				}
-				if (update.notes !== undefined) {
-					updateFields.push('notes = ?');
-					values.push(update.notes);
-				}
+					if (update.user_id) {
+						updateFields.push('user_id = ?');
+						values.push(update.user_id);
+					}
+					if (update.due_date !== undefined) {
+						updateFields.push('due_date = ?');
+						values.push(update.due_date);
+					}
+					if (update.priority) {
+						updateFields.push('priority = ?');
+						values.push(update.priority);
+					}
+					if (update.estimated_hours !== undefined) {
+						updateFields.push('estimated_hours = ?');
+						values.push(update.estimated_hours);
+					}
+					if (update.notes !== undefined) {
+						updateFields.push('notes = ?');
+						values.push(update.notes);
+					}
 
-				if (updateFields.length === 0) {
-					errors.push({ index: i, error: 'No fields to update' });
-					continue;
-				}
+					if (updateFields.length === 0) {
+						errors.push({ index: i, error: 'No fields to update' });
+						continue;
+					}
 
-				updateFields.push('updated_at = CURRENT_TIMESTAMP');
-				values.push(update.assignment_id, projectId);
+					if (update.user_id) {
+						// Reassignment and Work Period creation serialize on this
+						// assignment row. The child check must be a current read.
+						const assignmentResult = await ddb.execute(sql`
+							SELECT user_id
+							FROM user_activity_assignments
+							WHERE id = ${update.assignment_id} AND project_id = ${projectId}
+							LIMIT 1
+							FOR UPDATE
+						`);
+						const currentAssignment = rowsOf(assignmentResult)[0];
+						if (!currentAssignment) {
+							errors.push({
+								index: i,
+								error: 'Assignment not found or not in this project',
+							});
+							continue;
+						}
 
-				const [result] = await db.execute(
-					`UPDATE user_activity_assignments 
-           SET ${updateFields.join(', ')} 
-           WHERE id = ? AND project_id = ?`,
-					values
-				);
+						if (String(currentAssignment.user_id) !== String(update.user_id)) {
+							const periodResult = await ddb.execute(sql`
+								SELECT id
+								FROM work_periods
+								WHERE assignment_id = ${update.assignment_id}
+								LIMIT 1
+							`);
+							if (rowsOf(periodResult).length > 0) {
+								throw new RecordedWorkReassignmentError();
+							}
+						}
+					}
 
-				if (result.affectedRows > 0) {
-					// Log the update
-					const updateId = randomUUID();
-					await db.execute(
-						`
-            INSERT INTO activity_updates (
-              id, activity_assignment_id, updated_by, update_type, new_value
-            ) VALUES (?, ?, ?, ?, ?)
-          `,
-						[
-							updateId,
-							update.assignment_id,
-							currentUser.id,
-							'reassigned',
-							JSON.stringify(update),
-						]
+					updateFields.push('updated_at = CURRENT_TIMESTAMP');
+					values.push(update.assignment_id, projectId);
+
+					const [result] = await db.execute(
+						`UPDATE user_activity_assignments
+		           SET ${updateFields.join(', ')}
+		           WHERE id = ? AND project_id = ?`,
+						values
 					);
 
-					updateCount.push(update.assignment_id);
-				} else {
-					errors.push({
-						index: i,
-						error: 'Assignment not found or not in this project',
-					});
+					if (result.affectedRows > 0) {
+						// Log the update
+						const updateId = randomUUID();
+						await db.execute(
+							`
+		            INSERT INTO activity_updates (
+		              id, activity_assignment_id, updated_by, update_type, new_value
+		            ) VALUES (?, ?, ?, ?, ?)
+		          `,
+							[
+								updateId,
+								update.assignment_id,
+								currentUser.id,
+								'reassigned',
+								JSON.stringify(update),
+							]
+						);
+
+						updateCount.push(update.assignment_id);
+					} else {
+						errors.push({
+							index: i,
+							error: 'Assignment not found or not in this project',
+						});
+					}
+				} catch (error) {
+					if (
+						error instanceof RecordedWorkReassignmentError ||
+						error?.code === 'ER_LOCK_DEADLOCK' ||
+						error?.errno === 1213
+					) {
+						throw error;
+					}
+					errors.push({ index: i, error: error.message });
 				}
-			} catch (error) {
-				errors.push({ index: i, error: error.message });
 			}
+
+			await db.commit();
+		} catch (error) {
+			try {
+				await db.rollback();
+			} catch {}
+			if (error instanceof RecordedWorkReassignmentError) {
+				return recordedWorkConflict(RECORDED_WORK_REASSIGNMENT_MESSAGE);
+			}
+			throw error;
 		}
 
 		return NextResponse.json({
@@ -597,6 +678,9 @@ export async function DELETE(request, { params }) {
 			message: 'Assignment removed successfully',
 		});
 	} catch (error) {
+		if (isRecordedWorkDeleteError(error)) {
+			return recordedWorkConflict(RECORDED_WORK_DELETE_MESSAGE);
+		}
 		console.error('DELETE assignment error:', error);
 		return NextResponse.json(
 			{

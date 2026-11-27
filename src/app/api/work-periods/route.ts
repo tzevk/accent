@@ -194,15 +194,16 @@ export async function GET(request: Request): Promise<Response> {
 			Object.fromEntries(new URL(request.url).searchParams)
 		);
 		const projectParam = query.projectId;
-		const userParam = query.userId;
-		if (projectParam && userParam) {
+		const targetUserId = query.userId ?? user.id;
+		if (projectParam && query.userId !== undefined) {
 			throw new WorkPeriodCommandError(
 				400,
 				'INVALID_WORK_PERIOD',
 				'Choose either dashboard or manager history, not both.'
 			);
 		}
-		if (userParam && String(user.id) !== userParam) {
+		const readOnly = targetUserId !== user.id;
+		if (readOnly && !user.is_super_admin && user.role?.code !== 'admin') {
 			return jsonError(403, 'FORBIDDEN', 'Forbidden');
 		}
 
@@ -250,12 +251,13 @@ export async function GET(request: Request): Promise<Response> {
 			});
 		}
 
-		const employee = await getLinkedEmployee(db, user.id);
+		const employee = await getLinkedEmployee(db, targetUserId);
 		if (!employee) {
 			return Response.json({
 				success: true,
 				data: {
 					canLog: false,
+					readOnly,
 					today: window.today,
 					weekStart: window.weekStart,
 					periods: [],
@@ -268,13 +270,14 @@ export async function GET(request: Request): Promise<Response> {
 			weekEnd: window.weekEndMs,
 		});
 		const currentProjects =
-			records.length > 0
+			!readOnly && records.length > 0
 				? await listCurrentProjectIds(db, user.id, user.email)
 				: new Set<number>();
 		return Response.json({
 			success: true,
 			data: {
-				canLog: true,
+				canLog: !readOnly,
+				readOnly,
 				today: window.today,
 				weekStart: window.weekStart,
 				periods: records.map((record) =>
@@ -282,7 +285,8 @@ export async function GET(request: Request): Promise<Response> {
 						record,
 						window.weekStart,
 						window.weekEnd,
-						record.userId === user.id &&
+						!readOnly &&
+							record.userId === user.id &&
 							record.projectId !== null &&
 							currentProjects.has(record.projectId) &&
 							isSelfServicePeriod(record.startMs, record.endMs, nowMs)

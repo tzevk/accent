@@ -83,7 +83,6 @@ import DocumentsIssuedTab from './tabs/DocumentsIssuedTab';
 import MeetingTab from './tabs/MeetingTab';
 import ProjectManhoursTab from './tabs/ProjectManhoursTab';
 import SoftwareTab from './tabs/SoftwareTab';
-import MyActivitiesTab from './tabs/MyActivitiesTab';
 import QueryLogTab from './tabs/QueryLogTab';
 import AssumptionTab from './tabs/AssumptionTab';
 import LessonsLearntTab from './tabs/LessonsLearntTab';
@@ -3623,97 +3622,6 @@ export default function EditProjectForm() {
 		);
 	};
 
-	// Add daily entry for user activity - entries are locked after adding
-	const addDailyEntry = (activityId, userId) => {
-		setProjectActivities((prev) =>
-			prev.map((act) => {
-				if (act.id === activityId) {
-					const updatedUsers = (act.assigned_users || []).map((u) => {
-						const uId = typeof u === 'object' ? u.user_id : u;
-						if (String(uId) === String(userId)) {
-							const currentEntries =
-								typeof u === 'object' && u.daily_entries ? u.daily_entries : [];
-							// Get the next date based on last entry, or today if no entries
-							let nextDate;
-							const validEntries = currentEntries.filter((e) => e != null);
-							if (validEntries.length > 0) {
-								const lastEntry = validEntries[validEntries.length - 1];
-								const lastDate = new Date(lastEntry.date);
-								lastDate.setDate(lastDate.getDate() + 1);
-								nextDate = lastDate.toISOString().split('T')[0];
-							} else {
-								nextDate = new Date().toISOString().split('T')[0];
-							}
-							// Lock all previous entries and add new unlocked entry
-							const lockedEntries = validEntries.map((e) => ({
-								...e,
-								isLocked: true,
-							}));
-							const newEntry = {
-								date: nextDate,
-								qty_done: '',
-								hours: '',
-								remarks: '',
-								isLocked: false,
-							};
-							return { ...u, daily_entries: [...lockedEntries, newEntry] };
-						}
-						return u;
-					});
-					return { ...act, assigned_users: updatedUsers };
-				}
-				return act;
-			})
-		);
-	};
-
-	// Update daily entry for user activity
-	const updateDailyEntry = (activityId, userId, entryIndex, field, value) => {
-		setProjectActivities((prev) =>
-			prev.map((act) => {
-				if (act.id === activityId) {
-					const updatedUsers = (act.assigned_users || []).map((u) => {
-						const uId = typeof u === 'object' ? u.user_id : u;
-						if (String(uId) === String(userId) && typeof u === 'object') {
-							const entries = [...(u.daily_entries || [])];
-							if (entries[entryIndex]) {
-								entries[entryIndex] = {
-									...entries[entryIndex],
-									[field]: value,
-								};
-							}
-							return { ...u, daily_entries: entries };
-						}
-						return u;
-					});
-					return { ...act, assigned_users: updatedUsers };
-				}
-				return act;
-			})
-		);
-	};
-
-	// Remove daily entry for user activity
-	const removeDailyEntry = (activityId, userId, entryIndex) => {
-		setProjectActivities((prev) =>
-			prev.map((act) => {
-				if (act.id === activityId) {
-					const updatedUsers = (act.assigned_users || []).map((u) => {
-						const uId = typeof u === 'object' ? u.user_id : u;
-						if (String(uId) === String(userId) && typeof u === 'object') {
-							const entries = [...(u.daily_entries || [])];
-							entries.splice(entryIndex, 1);
-							return { ...u, daily_entries: entries };
-						}
-						return u;
-					});
-					return { ...act, assigned_users: updatedUsers };
-				}
-				return act;
-			})
-		);
-	};
-
 	// Calculate total planned hours for an activity (sum of all user planned hours)
 	const getActivityTotalPlanned = (act) => {
 		if (!act.assigned_users || act.assigned_users.length === 0)
@@ -4863,17 +4771,6 @@ export default function EditProjectForm() {
 										handleDeleteInvoice={handleDeleteInvoice}
 										loadingAccountHeads={loadingAccountHeads}
 										accountHeads={accountHeads}
-									/>
-								)}
-								{/* My Activities Tab - Personalized user manhours tracking */}
-								{activeTab === 'my_activities' && (
-									<MyActivitiesTab
-										sessionUser={sessionUser}
-										projectActivities={projectActivities}
-										addDailyEntry={addDailyEntry}
-										updateDailyEntry={updateDailyEntry}
-										updateUserManhours={updateUserManhours}
-										removeDailyEntry={removeDailyEntry}
 									/>
 								)}
 								{/* Scope of Work Tab */}
