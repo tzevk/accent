@@ -763,7 +763,6 @@ function ProjectActivityAssignmentsForUser({
 		rawLegacyEntries(assignment)
 			.map((entry, index) => ({
 				key: `${assignment.id}-${entry?.date || 'undated'}-${index}`,
-				assignmentId: assignment.id,
 				projectId: assignment.project_id,
 				projectCode: assignment.project_code || '',
 				projectName: assignment.project_name || '',
@@ -785,7 +784,6 @@ function ProjectActivityAssignmentsForUser({
 		return {
 			kind: 'period',
 			key: `period-${period.id}`,
-			assignmentId: period.assignmentId,
 			period,
 			projectId: period.projectId,
 			projectCode: period.projectCode || assignment?.project_code || '',
@@ -823,34 +821,7 @@ function ProjectActivityAssignmentsForUser({
 		weekQuantity: row.quantity,
 	}));
 
-	const loggedAssignments = new Set(
-		[...workRows, ...legacyRows].map((row) => row.assignmentId)
-	);
-	const assignmentRows = assignments
-		.filter((assignment) => !loggedAssignments.has(assignment.id))
-		.map((assignment) => ({
-			kind: 'assignment',
-			key: `assignment-${assignment.id}`,
-			period: null,
-			projectId: assignment.project_id,
-			projectCode: assignment.project_code || '',
-			projectName: assignment.project_name || '',
-			discipline: assignment.discipline || '',
-			activityName: assignment.activity_name || 'Unnamed Activity',
-			subActivityName: assignment.sub_activity_name || '',
-			defaultManhours: numberValue(assignment.default_manhours),
-			start: '',
-			end: '',
-			manhours: 0,
-			weekManhours: 0,
-			quantity: 0,
-			weekQuantity: 0,
-			dateCompleted: '',
-			status: assignment.status || 'Not Started',
-			remarks: assignment.remarks || '',
-		}));
-
-	const baseRows = [...workRows, ...legacyRows, ...assignmentRows];
+	const baseRows = [...workRows, ...legacyRows];
 	const statusOptions = Array.from(
 		new Set(baseRows.map((row) => row.status).filter(Boolean))
 	).sort(textCollator.compare);
@@ -858,7 +829,7 @@ function ProjectActivityAssignmentsForUser({
 	const normalizedSearch = search.trim().toLowerCase();
 	const rangeStart = fromDate || activeWeek;
 	const rangeEnd = toDate || weekEnd;
-	const fullWeekSelected = rangeStart === activeWeek && rangeEnd === weekEnd;
+	const rangeStartMidnight = `${rangeStart}T00:00`;
 	let flatRows = baseRows.filter((row) => {
 		const matchesSearch =
 			!normalizedSearch ||
@@ -868,12 +839,9 @@ function ProjectActivityAssignmentsForUser({
 			).includes(normalizedSearch);
 		const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
 		const matchesDate =
-			row.kind === 'assignment'
-				? fullWeekSelected
-				: row.kind === 'period'
-					? row.start.slice(0, 10) <= rangeEnd &&
-						row.end.slice(0, 10) >= rangeStart
-					: row.dateCompleted >= rangeStart && row.dateCompleted <= rangeEnd;
+			row.kind === 'period'
+				? row.start.slice(0, 10) <= rangeEnd && row.end > rangeStartMidnight
+				: row.dateCompleted >= rangeStart && row.dateCompleted <= rangeEnd;
 		return matchesSearch && matchesStatus && matchesDate;
 	});
 
@@ -1760,7 +1728,7 @@ function ProjectActivityAssignmentsForUser({
 													colSpan={COLS}
 													className="py-6 px-4 text-center text-sm text-[#4A1254]"
 												>
-													Loading assignments…
+													Loading recorded work…
 												</td>
 											</tr>
 										)}
@@ -1784,11 +1752,7 @@ function ProjectActivityAssignmentsForUser({
 												>
 													{baseRows.length === 0 ? (
 														<>
-															<p>
-																No activities yet. Click{' '}
-																<span className="font-semibold">Add</span> above
-																to log your first activity.
-															</p>
+															<p>No work recorded this week.</p>
 															{assignableProjects.length > 0 && (
 																<div className="mt-4 space-y-2 text-left max-w-md mx-auto">
 																	<p className="text-xs font-semibold text-gray-700">
@@ -1835,9 +1799,7 @@ function ProjectActivityAssignmentsForUser({
 															)}
 														</>
 													) : (
-														<>
-															No activities match the current search or filter.
-														</>
+														<>No recorded work matches the current filters.</>
 													)}
 												</td>
 											</tr>
@@ -1856,13 +1818,11 @@ function ProjectActivityAssignmentsForUser({
 										const lockLabel =
 											row.kind === 'legacy'
 												? 'Historical duration-only log'
-												: row.kind === 'assignment'
-													? 'No Work Period recorded'
-													: !row.period.assignmentId
-														? 'Assignment link missing'
-														: !canLog
-															? 'Logging unavailable'
-															: 'Locked';
+												: !row.period.assignmentId
+													? 'Assignment link missing'
+													: !canLog
+														? 'Logging unavailable'
+														: 'Locked';
 										return (
 											<tr
 												key={row.key}
@@ -1928,9 +1888,7 @@ function ProjectActivityAssignmentsForUser({
 													/>
 												</td>
 												<td className="py-1 px-2 text-center align-middle text-[#4A1254] tabular-nums">
-													{row.kind === 'assignment'
-														? ''
-														: formatQuantity(row.manhours)}
+													{formatQuantity(row.manhours)}
 													{row.kind === 'period' &&
 														row.weekManhours !== row.manhours && (
 															<span className="block text-[10px] font-normal text-gray-500">
@@ -1939,9 +1897,7 @@ function ProjectActivityAssignmentsForUser({
 														)}
 												</td>
 												<td className="py-1 px-2 text-center align-middle tabular-nums">
-													{row.kind === 'assignment'
-														? ''
-														: formatQuantity(row.quantity)}
+													{formatQuantity(row.quantity)}
 													{row.kind === 'period' &&
 														row.weekQuantity !== row.quantity && (
 															<span className="block text-[10px] text-gray-500">

@@ -438,12 +438,7 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		await expectTotals('2', '0');
 		const boundary = await rowContaining('Sunday to Monday');
 		expect(within(boundary).getByText('Week: 0')).toBeInTheDocument();
-		const placeholder = await rowContaining('Foundation Work');
-		expect(
-			within(placeholder).getByRole('button', {
-				name: 'No Work Period recorded for Foundation Work',
-			})
-		).toBeDisabled();
+		expect(activityTable()).not.toHaveTextContent('Foundation Work');
 
 		await user.click(screen.getByRole('button', { name: 'Next week' }));
 		expect(await screen.findByText('30 Nov – 6 Dec 2026')).toBeInTheDocument();
@@ -500,7 +495,9 @@ describe('ProjectActivityAssignments Work Periods', () => {
 				documentCounts: {},
 			},
 		});
-		expect(await screen.findByText(/No activities yet/)).toBeInTheDocument();
+		expect(
+			await screen.findByText('No work recorded this week.')
+		).toBeInTheDocument();
 		expect(
 			screen.getByText(
 				/Ask your manager or support to link your User Account to an Employee/
@@ -584,7 +581,7 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		expect(within(row).getByText('2.5')).toBeInTheDocument();
 	});
 
-	it('keeps empty assignments as read-only placeholders only for the full week', async () => {
+	it('keeps a Project available in Add when its assignment has no recorded work', async () => {
 		apiGet.mockImplementation(async (url) => {
 			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
 			if (url === '/api/activity-master/options') {
@@ -606,44 +603,30 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			},
 		});
 
-		const row = await rowContaining('Foundation Work');
-		const cells = within(row).getAllByRole('cell');
-		expect(cells[4]).toHaveTextContent('Assignment remark');
-		expect(cells[5].textContent.trim()).toBe('12');
-		expect(cells[6].textContent).toBe('');
-		expect(cells[7].textContent).toBe('');
-		expect(cells[8].textContent).toBe('');
-		expect(cells[9].textContent).toBe('');
-		expect(cells[10].textContent).toBe('');
-		expect(cells[11]).toHaveTextContent('In Progress');
 		expect(
-			within(row).getByRole('link', { name: 'Open documents for Alpha Plant' })
+			await screen.findByText('No work recorded this week.')
+		).toBeVisible();
+		expect(activityTable()).not.toHaveTextContent('Foundation Work');
+		expect(
+			screen.getByRole('link', { name: 'Open documents for Alpha Plant' })
 		).toHaveAttribute('href', '/projects/1?tab=upload_documents');
-		expect(
-			within(row).getByRole('button', {
-				name: 'No Work Period recorded for Foundation Work',
-			})
-		).toBeDisabled();
-		await expectTotals('0', '0');
+		expect(screen.getByText('0 activities')).toBeVisible();
 
-		fireEvent.change(screen.getByLabelText('From'), {
-			target: { value: TODAY },
-		});
-		fireEvent.change(screen.getByLabelText('To'), {
-			target: { value: TODAY },
-		});
-		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
+		await openAddForm();
+		expect(
+			within(screen.getByLabelText('Project')).getByRole('option', {
+				name: 'P-001 – Alpha Plant',
+			})
+		).toBeVisible();
 	});
 
-	it('keeps unlogged assignments visible beside a legacy log on the same project without catalog IDs', async () => {
-		apiGet.mockImplementation(async (url) => {
-			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
+	it('shows an older Daily Activity Entry only in its recorded week', async () => {
+		const user = userEvent.setup();
+		apiGet.mockImplementation(async (url, params) => {
+			if (url === '/api/work-periods') return periodPayload(params.week, []);
 			throw new Error(`Unexpected request: ${url}`);
 		});
-		const assignment = {
-			...PRELOADED_DATA.assignments[0],
-			activity_id: null,
-		};
+		const assignment = PRELOADED_DATA.assignments[0];
 		renderAssignments({
 			preloadedData: {
 				...PRELOADED_DATA,
@@ -651,38 +634,29 @@ describe('ProjectActivityAssignments Work Periods', () => {
 					assignment,
 					{
 						...assignment,
-						id: 'pending-a',
-						activity_name: 'Pending inspection',
-						daily_entries: [],
-					},
-					{
-						...assignment,
-						id: 'pending-b',
-						activity_name: 'Pending drawing',
-						daily_entries: [],
+						id: 'older-assignment',
+						due_date: TODAY,
+						daily_entries: [
+							{ date: '2026-11-26', hours: 8, remarks: 'Older drawing' },
+						],
 					},
 				],
 			},
 		});
 
 		const table = activityTable();
-		for (const label of [
-			'Recorded duration',
-			'Pending inspection',
-			'Pending drawing',
-		]) {
-			expect(await within(table).findByText(label)).toBeVisible();
-		}
-		await userEvent.click(
-			within(table).getByRole('button', { name: 'Activity' })
-		);
-		for (const label of [
-			'Recorded duration',
-			'Pending inspection',
-			'Pending drawing',
-		]) {
-			expect(within(table).getAllByText(label)).toHaveLength(1);
-		}
+		expect(await within(table).findByText('Recorded duration')).toBeVisible();
+		expect(within(table).queryByText('Older drawing')).not.toBeInTheDocument();
+		expect(screen.getByText('1 activity')).toBeVisible();
+		await expectTotals('2.5', '4');
+
+		await user.click(screen.getByRole('button', { name: 'Previous week' }));
+		const older = await rowContaining('Older drawing');
+		expect(older).toHaveTextContent('26 Nov 2026');
+		expect(
+			within(table).queryByText('Recorded duration')
+		).not.toBeInTheDocument();
+		await expectTotals('8', '0');
 	});
 
 	it('defaults From and To to the selected IST week and filters adjacent dates', async () => {

@@ -139,6 +139,11 @@ every week its half-open interval overlaps, with one stable identity and its
 original endpoints. Weekly seconds are the intersection with that week; a
 period ending at Monday 00:00 contributes no time to the new week.
 
+The table shows only recorded work in the selected dates. Historical Daily
+Activity Entries appear on their recorded dates. Project Activity assignments
+without recorded work do not appear as rows, but their Projects remain
+available in **Add**.
+
 ### Manager corrections and protected Project saves
 
 A manager with the existing Project edit permission can add, correct, and remove
