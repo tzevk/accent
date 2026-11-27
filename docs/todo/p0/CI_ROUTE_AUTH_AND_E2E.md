@@ -83,8 +83,10 @@ Applied:
 Pending:
 
 - [x] Confirm Leads HTTP and Playwright both pass in the merged CI job.
-- [ ] Confirm a Leads failure still leaves browser results and artifacts.
-      The successful run did not exercise this failure path.
+- [ ] Confirm the failure path on GitHub Actions. A Leads-only failure must
+      leave both suite results in the logs and fail the job. A Playwright
+      failure uploads the available full browser bundle. A Playwright pass
+      uploads only retained retry traces, if any.
 
 ## Not in this change: new browser journeys
 

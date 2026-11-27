@@ -25,7 +25,14 @@ GitHub Actions owns routine browser verification. `npm run test:e2e` covers the 
 
 For a full run, register each spec exactly once in [`groups.ts`](../scripts/e2e/groups.ts). A group uses a fresh disposable database and app server. Count real `/api/login` requests across its tests, including real form sign-ins. Keep the group's first-attempt count at or below four. That leaves room for one CI retry per test and the harness's startup login. Keep the real rate limiter enabled.
 
-CI uploads at most one of two complementary artifacts from `e2e/artifacts/groups/`, each retained for 7 days. When the Playwright suite fails, `playwright-artifacts` contains the full run tree for every group: HTML reports, screenshots, videos, and retained traces. When the suite passes, `playwright-retained-traces` contains only the `trace.zip` files that `retain-on-failure` kept from failed first attempts whose retry passed; the green upload excludes the HTML report, screenshots, and videos, and produces no artifact or warning when no traces were retained. A focused local run keeps the existing `npm run test:e2e:report` path.
+A Leads integration failure does not skip Playwright or trigger a full browser artifact upload. Leads logs stay on the workflow run, and the final step fails the job.
+
+GitHub Actions keeps browser artifacts under **Artifacts** on the run's **Summary** page for seven days:
+
+- If Playwright fails, `playwright-artifacts` contains available reports, screenshots, videos, and traces from `e2e/artifacts/`, whether or not Leads failed.
+- If Playwright passes, `playwright-retained-traces` contains only `trace.zip` files from failed attempts that passed on retry. If there are no traces, CI uploads nothing.
+
+A focused local run keeps the existing `npm run test:e2e:report` path.
 
 ## Maintained outcomes
 
