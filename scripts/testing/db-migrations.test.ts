@@ -23,6 +23,13 @@ knownProductionOrder.splice(
 	presence
 );
 
+const knownTestOrder = [...canonical];
+knownTestOrder.splice(48, 3, canonical[50], canonical[48], canonical[49]);
+knownTestOrder.splice(
+	knownTestOrder.indexOf('20261104100000_ticket_department_email_routing.ts'),
+	1
+);
+
 interface FakeLedgerRow extends RowDataPacket {
 	hash: string;
 	created_at: number;
@@ -99,7 +106,28 @@ describe('readDrizzleMigrationStatus legacy adoption', () => {
 		});
 	});
 
+	it('recognizes all 67 recorded rows of the known test ledger', async () => {
+		const { connection } = statusConnection({ legacyNames: knownTestOrder });
+		await expect(
+			readDrizzleMigrationStatus(connection, PROJECT_ROOT)
+		).resolves.toMatchObject({
+			ledgerExists: false,
+			applied: 0,
+			legacyApplied: 67,
+		});
+	});
+
 	it.each([
+		{
+			label: 'the known test ledger with another row missing',
+			names: knownTestOrder.slice(1),
+		},
+		{
+			label: 'the known test ledger with a different gap',
+			names: knownTestOrder.map((name, index) =>
+				index === 0 ? '20261104100000_ticket_department_email_routing.ts' : name
+			),
+		},
 		{
 			label: 'another full-ledger permutation',
 			names: (() => {

@@ -19,6 +19,13 @@ const LEGACY_ORDER_EXCEPTION_FILENAMES = [
 	'20261028120000_user_account_employee_links.ts',
 	'20261027120000_user_presence_last_active_seen.js',
 ] as const;
+const TEST_LEGACY_ORDER_START = 48;
+const TEST_LEGACY_ORDER = [
+	'20261009000000_expenditure_identity_collation.ts',
+	'20261008092200_expenditure_financial_close.ts',
+	'20261008092300_expenditure_financial_revisions.ts',
+] as const;
+const TEST_LEGACY_GAP = '20261104100000_ticket_department_email_routing.ts';
 
 const DRIZZLE_MIGRATIONS_TABLE = '__drizzle_migrations';
 const DRIZZLE_MIGRATION_LOCK_NAME_SQL =
@@ -67,7 +74,10 @@ interface MigrationCatalog {
 	all: Migration[];
 }
 
-type MigrationState = DrizzleMigrationStatus;
+interface MigrationState extends DrizzleMigrationStatus {
+	legacyNames: ReadonlySet<string>;
+	legacyPrefixLength: number;
+}
 
 interface DrizzleMigrationOptions {
 	before?: string;
@@ -131,6 +141,27 @@ function isKnownCompleteLegacyOrder(
 			.map((migration) => migration.originalFilename),
 	];
 	return legacyNames.every((name, index) => name === expected[index]);
+}
+
+function knownTestLegacyGap(
+	names: readonly string[],
+	historical: readonly HistoricalMigration[]
+): number | null {
+	if (names.length !== HISTORICAL_MIGRATION_COUNT - 1) return null;
+	const canonical = historical.map((migration) => migration.originalFilename);
+	const gap = canonical.indexOf(TEST_LEGACY_GAP);
+	const [collation, close, revisions] = TEST_LEGACY_ORDER;
+	if (
+		gap < TEST_LEGACY_ORDER_START + 3 ||
+		canonical[TEST_LEGACY_ORDER_START] !== close ||
+		canonical[TEST_LEGACY_ORDER_START + 1] !== revisions ||
+		canonical[TEST_LEGACY_ORDER_START + 2] !== collation
+	) {
+		return null;
+	}
+	canonical.splice(gap, 1);
+	canonical.splice(TEST_LEGACY_ORDER_START, 3, ...TEST_LEGACY_ORDER);
+	return names.every((name, index) => name === canonical[index]) ? gap : null;
 }
 
 const DRIZZLE_MIGRATION_FOLDER_NAME = /^(\d{14})_(.+)$/;
@@ -375,8 +406,12 @@ async function readMigrationState(
 	const canonicalPrefixMatches = legacyNames.every(
 		(name, index) => name === catalog.historical[index]?.originalFilename
 	);
+	const testLegacyGap = canonicalPrefixMatches
+		? null
+		: knownTestLegacyGap(legacyNames, catalog.historical);
 	if (
 		!canonicalPrefixMatches &&
+		testLegacyGap === null &&
 		!isKnownCompleteLegacyOrder(legacyNames, catalog.historical)
 	) {
 		const mismatchIndex = legacyNames.findIndex(
@@ -446,6 +481,8 @@ async function readMigrationState(
 		applied: ledgerRows.length,
 		pending: catalog.all.length - ledgerRows.length,
 		legacyApplied: legacyNames.length,
+		legacyNames: new Set(legacyNames),
+		legacyPrefixLength: testLegacyGap ?? legacyNames.length,
 	};
 }
 
@@ -454,7 +491,9 @@ export async function readDrizzleMigrationStatus(
 	projectRoot: string
 ): Promise<DrizzleMigrationStatus> {
 	const catalog = readDrizzleMigrations(projectRoot);
-	return readMigrationState(connection, catalog);
+	const { ledgerExists, applied, pending, legacyApplied } =
+		await readMigrationState(connection, catalog);
+	return { ledgerExists, applied, pending, legacyApplied };
 }
 
 async function acquireDrizzleMigrationLock(
@@ -505,23 +544,6 @@ async function recordMigration(
 		 VALUES (?, ?)`,
 		[migration.hash, migration.createdAt]
 	);
-}
-
-async function adoptLegacyMigrations(
-	db: MigrationDb,
-	catalog: MigrationCatalog,
-	state: MigrationState
-): Promise<number> {
-	let applied = state.applied;
-	for (let index = applied; index < state.legacyApplied; index += 1) {
-		const migration = catalog.historical[index];
-		if (migration === undefined) {
-			throw new Error('Legacy Knex migration adoption exceeds history.');
-		}
-		await recordMigration(db, migration);
-		applied += 1;
-	}
-	return applied;
 }
 
 function historicalLimit(
@@ -615,17 +637,21 @@ export async function applyDrizzleMigrations(
 		const before = await readMigrationState(connection, catalog);
 		const db = drizzle({ client: connection });
 		await ensureMigrationLedger(connection);
-		let applied = await adoptLegacyMigrations(db, catalog, before);
-
-		for (let index = applied; index < historyTarget; index += 1) {
+		let applied = before.applied;
+		const historyEnd = Math.max(before.legacyPrefixLength, historyTarget);
+		for (let index = applied; index < historyEnd; index += 1) {
 			const migration = catalog.historical[index];
 			if (migration === undefined) {
 				throw new Error('Historical migration execution exceeds history.');
 			}
-			await db.transaction(async (tx) => {
-				await runHistoricalMigration(tx, migration);
-				await recordMigration(tx, migration);
-			});
+			if (before.legacyNames.has(migration.originalFilename)) {
+				await recordMigration(db, migration);
+			} else {
+				await db.transaction(async (tx) => {
+					await runHistoricalMigration(tx, migration);
+					await recordMigration(tx, migration);
+				});
+			}
 			applied += 1;
 		}
 
@@ -646,7 +672,7 @@ export async function applyDrizzleMigrations(
 		const expectedApplied =
 			options.before === undefined && options.through === undefined
 				? catalog.all.length
-				: Math.max(applied, historyTarget);
+				: Math.max(before.applied, historyEnd);
 		const after = await readMigrationState(connection, catalog);
 		if (
 			!after.ledgerExists ||
