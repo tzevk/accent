@@ -115,14 +115,21 @@ Wednesday. The server's current time and `Asia/Kolkata` decide eligibility.
 
 ### Entering a Work Period
 
-In **My Project Activities**, select **Add** and fill the inline row. Use the
-time pickers in **Start Period** and **End Period**. **Date Completed** defaults
-to today in IST and sets the new period's end date. If the end time is earlier
-than the start time, the row shows **Previous day** under the start time.
+In **My Project Activities**, select **Add** and fill the inline row. Open
+**Start Period** and **End Period** to pick an hour, minute, and **AM** or **PM**.
+Select **OK** to apply each time. **Date Completed** defaults to today in IST
+and sets the new period's end date. If the end time is earlier than the start
+time, the row shows **Previous day** under the start time.
+Accent only accepts finished Work Periods. For a period that ends today, choose
+an end time no later than the current time in IST.
 When editing an existing period, its saved work dates stay the same.
 Changing **Date Completed** on that row changes only the quantity's reporting date.
-Accent calculates **Manhours**; **Default MH** stays an estimate. Historical
-duration-only rows are read-only and have no start or end times.
+**Activity Description** is required when employees add or edit a Work Period.
+**Quantity** is optional.
+Accent calculates **Manhours** from the saved times. **Default MH** shows the
+catalog default, not the assignment's planned hours. Historical duration-only
+rows are read-only and have no start or end times.
+Hover over a column heading or focus it with the keyboard for a short explanation.
 
 ### Monday–Sunday weeks
 

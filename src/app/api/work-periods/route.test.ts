@@ -407,6 +407,7 @@ describe('work periods route mutations', () => {
 				activityId: 'activity-1',
 				subActivityId: null,
 				start: '2026-11-26T10:00',
+				remarks: 'Reviewed the drawing.',
 			})
 		);
 
@@ -427,10 +428,15 @@ describe('work periods route mutations', () => {
 				subActivityId: null,
 				start: '2026-11-26T16:00',
 				end: '2026-11-26T18:00',
+				remarks: 'Reviewed the drawing.',
 			})
 		);
 
 		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({
+			error:
+				'The end time is later than now (IST). Check the date and time, or save after the work ends.',
+		});
 		expect(mocks.createWorkPeriod).not.toHaveBeenCalled();
 	});
 
@@ -515,6 +521,7 @@ describe('work periods route mutations', () => {
 				subActivityId: null,
 				start: '2026-11-26T10:00',
 				end: '2026-11-26T11:00',
+				remarks: 'Reviewed the drawing.',
 			})
 		);
 
@@ -544,6 +551,7 @@ describe('work periods route mutations', () => {
 				subActivityId: null,
 				start: '2026-11-23T10:00',
 				end: '2026-11-23T11:00',
+				remarks: 'Reviewed the drawing.',
 			})
 		);
 
@@ -570,6 +578,7 @@ describe('work periods route mutations', () => {
 				projectId: 8,
 				start: '2026-11-26T10:00',
 				end: '2026-11-26T11:00',
+				remarks: 'Reviewed the drawing.',
 			})
 		);
 
@@ -590,6 +599,7 @@ describe('work periods route mutations', () => {
 				start: '2026-11-26T10:00',
 				end: '2026-11-26T11:00',
 				dateCompleted: '',
+				remarks: '  Reviewed the drawing.  ',
 			})
 		);
 
@@ -609,11 +619,43 @@ describe('work periods route mutations', () => {
 				input: expect.objectContaining({
 					quantity: '0',
 					dateCompleted: '2026-11-26',
-					remarks: '',
+					remarks: 'Reviewed the drawing.',
 				}),
 			})
 		);
 	});
+
+	it.each([
+		['POST', undefined],
+		['POST', '   '],
+		['PUT', undefined],
+		['PUT', '   '],
+	] as const)(
+		'requires a description on employee %s (input %j)',
+		async (method, remarks) => {
+			const save = method === 'POST' ? POST : PUT;
+			const response = await save(
+				request(method, {
+					id: 'period-1',
+					projectId: 7,
+					disciplineId: 'discipline-1',
+					activityId: 'activity-1',
+					subActivityId: null,
+					start: '2026-11-26T10:00',
+					end: '2026-11-26T11:00',
+					remarks,
+				})
+			);
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toMatchObject({
+				code: 'INVALID_WORK_PERIOD',
+				error: 'Enter an Activity Description.',
+			});
+			expect(mocks.createWorkPeriod).not.toHaveBeenCalled();
+			expect(mocks.updateWorkPeriodCommand).not.toHaveBeenCalled();
+		}
+	);
 
 	it('lets an authorized manager save by assignment without requiring their own Employee link', async () => {
 		mocks.requireProjectAccess.mockResolvedValue(access(true));

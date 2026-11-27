@@ -87,6 +87,7 @@ describe('user activity assignments project discovery', () => {
 			.mockResolvedValueOnce([
 				[
 					{
+						id: 'assignment-11',
 						project_id: 11,
 						project_name: 'Assigned Project',
 						project_code: 'P-011',
@@ -107,6 +108,7 @@ describe('user activity assignments project discovery', () => {
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
+		expect(body.data.assignments).toMatchObject([{ id: 'assignment-11' }]);
 		expect(body.data.accessibleProjects).toEqual([
 			{
 				project_id: 11,

@@ -237,11 +237,28 @@ test('work period reaches My Timesheet across IST midnight', async ({
 	await page
 		.getByLabel('Date Completed', { exact: true })
 		.fill(seeded.self.dateCompleted);
-	await page.getByLabel('Start Period', { exact: true }).fill(startTime);
-	await page.getByLabel('End Period', { exact: true }).fill(endTime);
+	for (const [label, time] of [
+		['Start Period', startTime],
+		['End Period', endTime],
+	]) {
+		await editor.getByRole('button', { name: `${label} Pick time` }).click();
+		const picker = page.getByRole('dialog', { name: label, exact: true });
+		const hour = Number(time.slice(0, 2));
+		for (const [group, choice] of [
+			['Hour', String(hour % 12 || 12).padStart(2, '0')],
+			['Minute', time.slice(3, 5)],
+			['AM/PM', hour < 12 ? 'AM' : 'PM'],
+		]) {
+			await picker
+				.getByRole('group', { name: group, exact: true })
+				.getByText(choice, { exact: true })
+				.click();
+		}
+		await picker.getByRole('button', { name: 'OK', exact: true }).click();
+	}
 	await page.getByLabel('Quantity', { exact: true }).fill('2.5');
 	await page
-		.getByRole('textbox', { name: 'Remarks', exact: true })
+		.getByRole('textbox', { name: 'Activity Description', exact: true })
 		.fill(seeded.self.remarks);
 
 	const saved = page.waitForResponse(

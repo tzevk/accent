@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useId } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api-client';
 import {
 	istDate,
@@ -10,6 +11,15 @@ import {
 	weekStartFor,
 } from '@/lib/work-periods';
 import { formatDate, formatNumber } from '@/lib/format';
+import {
+	formatWorkPeriodClock,
+	WorkPeriodTimePicker,
+} from '@/components/WorkPeriodTimePicker';
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from '@/components/ui/tooltip';
 import Link from 'next/link';
 import {
 	ClipboardDocumentListIcon,
@@ -40,8 +50,18 @@ const STATUS_BADGE_CLASSES = {
 	'Not Started': 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
-const getStatusBadge = (status) =>
-	STATUS_BADGE_CLASSES[status] || 'bg-gray-100 text-gray-600 border-gray-200';
+function StatusBadge({ status }) {
+	const label = status || 'Not Started';
+	const color =
+		STATUS_BADGE_CLASSES[label] || 'bg-gray-100 text-gray-600 border-gray-200';
+	return (
+		<span
+			className={`inline-block max-w-full rounded-full border px-1 py-0.5 text-center text-[0.6875rem] font-semibold leading-tight wrap-break-word ${color}`}
+		>
+			{label}
+		</span>
+	);
+}
 
 /**
  * Project navigation vocabulary — one link pattern for every Project name on
@@ -137,13 +157,8 @@ function AutoGrowTextarea({ value, className = '', ...props }) {
 /**
  * Whether an element's rendered text is cut off by its own box.
  *
- * The measurement is the rendered overflow itself — `scrollWidth` past
- * `clientWidth` on the element that carries the ellipsis — taken after layout
- * and repeated whenever the box changes, because the table re-cuts its fixed
- * columns on resize and when the lazy section first mounts, and webfonts change
- * the text width without resizing the box. A value that fits measures false, so
- * no affordance is ever built for it. Layout does not run under jsdom (every
- * width reads zero), which is the right answer there too.
+ * Measure both axes: project codes stay on one line and activity labels
+ * wrap to two. Remeasure when the cell or its font changes.
  */
 function useIsTruncated(ref, value) {
 	const [truncated, setTruncated] = useState(false);
@@ -153,7 +168,10 @@ function useIsTruncated(ref, value) {
 		if (!element) return;
 
 		const measure = () =>
-			setTruncated(element.scrollWidth - element.clientWidth > 1);
+			setTruncated(
+				element.scrollWidth - element.clientWidth > 1 ||
+					element.scrollHeight - element.clientHeight > 1
+			);
 		measure();
 
 		let active = true;
@@ -194,7 +212,7 @@ function FullCellValue({ id, value, shown }) {
 			id={id}
 			data-testid="truncated-cell-value"
 			hidden={!shown}
-			className="mt-0.5 block w-full rounded border border-purple-200 bg-purple-50/70 px-1 py-0.5 text-left text-xs font-normal leading-snug text-[#4A1254] shadow-sm"
+			className="mt-0.5 block w-full rounded border border-purple-200 bg-purple-50/70 px-1 py-0.5 text-left text-xs font-normal leading-snug wrap-break-word text-[#4A1254] shadow-sm"
 		>
 			{value}
 		</span>
@@ -224,7 +242,7 @@ function ActivityTextValue({ value, className = '' }) {
 				data-truncated={truncated ? 'true' : undefined}
 				tabIndex={truncated ? 0 : undefined}
 				title={value}
-				className={`block truncate leading-tight ${className}`}
+				className={`line-clamp-2 text-xs leading-snug wrap-break-word ${className}`}
 			>
 				{value}
 			</span>
@@ -260,7 +278,7 @@ function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 				aria-label={documentsName}
 				title={documentsName}
 				aria-describedby={truncated ? fullValueId : undefined}
-				className="inline-flex max-w-full items-center gap-1 font-mono text-xs text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+				className="inline-flex max-w-full items-center gap-0.5 font-mono text-xs text-[#4A1254] leading-tight underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
 			>
 				<span
 					ref={ref}
@@ -269,7 +287,7 @@ function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 				>
 					{codeText}
 				</span>
-				<DocumentCountMarker count={documentCount} className="h-3 w-3" />
+				<DocumentCountMarker count={documentCount} className="size-3" />
 			</Link>
 			{truncated && (
 				<FullCellValue id={fullValueId} value={codeText} shown={focused} />
@@ -278,27 +296,108 @@ function ProjectNumberValue({ projectId, documentsName, code, documentCount }) {
 	);
 }
 
-function SortHeader({ label, sortKey, sort, onSort }) {
-	const isActive = sort.key === sortKey;
+const WORK_PERIOD_COLUMNS = [
+	{
+		label: 'Project Number',
+		sortKey: 'project_code',
+		help: 'Select the project number to open its documents.',
+	},
+	{
+		label: 'Discipline',
+		sortKey: 'discipline',
+		help: 'The specialty responsible for the activity.',
+	},
+	{
+		label: 'Activity',
+		sortKey: 'activity_name',
+		help: 'The type of work you did on the project.',
+	},
+	{
+		label: 'Sub Activity',
+		sortKey: 'sub_activity_name',
+		help: 'Choose a more specific task when the activity has sub-activities.',
+	},
+	{
+		label: 'Activity Description',
+		alignLeft: true,
+		help: 'Describe the work you did. This is required to save a Work Period.',
+	},
+	{
+		label: 'Default MH',
+		sortKey: 'default_manhours',
+		help: 'Preset hours for the activity, not hours you worked.',
+	},
+	{
+		label: 'Start Period',
+		help: 'When you started work, in Indian Standard Time (IST).',
+	},
+	{
+		label: 'End Period',
+		help: 'When you finished work, in IST. Save only after the work ends.',
+	},
+	{
+		label: 'Manhours',
+		sortKey: 'planned_hours',
+		help: 'Hours worked, calculated from the start and end times for new entries.',
+	},
+	{
+		label: 'Quantity',
+		sortKey: 'qty_completed',
+		help: 'Optional: how much work you completed.',
+	},
+	{
+		label: 'Date Completed',
+		sortKey: 'due_date',
+		help: 'Sets the end date for new entries and the date the quantity counts toward.',
+	},
+	{
+		label: 'Status',
+		sortKey: 'status',
+		help: 'The current status of the project activity.',
+	},
+	{
+		label: 'Actions',
+		help: 'Edit or delete eligible Work Periods. A lock means the row is read-only.',
+	},
+];
+
+function WorkPeriodColumnHeader({ column, sort, onSort }) {
+	const { label, help, sortKey, alignLeft } = column;
+	const isActive = Boolean(sortKey && sort.key === sortKey);
 	return (
 		<th
 			scope="col"
-			className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
+			className={`relative font-bold text-[#64126D] text-xs leading-tight ${sortKey ? 'px-0 text-center' : alignLeft ? 'px-2 text-left' : 'px-2 text-center'}`}
 			aria-sort={
 				isActive ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined
 			}
 		>
-			<button
-				type="button"
-				onClick={() => onSort(sortKey)}
-				className="inline-flex min-h-6 w-full items-center justify-center gap-1 rounded hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
-			>
-				<span>{label}</span>
-				<ArrowsUpDownIcon
-					aria-hidden="true"
-					className={`h-3 w-3 ${isActive ? 'opacity-100' : 'opacity-50'}`}
-				/>
-			</button>
+			<Tooltip>
+				{sortKey ? (
+					<TooltipTrigger
+						type="button"
+						delay={300}
+						onClick={() => onSort(sortKey)}
+						className="flex min-h-6 w-full items-center justify-center gap-0.5 rounded px-1 hover:underline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-purple-500"
+					>
+						<span className="min-w-0 max-w-full text-balance">{label}</span>
+						<ArrowsUpDownIcon
+							aria-hidden="true"
+							className={`absolute bottom-1 left-1/2 size-2.5 shrink-0 -translate-x-1/2 @min-[76rem]:static @min-[76rem]:translate-x-0 ${isActive ? 'opacity-100' : 'opacity-50'}`}
+						/>
+					</TooltipTrigger>
+				) : (
+					<TooltipTrigger
+						render={<span />}
+						tabIndex={0}
+						delay={300}
+						className="block rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-500"
+					>
+						{label}
+					</TooltipTrigger>
+				)}
+				<TooltipContent>{help}</TooltipContent>
+			</Tooltip>
 		</th>
 	);
 }
@@ -386,9 +485,13 @@ function PeriodTime({ endpoint, dateCompleted }) {
 	return (
 		<>
 			<time className="tabular-nums" dateTime={`${endpoint}+05:30`}>
-				{periodClock(endpoint)}
+				{formatWorkPeriodClock(periodClock(endpoint))}
 			</time>
-			{hint && <span className="block text-[11px] text-gray-600">{hint}</span>}
+			{hint && (
+				<span className="block text-xs leading-snug text-muted-foreground">
+					{hint}
+				</span>
+			)}
 		</>
 	);
 }
@@ -475,6 +578,8 @@ function ProjectActivityAssignmentsForUser({
 	const queryClient = useQueryClient();
 	const errorRef = useRef(null);
 	const formId = useId();
+	const descriptionId = `${formId}-description`;
+	const actionErrorId = `${formId}-error`;
 	const periodsCaptionId = `${formId}-periods-caption`;
 	const [week, setWeek] = useState(currentWeekStart);
 	const [fromDate, setFromDate] = useState(currentWeekStart);
@@ -488,11 +593,17 @@ function ProjectActivityAssignmentsForUser({
 	const [addForm, setAddForm] = useState({ ...EMPTY_ADD_FORM });
 	const [editing, setEditing] = useState(null);
 	const [actionError, setActionError] = useState('');
+	const descriptionRequiredError = 'Enter an Activity Description.';
+	const descriptionInvalid = actionError === descriptionRequiredError;
 	const editorOpen = isAdding || Boolean(editing);
 
 	useEffect(() => {
-		if (actionError) errorRef.current?.focus();
-	}, [actionError]);
+		if (descriptionInvalid) {
+			document.getElementById(descriptionId)?.focus();
+		} else if (actionError) {
+			errorRef.current?.focus();
+		}
+	}, [actionError, descriptionId, descriptionInvalid]);
 
 	const legacyQuery = useQuery({
 		queryKey: ['activity-assignments', userId],
@@ -577,8 +688,12 @@ function ProjectActivityAssignmentsForUser({
 			});
 		},
 		onError: (error) => {
-			setActionError(
-				errorMessage(error, 'The Work Period could not be saved. Try again.')
+			toast.error(
+				errorMessage(error, 'The Work Period could not be saved. Try again.'),
+				{
+					id: actionErrorId,
+					ariaProps: { role: 'alert', 'aria-live': 'assertive' },
+				}
 			);
 		},
 	});
@@ -642,15 +757,17 @@ function ProjectActivityAssignmentsForUser({
 	accessibleProjects.forEach(pushProject);
 	periods.forEach(pushProject);
 
+	const assignmentsById = new Map(assignments.map((row) => [row.id, row]));
+
 	const legacyWeekRows = assignments.flatMap((assignment) =>
 		rawLegacyEntries(assignment)
 			.map((entry, index) => ({
-				key: `${assignment.project_id}-${assignment.activity_id}-${entry?.date || 'undated'}-${index}`,
+				key: `${assignment.id}-${entry?.date || 'undated'}-${index}`,
+				assignmentId: assignment.id,
 				projectId: assignment.project_id,
 				projectCode: assignment.project_code || '',
 				projectName: assignment.project_name || '',
 				discipline: assignment.discipline || '',
-				activityId: assignment.activity_id,
 				activityName: assignment.activity_name || 'Unnamed Activity',
 				subActivityName: assignment.sub_activity_name || '',
 				defaultManhours: numberValue(assignment.default_manhours),
@@ -664,20 +781,16 @@ function ProjectActivityAssignmentsForUser({
 	);
 
 	const workRows = periods.map((period) => {
-		const assignment = assignments.find(
-			(candidate) =>
-				String(candidate.project_id) === String(period.projectId) &&
-				String(candidate.activity_id) === String(period.activityId)
-		);
+		const assignment = assignmentsById.get(period.assignmentId);
 		return {
 			kind: 'period',
 			key: `period-${period.id}`,
+			assignmentId: period.assignmentId,
 			period,
 			projectId: period.projectId,
 			projectCode: period.projectCode || assignment?.project_code || '',
 			projectName: period.projectName || assignment?.project_name || '',
 			discipline: period.discipline || assignment?.discipline || '',
-			activityId: period.activityId,
 			activityName:
 				period.activityName || assignment?.activity_name || 'Unnamed Activity',
 			subActivityName:
@@ -685,7 +798,6 @@ function ProjectActivityAssignmentsForUser({
 			defaultManhours: numberValue(
 				period.defaultManhours ?? assignment?.default_manhours
 			),
-			estimate: numberValue(assignment?.planned_hours),
 			start: period.start || '',
 			end: period.end || '',
 			manhours: numberValue(period.durationSeconds) / 3600,
@@ -709,34 +821,24 @@ function ProjectActivityAssignmentsForUser({
 		weekManhours: row.hours,
 		dateCompleted: row.date,
 		weekQuantity: row.quantity,
-		estimate: 0,
 	}));
 
 	const loggedAssignments = new Set(
-		[...workRows, ...legacyRows].map(
-			(row) => `${row.projectId}:${row.activityId}`
-		)
+		[...workRows, ...legacyRows].map((row) => row.assignmentId)
 	);
 	const assignmentRows = assignments
-		.filter(
-			(assignment) =>
-				!loggedAssignments.has(
-					`${assignment.project_id}:${assignment.activity_id}`
-				)
-		)
+		.filter((assignment) => !loggedAssignments.has(assignment.id))
 		.map((assignment) => ({
 			kind: 'assignment',
-			key: `assignment-${assignment.project_id}-${assignment.activity_id}`,
+			key: `assignment-${assignment.id}`,
 			period: null,
 			projectId: assignment.project_id,
 			projectCode: assignment.project_code || '',
 			projectName: assignment.project_name || '',
 			discipline: assignment.discipline || '',
-			activityId: assignment.activity_id,
 			activityName: assignment.activity_name || 'Unnamed Activity',
 			subActivityName: assignment.sub_activity_name || '',
 			defaultManhours: numberValue(assignment.default_manhours),
-			estimate: numberValue(assignment.planned_hours),
 			start: '',
 			end: '',
 			manhours: 0,
@@ -940,6 +1042,7 @@ function ProjectActivityAssignmentsForUser({
 		) {
 			return dateWindowError;
 		}
+		if (!fields.remarks.trim()) return descriptionRequiredError;
 		return '';
 	};
 
@@ -1037,6 +1140,7 @@ function ProjectActivityAssignmentsForUser({
 	const actionErrorNode = actionError ? (
 		<div
 			ref={errorRef}
+			id={actionErrorId}
 			role="alert"
 			tabIndex={-1}
 			className="mt-2 flex items-start gap-1.5 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs leading-snug text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
@@ -1049,6 +1153,23 @@ function ProjectActivityAssignmentsForUser({
 		</div>
 	) : null;
 
+	const renderDescription = (mode, value) => (
+		<AutoGrowTextarea
+			id={descriptionId}
+			name="remarks"
+			value={value}
+			onChange={(event) =>
+				updatePeriodField(mode, 'remarks', event.target.value)
+			}
+			placeholder="Required"
+			aria-label="Activity Description"
+			required
+			aria-invalid={descriptionInvalid}
+			aria-describedby={descriptionInvalid ? actionErrorId : undefined}
+			className="max-h-36 px-1.5 py-0.5 text-left text-xs focus:ring-1 aria-invalid:border-red-500"
+		/>
+	);
+
 	const compactControlClass =
 		'w-full min-w-0 px-1 py-0.5 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none disabled:bg-gray-100';
 
@@ -1057,24 +1178,19 @@ function ProjectActivityAssignmentsForUser({
 		const id = `${formId}-${mode}-${endpoint}`;
 		return (
 			<>
-				<label htmlFor={id} className="sr-only">
-					{label}
-				</label>
-				<input
+				<WorkPeriodTimePicker
 					id={id}
-					name={endpoint}
-					type="time"
-					required
-					aria-describedby={hint ? `${id}-hint` : undefined}
-					disabled={mutation.isPending}
+					label={label}
 					value={time}
-					onChange={(event) =>
-						updatePeriodField(mode, endpoint, event.target.value)
-					}
-					className={compactControlClass}
+					describedBy={hint ? `${id}-hint` : undefined}
+					disabled={mutation.isPending}
+					onChange={(value) => updatePeriodField(mode, endpoint, value)}
 				/>
 				{hint && (
-					<span id={`${id}-hint`} className="block text-[11px] text-gray-600">
+					<span
+						id={`${id}-hint`}
+						className="block text-xs leading-snug text-muted-foreground"
+					>
 						{hint}
 					</span>
 				)}
@@ -1197,6 +1313,9 @@ function ProjectActivityAssignmentsForUser({
 					))}
 				</select>
 			</td>
+			<td className="py-1 px-2 align-middle">
+				{renderDescription('add', addForm.remarks)}
+			</td>
 			<td className="py-1 px-2 text-center align-middle">
 				<input
 					type="text"
@@ -1238,7 +1357,7 @@ function ProjectActivityAssignmentsForUser({
 					className={`${compactControlClass} max-w-16 text-center`}
 				/>
 			</td>
-			<td className="py-1 px-2 text-center align-middle">
+			<td className="py-1 px-1 text-center align-middle">
 				<input
 					type="date"
 					required
@@ -1254,18 +1373,7 @@ function ProjectActivityAssignmentsForUser({
 			<td className="py-1 px-2 text-center align-middle text-xs text-gray-500">
 				–
 			</td>
-			<td className="py-1 px-2 align-middle">
-				<AutoGrowTextarea
-					value={addForm.remarks}
-					onChange={(event) =>
-						updatePeriodField('add', 'remarks', event.target.value)
-					}
-					placeholder="Remark"
-					aria-label="Remarks"
-					className="max-h-36 px-1.5 py-0.5 text-left text-xs focus:ring-1"
-				/>
-			</td>
-			<td className="py-1 px-2 text-center align-middle">
+			<td className="py-1 px-1 text-center align-middle">
 				{renderEditorActions(mutation.isPending)}
 			</td>
 		</tr>
@@ -1273,11 +1381,7 @@ function ProjectActivityAssignmentsForUser({
 
 	const renderEditForm = () => {
 		const period = editing.row;
-		const assignment = assignments.find(
-			(candidate) =>
-				String(candidate.project_id) === String(period.projectId) &&
-				String(candidate.activity_id) === String(period.activityId)
-		);
+		const assignment = assignmentsById.get(period.assignmentId);
 		const defaultManhours = numberValue(
 			period.defaultManhours ?? assignment?.default_manhours
 		);
@@ -1307,6 +1411,9 @@ function ProjectActivityAssignmentsForUser({
 				</td>
 				<td className="py-1 px-2 text-center align-middle">
 					<ActivityTextValue value={period.subActivityName || '–'} />
+				</td>
+				<td className="py-1 px-2 align-middle">
+					{renderDescription('edit', editing.fields.remarks)}
 				</td>
 				<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
 					{formatQuantity(defaultManhours)}
@@ -1343,7 +1450,7 @@ function ProjectActivityAssignmentsForUser({
 						className={`${compactControlClass} max-w-16 text-center`}
 					/>
 				</td>
-				<td className="py-1 px-2 text-center align-middle">
+				<td className="py-1 px-1 text-center align-middle">
 					<input
 						type="date"
 						required
@@ -1356,26 +1463,10 @@ function ProjectActivityAssignmentsForUser({
 						className={compactControlClass}
 					/>
 				</td>
-				<td className="py-1 px-2 text-center align-middle">
-					<span
-						className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
-							status
-						)}`}
-					>
-						{status}
-					</span>
+				<td className="py-1 px-1 text-center align-middle">
+					<StatusBadge status={status} />
 				</td>
-				<td className="py-1 px-2 align-middle">
-					<AutoGrowTextarea
-						value={editing.fields.remarks}
-						onChange={(event) =>
-							updatePeriodField('edit', 'remarks', event.target.value)
-						}
-						aria-label="Remarks"
-						className="max-h-36 px-1.5 py-0.5 text-left text-xs focus:ring-1"
-					/>
-				</td>
-				<td className="py-1 px-2 text-center align-middle">
+				<td className="py-1 px-1 text-center align-middle">
 					{renderEditorActions(mutation.isPending)}
 				</td>
 			</tr>
@@ -1383,7 +1474,7 @@ function ProjectActivityAssignmentsForUser({
 	};
 
 	return (
-		<div className="min-w-0 rounded-xl border-2 border-purple-200 bg-white shadow-lg ring-1 ring-purple-100">
+		<div className="@container min-w-0 rounded-xl border-2 border-purple-200 bg-white shadow-lg ring-1 ring-purple-100">
 			<div className="px-3 py-2 border-b-2 border-purple-100 bg-gradient-to-r from-purple-50 to-white flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2">
 					<div className="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center shadow-sm">
@@ -1479,7 +1570,7 @@ function ProjectActivityAssignmentsForUser({
 						aria-label="Filter project activities"
 						className="px-3 py-2 border-b border-purple-100 bg-white/60 flex flex-wrap items-end gap-2"
 					>
-						<div className="flex items-center gap-1">
+						<div className="flex h-8 items-center gap-1">
 							<button
 								type="button"
 								onClick={() => changeWeek(-7)}
@@ -1525,7 +1616,7 @@ function ProjectActivityAssignmentsForUser({
 								min={activeWeek}
 								max={toDate || weekEnd}
 								onChange={(event) => setFromDate(event.target.value)}
-								className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+								className="block h-8 px-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 							/>
 						</div>
 						<div>
@@ -1542,7 +1633,7 @@ function ProjectActivityAssignmentsForUser({
 								min={fromDate || activeWeek}
 								max={weekEnd}
 								onChange={(event) => setToDate(event.target.value)}
-								className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+								className="block h-8 px-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 							/>
 						</div>
 						<div className="relative min-w-0 grow basis-48">
@@ -1556,13 +1647,13 @@ function ProjectActivityAssignmentsForUser({
 								onChange={(event) => setSearch(event.target.value)}
 								placeholder="Search code, project, activity…"
 								aria-label="Search activities"
-								className="w-full pl-7 pr-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+								className="block h-8 w-full pl-7 pr-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 							/>
 						</div>
 						<select
 							value={statusFilter}
 							onChange={(event) => setStatusFilter(event.target.value)}
-							className="px-2 py-1 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
+							className="h-8 px-2 text-xs border border-gray-300 rounded focus:border-purple-500 focus:ring-1 focus:ring-purple-200 focus:outline-none"
 							title="Filter by status"
 							aria-label="Filter by status"
 						>
@@ -1581,12 +1672,12 @@ function ProjectActivityAssignmentsForUser({
 							<button
 								type="button"
 								onClick={clearFilters}
-								className="px-2 py-1 text-xs font-semibold text-[#64126D] hover:bg-purple-50 rounded"
+								className="inline-flex h-8 items-center rounded px-2 text-xs font-semibold text-[#64126D] hover:bg-purple-50"
 							>
 								Clear
 							</button>
 						)}
-						<span className="ml-auto text-xs text-gray-500">
+						<span className="ml-auto inline-flex h-8 items-center whitespace-pre text-xs text-gray-500">
 							{flatRows.length}
 							{flatRows.length !== baseRows.length
 								? ` of ${baseRows.length}`
@@ -1632,100 +1723,30 @@ function ProjectActivityAssignmentsForUser({
 									Project activity table
 								</caption>
 								<colgroup>
-									<col className="w-[9%]" />
+									<col className="w-[8.5%]" />
 									<col className="w-[7%]" />
-									<col className="w-[11%]" />
-									<col className="w-[9%]" />
+									<col className="w-[10%]" />
+									<col className="w-[8.5%]" />
+									<col className="w-[11.5%]" />
 									<col className="w-[5%]" />
 									<col className="w-[8%]" />
 									<col className="w-[8%]" />
-									<col className="w-[6%]" />
+									<col className="w-[6.5%]" />
+									<col className="w-[5.5%]" />
+									<col className="w-[9%]" />
+									<col className="w-[7.5%]" />
 									<col className="w-[5%]" />
-									<col className="w-[11%]" />
-									<col className="w-[7%]" />
-									<col className="w-[8%]" />
-									<col className="w-[6%]" />
 								</colgroup>
-								<thead className="bg-[#64126D]/10">
+								<thead className="bg-[#64126D]/10 [&_th]:align-middle [&_th]:pt-2 [&_th]:pb-4 @min-[76rem]:[&_th]:pb-2">
 									<tr className="divide-x divide-[#64126D]/40">
-										<SortHeader
-											label="Project Number"
-											sortKey="project_code"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<SortHeader
-											label="Discipline"
-											sortKey="discipline"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<SortHeader
-											label="Activity"
-											sortKey="activity_name"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<SortHeader
-											label="Sub Activity"
-											sortKey="sub_activity_name"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<SortHeader
-											label="Default MH"
-											sortKey="default_manhours"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
-										>
-											Start Period
-										</th>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
-										>
-											End Period
-										</th>
-										<SortHeader
-											label="Manhours"
-											sortKey="planned_hours"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<SortHeader
-											label="Quantity"
-											sortKey="qty_completed"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<SortHeader
-											label="Date Completed"
-											sortKey="due_date"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<SortHeader
-											label="Status"
-											sortKey="status"
-											sort={sort}
-											onSort={toggleSort}
-										/>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
-										>
-											Remark
-										</th>
-										<th
-											scope="col"
-											className="px-2 py-2 text-center font-bold text-[#64126D] text-xs leading-tight"
-										>
-											Actions
-										</th>
+										{WORK_PERIOD_COLUMNS.map((column) => (
+											<WorkPeriodColumnHeader
+												key={column.label}
+												column={column}
+												sort={sort}
+												onSort={toggleSort}
+											/>
+										))}
 									</tr>
 								</thead>
 								<tbody className="divide-y divide-gray-300">
@@ -1847,7 +1868,7 @@ function ProjectActivityAssignmentsForUser({
 												key={row.key}
 												className="transition-colors divide-x divide-gray-300 hover:bg-purple-50/40"
 											>
-												<td className="py-1 px-2 text-center align-middle">
+												<td className="py-1 px-1 text-center align-middle">
 													{row.projectId ? (
 														<ProjectNumberValue
 															projectId={row.projectId}
@@ -1886,13 +1907,13 @@ function ProjectActivityAssignmentsForUser({
 														className="text-[#4A1254]"
 													/>
 												</td>
-												<td className="py-1 px-2 text-center align-middle text-[#4A1254]">
+												<td className="py-1 px-2 align-middle">
+													<span className="block max-h-24 overflow-y-auto whitespace-pre-wrap wrap-break-word text-xs leading-snug text-foreground">
+														{row.remarks}
+													</span>
+												</td>
+												<td className="py-1 px-1 text-center align-middle text-xs text-[#4A1254] tabular-nums">
 													{formatQuantity(row.defaultManhours)}
-													{row.kind === 'assignment' && row.estimate > 0 && (
-														<span className="block text-[10px] font-normal text-gray-500">
-															Estimate: {formatQuantity(row.estimate)}
-														</span>
-													)}
 												</td>
 												<td className="py-1 px-2 text-center align-middle">
 													<PeriodTime
@@ -1928,24 +1949,15 @@ function ProjectActivityAssignmentsForUser({
 															</span>
 														)}
 												</td>
-												<td className="py-1 px-2 text-center align-middle">
+												<td className="py-1 px-1 text-center align-middle whitespace-nowrap text-xs">
 													{row.dateCompleted
 														? formatDateLabel(row.dateCompleted)
 														: ''}
 												</td>
-												<td className="py-1 px-2 text-center align-middle">
-													<span
-														className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(row.status)}`}
-													>
-														{row.status || 'Not Started'}
-													</span>
+												<td className="py-1 px-1 text-center align-middle">
+													<StatusBadge status={row.status} />
 												</td>
-												<td className="py-1 px-2 align-middle">
-													<span className="block max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs text-gray-700">
-														{row.remarks || ''}
-													</span>
-												</td>
-												<td className="py-1 px-2 text-center align-middle">
+												<td className="py-1 px-1 text-center align-middle">
 													{canEdit ? (
 														<div className="flex items-center justify-center gap-1">
 															<button
@@ -2000,7 +2012,7 @@ function ProjectActivityAssignmentsForUser({
 									{flatRows.length > 0 && (
 										<tr className="bg-[#64126D]/10 divide-x divide-gray-300 font-bold">
 											<td
-												colSpan={7}
+												colSpan={8}
 												className="py-1 px-2 text-right text-[#4A1254] uppercase text-xs tracking-wide"
 											>
 												{flatRows.length !== baseRows.length
@@ -2013,7 +2025,7 @@ function ProjectActivityAssignmentsForUser({
 											<td className="py-1 px-2 text-center text-[#4A1254] tabular-nums">
 												{formatQuantity(totalQuantity)}
 											</td>
-											<td colSpan={4}></td>
+											<td colSpan={3}></td>
 										</tr>
 									)}
 								</tbody>

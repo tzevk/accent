@@ -353,6 +353,7 @@ export async function GET(request, { params }) {
 				row.work_period_entries !== undefined;
 
 			assignments.push({
+				id: row.id,
 				project_id: row.project_id,
 				project_name: row.project_name || '',
 				project_code: row.project_code || '',

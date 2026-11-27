@@ -140,6 +140,11 @@ export const workPeriodMutationScopeSchema = z
 	})
 	.passthrough();
 
+const requiredDescription = {
+	error: 'Enter an Activity Description.',
+	path: ['remarks'],
+};
+
 export const createSelfWorkPeriodSchema = workPeriodFieldsSchema
 	.extend({
 		manager: z.literal(false).default(false),
@@ -156,7 +161,8 @@ export const createSelfWorkPeriodSchema = workPeriodFieldsSchema
 			{ error: 'Choose a Sub-activity or No sub-activity.' }
 		),
 	})
-	.passthrough();
+	.passthrough()
+	.refine((data) => Boolean(data.remarks), requiredDescription);
 
 export const createManagerWorkPeriodSchema = workPeriodFieldsSchema
 	.extend({
@@ -172,7 +178,8 @@ export const updateWorkPeriodSchema = workPeriodFieldsSchema
 		projectId: projectIdSchema,
 		id: requiredIdentifier('id'),
 	})
-	.passthrough();
+	.passthrough()
+	.refine((data) => data.manager || Boolean(data.remarks), requiredDescription);
 
 export const deleteWorkPeriodSchema = workPeriodMutationScopeSchema;
 

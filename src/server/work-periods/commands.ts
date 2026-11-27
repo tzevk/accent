@@ -210,7 +210,11 @@ export function parseWorkPeriodInput(
 		invalid('Start and End are required and must use YYYY-MM-DDTHH:mm in IST.');
 	}
 	if (endMs <= startMs) invalid('End must be after Start.');
-	if (endMs > nowMs) invalid('End cannot be in the future.');
+	if (endMs > nowMs) {
+		invalid(
+			'The end time is later than now (IST). Check the date and time, or save after the work ends.'
+		);
+	}
 
 	const quantity = body.quantity ?? 0;
 	if (!Number.isFinite(quantity) || quantity < 0) {

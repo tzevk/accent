@@ -7,7 +7,9 @@ import {
 	within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast, Toaster } from 'react-hot-toast';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 const { apiGet, apiPost, apiPut, apiDelete } = vi.hoisted(() => ({
 	apiGet: vi.fn(),
@@ -164,11 +166,13 @@ function renderAssignments({ preloadedData = PRELOADED_DATA, ...props } = {}) {
 	});
 	return render(
 		<QueryClientProvider client={client}>
-			<ProjectActivityAssignments
-				userId={42}
-				preloadedData={preloadedData}
-				{...props}
-			/>
+			<TooltipProvider>
+				<ProjectActivityAssignments
+					userId={42}
+					preloadedData={preloadedData}
+					{...props}
+				/>
+			</TooltipProvider>
 		</QueryClientProvider>
 	);
 }
@@ -188,14 +192,15 @@ async function openAddForm() {
 		'Discipline',
 		'Activity',
 		'Sub Activity',
-		'Start Period',
-		'End Period',
+		'Activity Description',
 		'Quantity',
 		'Date Completed',
-		'Remarks',
 		'Save Work Period',
 	]) {
 		expect(within(addRow).getByLabelText(label)).toBeVisible();
+	}
+	for (const name of ['Start Period Pick time', 'End Period Pick time']) {
+		expect(within(addRow).getByRole('button', { name })).toBeVisible();
 	}
 	await waitFor(() =>
 		expect(screen.getByLabelText('Discipline')).not.toBeDisabled()
@@ -231,10 +236,25 @@ async function rowContaining(text) {
 	return row;
 }
 
-function setEndpoint(label, time) {
-	fireEvent.change(screen.getByLabelText(label), {
-		target: { value: time },
-	});
+function periodButton(label, root = screen) {
+	return root.getByRole('button', { name: new RegExp(`^${label} `) });
+}
+
+async function setEndpoint(user, label, hour, minute, meridiem) {
+	await user.click(periodButton(label));
+	const picker = within(screen.getByRole('dialog', { name: label }));
+	for (const [name, option] of [
+		['Hour', hour],
+		['Minute', minute],
+		['AM/PM', meridiem],
+	]) {
+		await user.click(
+			within(picker.getByRole('group', { name })).getByRole('radio', {
+				name: option,
+			})
+		);
+	}
+	await user.click(picker.getByRole('button', { name: 'OK' }));
 }
 
 describe('ProjectActivityAssignments Work Periods', () => {
@@ -284,8 +304,10 @@ describe('ProjectActivityAssignments Work Periods', () => {
 	});
 
 	afterEach(() => {
+		toast.remove();
 		vi.useRealTimers();
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 	});
 
 	it.each([401, 403])(
@@ -321,6 +343,7 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			'Discipline',
 			'Activity',
 			'Sub Activity',
+			'Activity Description',
 			'Default MH',
 			'Start Period',
 			'End Period',
@@ -328,7 +351,6 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			'Quantity',
 			'Date Completed',
 			'Status',
-			'Remark',
 			'Actions',
 		]);
 		expect(screen.getByLabelText('From')).toHaveValue(CURRENT_WEEK);
@@ -341,26 +363,63 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		const overnightRow = await rowContaining('Overnight work');
 		const overnightCells = within(overnightRow).getAllByRole('cell');
 		expect(overnightCells).toHaveLength(13);
-		expect(overnightCells[5]).toHaveTextContent('Previous day');
-		expect(overnightCells[5]).toHaveTextContent('22:00');
-		expect(overnightCells[6]).toHaveTextContent('02:00');
-		expect(overnightCells[7].textContent.trim()).toBe('4');
-		expect(overnightCells[8]).toHaveTextContent('3');
-		expect(overnightCells[9]).toHaveTextContent('01 Dec 2026');
+		expect(overnightCells[4]).toHaveTextContent('Overnight work');
+		expect(overnightCells[6]).toHaveTextContent('Previous day');
+		expect(overnightCells[6]).toHaveTextContent('10:00 PM');
+		expect(overnightCells[7]).toHaveTextContent('02:00 AM');
+		expect(overnightCells[8].textContent.trim()).toBe('4');
+		expect(overnightCells[9]).toHaveTextContent('3');
+		expect(overnightCells[10]).toHaveTextContent('01 Dec 2026');
 
 		const boundaryRow = await rowContaining('Sunday to Monday');
 		const boundaryCells = within(boundaryRow).getAllByRole('cell');
-		expect(boundaryCells[7].textContent).toContain('4');
-		expect(boundaryCells[7]).toHaveTextContent('Week: 2');
-		expect(boundaryCells[8].textContent.trim()).toBe('8');
+		expect(boundaryCells[8].textContent).toContain('4');
+		expect(boundaryCells[8]).toHaveTextContent('Week: 2');
+		expect(boundaryCells[9].textContent.trim()).toBe('8');
 
 		const legacyRow = await rowContaining('Recorded duration');
 		const legacyCells = within(legacyRow).getAllByRole('cell');
-		expect(legacyCells[4]).toHaveTextContent('12');
-		expect(legacyCells[7].textContent.trim()).toBe('2.5');
-		expect(legacyCells[8]).toHaveTextContent('4');
+		expect(legacyCells[5]).toHaveTextContent('12');
+		expect(legacyCells[8].textContent.trim()).toBe('2.5');
+		expect(legacyCells[9]).toHaveTextContent('4');
 		expect(screen.queryByPlaceholderText('Hrs')).not.toBeInTheDocument();
 		expect(screen.queryByLabelText('Manhours')).not.toBeInTheDocument();
+	});
+
+	it('explains sortable and plain columns without changing how sorting works', async () => {
+		const user = userEvent.setup();
+		renderAssignments();
+		const table = await screen.findByRole('table', {
+			name: 'Project activity table',
+		});
+		const start = within(table).getByText('Start Period');
+		await user.hover(start);
+		expect(await screen.findByRole('tooltip')).toHaveTextContent(
+			'When you started work, in Indian Standard Time (IST).'
+		);
+		await user.unhover(start);
+		await waitFor(() =>
+			expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+		);
+		const header = within(table).getByRole('columnheader', {
+			name: 'Manhours',
+		});
+		const sortButton = within(header).getByRole('button', { name: 'Manhours' });
+		const previousHeader = within(table).getByRole('columnheader', {
+			name: 'End Period',
+		});
+		within(previousHeader).getByText('End Period').focus();
+		await user.tab();
+		expect(sortButton).toHaveFocus();
+		expect(await screen.findByRole('tooltip')).toHaveTextContent(
+			'Hours worked, calculated from the start and end times for new entries.'
+		);
+		await user.keyboard('{Escape}');
+		await waitFor(() =>
+			expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+		);
+		await user.keyboard('{Enter}');
+		expect(header).toHaveAttribute('aria-sort', 'ascending');
 	});
 
 	it('shows a boundary period in both weeks with only each clipped share', async () => {
@@ -484,10 +543,10 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			.getByText('Recorded duration')
 			.closest('tr');
 		const cells = within(legacyRow).getAllByRole('cell');
-		expect(cells[5].textContent).toBe('');
 		expect(cells[6].textContent).toBe('');
-		expect(cells[7].textContent.trim()).toBe('2.5');
-		expect(cells[8]).toHaveTextContent('4');
+		expect(cells[7].textContent).toBe('');
+		expect(cells[8].textContent.trim()).toBe('2.5');
+		expect(cells[9]).toHaveTextContent('4');
 		expect(within(legacyRow).queryByText('99')).not.toBeInTheDocument();
 		expect(
 			screen.getByText(/Older entries may have no recorded times/)
@@ -549,15 +608,14 @@ describe('ProjectActivityAssignments Work Periods', () => {
 
 		const row = await rowContaining('Foundation Work');
 		const cells = within(row).getAllByRole('cell');
-		expect(cells[4]).toHaveTextContent('12');
-		expect(cells[4]).toHaveTextContent('Estimate: 8');
-		expect(cells[5].textContent).toBe('');
+		expect(cells[4]).toHaveTextContent('Assignment remark');
+		expect(cells[5].textContent.trim()).toBe('12');
 		expect(cells[6].textContent).toBe('');
 		expect(cells[7].textContent).toBe('');
 		expect(cells[8].textContent).toBe('');
 		expect(cells[9].textContent).toBe('');
-		expect(cells[10]).toHaveTextContent('In Progress');
-		expect(cells[11]).toHaveTextContent('Assignment remark');
+		expect(cells[10].textContent).toBe('');
+		expect(cells[11]).toHaveTextContent('In Progress');
 		expect(
 			within(row).getByRole('link', { name: 'Open documents for Alpha Plant' })
 		).toHaveAttribute('href', '/projects/1?tab=upload_documents');
@@ -575,6 +633,56 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			target: { value: TODAY },
 		});
 		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
+	});
+
+	it('keeps unlogged assignments visible beside a legacy log on the same project without catalog IDs', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		const assignment = {
+			...PRELOADED_DATA.assignments[0],
+			activity_id: null,
+		};
+		renderAssignments({
+			preloadedData: {
+				...PRELOADED_DATA,
+				assignments: [
+					assignment,
+					{
+						...assignment,
+						id: 'pending-a',
+						activity_name: 'Pending inspection',
+						daily_entries: [],
+					},
+					{
+						...assignment,
+						id: 'pending-b',
+						activity_name: 'Pending drawing',
+						daily_entries: [],
+					},
+				],
+			},
+		});
+
+		const table = activityTable();
+		for (const label of [
+			'Recorded duration',
+			'Pending inspection',
+			'Pending drawing',
+		]) {
+			expect(await within(table).findByText(label)).toBeVisible();
+		}
+		await userEvent.click(
+			within(table).getByRole('button', { name: 'Activity' })
+		);
+		for (const label of [
+			'Recorded duration',
+			'Pending inspection',
+			'Pending drawing',
+		]) {
+			expect(within(table).getAllByText(label)).toHaveLength(1);
+		}
 	});
 
 	it('defaults From and To to the selected IST week and filters adjacent dates', async () => {
@@ -642,13 +750,13 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		renderAssignments();
 		const user = await openAddForm();
 		await chooseAssembly(user);
-		setEndpoint('Start Period', '22:00');
-		setEndpoint('End Period', '01:00');
+		await setEndpoint(user, 'Start Period', '10', '00', 'PM');
+		await setEndpoint(user, 'End Period', '12', '00', 'AM');
 		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
 		fireEvent.change(screen.getByLabelText('Quantity'), {
 			target: { value: '2.5' },
 		});
-		fireEvent.change(screen.getByLabelText('Remarks'), {
+		fireEvent.change(screen.getByLabelText('Activity Description'), {
 			target: { value: 'Completed assembly' },
 		});
 
@@ -661,7 +769,7 @@ describe('ProjectActivityAssignments Work Periods', () => {
 				activityId: 'a2',
 				subActivityId: null,
 				start: '2026-12-01T22:00',
-				end: `${TODAY}T01:00`,
+				end: `${TODAY}T00:00`,
 				quantity: 2.5,
 				dateCompleted: TODAY,
 				remarks: 'Completed assembly',
@@ -679,8 +787,8 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		renderAssignments();
 		const user = await openAddForm();
 		await chooseAssembly(user);
-		setEndpoint('Start Period', '09:00');
-		setEndpoint('End Period', '09:00');
+		await setEndpoint(user, 'Start Period', '09', '00', 'AM');
+		await setEndpoint(user, 'End Period', '09', '00', 'AM');
 
 		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
 
@@ -690,38 +798,83 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		expect(apiPost).not.toHaveBeenCalled();
 	});
 
-	it('keeps every entered time and shared value when a save is rejected', async () => {
-		apiPost.mockRejectedValue(
-			new Error('This Work Period overlaps an existing Work Period.')
+	it('asks for a description after a save attempt and keeps the entered times', async () => {
+		renderAssignments();
+		const user = await openAddForm();
+		await chooseAssembly(user);
+		await setEndpoint(user, 'Start Period', '09', '00', 'AM');
+		await setEndpoint(user, 'End Period', '12', '30', 'PM');
+		const description = screen.getByRole('textbox', {
+			name: 'Activity Description',
+		});
+		expect(description).toBeRequired();
+		expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+		fireEvent.change(description, { target: { value: '   ' } });
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'Enter an Activity Description.'
 		);
+		expect(description).toHaveFocus();
+		expect(description).toHaveAccessibleDescription(
+			'Enter an Activity Description.'
+		);
+		expect(apiPost).not.toHaveBeenCalled();
+
+		fireEvent.change(description, {
+			target: { value: 'Reviewed the drawing.' },
+		});
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+		await waitFor(() =>
+			expect(apiPost).toHaveBeenCalledWith(
+				'/api/work-periods',
+				expect.objectContaining({
+					start: `${TODAY}T09:00`,
+					end: `${TODAY}T12:30`,
+					remarks: expect.stringContaining('Reviewed the drawing.'),
+				})
+			)
+		);
+	});
+
+	it.each([
+		'This Work Period overlaps another Work Period. Adjust the Start or End.',
+		'The end time is later than now (IST). Check the date and time, or save after the work ends.',
+	])('shows “%s” in a toast and keeps the rejected draft', async (message) => {
+		apiPost.mockRejectedValue(new Error(message));
+		vi.stubGlobal('matchMedia', () => ({ matches: false }));
+		const { container: notifications } = render(<Toaster />);
 		const onSaved = vi.fn();
 		window.addEventListener('activity-log-saved', onSaved);
 		renderAssignments();
 		const user = await openAddForm();
 		await chooseAssembly(user);
-		setEndpoint('Start Period', '22:00');
-		setEndpoint('End Period', '01:00');
+		await setEndpoint(user, 'Start Period', '10', '00', 'PM');
+		await setEndpoint(user, 'End Period', '01', '00', 'AM');
 		fireEvent.change(screen.getByLabelText('Quantity'), {
 			target: { value: '4' },
 		});
-		fireEvent.change(screen.getByLabelText('Remarks'), {
+		fireEvent.change(screen.getByLabelText('Activity Description'), {
 			target: { value: 'Keep this remark' },
 		});
 
 		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
 
-		expect(await screen.findByRole('alert')).toHaveTextContent(
-			'This Work Period overlaps an existing Work Period.'
+		expect(await within(notifications).findByRole('alert')).toHaveTextContent(
+			message
 		);
+		expect(screen.getAllByRole('alert')).toHaveLength(1);
 		expect(screen.getByLabelText('Project')).toHaveValue('1');
 		expect(screen.getByLabelText('Discipline')).toHaveValue('d1');
 		expect(screen.getByLabelText('Activity')).toHaveValue('a2');
 		expect(screen.getByLabelText('Sub Activity')).toHaveValue('');
-		expect(screen.getByLabelText('Start Period')).toHaveValue('22:00');
-		expect(screen.getByLabelText('End Period')).toHaveValue('01:00');
+		expect(periodButton('Start Period')).toHaveTextContent('10:00 PM');
+		expect(periodButton('End Period')).toHaveTextContent('01:00 AM');
 		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
 		expect(screen.getByLabelText('Quantity')).toHaveValue(4);
-		expect(screen.getByLabelText('Remarks')).toHaveValue('Keep this remark');
+		expect(screen.getByLabelText('Activity Description')).toHaveValue(
+			'Keep this remark'
+		);
 		expect(onSaved).not.toHaveBeenCalled();
 		window.removeEventListener('activity-log-saved', onSaved);
 	});
@@ -748,10 +901,14 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		const table = activityTable();
 		const editor = screen.getByRole('form', { name: 'Work Period editor' });
 		expect(editor).toContainElement(table);
-		const editRow = within(table).getByLabelText('Start Period').closest('tr');
-		expect(within(editRow).getByLabelText('Start Period')).toHaveValue('22:00');
-		expect(within(editRow).getByLabelText('End Period')).toHaveValue('02:00');
-		setEndpoint('End Period', '03:00');
+		const editRow = periodButton('Start Period', within(table)).closest('tr');
+		expect(periodButton('Start Period', within(editRow))).toHaveTextContent(
+			'10:00 PM'
+		);
+		expect(periodButton('End Period', within(editRow))).toHaveTextContent(
+			'02:00 AM'
+		);
+		await setEndpoint(user, 'End Period', '03', '00', 'AM');
 		fireEvent.change(screen.getByLabelText('Quantity'), {
 			target: { value: '2' },
 		});
