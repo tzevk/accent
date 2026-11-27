@@ -6,22 +6,7 @@ import {
 	loadLeadPolicy,
 	resolveProjectRights,
 } from '@/lib/project-rights';
-import { parseDailyEntries } from '@/lib/logged-hours';
-
-function effectiveLoggedHours({
-	daily_entries,
-	work_period_entries,
-	actual_hours,
-}) {
-	const derivedHours = parseDailyEntries(daily_entries).reduce(
-		(sum, entry) => sum + entry.hours,
-		0
-	);
-	if (work_period_entries !== null && work_period_entries !== undefined) {
-		return derivedHours;
-	}
-	return parseFloat(actual_hours) || derivedHours;
-}
+import { effectiveLoggedHours } from '@/lib/logged-hours';
 
 /**
  * GET /api/users/[id]/projects
@@ -171,11 +156,11 @@ export async function GET(request, { params }) {
               uaa.priority,
               uaa.start_date,
               uaa.due_date as end_date,
-              uaa.actual_completion_date,
+              uaa.completion_date AS actual_completion_date,
               uaa.estimated_hours as assigned_manhours,
               uaa.daily_entries,
               uaa.work_period_entries,
-              uaa.actual_hours,
+              uaa.actual_hours
             FROM logged_activity_assignments uaa
             WHERE uaa.user_id = ? AND uaa.project_id = ?
             ORDER BY uaa.created_at ASC

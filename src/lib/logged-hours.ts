@@ -1,10 +1,11 @@
 /**
  * Canonical Logged Hours module — ADR-0010.
  *
- * `user_activity_assignments.daily_entries` is the single source of logged
- * project hours. The column arrives either as a JSON string (mysql2 longtext)
- * or as an already-parsed array depending on the driver/caller, so every
- * reader must tolerate both and drop malformed payloads rather than throw.
+ * Effective `logged_activity_assignments.daily_entries` combines historical
+ * duration records with Work Period attribution. The payload arrives either
+ * as a JSON string (mysql2 longtext) or as an already-parsed array depending
+ * on the driver/caller, so every reader must tolerate both and drop malformed
+ * payloads rather than throw.
  * Logged hours are never capped: overtime counts (ADR-0010) and the payroll
  * path prices exactly what was logged.
  *
@@ -103,6 +104,36 @@ export function parseDailyEntries(raw: unknown): LoggedEntry[] {
 		entries.push({ date: dateMatch[1], hours });
 	}
 	return entries;
+}
+
+/** The assignment fields needed to resolve one effective Logged Hours total. */
+export interface EffectiveLoggedHoursRow {
+	daily_entries?: unknown;
+	work_period_entries?: unknown;
+	actual_hours?: unknown;
+}
+
+/**
+ * Logged Hours for one row from `logged_activity_assignments`.
+ *
+ * A non-null Work Period projection is authoritative, even when it is empty or
+ * the effective payload is malformed. Its merged `daily_entries` already
+ * contain legacy history and derived Work Period slices, so they are counted
+ * once. Without a projection, preserve the legacy stored `actual_hours`
+ * display and fall back to decoded entries when that aggregate is zero or
+ * unusable.
+ */
+export function effectiveLoggedHours({
+	daily_entries,
+	work_period_entries,
+	actual_hours,
+}: EffectiveLoggedHoursRow): number {
+	const derivedHours = parseDailyEntries(daily_entries).reduce(
+		(sum, entry) => sum + entry.hours,
+		0
+	);
+	if (work_period_entries != null) return derivedHours;
+	return Number.parseFloat(String(actual_hours ?? '')) || derivedHours;
 }
 
 /**

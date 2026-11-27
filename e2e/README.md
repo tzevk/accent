@@ -66,7 +66,7 @@ The [payroll cleanup regression](specs/payroll-finalize-contention.spec.ts) over
 - Redirect aliases are not separate business journeys. Test the destination as part of the workflow when it affects the result.
 - Do not seed a super-admin to reach super-admin-only journeys in this harness. Keep those authorization and command contracts at the appropriate lower layer.
 - The Material Requisition register links to detail and edit pages that do not exist. A create test cannot prove those paths work.
-- The Project editor renders an Add Day control only for a tab missing from its tab registry. The browser can verify saved timesheet data, but it cannot enter hours through that hidden path.
+- The Project editor records new time through the Work Period editor. Historical duration-only entries remain available in My Project Activities and My Timesheet.
 - Completing the last pending personal task removes the control that shows completed tasks. The current journey verifies its removal from pending and its saved completion; it does not claim completed-list coverage.
 - Project creation can reopen the saved record from the Projects list. Its automatic redirect reads `id`, but the write returns `project_id`.
 - Client Balance shows invoice numbers as text. The invoice-document journey follows the link from Outstanding Balances instead.

@@ -165,7 +165,7 @@ describe('work periods route authentication and scope', () => {
 		}
 	);
 
-	it("does not let a dashboard caller request another user's history", async () => {
+	it('denies cross-account history to a non-admin', async () => {
 		const response = await GET(
 			request('GET', undefined, 'http://localhost/api/work-periods?userId=99')
 		);
@@ -173,6 +173,40 @@ describe('work periods route authentication and scope', () => {
 		expect(response.status).toBe(403);
 		expect(mocks.readWorkPeriods).not.toHaveBeenCalled();
 	});
+
+	it.each([
+		{ label: 'an admin', role: { code: 'admin' } },
+		{ label: 'a super admin', is_super_admin: true },
+	])(
+		'lets $label read only the selected Employee’s Work Periods',
+		async (admin) => {
+			mocks.getCurrentUser.mockResolvedValue({ ...actor, ...admin });
+			mocks.getLinkedEmployee.mockImplementationOnce(async (_db, userId) =>
+				userId === 99
+					? { employeeId: 18, employeeName: 'Selected Employee' }
+					: null
+			);
+			mocks.readWorkPeriods.mockImplementationOnce(async (_db, scope) =>
+				scope.employeeId === 18
+					? [period({ id: 'selected-period', userId: 99, employeeId: 18 })]
+					: []
+			);
+
+			const response = await GET(
+				request('GET', undefined, 'http://localhost/api/work-periods?userId=99')
+			);
+
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({
+				success: true,
+				data: {
+					canLog: false,
+					readOnly: true,
+					periods: [{ id: 'selected-period', employeeId: 18, editable: false }],
+				},
+			});
+		}
+	);
 
 	it('returns a non-loggable empty week when the direct Employee link is missing', async () => {
 		mocks.getLinkedEmployee.mockResolvedValue(null);
@@ -184,6 +218,7 @@ describe('work periods route authentication and scope', () => {
 			success: true,
 			data: {
 				canLog: false,
+				readOnly: false,
 				today: '2026-11-26',
 				weekStart: '2026-11-23',
 				periods: [],

@@ -267,12 +267,19 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 		expect(mocks.mockRelease).toHaveBeenCalled();
 	});
 
-	it('returns effective Work Period entries beside independently parsed legacy entries', async () => {
+	it('returns merged effective entries beside independently parsed legacy entries', async () => {
 		mocks.mockExecute
 			.mockResolvedValueOnce([
 				[
 					assignmentRow({
 						daily_entries: JSON.stringify([
+							{
+								date: '2026-10-25',
+								qty_done: 4,
+								hours: 7,
+								remarks: 'Historical duration',
+								isLocked: true,
+							},
 							{ date: '2026-10-26', qty_done: 1, hours: 2 },
 							{ date: '2026-10-27', qty_done: 2, hours: '3' },
 						]),
@@ -302,6 +309,13 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 
 		expect(response.status).toBe(200);
 		expect(body.data.assignments[0].daily_entries).toEqual([
+			{
+				date: '2026-10-25',
+				qty_done: 4,
+				hours: 7,
+				remarks: 'Historical duration',
+				isLocked: true,
+			},
 			{ date: '2026-10-26', qty_done: 1, hours: 2 },
 			{ date: '2026-10-27', qty_done: 2, hours: '3' },
 		]);
@@ -314,10 +328,10 @@ describe('user activity assignments lastActivityLoggedAt', () => {
 				isLocked: true,
 			},
 		]);
-		expect(body.data.assignments[0].actual_hours).toBe(5);
-		expect(body.data.assignments[0].qty_completed).toBe(3);
-		expect(body.data.stats.totalActualHours).toBe(5);
-		expect(body.data.stats.totalQtyCompleted).toBe(3);
+		expect(body.data.assignments[0].actual_hours).toBe(12);
+		expect(body.data.assignments[0].qty_completed).toBe(7);
+		expect(body.data.stats.totalActualHours).toBe(12);
+		expect(body.data.stats.totalQtyCompleted).toBe(7);
 	});
 
 	it('does not let malformed legacy JSON hide effective entries or totals', async () => {

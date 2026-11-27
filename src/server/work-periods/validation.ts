@@ -194,6 +194,10 @@ export const workPeriodQuerySchema = z.object({
 			.string({ error: 'userId must be a valid User Account id.' })
 			.trim()
 			.regex(/^\d+$/, { error: 'userId must be a valid User Account id.' })
+			.transform(Number)
+			.pipe(
+				z.int().positive({ error: 'userId must be a valid User Account id.' })
+			)
 			.optional()
 	),
 	week: z

@@ -48,7 +48,7 @@ function params(id = '42') {
 	return { params: Promise.resolve({ id }) };
 }
 
-function mockDbFor(rows: unknown[]) {
+function mockDbFor(rows: unknown[], activityRows: unknown[] = []) {
 	mockExecute.mockImplementation(async (sql: string) => {
 		if (/SHOW TABLES/i.test(sql)) {
 			return [[{ table_name: 'user_activity_assignments' }], []];
@@ -56,11 +56,14 @@ function mockDbFor(rows: unknown[]) {
 		if (/INNER JOIN user_activity_assignments/i.test(sql)) {
 			return [rows, []];
 		}
+		if (/FROM logged_activity_assignments uaa/i.test(sql)) {
+			return [activityRows, []];
+		}
 		return [[], []];
 	});
 }
 
-describe('GET /api/users/[id]/projects commercial omission', () => {
+describe('GET /api/users/[id]/projects', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockDbConnect.mockResolvedValue({
@@ -139,5 +142,76 @@ describe('GET /api/users/[id]/projects commercial omission', () => {
 
 		expect(response.status).toBe(200);
 		expect(body.data.projects).toHaveLength(0);
+	});
+
+	it('decodes effective entries and returns the projected completion date', async () => {
+		mockDbFor(
+			[assignedRow],
+			[
+				{
+					id: 'assignment-work-period',
+					activity_name: 'Implementation',
+					status: 'In Progress',
+					actual_completion_date: '2026-10-28T18:00:00.000Z',
+					estimated_hours: '6',
+					daily_entries: JSON.stringify([
+						{ date: '2026-10-26', hours: 2 },
+						{ date: '2026-10-27', hours: '3' },
+					]),
+					work_period_entries: JSON.stringify([
+						{ date: '2026-10-27', hours: 3 },
+					]),
+					actual_hours: '99',
+				},
+				{
+					id: 'assignment-legacy',
+					activity_name: 'Historical work',
+					status: 'Completed',
+					completion_date: null,
+					estimated_hours: '2',
+					daily_entries: JSON.stringify([{ date: '2026-10-25', hours: 4 }]),
+					work_period_entries: null,
+					actual_hours: '7.5',
+				},
+			]
+		);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		const [project] = body.data.projects;
+		expect(project.activities[0]).toMatchObject({
+			activity_name: 'Implementation',
+			actual_completion_date: '2026-10-28T18:00:00.000Z',
+			actual_manhours: 5,
+		});
+		expect(project.activities[1].actual_manhours).toBe(7.5);
+		expect(project.totalActualHours).toBe(12.5);
+		expect(body.data.stats.totalActualHours).toBe(12.5);
+	});
+
+	it('does not revive a stale aggregate when effective entries are malformed', async () => {
+		mockDbFor(
+			[assignedRow],
+			[
+				{
+					id: 'assignment-malformed',
+					activity_name: 'Malformed projection',
+					status: 'In Progress',
+					estimated_hours: '1',
+					daily_entries: '{invalid json',
+					work_period_entries: '[]',
+					actual_hours: '99',
+				},
+			]
+		);
+
+		const response = await GET(request(), params());
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.data.projects[0].activities[0].actual_manhours).toBe(0);
+		expect(body.data.stats.totalActualHours).toBe(0);
 	});
 });

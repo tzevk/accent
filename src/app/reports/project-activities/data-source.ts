@@ -10,7 +10,10 @@
  */
 
 import { query } from '@/utils/database';
-import { parseDailyEntryRecords } from '@/lib/logged-hours';
+import {
+	effectiveLoggedHours,
+	parseDailyEntryRecords,
+} from '@/lib/logged-hours';
 import type { ApiProject, ApiMember, ApiActivity } from './report-utils';
 
 export interface FetchOptions {
@@ -152,14 +155,10 @@ export async function fetchProjectActivitiesData(
 			const dailyEntries = parseDailyEntryRecords(row.daily_entries).map(
 				(record) => record.entry
 			) as Exclude<ApiMember['daily_entries'], undefined>;
+			const hasWorkPeriodEntries = row.work_period_entries != null;
 
 			const totalQtyDone = dailyEntries.reduce(
 				(sum, e) => sum + (parseFloat(String(e.qty_done ?? '')) || 0),
-				0
-			);
-			const hasWorkPeriodEntries = row.work_period_entries != null;
-			const totalHours = dailyEntries.reduce(
-				(sum, e) => sum + (parseFloat(String(e.hours ?? '')) || 0),
 				0
 			);
 
@@ -173,9 +172,7 @@ export async function fetchProjectActivitiesData(
 					? totalQtyDone
 					: n(row, 'qty_completed') || totalQtyDone,
 				planned_hours: n(row, 'estimated_hours'),
-				actual_hours: hasWorkPeriodEntries
-					? totalHours
-					: n(row, 'actual_hours') || totalHours,
+				actual_hours: effectiveLoggedHours(row),
 				start_date: row.start_date as string | null,
 				due_date: row.due_date as string | null,
 				status: s(row, 'status', 'Not Started'),

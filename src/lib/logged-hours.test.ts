@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+	effectiveLoggedHours,
 	parseDailyEntries,
 	sumLoggedHoursForMonth,
 	hoursByDateForMonth,
@@ -95,6 +96,75 @@ describe('parseDailyEntries', () => {
 		expect(
 			parseDailyEntries([{ date: '2026-05-04T18:30:00.000Z', hours: 4 }])
 		).toEqual([{ date: '2026-05-04', hours: 4 }]);
+	});
+});
+
+describe('effectiveLoggedHours', () => {
+	it('counts merged effective entries once when a Work Period projection exists', () => {
+		expect(
+			effectiveLoggedHours({
+				daily_entries: JSON.stringify([
+					{ date: '2026-05-04', hours: 2 },
+					{ date: '2026-05-05', hours: '3' },
+				]),
+				work_period_entries: JSON.stringify([{ date: '2026-05-05', hours: 3 }]),
+				actual_hours: 99,
+			})
+		).toBe(5);
+	});
+
+	it('treats an empty Work Period projection as authoritative', () => {
+		expect(
+			effectiveLoggedHours({
+				daily_entries: [{ date: '2026-05-04', hours: 4 }],
+				work_period_entries: '[]',
+				actual_hours: 99,
+			})
+		).toBe(4);
+	});
+
+	it('keeps the legacy aggregate when no Work Period projection exists', () => {
+		expect(
+			effectiveLoggedHours({
+				daily_entries: [{ date: '2026-05-04', hours: 4 }],
+				work_period_entries: null,
+				actual_hours: ' 7.5 ',
+			})
+		).toBe(7.5);
+	});
+
+	it.each([0, '0', '', 'not-a-number', null, undefined])(
+		'falls back to decoded entries for an unusable legacy aggregate: %s',
+		(actualHours) => {
+			expect(
+				effectiveLoggedHours({
+					daily_entries: JSON.stringify([{ date: '2026-05-04', hours: 4 }]),
+					actual_hours: actualHours,
+				})
+			).toBe(4);
+		}
+	);
+
+	it('drops invalid effective entries without reviving a stale aggregate', () => {
+		expect(
+			effectiveLoggedHours({
+				daily_entries: JSON.stringify([
+					{ date: '2026-05-04', hours: 2 },
+					{ date: 'invalid', hours: 100 },
+					{ date: '2026-05-05', hours: -3 },
+					{ date: '2026-05-06', hours: 0 },
+				]),
+				work_period_entries: '[]',
+				actual_hours: 99,
+			})
+		).toBe(2);
+		expect(
+			effectiveLoggedHours({
+				daily_entries: '{invalid json',
+				work_period_entries: '[]',
+				actual_hours: 99,
+			})
+		).toBe(0);
 	});
 });
 

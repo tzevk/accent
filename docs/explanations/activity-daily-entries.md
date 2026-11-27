@@ -71,14 +71,16 @@ endpoints, but each week counts only its own elapsed share.
 
 `/api/work-periods` is the canonical write surface:
 
-| Method           | Scope                                                            | Contract                                                                                                                                                                     |
-| ---------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`            | Self, or manager when `projectId` is present                     | `?week=YYYY-MM-DD` selects a Monday–Sunday week; optional `userId` follows the dashboard self-view rule. Manager reads require Project edit permission.                      |
-| `POST`           | Self, or manager with `manager: true`                            | Self selects Project, Discipline, Activity, and Sub-activity; manager selects `projectId` and `assignmentId`. Both supply Start, End, quantity, Date Completed, and remarks. |
-| `PUT` / `DELETE` | Self for an eligible own period, or manager with `manager: true` | The manager targets `{ id, projectId, ...periodFields }` in the authorized Project scope.                                                                                    |
+| Method           | Scope                                                            | Contract                                                                                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`            | Self, Live Monitoring admin, or Project manager                  | `?week=YYYY-MM-DD` selects a Monday–Sunday week. Admins and super admins can use `userId` to view another User Account’s Work Periods, read-only. Project manager reads use `projectId` and require Project edit permission. |
+| `POST`           | Self, or manager with `manager: true`                            | Self selects Project, Discipline, Activity, and Sub-activity; manager selects `projectId` and `assignmentId`. Both supply Start, End, quantity, Date Completed, and remarks.                                                 |
+| `PUT` / `DELETE` | Self for an eligible own period, or manager with `manager: true` | The manager targets `{ id, projectId, ...periodFields }` in the authorized Project scope.                                                                                                                                    |
 
 Successful mutations return `{ success: true, data: { id }, affected_rows: 1 }`.
 Reads return `{ success: true, data: { canLog, today, weekStart, periods } }`.
+Dashboard reads also return `readOnly: true` when an admin views another User
+Account. These responses disable logging and editing.
 `periods` contains Work Period rows with assignment labels, explicit IST
 endpoints, duration, weekly hours and quantity, and editability.
 
@@ -116,14 +118,14 @@ Wednesday. The server's current time and `Asia/Kolkata` decide eligibility.
 ### Entering a Work Period
 
 In **My Project Activities**, select **Add** and fill the inline row. Open
-**Start Period** and **End Period** to pick an hour, minute, and **AM** or **PM**.
-Select **OK** to apply each time. **Date Completed** defaults to today in IST
-and sets the new period's end date. If the end time is earlier than the start
-time, the row shows **Previous day** under the start time.
+**Start Period** and **End Period** to choose the work date and the time in IST.
+For overnight work, select different dates explicitly. An earlier end clock
+time does not change either date. **Date Completed** defaults to the End date
+and can be set separately for quantity reporting.
 Accent only accepts finished Work Periods. For a period that ends today, choose
 an end time no later than the current time in IST.
-When editing an existing period, its saved work dates stay the same.
-Changing **Date Completed** on that row changes only the quantity's reporting date.
+When editing a period, the saved work dates stay the same unless you change
+them. Changing **Date Completed** alone changes only quantity reporting.
 **Activity Description** is required when employees add or edit a Work Period.
 **Quantity** is optional.
 Accent calculates **Manhours** from the saved times. **Default MH** shows the
@@ -139,10 +141,11 @@ every week its half-open interval overlaps, with one stable identity and its
 original endpoints. Weekly seconds are the intersection with that week; a
 period ending at Monday 00:00 contributes no time to the new week.
 
-The table shows only recorded work in the selected dates. Historical Daily
-Activity Entries appear on their recorded dates. Project Activity assignments
-without recorded work do not appear as rows, but their Projects remain
-available in **Add**.
+The date filters count only elapsed hours inside the selected dates. A period
+also appears if its quantity belongs to the selected dates, even if none of
+its hours do. Historical Daily Activity Entries appear on their recorded dates.
+Project Activity assignments without recorded work do not appear as rows, but
+their Projects remain available in **Add**.
 
 ### Manager corrections and protected Project saves
 
@@ -154,6 +157,9 @@ General Project saves must not replace or delete Work Periods or overwrite their
 projection, including saves from stale assignment snapshots. Work Period
 corrections use their own API. The `RESTRICT` foreign keys also prevent generic
 assignment or Employee deletion from silently removing canonical periods.
+The assignment endpoint reports a conflict when recorded Work Periods prevent
+deletion or an assignee change. Keep the original assignment for the recorded
+work and create a separate assignment for the new assignee.
 
 ## Read paths
 

@@ -31,6 +31,7 @@ import ProjectActivityAssignments from '@/components/ProjectActivityAssignments'
 import { WorkPeriodFields } from '@/components/WorkPeriodFields';
 
 const FIXED_NOW = new Date('2026-12-02T12:00:00Z');
+const YESTERDAY = '2026-12-01';
 const TODAY = '2026-12-02';
 const PREVIOUS_WEEK = '2026-11-23';
 const CURRENT_WEEK = '2026-11-30';
@@ -202,6 +203,8 @@ async function openAddForm() {
 	for (const name of ['Start Period Pick time', 'End Period Pick time']) {
 		expect(within(addRow).getByRole('button', { name })).toBeVisible();
 	}
+	expect(within(addRow).getByLabelText('Start Period Date')).toHaveValue(TODAY);
+	expect(within(addRow).getByLabelText('End Period Date')).toHaveValue(TODAY);
 	await waitFor(() =>
 		expect(screen.getByLabelText('Discipline')).not.toBeDisabled()
 	);
@@ -219,7 +222,7 @@ function activityTable() {
 }
 
 async function expectTotals(manhours, quantity) {
-	const label = await screen.findByText('Total Manhours');
+	const label = await screen.findByText(/Total Manhours|Total \(filtered\)/);
 	const cells = within(label.closest('tr')).getAllByRole('cell');
 	await waitFor(() => {
 		expect(cells[1].textContent.trim()).toBe(manhours);
@@ -237,7 +240,9 @@ async function rowContaining(text) {
 }
 
 function periodButton(label, root = screen) {
-	return root.getByRole('button', { name: new RegExp(`^${label} `) });
+	return root.getByRole('button', {
+		name: new RegExp(`^${label} (?:Pick time|\\d{2}:\\d{2} [AP]M)$`),
+	});
 }
 
 async function setEndpoint(user, label, hour, minute, meridiem) {
@@ -255,6 +260,13 @@ async function setEndpoint(user, label, hour, minute, meridiem) {
 		);
 	}
 	await user.click(picker.getByRole('button', { name: 'OK' }));
+}
+
+async function setEndpointDate(user, label, date) {
+	await user.click(screen.getByLabelText(`${label} date`));
+	fireEvent.change(screen.getByLabelText(`${label} Date`), {
+		target: { value: date },
+	});
 }
 
 describe('ProjectActivityAssignments Work Periods', () => {
@@ -345,10 +357,10 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			'Sub Activity',
 			'Activity Description',
 			'Default MH',
-			'Start Period',
-			'End Period',
 			'Manhours',
 			'Quantity',
+			'Start Period',
+			'End Period',
 			'Date Completed',
 			'Status',
 			'Actions',
@@ -364,26 +376,56 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		const overnightCells = within(overnightRow).getAllByRole('cell');
 		expect(overnightCells).toHaveLength(13);
 		expect(overnightCells[4]).toHaveTextContent('Overnight work');
-		expect(overnightCells[6]).toHaveTextContent('Previous day');
-		expect(overnightCells[6]).toHaveTextContent('10:00 PM');
-		expect(overnightCells[7]).toHaveTextContent('02:00 AM');
-		expect(overnightCells[8].textContent.trim()).toBe('4');
-		expect(overnightCells[9]).toHaveTextContent('3');
+		expect(overnightCells[6].textContent.trim()).toBe('4');
+		expect(overnightCells[7]).toHaveTextContent('3');
+		expect(overnightCells[8]).toHaveTextContent('Previous day');
+		expect(overnightCells[8]).toHaveTextContent('10:00 PM');
+		expect(overnightCells[9]).toHaveTextContent('02:00 AM');
 		expect(overnightCells[10]).toHaveTextContent('01 Dec 2026');
 
 		const boundaryRow = await rowContaining('Sunday to Monday');
 		const boundaryCells = within(boundaryRow).getAllByRole('cell');
-		expect(boundaryCells[8].textContent).toContain('4');
-		expect(boundaryCells[8]).toHaveTextContent('Week: 2');
-		expect(boundaryCells[9].textContent.trim()).toBe('8');
+		expect(boundaryCells[6].textContent).toContain('4');
+		expect(boundaryCells[6]).toHaveTextContent('Week: 2');
+		expect(boundaryCells[7].textContent.trim()).toBe('8');
 
 		const legacyRow = await rowContaining('Recorded duration');
 		const legacyCells = within(legacyRow).getAllByRole('cell');
 		expect(legacyCells[5]).toHaveTextContent('12');
-		expect(legacyCells[8].textContent.trim()).toBe('2.5');
-		expect(legacyCells[9]).toHaveTextContent('4');
+		expect(legacyCells[6].textContent.trim()).toBe('2.5');
+		expect(legacyCells[7]).toHaveTextContent('4');
 		expect(screen.queryByPlaceholderText('Hrs')).not.toBeInTheDocument();
 		expect(screen.queryByLabelText('Manhours')).not.toBeInTheDocument();
+	});
+
+	it('keeps same-day endpoints time-only when Date Completed is different', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') {
+				return periodPayload(CURRENT_WEEK, [
+					{
+						...OVERNIGHT_PERIOD,
+						start: `${TODAY}T09:00`,
+						end: `${TODAY}T11:00`,
+						durationSeconds: 7200,
+						weekSeconds: 7200,
+						dateCompleted: YESTERDAY,
+						remarks: 'Same-day custom completion',
+					},
+				]);
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		renderAssignments({
+			preloadedData: { ...PRELOADED_DATA, assignments: [] },
+		});
+
+		const row = await rowContaining('Same-day custom completion');
+		const cells = within(row).getAllByRole('cell');
+		expect(cells[8]).toHaveTextContent('09:00 AM');
+		expect(cells[8]).not.toHaveTextContent('Previous day');
+		expect(cells[9]).toHaveTextContent('11:00 AM');
+		expect(cells[9]).not.toHaveTextContent('Previous day');
+		expect(cells[10]).toHaveTextContent('01 Dec 2026');
 	});
 
 	it('explains sortable and plain columns without changing how sorting works', async () => {
@@ -406,9 +448,9 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		});
 		const sortButton = within(header).getByRole('button', { name: 'Manhours' });
 		const previousHeader = within(table).getByRole('columnheader', {
-			name: 'End Period',
+			name: 'Default MH',
 		});
-		within(previousHeader).getByText('End Period').focus();
+		within(previousHeader).getByRole('button', { name: 'Default MH' }).focus();
 		await user.tab();
 		expect(sortButton).toHaveFocus();
 		expect(await screen.findByRole('tooltip')).toHaveTextContent(
@@ -443,6 +485,35 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		await user.click(screen.getByRole('button', { name: 'Next week' }));
 		expect(await screen.findByText('30 Nov – 6 Dec 2026')).toBeInTheDocument();
 		await expectTotals('8.5', '15');
+	});
+
+	it('keeps a quantity-only fetched-week row at Monday boundary without hours', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') {
+				return periodPayload(CURRENT_WEEK, [
+					{
+						...OVERNIGHT_PERIOD,
+						remarks: 'Monday quantity-only work',
+						start: '2026-11-29T09:00',
+						end: '2026-11-29T10:00',
+						quantity: 4,
+						dateCompleted: CURRENT_WEEK,
+						durationSeconds: 3600,
+						weekSeconds: 0,
+						weekQuantity: 4,
+					},
+				]);
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		renderAssignments({
+			preloadedData: { ...PRELOADED_DATA, assignments: [] },
+		});
+
+		await expectTotals('0', '4');
+		const row = await rowContaining('Monday quantity-only work');
+		expect(within(row).getByText('Week: 0')).toBeInTheDocument();
+		expect(within(row).getByText('4')).toBeInTheDocument();
 	});
 
 	it('preserves Project document links and searches Work Periods and history', async () => {
@@ -512,6 +583,29 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		).not.toBeInTheDocument();
 	});
 
+	it('shows monitored Work Periods without logging controls or a link warning', async () => {
+		const payload = periodPayload(CURRENT_WEEK, [
+			{ ...OVERNIGHT_PERIOD, editable: false },
+		]);
+		apiGet.mockResolvedValue({
+			...payload,
+			data: { ...payload.data, canLog: false, readOnly: true },
+		});
+		renderAssignments();
+
+		const row = await rowContaining('Overnight work');
+		expect(within(row).getByText('10:00 PM')).toBeInTheDocument();
+		expect(
+			screen.queryByRole('button', { name: 'Add' })
+		).not.toBeInTheDocument();
+		expect(
+			within(row).getByRole('button', { name: 'Read only for Foundation Work' })
+		).toBeDisabled();
+		expect(
+			screen.queryByText(/link your User Account/)
+		).not.toBeInTheDocument();
+	});
+
 	it('renders raw legacy daily entries read-only in the same activity table', async () => {
 		apiGet.mockImplementation(async (url) => {
 			if (url === '/api/work-periods') return periodPayload(CURRENT_WEEK, []);
@@ -540,10 +634,10 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			.getByText('Recorded duration')
 			.closest('tr');
 		const cells = within(legacyRow).getAllByRole('cell');
-		expect(cells[6].textContent).toBe('');
-		expect(cells[7].textContent).toBe('');
-		expect(cells[8].textContent.trim()).toBe('2.5');
-		expect(cells[9]).toHaveTextContent('4');
+		expect(cells[6].textContent.trim()).toBe('2.5');
+		expect(cells[7]).toHaveTextContent('4');
+		expect(cells[8].textContent).toBe('');
+		expect(cells[9].textContent).toBe('');
 		expect(within(legacyRow).queryByText('99')).not.toBeInTheDocument();
 		expect(
 			screen.getByText(/Older entries may have no recorded times/)
@@ -699,6 +793,88 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		expect(await screen.findByText('Adjacent Activity')).toBeInTheDocument();
 		expect(screen.queryByText('Foundation Work')).not.toBeInTheDocument();
 	});
+
+	it('clips Date filter hours and includes quantity-only rows at the range boundary', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods') {
+				return periodPayload(CURRENT_WEEK, [
+					{
+						...OVERNIGHT_PERIOD,
+						start: '2026-11-30T22:00',
+						end: `${YESTERDAY}T02:00`,
+						dateCompleted: YESTERDAY,
+						durationSeconds: 14400,
+						weekSeconds: 7200,
+					},
+					{
+						...OVERNIGHT_PERIOD,
+						id: 'wp-same-day',
+						remarks: 'Same-day selected work',
+						start: `${YESTERDAY}T09:00`,
+						end: `${YESTERDAY}T11:00`,
+						dateCompleted: YESTERDAY,
+						durationSeconds: 7200,
+						weekSeconds: 7200,
+					},
+					{
+						...OVERNIGHT_PERIOD,
+						id: 'wp-quantity-only',
+						remarks: 'Quantity-only selected work',
+						start: '2026-11-25T09:00',
+						end: '2026-11-25T10:00',
+						dateCompleted: YESTERDAY,
+						durationSeconds: 3600,
+						weekSeconds: 0,
+					},
+					{
+						...OVERNIGHT_PERIOD,
+						id: 'wp-next-completion',
+						remarks: 'Next-day completion',
+						start: `${YESTERDAY}T23:00`,
+						end: `${TODAY}T01:00`,
+						dateCompleted: TODAY,
+						durationSeconds: 7200,
+						weekSeconds: 7200,
+					},
+					{
+						...OVERNIGHT_PERIOD,
+						id: 'wp-ended-boundary',
+						remarks: 'Ended at selected boundary',
+						start: '2026-11-30T23:00',
+						end: `${YESTERDAY}T00:00`,
+						dateCompleted: '2026-11-30',
+						durationSeconds: 3600,
+						weekSeconds: 3600,
+					},
+				]);
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		renderAssignments({
+			preloadedData: { ...PRELOADED_DATA, assignments: [] },
+		});
+
+		fireEvent.change(screen.getByLabelText('From'), {
+			target: { value: YESTERDAY },
+		});
+		fireEvent.change(screen.getByLabelText('To'), {
+			target: { value: YESTERDAY },
+		});
+
+		await expectTotals('5', '9');
+		const overnight = await rowContaining('Overnight work');
+		expect(within(overnight).getByText('Selected: 2')).toBeInTheDocument();
+		const quantityOnly = await rowContaining('Quantity-only selected work');
+		const quantityCells = within(quantityOnly).getAllByRole('cell');
+		expect(quantityCells[6]).toHaveTextContent('Selected: 0');
+		expect(quantityCells[7].textContent.trim()).toBe('3');
+		const nextCompletion = await rowContaining('Next-day completion');
+		expect(within(nextCompletion).getByText('Selected: 1')).toBeInTheDocument();
+		expect(within(nextCompletion).getByText('Selected: 0')).toBeInTheDocument();
+		expect(
+			screen.queryByText('Ended at selected boundary')
+		).not.toBeInTheDocument();
+	});
 	it('requires a real sub-activity only when the selected Activity has children', async () => {
 		renderAssignments();
 		const user = await openAddForm();
@@ -718,12 +894,14 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		expect(screen.getByDisplayValue('No sub-activity')).toBeInTheDocument();
 	});
 
-	it('posts a self-service overnight Work Period and emits save evidence', async () => {
+	it('posts an explicitly dated overnight Work Period and emits save evidence', async () => {
 		const onSaved = vi.fn();
 		window.addEventListener('activity-log-saved', onSaved);
 		renderAssignments();
 		const user = await openAddForm();
 		await chooseAssembly(user);
+		await setEndpointDate(user, 'Start Period', YESTERDAY);
+		await setEndpointDate(user, 'End Period', TODAY);
 		await setEndpoint(user, 'Start Period', '10', '00', 'PM');
 		await setEndpoint(user, 'End Period', '12', '00', 'AM');
 		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
@@ -755,6 +933,77 @@ describe('ProjectActivityAssignments Work Periods', () => {
 			screen.queryByRole('button', { name: 'Save Work Period' })
 		).not.toBeInTheDocument();
 		window.removeEventListener('activity-log-saved', onSaved);
+	});
+
+	it('rejects an earlier end clock on the same date instead of inferring overnight', async () => {
+		renderAssignments();
+		const user = await openAddForm();
+		await chooseAssembly(user);
+		await setEndpoint(user, 'Start Period', '10', '00', 'PM');
+		await setEndpoint(user, 'End Period', '12', '00', 'AM');
+		fireEvent.change(screen.getByLabelText('Activity Description'), {
+			target: { value: 'No implicit date rollover' },
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'End must be after Start.'
+		);
+		expect(screen.getByLabelText('Start Period Date')).toHaveValue(TODAY);
+		expect(screen.getByLabelText('End Period Date')).toHaveValue(TODAY);
+		expect(apiPost).not.toHaveBeenCalled();
+	});
+
+	it('defaults both work dates and tracks End until Date Completed changes independently', async () => {
+		renderAssignments();
+		const user = await openAddForm();
+		const startDate = screen.getByLabelText('Start Period Date');
+		const endDate = screen.getByLabelText('End Period Date');
+		const dateCompleted = screen.getByLabelText('Date Completed');
+		expect(startDate).toHaveValue(TODAY);
+		expect(endDate).toHaveValue(TODAY);
+		expect(dateCompleted).toHaveValue(TODAY);
+		expect(dateCompleted).not.toBeRequired();
+
+		await user.click(screen.getByLabelText('Start Period date'));
+		fireEvent.change(startDate, { target: { value: YESTERDAY } });
+		await user.click(screen.getByLabelText('End Period date'));
+		fireEvent.change(endDate, { target: { value: YESTERDAY } });
+		expect(dateCompleted).toHaveValue(YESTERDAY);
+
+		fireEvent.change(dateCompleted, { target: { value: CURRENT_WEEK } });
+		fireEvent.change(endDate, { target: { value: TODAY } });
+		expect(startDate).toHaveValue(YESTERDAY);
+		expect(endDate).toHaveValue(TODAY);
+		expect(dateCompleted).toHaveValue(CURRENT_WEEK);
+	});
+
+	it('uses the End date when Date Completed is left blank', async () => {
+		renderAssignments();
+		const user = await openAddForm();
+		await chooseAssembly(user);
+		await setEndpoint(user, 'Start Period', '09', '00', 'AM');
+		await setEndpoint(user, 'End Period', '10', '00', 'AM');
+		fireEvent.change(screen.getByLabelText('Activity Description'), {
+			target: { value: 'Default completion date' },
+		});
+		fireEvent.change(screen.getByLabelText('Date Completed'), {
+			target: { value: '' },
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		await waitFor(() =>
+			expect(apiPost).toHaveBeenCalledWith(
+				'/api/work-periods',
+				expect.objectContaining({
+					start: `${TODAY}T09:00`,
+					end: `${TODAY}T10:00`,
+					dateCompleted: TODAY,
+				})
+			)
+		);
 	});
 
 	it('rejects equal clocks for a new Work Period without calling the API', async () => {
@@ -823,6 +1072,10 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		renderAssignments();
 		const user = await openAddForm();
 		await chooseAssembly(user);
+		await user.click(screen.getByLabelText('Start Period date'));
+		fireEvent.change(screen.getByLabelText('Start Period Date'), {
+			target: { value: YESTERDAY },
+		});
 		await setEndpoint(user, 'Start Period', '10', '00', 'PM');
 		await setEndpoint(user, 'End Period', '01', '00', 'AM');
 		fireEvent.change(screen.getByLabelText('Quantity'), {
@@ -901,6 +1154,49 @@ describe('ProjectActivityAssignments Work Periods', () => {
 		});
 		await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
 		window.removeEventListener('activity-log-saved', onSaved);
+	});
+
+	it('edits Start and End dates explicitly while keeping Date Completed in sync until changed', async () => {
+		apiGet.mockImplementation(async (url) => {
+			if (url === '/api/work-periods')
+				return periodPayload(CURRENT_WEEK, [EDITABLE_PERIOD]);
+			if (url === '/api/activity-master/options') {
+				return { success: true, data: DISCIPLINE_OPTIONS };
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		const user = userEvent.setup();
+		renderAssignments();
+		await user.click(
+			await screen.findByRole('button', {
+				name: 'Edit Work Period for Foundation Work',
+			})
+		);
+		await user.click(screen.getByLabelText('Start Period date'));
+		fireEvent.change(screen.getByLabelText('Start Period Date'), {
+			target: { value: TODAY },
+		});
+		await user.click(screen.getByLabelText('End Period date'));
+		const endDate = screen.getByLabelText('End Period Date');
+		fireEvent.change(endDate, { target: { value: YESTERDAY } });
+		expect(screen.getByLabelText('Date Completed')).toHaveValue(YESTERDAY);
+		fireEvent.change(endDate, { target: { value: TODAY } });
+		expect(screen.getByLabelText('Date Completed')).toHaveValue(TODAY);
+		await setEndpoint(user, 'Start Period', '09', '00', 'AM');
+		await setEndpoint(user, 'End Period', '10', '00', 'AM');
+
+		await user.click(screen.getByRole('button', { name: 'Save Work Period' }));
+
+		await waitFor(() =>
+			expect(apiPut).toHaveBeenCalledWith(
+				'/api/work-periods',
+				expect.objectContaining({
+					start: `${TODAY}T09:00`,
+					end: `${TODAY}T10:00`,
+					dateCompleted: TODAY,
+				})
+			)
+		);
 	});
 
 	it('changes only quantity attribution when an existing Date Completed changes', async () => {

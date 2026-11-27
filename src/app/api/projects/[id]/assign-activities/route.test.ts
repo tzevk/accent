@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
 	mockExecute: vi.fn(),
 	mockRelease: vi.fn(),
 	mockDbConnect: vi.fn(),
+	mockBeginTransaction: vi.fn(),
+	mockCommit: vi.fn(),
+	mockRollback: vi.fn(),
 	mockRequireProjectAccess: vi.fn(),
 }));
 
@@ -23,11 +26,20 @@ vi.mock('@/utils/api-permissions', () => ({
 }));
 
 // The handler imports after `vi.mock` so the mocks are hoisted first.
-const { GET, POST, PUT, DELETE } = await import(
-	'@/app/api/projects/[id]/assign-activities/route'
-);
+const { GET, POST, PUT, DELETE } =
+	await import('@/app/api/projects/[id]/assign-activities/route');
 
-const db = { execute: mocks.mockExecute, release: mocks.mockRelease };
+const db = {
+	execute: mocks.mockExecute,
+	query: (query: string | { sql: string }, params?: unknown[]) =>
+		typeof query === 'string'
+			? Promise.resolve()
+			: mocks.mockExecute(query.sql, params),
+	release: mocks.mockRelease,
+	beginTransaction: mocks.mockBeginTransaction,
+	commit: mocks.mockCommit,
+	rollback: mocks.mockRollback,
+};
 
 function params() {
 	return { params: Promise.resolve({ id: '1' }) };
@@ -50,11 +62,13 @@ function team(memberIds: number[]) {
 	);
 }
 
-function access(options: {
-	memberIds?: number[];
-	canAssignActivity?: boolean;
-	projectActivityRead?: boolean;
-} = {}) {
+function access(
+	options: {
+		memberIds?: number[];
+		canAssignActivity?: boolean;
+		projectActivityRead?: boolean;
+	} = {}
+) {
 	const {
 		memberIds = [42],
 		canAssignActivity = true,
@@ -84,6 +98,9 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.mockDbConnect.mockResolvedValue(db);
 	mocks.mockRequireProjectAccess.mockResolvedValue(access());
+	mocks.mockBeginTransaction.mockResolvedValue(undefined);
+	mocks.mockCommit.mockResolvedValue(undefined);
+	mocks.mockRollback.mockResolvedValue(undefined);
 });
 
 describe('POST project activity assignments', () => {
@@ -239,10 +256,7 @@ describe('PUT project activity assignments', () => {
 		);
 
 		const response = await PUT(
-			request(
-				{ updates: [{ assignment_id: 'a1', user_id: 99 }] },
-				'PUT'
-			),
+			request({ updates: [{ assignment_id: 'a1', user_id: 99 }] }, 'PUT'),
 			params()
 		);
 		const body = await response.json();
@@ -272,20 +286,85 @@ describe('PUT project activity assignments', () => {
 					},
 				])
 			)
+			.mockResolvedValueOnce([[{ user_id: 7 }]])
+			.mockResolvedValueOnce([[]])
 			.mockResolvedValueOnce([{ affectedRows: 1 }])
 			.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
 		const response = await PUT(
-			request(
-				{ updates: [{ assignment_id: 'a1', user_id: 42 }] },
-				'PUT'
-			),
+			request({ updates: [{ assignment_id: 'a1', user_id: 42 }] }, 'PUT'),
 			params()
 		);
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
 		expect(body.updated).toBe(1);
+	});
+
+	it('rejects reassignment when recorded Work Periods would lose their assignee link', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce(
+				identityRows([
+					{
+						id: 42,
+						full_name: 'Mona Member',
+						email: 'member@example.com',
+					},
+				])
+			)
+			.mockResolvedValueOnce([[{ user_id: 7 }]])
+			.mockResolvedValueOnce([[{ id: 'period-1' }]]);
+
+		const response = await PUT(
+			request({ updates: [{ assignment_id: 'a1', user_id: 42 }] }, 'PUT'),
+			params()
+		);
+		const body = await response.json();
+
+		expect(response.status).toBe(409);
+		expect(body).toEqual({
+			success: false,
+			code: 'ASSIGNMENT_HAS_WORK_PERIODS',
+			error:
+				'Recorded Work Periods use this assignment. Keep the current assignee or correct the recorded Work Periods before reassigning.',
+		});
+		expect(mocks.mockBeginTransaction).toHaveBeenCalledOnce();
+		expect(mocks.mockRollback).toHaveBeenCalledOnce();
+		expect(mocks.mockCommit).not.toHaveBeenCalled();
+		expect(mocks.mockExecute).toHaveBeenCalledTimes(3);
+	});
+
+	it('allows metadata edits without treating the same assignee as reassignment', async () => {
+		mocks.mockExecute
+			.mockResolvedValueOnce(
+				identityRows([
+					{
+						id: 42,
+						full_name: 'Mona Member',
+						email: 'member@example.com',
+					},
+				])
+			)
+			.mockResolvedValueOnce([[{ user_id: 42 }]])
+			.mockResolvedValueOnce([{ affectedRows: 1 }])
+			.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+		const response = await PUT(
+			request(
+				{
+					updates: [
+						{ assignment_id: 'a1', user_id: 42, due_date: '2026-12-01' },
+					],
+				},
+				'PUT'
+			),
+			params()
+		);
+
+		expect(response.status).toBe(200);
+		expect((await response.json()).updated).toBe(1);
+		expect(mocks.mockCommit).toHaveBeenCalledOnce();
+		expect(mocks.mockRollback).not.toHaveBeenCalled();
 	});
 });
 
@@ -306,6 +385,52 @@ describe('DELETE project activity assignments', () => {
 		expect(body.success).toBe(true);
 	});
 
+	it('returns an actionable conflict when the Work Period foreign key protects an assignment', async () => {
+		mocks.mockExecute.mockRejectedValueOnce(
+			Object.assign(
+				new Error(
+					'Cannot delete or update a parent row: a foreign key constraint fails (work_periods_assignment_fk)'
+				),
+				{ code: 'ER_ROW_IS_REFERENCED', errno: 1451 }
+			)
+		);
+
+		const response = await DELETE(
+			new Request(
+				'http://localhost/api/projects/1/assign-activities?assignment_id=a1',
+				{ method: 'DELETE' }
+			),
+			params()
+		);
+
+		expect(response.status).toBe(409);
+		expect(await response.json()).toEqual({
+			success: false,
+			code: 'ASSIGNMENT_HAS_WORK_PERIODS',
+			error:
+				'Recorded Work Periods use this assignment. Delete those Work Periods before deleting the assignment.',
+		});
+	});
+
+	it('does not label an unrelated foreign key failure as recorded work', async () => {
+		mocks.mockExecute.mockRejectedValueOnce(
+			Object.assign(new Error('A different foreign key failed'), {
+				code: 'ER_ROW_IS_REFERENCED',
+				errno: 1451,
+			})
+		);
+
+		const response = await DELETE(
+			new Request(
+				'http://localhost/api/projects/1/assign-activities?assignment_id=a1',
+				{ method: 'DELETE' }
+			),
+			params()
+		);
+
+		expect(response.status).toBe(500);
+	});
+
 	it('refuses a manager without assignment authority', async () => {
 		mocks.mockRequireProjectAccess.mockResolvedValue(
 			access({ canAssignActivity: false })
@@ -323,7 +448,6 @@ describe('DELETE project activity assignments', () => {
 		expect(mocks.mockExecute).not.toHaveBeenCalled();
 	});
 });
-
 
 describe('GET project activity assignments', () => {
 	function getRequest() {
